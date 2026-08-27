@@ -4,12 +4,13 @@ NAMESPACE ?= k8sgpt-operator-system
 DEMO_NAMESPACE ?= k8sgpt-demo
 OPERATOR_VERSION ?= 0.2.27
 
-.PHONY: help install verify demo clean-demo status results uninstall
+.PHONY: help preflight install verify demo clean-demo status results uninstall
 
 help:
 	@echo "kube-aiops Phase 1.1"
 	@echo
 	@echo "常用命令:"
+	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC 静态检查"
 	@echo "  make install       安装/升级 K8sGPT Operator、应用 RBAC Hardening、检查 Secret 并部署 K8sGPT CR"
 	@echo "  make verify        验证 Operator、CRD、RBAC 安全边界、K8sGPT CR 与 Result CR"
 	@echo "  make demo          部署 ImagePullBackOff / CrashLoopBackOff / PVC Pending 故障样例"
@@ -24,6 +25,9 @@ help:
 	@echo "  STRICT_RESULTS=true  # verify 时要求至少存在一个 Result"
 	@echo "  PURGE_SECRET=true    # uninstall 时同时删除 AI Secret"
 	@echo "  PURGE_NAMESPACE=true # uninstall 时同时删除 Namespace"
+
+preflight:
+	@bash ./preflight.sh
 
 install:
 	@NAMESPACE="$(NAMESPACE)" OPERATOR_VERSION="$(OPERATOR_VERSION)" bash ./install.sh
