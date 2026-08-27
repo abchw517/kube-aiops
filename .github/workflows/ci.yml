@@ -1,0 +1,86 @@
+name: Phase 1.1 CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-1-1-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Preflight / Lint / RBAC
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install validation tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            pyyaml==6.0.2 \
+            yamllint==1.35.1
+
+      - name: Bash syntax
+        run: |
+          set -Eeuo pipefail
+          find . -type f -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 -r -n1 bash -n
+
+      - name: ShellCheck
+        run: |
+          set -Eeuo pipefail
+          find . -type f -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 -r shellcheck -x
+
+      - name: YAML lint
+        run: |
+          set -Eeuo pipefail
+          yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: {allowed-values: ["true", "false", "on"]}}}' \
+            deploy .github/workflows
+
+      - name: Run project preflight
+        run: bash ./preflight.sh
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks full repository scan
+        run: |
+          set -Eeuo pipefail
+          docker run --rm \
+            -v "${PWD}:/repo" \
+            zricethezav/gitleaks:v8.24.3 \
+            detect \
+            --source=/repo \
+            --no-banner \
+            --redact \
+            --verbose
