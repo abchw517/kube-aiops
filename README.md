@@ -66,6 +66,10 @@ K8sGPT Operator            K8sGPT CR
 
 ```text
 .
+├── Makefile
+├── install.sh
+├── verify.sh
+├── uninstall.sh
 ├── README.md
 ├── .gitignore
 ├── deploy/
@@ -87,25 +91,183 @@ K8sGPT Operator            K8sGPT CR
     └── phase-1.1-acceptance.md
 ```
 
-## 1. 安装 K8sGPT Operator
+# 快速开始
+
+## 1. 创建 AI Provider Secret
+
+Secret 不提交到 Git 仓库。首次安装前创建：
 
 ```bash
-helm repo add k8sgpt https://charts.k8sgpt.ai/
-helm repo update
+kubectl apply -f deploy/k8sgpt/namespace.yaml
 
-helm upgrade --install k8sgpt-operator \
-  k8sgpt/k8sgpt-operator \
+export OPENAI_TOKEN='replace-me'
+
+kubectl create secret generic k8sgpt-openai-secret \
   -n k8sgpt-operator-system \
-  --create-namespace \
-  --version 0.2.27 \
-  -f deploy/k8sgpt/values-production.yaml \
-  --wait \
-  --timeout 5m
+  --from-literal=openai-api-key="${OPENAI_TOKEN}"
 ```
 
-> 生产环境建议固定 Operator 版本，不跟随 latest/main 镜像。
+## 2. 安装 Phase 1.1
 
-### RBAC Hardening 注意事项
+```bash
+make install
+```
+
+`make install` 会依次执行：
+
+```text
+Preflight
+   ↓
+检查 kubectl / helm / current-context
+   ↓
+创建 Namespace
+   ↓
+安装/升级 K8sGPT Operator
+   ↓
+应用 RBAC Hardening
+   ↓
+验证 Secret / Patch / Delete 权限均被拒绝
+   ↓
+检查 AI Provider Secret
+   ↓
+部署 K8sGPT CR
+   ↓
+检查 Operator Ready
+```
+
+默认版本：
+
+```text
+K8sGPT Operator: 0.2.27
+K8sGPT Engine:   v0.4.32
+```
+
+可覆盖 Operator 版本：
+
+```bash
+OPERATOR_VERSION=0.2.27 make install
+```
+
+## 3. 安全与功能验收
+
+```bash
+make verify
+```
+
+验证内容包括：
+
+- Kubernetes Context
+- Namespace
+- K8sGPT / Result CRD
+- `k8sgpt` ServiceAccount
+- `get/list` 业务资源权限
+- Secret 读取必须为 `no`
+- Pod Log 读取必须为 `no`
+- create/update/patch/delete 必须为 `no`
+- AI Provider Secret 存在且包含 `openai-api-key`
+- K8sGPT CR 存在
+- `anonymized=true`
+- Auto Remediation 未启用
+- Result CR API 可读取
+- Operator Ready
+
+无 Result 时默认只告警，不判定 Phase 1.1 失败。部署故障样例后可使用严格模式：
+
+```bash
+STRICT_RESULTS=true make verify
+```
+
+## 4. 部署故障样例
+
+```bash
+make demo
+```
+
+会创建：
+
+```text
+ImagePullBackOff
+CrashLoopBackOff
+PVC Pending
+```
+
+查看故障：
+
+```bash
+kubectl get pod,pvc -n k8sgpt-demo
+```
+
+查看 K8sGPT Result：
+
+```bash
+make results
+```
+
+等待 K8sGPT 完成一个分析周期后，可执行：
+
+```bash
+STRICT_RESULTS=true make verify
+```
+
+清理测试故障：
+
+```bash
+make clean-demo
+```
+
+## 5. 查看状态
+
+```bash
+make status
+```
+
+等价于查看 Operator、K8sGPT CR 与 Result CR 的关键状态。
+
+## 6. 卸载
+
+```bash
+make uninstall
+```
+
+默认策略：
+
+```text
+K8sGPT CR        删除
+Helm Release     删除
+Phase 1.1 RBAC   删除
+AI Secret        保留
+Namespace        保留
+CRD              保留
+```
+
+需要同时删除 AI Secret：
+
+```bash
+PURGE_SECRET=true make uninstall
+```
+
+需要同时删除 Namespace：
+
+```bash
+PURGE_SECRET=true PURGE_NAMESPACE=true make uninstall
+```
+
+CRD 默认不自动删除，避免误伤其它 K8sGPT 实例或后续重新安装。
+
+# Makefile 命令
+
+```bash
+make help
+make install
+make verify
+make demo
+make clean-demo
+make status
+make results
+make uninstall
+```
+
+# RBAC Hardening
 
 Operator `v0.2.27` 默认启用 dynamicRBAC。本项目显式设置：
 
@@ -122,111 +284,32 @@ ClusterRole:        k8sgpt-clusterrole
 ClusterRoleBinding: k8sgpt-clusterrole-binding
 ```
 
-官方静态 ClusterRole 默认仍包含 `secrets` 与 `pods/log` 读取权限，因此 **每次 Helm install/upgrade 后，都必须重新应用本仓库的收敛 RBAC**。
+官方静态 ClusterRole 默认仍包含 `secrets` 与 `pods/log` 读取权限，因此 **每次 Helm install/upgrade 后都必须重新应用本仓库的 RBAC Hardening**。
 
-## 2. 应用 Phase 1.1 只读 RBAC
+本项目的 `install.sh` 已自动执行该动作：
 
-```bash
-kubectl apply -f deploy/k8sgpt/namespace.yaml
-kubectl apply -f deploy/k8sgpt/serviceaccount.yaml
-kubectl apply -f deploy/k8sgpt/clusterrole.yaml
-kubectl apply -f deploy/k8sgpt/clusterrolebinding.yaml
+```text
+helm upgrade --install
+        ↓
+kubectl apply clusterrole.yaml
+        ↓
+kubectl apply clusterrolebinding.yaml
+        ↓
+kubectl auth can-i 安全校验
 ```
 
-这里的 `clusterrole.yaml` 与官方静态 ClusterRole 同名，用于覆盖并移除：
+本仓库的同名 `k8sgpt-clusterrole` 会移除：
 
 ```text
 secrets
 pods/log
-create/update/patch/delete
+create
+update
+patch
+delete
 ```
 
-## 3. 创建 AI Provider Secret
-
-Secret 不提交到 Git 仓库。
-
-```bash
-export OPENAI_TOKEN='replace-me'
-
-kubectl create secret generic k8sgpt-openai-secret \
-  -n k8sgpt-operator-system \
-  --from-literal=openai-api-key="${OPENAI_TOKEN}"
-```
-
-## 4. 部署 K8sGPT CR
-
-```bash
-kubectl apply -f deploy/k8sgpt/k8sgpt.yaml
-```
-
-检查：
-
-```bash
-kubectl get k8sgpt -n k8sgpt-operator-system
-kubectl get pod -n k8sgpt-operator-system
-kubectl get results -n k8sgpt-operator-system
-```
-
-## 5. RBAC 安全验证
-
-应该允许：
-
-```bash
-kubectl auth can-i get pods \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
-```
-
-预期：
-
-```text
-yes
-```
-
-应该拒绝：
-
-```bash
-kubectl auth can-i get secrets \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
-
-kubectl auth can-i get pods/log \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
-
-kubectl auth can-i patch deployments.apps \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
-
-kubectl auth can-i delete pods \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
-```
-
-预期均为：
-
-```text
-no
-```
-
-## 6. 故障样例验证
-
-```bash
-kubectl apply -f deploy/k8sgpt/demo/namespace.yaml
-kubectl apply -f deploy/k8sgpt/demo/imagepullbackoff.yaml
-kubectl apply -f deploy/k8sgpt/demo/crashloopbackoff.yaml
-kubectl apply -f deploy/k8sgpt/demo/pvc-pending.yaml
-```
-
-查看故障：
-
-```bash
-kubectl get pod,pvc -n k8sgpt-demo
-```
-
-查看诊断结果：
-
-```bash
-kubectl get results -n k8sgpt-operator-system
-kubectl get results -n k8sgpt-operator-system -o yaml
-```
-
-## 安全原则
+# 安全原则
 
 Phase 1.1 明确遵循以下边界：
 
@@ -251,7 +334,7 @@ Remediation -> Disabled
 - `docs/security.md`
 - `docs/phase-1.1-acceptance.md`
 
-## Roadmap
+# Roadmap
 
 - Phase 1.1：K8sGPT Engine
 - Phase 1.2：Portal Backend API
