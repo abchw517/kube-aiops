@@ -1,5 +1,8 @@
 # K8sGPT Operator production baseline
-# Keep workload RBAC under explicit Git-managed control.
+# dynamicRBAC=false 时，Helm 会创建静态 k8sgpt ServiceAccount/ClusterRole/Binding。
+# 安装或升级后必须重新 apply 本仓库的 serviceaccount/clusterrole/clusterrolebinding
+# 以覆盖官方默认包含 secrets 与 pods/log 的静态权限。
+
 dynamicRBAC:
   enabled: false
 
@@ -9,20 +12,21 @@ serviceMonitor:
 grafanaDashboard:
   enabled: false
 
-manager:
-  enableResultLogging: false
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
+controllerManager:
+  manager:
+    enableResultLogging: false
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
 
-podSecurityContext:
-  runAsNonRoot: true
+  podSecurityContext:
+    runAsNonRoot: true
