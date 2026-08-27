@@ -77,7 +77,7 @@ kubectl apply -f "${DEPLOY_DIR}/clusterrolebinding.yaml"
 
 for check in "get secrets" "get pods/log" "patch deployments.apps" "delete pods"; do
   read -r verb resource <<<"$check"
-  result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}")"
+  result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
   [[ "$result" == "no" ]] || fatal "安全基线失败: ${verb} ${resource} result=${result}"
 done
 
