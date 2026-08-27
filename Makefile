@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 
 DEMO_NAMESPACE ?= k8sgpt-demo
-OPERATOR_VERSION ?= 0.2.27
+OPERATOR_VERSION ?= 0.2.29
 
 .PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e
 

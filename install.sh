@@ -8,7 +8,7 @@ readonly RELEASE_NAME="k8sgpt-operator"
 readonly SECRET_NAME="k8sgpt-openai-secret"
 readonly SERVICE_ACCOUNT="k8sgpt"
 readonly K8SGPT_NAME="k8sgpt-engine"
-OPERATOR_VERSION="${OPERATOR_VERSION:-0.2.27}"
+OPERATOR_VERSION="${OPERATOR_VERSION:-0.2.29}"
 TIMEOUT="${TIMEOUT:-5m}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +20,22 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 fatal() { log "ERROR: $*"; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || fatal "缺少命令: $1"; }
 require_file() { [[ -f "$1" ]] || fatal "文件不存在: $1"; }
+
+assert_cluster_resource_owned_or_absent() {
+  local resource="$1"
+  local name="$2"
+  local owner
+  local legacy_owner
+
+  if ! kubectl get "$resource" "$name" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  owner="$(kubectl get "$resource" "$name" -o jsonpath='{.metadata.annotations.kube-aiops\.io/owner}' 2>/dev/null || true)"
+  legacy_owner="$(kubectl get "$resource" "$name" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/part-of}' 2>/dev/null || true)"
+  [[ "$owner" == "phase-1.1" || "$legacy_owner" == "kube-aiops" ]] || fatal \
+    "拒绝接管外部资源: ${resource}/${name}；缺少 kube-aiops 所有权标识"
+}
 
 rollback_new_install() {
   local rc="$1"
@@ -55,6 +71,10 @@ kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || fatal "Namespace 不存在
 kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1 || fatal "Secret 不存在: ${NAMESPACE}/${SECRET_NAME}；先执行 make bootstrap-secret"
 SECRET_KEY="$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath='{.data.openai-api-key}')"
 [[ -n "$SECRET_KEY" ]] || fatal "Secret ${SECRET_NAME} 缺少或包含空 key: openai-api-key"
+
+# Helm 操作前确认固定名称的集群级资源未被其它安装占用。
+assert_cluster_resource_owned_or_absent clusterrole k8sgpt-clusterrole
+assert_cluster_resource_owned_or_absent clusterrolebinding k8sgpt-clusterrole-binding
 
 if ! helm status "$RELEASE_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then NEW_RELEASE=true; fi
 
