@@ -1,0 +1,42 @@
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: K8sGPT
+metadata:
+  name: k8sgpt-engine
+  namespace: k8sgpt-operator-system
+  labels:
+    app.kubernetes.io/name: k8sgpt
+    app.kubernetes.io/component: analyzer
+    app.kubernetes.io/part-of: kube-aiops
+spec:
+  ai:
+    enabled: true
+    backend: openai
+    model: gpt-4o-mini
+    anonymized: true
+    language: english
+    secret:
+      name: k8sgpt-openai-secret
+      key: openai-api-key
+
+  analysis:
+    interval: "5m"
+
+  noCache: false
+  repository: ghcr.io/k8sgpt-ai/k8sgpt
+  version: v0.4.32
+
+  filters:
+    - Pod
+    - Deployment
+    - ReplicaSet
+    - Service
+    - StatefulSet
+    - Job
+    - CronJob
+    - PersistentVolumeClaim
+    - Node
+    - Ingress
+    - HorizontalPodAutoscaler
+
+  # Phase 1.1 不启用 Log Analyzer，避免应用日志直接进入 LLM。
+  # Phase 1.1 不启用自动修复 / Mutation。
