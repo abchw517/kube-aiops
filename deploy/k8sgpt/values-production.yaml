@@ -1,0 +1,28 @@
+# K8sGPT Operator production baseline
+# Keep workload RBAC under explicit Git-managed control.
+dynamicRBAC:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+grafanaDashboard:
+  enabled: false
+
+manager:
+  enableResultLogging: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+podSecurityContext:
+  runAsNonRoot: true
