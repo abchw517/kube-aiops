@@ -18,6 +18,7 @@ Phase 1.1 的目标是建立一套安全、可重复部署、可验证的 Kubern
 - AI 分析默认启用匿名化
 - 通过 Result CR 输出结构化诊断结果
 - 提供 ImagePullBackOff、CrashLoopBackOff、PVC Pending 三类故障样例
+- 提供本地 Preflight 与 GitHub Actions CI 安全质量门禁
 
 ## Phase 1.1 架构
 
@@ -67,11 +68,15 @@ K8sGPT Operator            K8sGPT CR
 ```text
 .
 ├── Makefile
+├── preflight.sh
 ├── install.sh
 ├── verify.sh
 ├── uninstall.sh
 ├── README.md
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── deploy/
 │   └── k8sgpt/
 │       ├── namespace.yaml
@@ -92,6 +97,30 @@ K8sGPT Operator            K8sGPT CR
 ```
 
 # 快速开始
+
+## 0. 本地 Preflight
+
+提交代码或执行安装前建议先运行：
+
+```bash
+make preflight
+```
+
+本地检查包括：
+
+- 所有 `.sh` 执行 `bash -n`
+- 本机存在 ShellCheck 时执行 ShellCheck
+- 所有 YAML/YML 使用 PyYAML 解析
+- 高置信度 Secret/Token/Private Key 模式扫描
+- `k8sgpt-clusterrole` 静态 RBAC 安全检查
+
+本地 YAML/RBAC 检查需要：
+
+```bash
+python3 -m pip install pyyaml
+```
+
+ShellCheck 可选安装；GitHub Actions 中为强制检查项。
 
 ## 1. 创建 AI Provider Secret
 
@@ -221,8 +250,6 @@ make clean-demo
 make status
 ```
 
-等价于查看 Operator、K8sGPT CR 与 Result CR 的关键状态。
-
 ## 6. 卸载
 
 ```bash
@@ -258,6 +285,7 @@ CRD 默认不自动删除，避免误伤其它 K8sGPT 实例或后续重新安�
 
 ```bash
 make help
+make preflight
 make install
 make verify
 make demo
@@ -266,6 +294,39 @@ make status
 make results
 make uninstall
 ```
+
+# GitHub Actions CI
+
+工作流：
+
+```text
+.github/workflows/ci.yml
+```
+
+在 `main` 分支 Push 和面向 `main` 的 Pull Request 时自动执行。
+
+CI 分为两类 Job：
+
+```text
+Preflight / Lint / RBAC
+├── bash -n
+├── ShellCheck
+├── YAML lint
+└── preflight.sh
+
+Secret Scan
+└── Gitleaks 全 Git 历史扫描
+```
+
+安全设计：
+
+- Workflow 默认仅授予 `contents: read`
+- Checkout 使用完整历史，Secret Scanner 可以覆盖历史提交
+- Secret 输出启用 redact，避免在 CI 日志再次暴露凭据
+- RBAC 若出现 `*`、Secret、Pod Logs 或危险写 verbs，CI 直接失败
+- `create/update/patch/delete/deletecollection/impersonate/bind/escalate` 均属于禁止权限
+
+建议将 `Phase 1.1 CI` 配置为 `main` 分支的 Required Status Check，避免绕过质量门禁直接合并。
 
 # RBAC Hardening
 
