@@ -18,6 +18,7 @@ rules:
       - namespaces
       - persistentvolumeclaims
       - events
+      - replicationcontrollers
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["apps"]
@@ -26,7 +27,6 @@ rules:
       - replicasets
       - statefulsets
       - daemonsets
-      - replicationcontrollers
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["batch"]
