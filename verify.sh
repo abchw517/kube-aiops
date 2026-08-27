@@ -163,13 +163,13 @@ else
 fi
 
 BACKEND="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.backend}' 2>/dev/null || true)"
-[[ "$BACKEND" == "openai" ]] && pass "AI backend=openai" || fail "AI backend 非预期: ${BACKEND:-unset}"
+if [[ "$BACKEND" == "openai" ]]; then pass "AI backend=openai"; else fail "AI backend 非预期: ${BACKEND:-unset}"; fi
 
 INTERVAL="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.analysis.interval}' 2>/dev/null || true)"
-[[ "$INTERVAL" == "5m" ]] && pass "Analysis interval=5m" || fail "Analysis interval 非预期: ${INTERVAL:-unset}"
+if [[ "$INTERVAL" == "5m" ]]; then pass "Analysis interval=5m"; else fail "Analysis interval 非预期: ${INTERVAL:-unset}"; fi
 
 SECRET_REF="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.secret.name}/{.spec.ai.secret.key}' 2>/dev/null || true)"
-[[ "$SECRET_REF" == "${SECRET_NAME}/openai-api-key" ]] && pass "AI Secret 引用正确" || fail "AI Secret 引用非预期: ${SECRET_REF:-unset}"
+if [[ "$SECRET_REF" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 引用正确"; else fail "AI Secret 引用非预期: ${SECRET_REF:-unset}"; fi
 
 FILTERS="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.filters[*]}' 2>/dev/null || true)"
 if [[ " ${FILTERS} " == *" Log "* ]]; then fail "Log Analyzer 意外启用"; else pass "Log Analyzer 未启用"; fi
@@ -201,7 +201,7 @@ fi
 
 if [[ "$STRICT_RESULTS" == "true" && "$RESULT_COUNT" =~ ^[0-9]+$ && "$RESULT_COUNT" -gt 0 ]]; then
   DETAIL_COUNT="$(kubectl get results -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.spec.details}{"\n"}{end}' 2>/dev/null | awk 'NF {n++} END {print n+0}' || true)"
-  [[ "$DETAIL_COUNT" -gt 0 ]] && pass "Result 包含 AI 分析详情" || fail "Result 不包含 AI 分析详情"
+  if [[ "$DETAIL_COUNT" -gt 0 ]]; then pass "Result 包含 AI 分析详情"; else fail "Result 不包含 AI 分析详情"; fi
 fi
 
 printf '\n'
