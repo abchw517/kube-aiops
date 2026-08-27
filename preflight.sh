@@ -64,59 +64,7 @@ if grep -RInE \
 fi
 
 log "5/6 RBAC 静态安全检查"
-python3 - <<'PY'
-import pathlib
-import sys
-
-try:
-    import yaml
-except Exception:
-    print('[preflight][ERROR] 缺少 Python PyYAML：pip install pyyaml', file=sys.stderr)
-    sys.exit(1)
-
-path = pathlib.Path('deploy/k8sgpt/clusterrole.yaml')
-if not path.exists():
-    print(f'[preflight][ERROR] 缺少 RBAC 基线文件: {path}', file=sys.stderr)
-    sys.exit(1)
-
-with path.open('r', encoding='utf-8') as f:
-    docs = [d for d in yaml.safe_load_all(f) if isinstance(d, dict)]
-
-role = next((d for d in docs if d.get('kind') == 'ClusterRole' and d.get('metadata', {}).get('name') == 'k8sgpt-clusterrole'), None)
-if role is None:
-    print('[preflight][ERROR] 未找到 ClusterRole/k8sgpt-clusterrole', file=sys.stderr)
-    sys.exit(1)
-
-forbidden_verbs = {'create', 'update', 'patch', 'delete', 'deletecollection', 'impersonate', 'bind', 'escalate'}
-forbidden_resources = {'secrets', 'pods/log', 'serviceaccounts/token'}
-
-errors = []
-for idx, rule in enumerate(role.get('rules') or [], start=1):
-    verbs = set(rule.get('verbs') or [])
-    resources = set(rule.get('resources') or [])
-    api_groups = set(rule.get('apiGroups') or [])
-    if '*' in verbs:
-        errors.append(f'rule[{idx}] verbs 包含 *')
-    if '*' in resources:
-        errors.append(f'rule[{idx}] resources 包含 *')
-    if '*' in api_groups:
-        errors.append(f'rule[{idx}] apiGroups 包含 *')
-    if rule.get('nonResourceURLs'):
-        errors.append(f'rule[{idx}] 不允许 nonResourceURLs')
-    bad_verbs = verbs & forbidden_verbs
-    if bad_verbs:
-        errors.append(f'rule[{idx}] 包含禁止 verbs: {sorted(bad_verbs)}')
-    bad_resources = resources & forbidden_resources
-    if bad_resources:
-        errors.append(f'rule[{idx}] 包含禁止 resources: {sorted(bad_resources)}')
-
-if errors:
-    for e in errors:
-        print(f'[preflight][ERROR] {e}', file=sys.stderr)
-    sys.exit(1)
-
-print('[preflight] RBAC 安全基线通过')
-PY
+python3 scripts/rbac_lint.py
 
 log "6/6 Python 语法检查"
 python3 -m py_compile scripts/*.py

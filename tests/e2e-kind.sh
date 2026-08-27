@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-kube-aiops-e2e}"
-readonly NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.34.0}"
+readonly NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 log() { printf '[e2e] %s\n' "$*"; }
@@ -15,6 +15,24 @@ done
 
 kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" --wait 120s
 cd "$ROOT_DIR"
+
+log "验证外部同名集群级 RBAC 不会被接管"
+kubectl create clusterrole k8sgpt-clusterrole --verb=get --resource=pods
+kubectl create clusterrolebinding k8sgpt-clusterrole-binding \
+  --clusterrole=k8sgpt-clusterrole --serviceaccount=default:default
+make bootstrap
+OPENAI_TOKEN="e2e-placeholder-not-a-real-token" make bootstrap-secret
+if bash ./install.sh; then
+  echo "ERROR: 外部同名 RBAC 存在时安装不应成功" >&2
+  exit 1
+fi
+if helm status k8sgpt-operator -n k8sgpt-operator-system >/dev/null 2>&1; then
+  echo "ERROR: 所有权检查失败后不应存在 Helm Release" >&2
+  exit 1
+fi
+kubectl delete clusterrolebinding k8sgpt-clusterrole-binding
+kubectl delete clusterrole k8sgpt-clusterrole
+PURGE_SECRET=true PURGE_NAMESPACE=true make uninstall
 
 log "验证缺少 Namespace 时安装不会修改集群"
 if bash ./install.sh; then
@@ -44,6 +62,17 @@ make install
 log "重复安装（幂等）"
 make install
 make verify
+
+log "验证卸载拒绝删除失去所有权标识的集群级 RBAC"
+kubectl annotate clusterrole k8sgpt-clusterrole kube-aiops.io/owner-
+kubectl label clusterrole k8sgpt-clusterrole app.kubernetes.io/part-of-
+if PURGE_SECRET=true PURGE_NAMESPACE=true bash ./uninstall.sh; then
+  echo "ERROR: 所有权标识缺失时卸载不应成功" >&2
+  exit 1
+fi
+helm status k8sgpt-operator -n k8sgpt-operator-system >/dev/null
+kubectl annotate clusterrole k8sgpt-clusterrole kube-aiops.io/owner=phase-1.1
+kubectl label clusterrole k8sgpt-clusterrole app.kubernetes.io/part-of=kube-aiops
 
 log "首次完全卸载"
 PURGE_SECRET=true PURGE_NAMESPACE=true PURGE_DEMO=true make uninstall

@@ -14,10 +14,30 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 fatal() { log "ERROR: $*"; exit 1; }
 for cmd in kubectl helm; do command -v "$cmd" >/dev/null 2>&1 || fatal "缺少命令: $cmd"; done
 
+assert_cluster_resource_owned_or_absent() {
+  local resource="$1"
+  local name="$2"
+  local owner
+  local legacy_owner
+
+  if ! kubectl get "$resource" "$name" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  owner="$(kubectl get "$resource" "$name" -o jsonpath='{.metadata.annotations.kube-aiops\.io/owner}' 2>/dev/null || true)"
+  legacy_owner="$(kubectl get "$resource" "$name" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/part-of}' 2>/dev/null || true)"
+  [[ "$owner" == "phase-1.1" || "$legacy_owner" == "kube-aiops" ]] || fatal \
+    "拒绝删除外部资源: ${resource}/${name}；缺少 kube-aiops 所有权标识"
+}
+
 CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
 [[ -n "$CONTEXT" ]] || fatal "未获取到 kubectl current-context"
 kubectl version --request-timeout=10s >/dev/null
 log "Kubernetes Context: ${CONTEXT}"
+
+# 在任何删除动作前验证集群级固定名称资源的所有权，避免半卸载。
+assert_cluster_resource_owned_or_absent clusterrole k8sgpt-clusterrole
+assert_cluster_resource_owned_or_absent clusterrolebinding k8sgpt-clusterrole-binding
 
 if kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
   log "删除并等待 K8sGPT CR"

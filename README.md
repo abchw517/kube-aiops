@@ -113,7 +113,7 @@ make preflight
 - 所有 YAML/YML 使用 PyYAML 解析
 - Helm post-renderer 在资源进入 API Server 前替换上游宽权限 RBAC
 - 高置信度 Secret/Token/Private Key 模式扫描
-- `k8sgpt-clusterrole` 静态 RBAC 安全检查
+- 仓库内所有 `Role` / `ClusterRole` 静态 RBAC 安全检查
 
 本地 YAML/RBAC 检查需要：
 
@@ -168,14 +168,14 @@ Preflight
 默认版本：
 
 ```text
-K8sGPT Operator: 0.2.27
+K8sGPT Operator: 0.2.29
 K8sGPT Engine:   v0.4.32
 ```
 
 可覆盖 Operator 版本：
 
 ```bash
-OPERATOR_VERSION=0.2.27 make install
+OPERATOR_VERSION=0.2.29 make install
 ```
 
 ## 3. 安全与功能验收
@@ -302,8 +302,9 @@ CRD 默认不自动删除，避免误伤其它 K8sGPT 实例或后续重新安�
 make e2e
 ```
 
-E2E 使用 `kindest/node:v1.34.0`，验证前置条件失败时零 Helm 变更、
-首次安装、重复安装、基础验证、完全卸载、重复卸载、残留资源与 CRD 保留策略。
+E2E 使用固定 digest 的 `kindest/node:v1.34.8`，验证前置条件失败时零 Helm
+变更、外部同名 RBAC 拒绝接管、首次安装、重复安装、基础验证、外部资源拒绝
+删除、完全卸载、重复卸载、残留资源与 CRD 保留策略。
 
 # Makefile 命令
 
@@ -350,6 +351,8 @@ Kubernetes v1.34 Kind E2E
 安全设计：
 
 - Workflow 默认仅授予 `contents: read`
+- 所有第三方 GitHub Actions 均固定到完整 commit SHA
+- Kind node 镜像固定到上游发布的 sha256 digest
 - Checkout 使用完整历史，Secret Scanner 可以覆盖历史提交
 - Secret 输出启用 redact，避免在 CI 日志再次暴露凭据
 - RBAC 若出现 `*`、Secret、Pod Logs 或危险写 verbs，CI 直接失败
@@ -359,7 +362,7 @@ Kubernetes v1.34 Kind E2E
 
 # RBAC Hardening
 
-Operator `v0.2.27` 默认启用 dynamicRBAC。本项目显式设置：
+Operator `v0.2.29` 默认启用 dynamicRBAC。本项目显式设置：
 
 ```yaml
 dynamicRBAC:
@@ -399,6 +402,16 @@ patch
 delete
 ```
 
+ClusterRole 与 ClusterRoleBinding 带有 `app.kubernetes.io/part-of=kube-aiops`
+和 `kube-aiops.io/owner=phase-1.1` 所有权标识。为兼容 P0 基线升级，两者满足
+任一即可识别为项目资源；安装器不会接管没有项目标识的同名现有资源，卸载器
+也不会删除没有项目标识的同名资源。完成一次 P1 安装后会收敛为同时具备两项。
+
+Operator `v0.2.28` 引入 gRPC 依赖安全更新、跨 Namespace Prompt Injection
+防护和分析错误状态上报，`v0.2.29` 增加策略门控 Auto Remediation。本阶段虽然
+采用 `v0.2.29`，但 Mutation 与 Auto Remediation 仍保持禁用，并由 `make verify`
+强制验收。
+
 # 安全原则
 
 Phase 1.1 明确遵循以下边界：
@@ -423,6 +436,7 @@ Remediation -> Disabled
 - `docs/architecture.md`
 - `docs/security.md`
 - `docs/phase-1.1-acceptance.md`
+- `docs/phase-1.1-hardening.md`
 
 # Roadmap
 

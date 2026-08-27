@@ -69,7 +69,7 @@ Phase 1.1 不启用 Log Analyzer，同时从业务读取 ClusterRole 中移除 `
 
 ## dynamicRBAC
 
-Operator v0.2.27 默认启用 dynamicRBAC。当前项目将其设置为：
+Operator v0.2.29 默认启用 dynamicRBAC。当前项目将其设置为：
 
 ```yaml
 dynamicRBAC:
