@@ -31,7 +31,7 @@ kubectl auth can-i get secrets \
 预期：`no`
 
 ```bash
-kubectl auth can-i get pods/log \
+kubectl auth can-i get pods --subresource=log \
   --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 ```
 
@@ -114,5 +114,12 @@ kubectl get results -n k8sgpt-operator-system -o yaml
 | Patch/Update/Delete | 禁止 |
 | Mutation | 禁止 |
 | Auto Remediation | 禁止 |
+| 缺少 Namespace/Secret | 安装失败且不创建 Helm Release |
+| 重复安装 | 通过且无资源漂移 |
+| 安装失败回滚 | 新装清理；升级由 Helm atomic 回滚 |
+| 卸载与重复卸载 | 通过 |
+| 卸载残留检查 | 通过；CRD 按策略保留 |
+| Kubernetes v1.34+ Kind E2E | CI 通过 |
 
-以上项目全部满足后，Phase 1.1 才视为完成，并进入 Phase 1.2 Portal Backend API。
+以上项目全部满足、GitHub Actions 的三个 Job 均通过且 main 分支启用
+Required Status Check 后，Phase 1.1 才视为完成，并进入 Phase 1.2 Portal Backend API。

@@ -111,6 +111,7 @@ make preflight
 - 所有 `.sh` 执行 `bash -n`
 - 本机存在 ShellCheck 时执行 ShellCheck
 - 所有 YAML/YML 使用 PyYAML 解析
+- Helm post-renderer 在资源进入 API Server 前替换上游宽权限 RBAC
 - 高置信度 Secret/Token/Private Key 模式扫描
 - `k8sgpt-clusterrole` 静态 RBAC 安全检查
 
@@ -127,14 +128,13 @@ ShellCheck 可选安装；GitHub Actions 中为强制检查项。
 Secret 不提交到 Git 仓库。首次安装前创建：
 
 ```bash
-kubectl apply -f deploy/k8sgpt/namespace.yaml
-
 export OPENAI_TOKEN='replace-me'
-
-kubectl create secret generic k8sgpt-openai-secret \
-  -n k8sgpt-operator-system \
-  --from-literal=openai-api-key="${OPENAI_TOKEN}"
+make bootstrap-secret
 ```
+
+Phase 1.1 是固定资源身份的单实例基线：Namespace 固定为
+`k8sgpt-operator-system`。本阶段不支持覆盖 Namespace、Release、
+ServiceAccount、Secret 或 K8sGPT CR 名称。
 
 ## 2. 安装 Phase 1.1
 
@@ -149,20 +149,21 @@ Preflight
    ↓
 检查 kubectl / helm / current-context
    ↓
-创建 Namespace
+检查 Namespace 与 AI Secret（不满足时不修改集群）
    ↓
-安装/升级 K8sGPT Operator
+使用 --atomic / --cleanup-on-fail 安装或升级 Operator
    ↓
 应用 RBAC Hardening
    ↓
-验证 Secret / Patch / Delete 权限均被拒绝
-   ↓
-检查 AI Provider Secret
+验证 Secret / Pod Log / Patch / Delete 权限均被拒绝
    ↓
 部署 K8sGPT CR
    ↓
-检查 Operator Ready
+严格检查 Operator Ready
 ```
+
+首次安装的后置步骤失败时，安装器会清理本次创建的 CR、Helm Release
+和项目 RBAC；已有 Release 升级失败时由 Helm `--atomic` 回滚。
 
 默认版本：
 
@@ -186,8 +187,10 @@ make verify
 验证内容包括：
 
 - Kubernetes Context
+- Kubernetes API 连通性
+- Helm Release 必须为 `deployed`
 - Namespace
-- K8sGPT / Result CRD
+- K8sGPT / Result / Mutation CRD
 - `k8sgpt` ServiceAccount
 - `get/list` 业务资源权限
 - Secret 读取必须为 `no`
@@ -196,9 +199,11 @@ make verify
 - AI Provider Secret 存在且包含 `openai-api-key`
 - K8sGPT CR 存在
 - `anonymized=true`
+- backend、分析周期与 Secret 引用正确
+- Log Analyzer 未启用
 - Auto Remediation 未启用
 - Result CR API 可读取
-- Operator Ready
+- Operator Ready（未就绪直接失败）
 
 无 Result 时默认只告警，不判定 Phase 1.1 失败。部署故障样例后可使用严格模式：
 
@@ -256,6 +261,10 @@ make status
 make uninstall
 ```
 
+卸载会等待 K8sGPT CR 删除完成，再卸载 Operator，并检查 Helm Release、
+K8sGPT CR、ClusterRole 和 ClusterRoleBinding 残留。API、权限、
+finalizer 或超时错误会返回非零状态。
+
 默认策略：
 
 ```text
@@ -279,13 +288,29 @@ PURGE_SECRET=true make uninstall
 PURGE_SECRET=true PURGE_NAMESPACE=true make uninstall
 ```
 
+同时清理 Demo：
+
+```bash
+PURGE_DEMO=true make uninstall
+```
+
 CRD 默认不自动删除，避免误伤其它 K8sGPT 实例或后续重新安装。
+
+## 7. Kubernetes v1.34+ Kind E2E
+
+```bash
+make e2e
+```
+
+E2E 使用 `kindest/node:v1.34.0`，验证前置条件失败时零 Helm 变更、
+首次安装、重复安装、基础验证、完全卸载、重复卸载、残留资源与 CRD 保留策略。
 
 # Makefile 命令
 
 ```bash
 make help
 make preflight
+make bootstrap-secret
 make install
 make verify
 make demo
@@ -293,6 +318,7 @@ make clean-demo
 make status
 make results
 make uninstall
+make e2e
 ```
 
 # GitHub Actions CI
@@ -305,7 +331,7 @@ make uninstall
 
 在 `main` 分支 Push 和面向 `main` 的 Pull Request 时自动执行。
 
-CI 分为两类 Job：
+CI 分为三类 Job：
 
 ```text
 Preflight / Lint / RBAC
@@ -316,6 +342,9 @@ Preflight / Lint / RBAC
 
 Secret Scan
 └── Gitleaks 全 Git 历史扫描
+
+Kubernetes v1.34 Kind E2E
+└── install → reinstall → verify → uninstall → uninstall
 ```
 
 安全设计：

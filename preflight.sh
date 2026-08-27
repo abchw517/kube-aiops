@@ -16,22 +16,22 @@ require_cmd find
 require_cmd grep
 require_cmd python3
 
-log "1/5 Shell 语法检查"
+log "1/6 Shell 语法检查"
 while IFS= read -r -d '' file; do
   bash -n "$file"
 done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
 
 if command -v shellcheck >/dev/null 2>&1; then
-  log "2/5 ShellCheck"
+  log "2/6 ShellCheck"
   mapfile -d '' shell_files < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
   if ((${#shell_files[@]} > 0)); then
     shellcheck -x "${shell_files[@]}"
   fi
 else
-  log "2/5 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
+  log "2/6 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
 fi
 
-log "3/5 YAML 语法检查"
+log "3/6 YAML 语法检查"
 python3 - <<'PY'
 import pathlib
 import sys
@@ -53,7 +53,7 @@ for path in files:
 print(f'[preflight] YAML 文件解析通过: {len(files)}')
 PY
 
-log "4/5 静态 Secret 泄露检查"
+log "4/6 静态 Secret 泄露检查"
 # 只检查高置信度模式；完整历史扫描由 CI 的 Gitleaks 执行。
 if grep -RInE \
   --exclude-dir=.git \
@@ -63,7 +63,7 @@ if grep -RInE \
   fail "检测到疑似真实凭据，请移除后再提交"
 fi
 
-log "5/5 RBAC 静态安全检查"
+log "5/6 RBAC 静态安全检查"
 python3 - <<'PY'
 import pathlib
 import sys
@@ -94,10 +94,15 @@ errors = []
 for idx, rule in enumerate(role.get('rules') or [], start=1):
     verbs = set(rule.get('verbs') or [])
     resources = set(rule.get('resources') or [])
+    api_groups = set(rule.get('apiGroups') or [])
     if '*' in verbs:
         errors.append(f'rule[{idx}] verbs 包含 *')
     if '*' in resources:
         errors.append(f'rule[{idx}] resources 包含 *')
+    if '*' in api_groups:
+        errors.append(f'rule[{idx}] apiGroups 包含 *')
+    if rule.get('nonResourceURLs'):
+        errors.append(f'rule[{idx}] 不允许 nonResourceURLs')
     bad_verbs = verbs & forbidden_verbs
     if bad_verbs:
         errors.append(f'rule[{idx}] 包含禁止 verbs: {sorted(bad_verbs)}')
@@ -112,5 +117,8 @@ if errors:
 
 print('[preflight] RBAC 安全基线通过')
 PY
+
+log "6/6 Python 语法检查"
+python3 -m py_compile scripts/*.py
 
 log "全部检查通过"
