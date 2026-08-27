@@ -9,9 +9,10 @@
 Phase 1.1 的目标是建立一套安全、可重复部署、可验证的 Kubernetes 原生 AI 诊断底座：
 
 - 使用 K8sGPT Operator 管理 K8sGPT Engine
-- 通过独立 ServiceAccount 控制权限
+- 使用固定 `k8sgpt` ServiceAccount 承载 Engine 权限
 - 业务资源只允许 `get/list/watch`
 - 禁止读取 Secret
+- Phase 1.1 禁止读取 `pods/log`
 - 禁止 `create/update/patch/delete`
 - 禁止 Mutation / Auto Remediation
 - AI 分析默认启用匿名化
@@ -104,13 +105,40 @@ helm upgrade --install k8sgpt-operator \
 
 > 生产环境建议固定 Operator 版本，不跟随 latest/main 镜像。
 
-## 2. 安装只读 RBAC
+### RBAC Hardening 注意事项
+
+Operator `v0.2.27` 默认启用 dynamicRBAC。本项目显式设置：
+
+```yaml
+dynamicRBAC:
+  enabled: false
+```
+
+关闭后，官方 Helm Chart 会创建静态：
+
+```text
+ServiceAccount:     k8sgpt
+ClusterRole:        k8sgpt-clusterrole
+ClusterRoleBinding: k8sgpt-clusterrole-binding
+```
+
+官方静态 ClusterRole 默认仍包含 `secrets` 与 `pods/log` 读取权限，因此 **每次 Helm install/upgrade 后，都必须重新应用本仓库的收敛 RBAC**。
+
+## 2. 应用 Phase 1.1 只读 RBAC
 
 ```bash
 kubectl apply -f deploy/k8sgpt/namespace.yaml
 kubectl apply -f deploy/k8sgpt/serviceaccount.yaml
 kubectl apply -f deploy/k8sgpt/clusterrole.yaml
 kubectl apply -f deploy/k8sgpt/clusterrolebinding.yaml
+```
+
+这里的 `clusterrole.yaml` 与官方静态 ClusterRole 同名，用于覆盖并移除：
+
+```text
+secrets
+pods/log
+create/update/patch/delete
 ```
 
 ## 3. 创建 AI Provider Secret
@@ -145,7 +173,7 @@ kubectl get results -n k8sgpt-operator-system
 
 ```bash
 kubectl auth can-i get pods \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt-engine
+  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 ```
 
 预期：
@@ -158,13 +186,16 @@ yes
 
 ```bash
 kubectl auth can-i get secrets \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt-engine
+  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 
-kubectl auth can-i patch deployments \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt-engine
+kubectl auth can-i get pods/log \
+  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
+
+kubectl auth can-i patch deployments.apps \
+  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 
 kubectl auth can-i delete pods \
-  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt-engine
+  --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 ```
 
 预期均为：
@@ -206,6 +237,7 @@ Recommend   -> Allowed
 Result CR   -> Allowed
 
 Secret Read -> Denied
+Pod Logs    -> Denied
 Patch       -> Denied
 Update      -> Denied
 Delete      -> Denied
