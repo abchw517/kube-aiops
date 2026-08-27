@@ -1,49 +1,38 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: k8sgpt-engine-readonly
+  # 与 K8sGPT Operator dynamicRBAC=false 时 Helm 创建的静态 ClusterRole 同名。
+  # 本文件用于覆盖官方默认权限，移除 secrets 与 pods/log 等 Phase 1.1 不需要的能力。
+  name: k8sgpt-clusterrole
   labels:
     app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: k8sgpt
 rules:
   - apiGroups: [""]
     resources:
       - pods
-      - pods/status
       - services
       - endpoints
       - nodes
-      - nodes/status
-      - persistentvolumes
+      - configmaps
+      - namespaces
       - persistentvolumeclaims
       - events
-      - configmaps
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["apps"]
     resources:
       - deployments
-      - deployments/status
       - replicasets
-      - replicasets/status
       - statefulsets
-      - statefulsets/status
       - daemonsets
-      - daemonsets/status
+      - replicationcontrollers
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["batch"]
     resources:
-      - jobs
-      - jobs/status
       - cronjobs
-      - cronjobs/status
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["networking.k8s.io"]
-    resources:
-      - ingresses
-      - ingresses/status
-      - networkpolicies
+      - jobs
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["autoscaling"]
@@ -51,10 +40,10 @@ rules:
       - horizontalpodautoscalers
     verbs: ["get", "list", "watch"]
 
-  - apiGroups: ["policy"]
+  - apiGroups: ["networking.k8s.io"]
     resources:
-      - poddisruptionbudgets
-      - poddisruptionbudgets/status
+      - ingresses
+      - networkpolicies
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["admissionregistration.k8s.io"]
@@ -63,9 +52,24 @@ rules:
       - mutatingwebhookconfigurations
     verbs: ["get", "list", "watch"]
 
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]
+
   - apiGroups: ["gateway.networking.k8s.io"]
     resources:
       - gatewayclasses
       - gateways
       - httproutes
     verbs: ["get", "list", "watch"]
+
+# Phase 1.1 明确不授予：
+# - secrets
+# - pods/log
+# - create/update/patch/delete/deletecollection
