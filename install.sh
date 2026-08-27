@@ -71,9 +71,9 @@ helm upgrade --install "$RELEASE_NAME" k8sgpt/k8sgpt-operator \
 
 # Post-renderer 已阻止宽权限进入 API；这里再次 apply Git 基线以检测/修复漂移。
 log "应用 Phase 1.1 RBAC Hardening"
-kubectl apply -f "${DEPLOY_DIR}/serviceaccount.yaml"
-kubectl apply -f "${DEPLOY_DIR}/clusterrole.yaml"
-kubectl apply -f "${DEPLOY_DIR}/clusterrolebinding.yaml"
+for manifest in serviceaccount.yaml clusterrole.yaml clusterrolebinding.yaml; do
+  kubectl apply --server-side --force-conflicts --field-manager=kube-aiops -f "${DEPLOY_DIR}/${manifest}"
+done
 
 for check in "get secrets" "get pods/log" "patch deployments.apps" "delete pods"; do
   read -r verb resource <<<"$check"
