@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8sgpt-operator-system
+  labels:
+    app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: k8sgpt
