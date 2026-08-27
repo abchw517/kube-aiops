@@ -1,14 +1,16 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: k8sgpt-engine-readonly
+  # 与 dynamicRBAC=false 时 Helm 创建的静态 ClusterRoleBinding 同名。
+  name: k8sgpt-clusterrole-binding
   labels:
     app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: k8sgpt
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: k8sgpt-engine-readonly
+  name: k8sgpt-clusterrole
 subjects:
   - kind: ServiceAccount
-    name: k8sgpt-engine
+    name: k8sgpt
     namespace: k8sgpt-operator-system
