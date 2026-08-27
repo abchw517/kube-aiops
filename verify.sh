@@ -55,7 +55,11 @@ check_can_i_no() {
   local verb="$1"
   local resource="$2"
   local result
-  result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+  if [[ "$resource" == "pods/log" ]]; then
+    result="$(kubectl auth can-i "$verb" pods --subresource=log --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+  else
+    result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+  fi
   if [[ "$result" == "no" ]]; then
     pass "RBAC deny: ${verb} ${resource}"
   else

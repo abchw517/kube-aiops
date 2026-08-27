@@ -31,7 +31,7 @@ kubectl auth can-i get secrets \
 预期：`no`
 
 ```bash
-kubectl auth can-i get pods/log \
+kubectl auth can-i get pods --subresource=log \
   --as=system:serviceaccount:k8sgpt-operator-system:k8sgpt
 ```
 

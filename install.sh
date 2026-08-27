@@ -75,11 +75,15 @@ for manifest in serviceaccount.yaml clusterrole.yaml clusterrolebinding.yaml; do
   kubectl apply --server-side --force-conflicts --field-manager=kube-aiops -f "${DEPLOY_DIR}/${manifest}"
 done
 
-for check in "get secrets" "get pods/log" "patch deployments.apps" "delete pods"; do
-  read -r verb resource <<<"$check"
-  result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
-  [[ "$result" == "no" ]] || fatal "安全基线失败: ${verb} ${resource} result=${result}"
-done
+check_denied() {
+  local result
+  result="$(kubectl auth can-i "$@" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+  [[ "$result" == "no" ]] || fatal "安全基线失败: $* result=${result}"
+}
+check_denied get secrets
+check_denied get pods --subresource=log
+check_denied patch deployments.apps
+check_denied delete pods
 
 if ! kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then CR_CREATED=true; fi
 kubectl apply -f "${DEPLOY_DIR}/k8sgpt.yaml"
