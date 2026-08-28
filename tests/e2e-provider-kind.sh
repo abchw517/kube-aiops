@@ -8,6 +8,8 @@ FUNCTIONAL_TIMEOUT_SECONDS="${FUNCTIONAL_TIMEOUT_SECONDS:-900}"
 VERIFY_LOG="$(mktemp -t kube-aiops-provider-verify.XXXXXX)"
 
 log() { printf '[provider-e2e] %s\n' "$*"; }
+# cleanup 由 EXIT trap 间接调用，ShellCheck 无法静态解析该调用路径。
+# shellcheck disable=SC2317
 cleanup() {
   kind delete cluster --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
   rm -f -- "$VERIFY_LOG"
