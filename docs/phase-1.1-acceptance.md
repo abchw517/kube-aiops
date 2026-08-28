@@ -98,6 +98,9 @@ kubectl get results -n k8sgpt-operator-system -o yaml
 
 ## 6. Phase 1.1 完成定义
 
+当前阶段定义为：**基础生命周期完成、生产事务闭环待修复**。下面所有项目
+通过后，才可将“生产事务闭环待修复”更新为“生产事务闭环完成”。
+
 | 检查项 | 要求 |
 |---|---|
 | Operator Running | 通过 |
@@ -116,10 +119,12 @@ kubectl get results -n k8sgpt-operator-system -o yaml
 | Auto Remediation | 禁止 |
 | 缺少 Namespace/Secret | 安装失败且不创建 Helm Release |
 | 重复安装 | 通过且无资源漂移 |
-| 安装失败回滚 | 新装清理；升级由 Helm atomic 回滚 |
+| 安装失败回滚 | 新装恢复快照；已有 Release 的 Helm 后置失败回滚旧 revision |
+| 并发生命周期操作 | Kubernetes Lease 拒绝并发 install/uninstall |
 | 卸载与重复卸载 | 通过 |
-| 卸载残留检查 | 通过；CRD 按策略保留 |
-| Kubernetes v1.34+ Kind E2E | CI 通过 |
+| 卸载残留检查 | 查询错误必须 FAIL；CRD 按策略保留 |
+| Kubernetes v1.34+ Kind 生命周期 E2E | Required Check 通过 |
+| Provider Functional E2E | 三类本次新鲜 Result、AI details、analysis health 全部通过 |
 
 以上项目全部满足、GitHub Actions 的三个 Job 均通过且 main 分支启用
 Required Status Check 后，Phase 1.1 才视为完成，并进入 Phase 1.2 Portal Backend API。

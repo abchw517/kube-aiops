@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 DEMO_NAMESPACE ?= k8sgpt-demo
 OPERATOR_VERSION ?= 0.2.29
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider
 
 help:
 	@echo "kube-aiops Phase 1.1"
@@ -19,10 +19,11 @@ help:
 	@echo "  make status        查看 Phase 1.1 关键资源状态"
 	@echo "  make results       查看 K8sGPT Result CR"
 	@echo "  make uninstall     卸载 Phase 1.1，默认保留 Secret、Namespace 和 CRD"
+	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$(OPERATOR_VERSION)"
-	@echo "  STRICT_RESULTS=true  # verify 时要求至少存在一个 Result"
+	@echo "  STRICT_RESULTS=true  # verify 时要求当前实例的新鲜 Result"
 	@echo "  PURGE_SECRET=true    # uninstall 时同时删除 AI Secret"
 	@echo "  PURGE_NAMESPACE=true # uninstall 时同时删除 Namespace"
 
@@ -43,7 +44,12 @@ install:
 	@OPERATOR_VERSION="$(OPERATOR_VERSION)" bash ./install.sh
 
 verify:
-	@STRICT_RESULTS="$${STRICT_RESULTS:-false}" bash ./verify.sh
+	@STRICT_RESULTS="$${STRICT_RESULTS:-false}" \
+		RESULT_SINCE="$${RESULT_SINCE:-}" \
+		EXPECTED_RESULT_KINDS="$${EXPECTED_RESULT_KINDS:-}" \
+		REQUIRE_ANALYSIS_HEALTH="$${REQUIRE_ANALYSIS_HEALTH:-false}" \
+		EXPECTED_ANALYSIS_INTERVAL="$${EXPECTED_ANALYSIS_INTERVAL:-5m}" \
+		bash ./verify.sh
 
 demo:
 	@kubectl apply -f deploy/k8sgpt/demo/namespace.yaml
@@ -76,3 +82,6 @@ uninstall:
 
 e2e:
 	@bash ./tests/e2e-kind.sh
+
+e2e-provider:
+	@bash ./tests/e2e-provider-kind.sh

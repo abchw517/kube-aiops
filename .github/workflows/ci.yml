@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -60,7 +61,10 @@ jobs:
             deploy .github/workflows
 
       - name: Run project preflight
-        run: bash ./preflight.sh
+        run: |
+          bash ./preflight.sh
+          bash ./tests/lifecycle-common-test.sh
+          bash ./tests/verify-results-test.sh
 
   secret-scan:
     name: Secret Scan
@@ -72,6 +76,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Gitleaks full repository scan
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
@@ -90,6 +95,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install Kind
         uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
@@ -97,7 +104,7 @@ jobs:
           install_only: true
           kubectl_version: v1.34.8
 
-      - name: Run install / reinstall / verify / uninstall E2E
+      - name: Run lifecycle, rollback, concurrency and trusted uninstall E2E
         env:
           KIND_NODE_IMAGE: kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
         run: bash ./tests/e2e-kind.sh

@@ -1,0 +1,36 @@
+name: Phase 1.1 Provider Functional E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-1-1-provider-e2e
+  cancel-in-progress: false
+
+jobs:
+  provider-e2e:
+    name: Provider Result Functional E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: phase-1.1-functional
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Kind
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
+        with:
+          install_only: true
+          kubectl_version: v1.34.8
+
+      - name: Run Demo to fresh Result and AI details E2E
+        env:
+          KIND_NODE_IMAGE: kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
+          OPENAI_TOKEN: ${{ secrets.OPENAI_E2E_TOKEN }}
+        run: bash ./tests/e2e-provider-kind.sh

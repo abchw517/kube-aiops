@@ -78,7 +78,9 @@ dynamicRBAC:
 
 关闭后，官方 Helm Chart 会创建静态 `k8sgpt` ServiceAccount、`k8sgpt-clusterrole` 和 `k8sgpt-clusterrole-binding`。
 
-官方静态角色默认包含 `secrets` 和 `pods/log`，因此本项目必须在 Helm 安装/升级后重新应用：
+官方静态角色默认包含 `secrets` 和 `pods/log`。本项目使用 Helm post-renderer，
+在资源提交 API Server 之前替换 ClusterRole 规则；安装后再使用 Server-Side
+Apply 复验并收敛 Git 基线：
 
 ```bash
 kubectl apply -f deploy/k8sgpt/serviceaccount.yaml
@@ -88,7 +90,8 @@ kubectl apply -f deploy/k8sgpt/clusterrolebinding.yaml
 
 这会将 `k8sgpt-clusterrole` 收敛到 Phase 1.1 基线。
 
-> 每次执行 `helm upgrade` 后必须再次执行上述 hardening apply，避免 Helm 将官方默认 RBAC 恢复回来。后续可通过 Helm post-renderer 或 GitOps policy 自动化该过程。
+> 不要绕过 `install.sh` 直接执行裸 `helm upgrade`。标准入口会同时执行
+> post-render、Server-Side Apply、安全断言和失败回滚。
 
 ## 匿名化
 

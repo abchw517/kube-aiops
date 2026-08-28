@@ -6,7 +6,12 @@ readonly SERVICE_ACCOUNT="k8sgpt"
 readonly K8SGPT_NAME="k8sgpt-engine"
 readonly RELEASE_NAME="k8sgpt-operator"
 readonly SECRET_NAME="k8sgpt-openai-secret"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STRICT_RESULTS="${STRICT_RESULTS:-false}"
+RESULT_SINCE="${RESULT_SINCE:-}"
+EXPECTED_RESULT_KINDS="${EXPECTED_RESULT_KINDS:-}"
+REQUIRE_ANALYSIS_HEALTH="${REQUIRE_ANALYSIS_HEALTH:-false}"
+EXPECTED_ANALYSIS_INTERVAL="${EXPECTED_ANALYSIS_INTERVAL:-5m}"
 
 PASS=0
 FAIL=0
@@ -68,6 +73,12 @@ check_can_i_no() {
 }
 
 log "Phase 1.1 验收开始"
+
+for value in "$STRICT_RESULTS" "$REQUIRE_ANALYSIS_HEALTH"; do
+  if [[ "$value" != "true" && "$value" != "false" ]]; then
+    fail "布尔变量只能为 true 或 false，当前值=${value}"
+  fi
+done
 
 check_cmd kubectl
 check_cmd helm
@@ -159,6 +170,9 @@ else
   fail "K8sGPT CR 不存在: ${K8SGPT_NAME}"
 fi
 
+AI_ENABLED="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.enabled}' 2>/dev/null || true)"
+if [[ "$AI_ENABLED" == "true" ]]; then pass "AI enabled=true"; else fail "AI enabled 非预期: ${AI_ENABLED:-unset}"; fi
+
 ANONYMIZED="$(kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.ai.anonymized}' 2>/dev/null || true)"
 if [[ "$ANONYMIZED" == "true" ]]; then
   pass "AI anonymized=true"
@@ -170,7 +184,11 @@ BACKEND="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec
 if [[ "$BACKEND" == "openai" ]]; then pass "AI backend=openai"; else fail "AI backend 非预期: ${BACKEND:-unset}"; fi
 
 INTERVAL="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.analysis.interval}' 2>/dev/null || true)"
-if [[ "$INTERVAL" == "5m" ]]; then pass "Analysis interval=5m"; else fail "Analysis interval 非预期: ${INTERVAL:-unset}"; fi
+if [[ "$INTERVAL" == "$EXPECTED_ANALYSIS_INTERVAL" ]]; then
+  pass "Analysis interval=${EXPECTED_ANALYSIS_INTERVAL}"
+else
+  fail "Analysis interval 非预期: ${INTERVAL:-unset}，期望 ${EXPECTED_ANALYSIS_INTERVAL}"
+fi
 
 SECRET_REF="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.secret.name}/{.spec.ai.secret.key}' 2>/dev/null || true)"
 if [[ "$SECRET_REF" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 引用正确"; else fail "AI Secret 引用非预期: ${SECRET_REF:-unset}"; fi
@@ -178,22 +196,46 @@ if [[ "$SECRET_REF" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 
 FILTERS="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.filters[*]}' 2>/dev/null || true)"
 if [[ " ${FILTERS} " == *" Log "* ]]; then fail "Log Analyzer 意外启用"; else pass "Log Analyzer 未启用"; fi
 
-AUTO_REMEDIATION="$(kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.autoRemediation.enabled}' 2>/dev/null || true)"
+AUTO_REMEDIATION="$(kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.ai.autoRemediation.enabled}' 2>/dev/null || true)"
 if [[ -z "$AUTO_REMEDIATION" || "$AUTO_REMEDIATION" == "false" ]]; then
   pass "Auto Remediation 未启用"
 else
   fail "Auto Remediation 意外启用: ${AUTO_REMEDIATION}"
 fi
 
-RESULT_COUNT="$(kubectl get results -n "${NAMESPACE}" --no-headers 2>/dev/null | wc -l | tr -d ' ' || true)"
-if [[ "$RESULT_COUNT" =~ ^[0-9]+$ ]] && (( RESULT_COUNT > 0 )); then
-  pass "Result CR 可读取，当前数量=${RESULT_COUNT}"
+if MUTATION_JSON="$(kubectl get mutations -n "$NAMESPACE" -o json 2>/dev/null)"; then
+  MUTATION_COUNT="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items", [])))' <<<"$MUTATION_JSON")"
+  if [[ "$MUTATION_COUNT" == "0" ]]; then pass "Mutation 对象未启用"; else fail "发现 Mutation 对象，数量=${MUTATION_COUNT}"; fi
 else
-  if [[ "$STRICT_RESULTS" == "true" ]]; then
-    fail "STRICT_RESULTS=true，但当前没有 Result CR"
+  fail "Mutation 对象查询失败"
+fi
+
+RESULT_JSON=""
+if RESULT_JSON="$(kubectl get results -n "$NAMESPACE" \
+  -l "k8sgpts.k8sgpt.ai/name=${K8SGPT_NAME},k8sgpts.k8sgpt.ai/namespace=${NAMESPACE}" -o json)"; then
+  if RESULT_SUMMARY="$(python3 "${ROOT_DIR}/scripts/verify_results.py" \
+    --since "$RESULT_SINCE" --expected-kinds "$EXPECTED_RESULT_KINDS" <<<"$RESULT_JSON")"; then
+    RESULT_COUNT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])' <<<"$RESULT_SUMMARY")"
+    DETAIL_COUNT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["detail_count"])' <<<"$RESULT_SUMMARY")"
+    MISSING_KINDS="$(python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["missing_kinds"]))' <<<"$RESULT_SUMMARY")"
   else
-    warn "Result CR API 可访问，但当前没有诊断结果；可执行 make demo 后等待分析周期再验证"
+    fail "RESULT_SINCE 不是有效 RFC3339 时间: ${RESULT_SINCE}"
+    RESULT_COUNT=0
+    DETAIL_COUNT=0
+    MISSING_KINDS="$EXPECTED_RESULT_KINDS"
   fi
+  if ((RESULT_COUNT > 0)); then
+    pass "Result CR 可读取且属于当前 K8sGPT 实例，新鲜结果数量=${RESULT_COUNT}"
+  elif [[ "$STRICT_RESULTS" == "true" ]]; then
+    fail "STRICT_RESULTS=true，但没有满足实例标签和 RESULT_SINCE 的 Result CR"
+  else
+    warn "Result CR API 可访问，但当前实例没有诊断结果；可执行 make demo 后等待分析周期再验证"
+  fi
+else
+  RESULT_COUNT=0
+  DETAIL_COUNT=0
+  MISSING_KINDS="$EXPECTED_RESULT_KINDS"
+  fail "Result CR 查询失败，不得按零结果降级"
 fi
 
 OPERATOR_READY="$(kubectl get deploy -n "${NAMESPACE}" -l app.kubernetes.io/name=k8sgpt-operator -o jsonpath='{range .items[*]}{.status.readyReplicas}{"\n"}{end}' 2>/dev/null | awk '$1 > 0 {count++} END {print count+0}')"
@@ -203,9 +245,46 @@ else
   fail "K8sGPT Operator Deployment 未 Ready"
 fi
 
-if [[ "$STRICT_RESULTS" == "true" && "$RESULT_COUNT" =~ ^[0-9]+$ && "$RESULT_COUNT" -gt 0 ]]; then
-  DETAIL_COUNT="$(kubectl get results -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.spec.details}{"\n"}{end}' 2>/dev/null | awk 'NF {n++} END {print n+0}' || true)"
-  if [[ "$DETAIL_COUNT" -gt 0 ]]; then pass "Result 包含 AI 分析详情"; else fail "Result 不包含 AI 分析详情"; fi
+if ENGINE_JSON="$(kubectl get deployment "$K8SGPT_NAME" -n "$NAMESPACE" -o json 2>/dev/null)"; then
+  if python3 -c '
+import json, sys
+obj = json.load(sys.stdin)
+meta, spec, status = obj.get("metadata", {}), obj.get("spec", {}), obj.get("status", {})
+desired = int(spec.get("replicas", 1))
+ok = (status.get("observedGeneration", 0) >= meta.get("generation", 1) and
+      status.get("readyReplicas", 0) == desired and
+      status.get("availableReplicas", 0) == desired and
+      status.get("unavailableReplicas", 0) == 0)
+raise SystemExit(0 if ok else 1)
+' <<<"$ENGINE_JSON"; then
+    pass "K8sGPT Engine Deployment Ready 且 observedGeneration 已收敛"
+  else
+    fail "K8sGPT Engine Deployment 未完全 Ready"
+  fi
+else
+  fail "K8sGPT Engine Deployment 不存在或不可查询"
+fi
+
+if K8SGPT_STATUS_JSON="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o json 2>/dev/null)"; then
+  LAST_ANALYSIS_ERROR="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",{}).get("lastAnalysisError",""))' <<<"$K8SGPT_STATUS_JSON")"
+  if [[ -z "$LAST_ANALYSIS_ERROR" ]]; then
+    pass "K8sGPT 最近一次分析无错误"
+  elif [[ "$REQUIRE_ANALYSIS_HEALTH" == "true" ]]; then
+    fail "K8sGPT 最近一次分析失败: ${LAST_ANALYSIS_ERROR}"
+  else
+    warn "K8sGPT 最近一次分析存在 Provider/Analyzer 错误；生命周期验收不阻断: ${LAST_ANALYSIS_ERROR}"
+  fi
+else
+  fail "K8sGPT status 查询失败"
+fi
+
+if [[ "$STRICT_RESULTS" == "true" && "$RESULT_COUNT" -gt 0 ]]; then
+  if ((DETAIL_COUNT == RESULT_COUNT)); then pass "全部新鲜 Result 均包含 AI 分析详情"; else fail "部分新鲜 Result 缺少 AI 分析详情"; fi
+  if [[ -z "$MISSING_KINDS" ]]; then
+    pass "Result 覆盖预期 Analyzer kinds: ${EXPECTED_RESULT_KINDS:-未指定}"
+  else
+    fail "Result 未覆盖预期 Analyzer kinds: ${MISSING_KINDS}"
+  fi
 fi
 
 printf '\n'
