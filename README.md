@@ -6,6 +6,9 @@
 
 当前仓库首先落地 **Phase 1.1：K8sGPT Engine**。
 
+当前阶段定义：**基础生命周期完成、生产事务闭环待修复**。生产事务闭环以
+Lease 互斥、可信回滚/卸载和 Provider 功能 E2E 全部通过为完成条件。
+
 Phase 1.1 的目标是建立一套安全、可重复部署、可验证的 Kubernetes 原生 AI 诊断底座：
 
 - 使用 K8sGPT Operator 管理 K8sGPT Engine
@@ -145,11 +148,11 @@ make install
 `make install` 会依次执行：
 
 ```text
-Preflight
-   ↓
 检查 kubectl / helm / current-context
    ↓
 检查 Namespace 与 AI Secret（不满足时不修改集群）
+   ↓
+获取 Kubernetes Lease 并记录升级前 revision / 资源快照
    ↓
 使用 --atomic / --cleanup-on-fail 安装或升级 Operator
    ↓
@@ -159,11 +162,13 @@ Preflight
    ↓
 部署 K8sGPT CR
    ↓
-严格检查 Operator Ready
+严格检查 Operator 与 K8sGPT Engine Ready
 ```
 
-首次安装的后置步骤失败时，安装器会清理本次创建的 CR、Helm Release
-和项目 RBAC；已有 Release 升级失败时由 Helm `--atomic` 回滚。
+首次安装的后置步骤失败时，安装器会卸载本次 Release 并恢复安装前资源快照；
+已有 Release 的 Helm 外后置步骤失败时，会执行 `helm rollback` 回到升级前
+revision，并恢复 RBAC、ServiceAccount 与 K8sGPT CR 快照。Lease 覆盖安装和
+卸载全生命周期，避免 Jenkins、GitHub Actions 与人工操作并发修改同一 Release。
 
 默认版本：
 
@@ -204,12 +209,17 @@ make verify
 - Auto Remediation 未启用
 - Result CR API 可读取
 - Operator Ready（未就绪直接失败）
+- K8sGPT Engine Deployment Ready 且 observedGeneration 收敛
+- Result 查询错误不得降级为零结果
 
 无 Result 时默认只告警，不判定 Phase 1.1 失败。部署故障样例后可使用严格模式：
 
 ```bash
 STRICT_RESULTS=true make verify
 ```
+
+严格模式可使用 `RESULT_SINCE` 和 `EXPECTED_RESULT_KINDS`，只接受当前 K8sGPT
+实例在指定时间后生成、且包含 AI details 的 Result。
 
 ## 4. 部署故障样例
 
@@ -303,8 +313,21 @@ make e2e
 ```
 
 E2E 使用固定 digest 的 `kindest/node:v1.34.8`，验证前置条件失败时零 Helm
-变更、外部同名 RBAC 拒绝接管、首次安装、重复安装、基础验证、外部资源拒绝
-删除、完全卸载、重复卸载、残留资源与 CRD 保留策略。
+变更、外部同名 RBAC 拒绝接管、首次安装、重复安装、升级后置失败回滚、Lease
+并发拒绝、Forbidden 查询不得假成功、完全卸载、重复卸载和残留资源策略。
+
+该 Required Check 是确定性的**生命周期 E2E**，不使用假 Token 冒充 AI 功能
+验收。真实 Provider 功能闭环通过独立的手工工作流执行：
+
+```bash
+export OPENAI_TOKEN='restricted-test-token'
+make e2e-provider
+```
+
+它会部署三类 Demo，并只接受本次运行生成、属于当前 K8sGPT 实例的 Pod、
+Deployment、PersistentVolumeClaim Result；所有 Result 必须包含 AI details，且
+K8sGPT `lastAnalysisError` 必须为空。GitHub 工作流需要 Environment
+`phase-1.1-functional` 中的 `OPENAI_E2E_TOKEN` Secret。
 
 # Makefile 命令
 
@@ -320,6 +343,7 @@ make status
 make results
 make uninstall
 make e2e
+make e2e-provider
 ```
 
 # GitHub Actions CI
@@ -345,7 +369,7 @@ Secret Scan
 └── Gitleaks 全 Git 历史扫描
 
 Kubernetes v1.34 Kind E2E
-└── install → reinstall → verify → uninstall → uninstall
+└── install → reinstall → rollback fault → Lease contention → trusted uninstall
 ```
 
 安全设计：
@@ -358,7 +382,8 @@ Kubernetes v1.34 Kind E2E
 - RBAC 若出现 `*`、Secret、Pod Logs 或危险写 verbs，CI 直接失败
 - `create/update/patch/delete/deletecollection/impersonate/bind/escalate` 均属于禁止权限
 
-建议将 `Phase 1.1 CI` 配置为 `main` 分支的 Required Status Check，避免绕过质量门禁直接合并。
+`main` Ruleset 应分别要求 `Preflight / Lint / RBAC`、`Secret Scan` 和
+`Kubernetes v1.34 Kind E2E` 三个 Required Status Checks。
 
 # RBAC Hardening
 
