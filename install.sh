@@ -113,8 +113,8 @@ restore_snapshot() {
   local file="$4"
 
   if [[ -f "$file" ]]; then
-    kubectl apply --server-side --force-conflicts --field-manager=kube-aiops-rollback -f "$file"
-    return
+    kubectl apply --server-side --force-conflicts --field-manager=kube-aiops-rollback -f "$file" || return 1
+    return 0
   fi
   [[ -f "${file}.absent" ]] || return 0
   lc_kubectl_state "$resource" "$name" "$namespace"
@@ -126,6 +126,7 @@ restore_snapshot() {
       kubectl delete "$resource" "$name" --wait=true --timeout="$TIMEOUT"
     fi
   fi
+  return 0
 }
 
 restore_pre_install_state() {

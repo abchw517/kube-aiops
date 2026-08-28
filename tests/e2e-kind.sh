@@ -74,12 +74,22 @@ make verify
 
 log "验证已有 Release 的 Helm 后置失败会回滚并恢复健康状态"
 FAULT_MARKER="$(mktemp -t kube-aiops-ssa-fault.XXXXXX)"
+ROLLBACK_LOG="$(mktemp -t kube-aiops-rollback.XXXXXX)"
 if REAL_KUBECTL="$REAL_KUBECTL" FAULT_MODE=fail_ssa_once FAULT_MARKER="$FAULT_MARKER" \
-  PATH="${FAULT_BIN}:${PATH}" bash ./install.sh; then
+  PATH="${FAULT_BIN}:${PATH}" bash ./install.sh 2>&1 | tee "$ROLLBACK_LOG"; then
   echo "ERROR: 注入 SSA 故障后安装不应成功" >&2
   exit 1
 fi
 rm -f -- "$FAULT_MARKER"
+grep -q '回滚至 Helm revision=' "$ROLLBACK_LOG" || {
+  echo "ERROR: 未观察到已有 Release 的 Helm rollback" >&2
+  exit 1
+}
+if grep -q '回滚存在 .* 项失败' "$ROLLBACK_LOG"; then
+  echo "ERROR: 回滚出现二次失败" >&2
+  exit 1
+fi
+rm -f -- "$ROLLBACK_LOG"
 [[ "$(helm status k8sgpt-operator -n k8sgpt-operator-system -o json |
   python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["status"])')" == "deployed" ]]
 make verify
