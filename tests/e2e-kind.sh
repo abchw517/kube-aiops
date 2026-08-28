@@ -94,8 +94,8 @@ metadata:
 spec:
   holderIdentity: external-release-system
   leaseDurationSeconds: 1800
-  acquireTime: "2099-01-01T00:00:00Z"
-  renewTime: "2099-01-01T00:00:00Z"
+  acquireTime: "2099-01-01T00:00:00.000000Z"
+  renewTime: "2099-01-01T00:00:00.000000Z"
 EOF
 if LOCK_WAIT_SECONDS=0 bash ./install.sh; then
   echo "ERROR: Lease 被外部操作持有时安装不应成功" >&2

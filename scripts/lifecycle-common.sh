@@ -91,21 +91,22 @@ lc_acquire_lock() {
   local holder="$3"
   local wait_seconds="${4:-30}"
   local deadline=$((SECONDS + wait_seconds))
-  local now lease_json lease_state patch
+  local now lease_json lease_state patch create_output
 
   LC_LOCK_NAMESPACE="$namespace"
   LC_LOCK_NAME="$name"
   LC_LOCK_HOLDER="$holder"
 
   while ((SECONDS <= deadline)); do
-    now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    if lc_lease_manifest "$namespace" "$name" "$holder" "$now" |
-      kubectl create -f - >/dev/null 2>&1; then
+    now="$(date -u '+%Y-%m-%dT%H:%M:%S.000000Z')"
+    if create_output="$(lc_lease_manifest "$namespace" "$name" "$holder" "$now" |
+      kubectl create -f - 2>&1)"; then
       LC_LOCK_HELD=true
       return 0
     fi
 
-    if ! lease_json="$(kubectl get lease "$name" -n "$namespace" -o json)"; then
+    if ! lease_json="$(kubectl get lease "$name" -n "$namespace" -o json 2>/dev/null)"; then
+      [[ -z "$create_output" ]] || lc_log "ERROR: Lease 创建失败: ${create_output}"
       lc_log "ERROR: 无法读取生命周期 Lease ${namespace}/${name}"
       return 1
     fi
