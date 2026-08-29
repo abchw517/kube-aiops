@@ -23,10 +23,10 @@ case "${tool}:${MOCK_MODE:-}" in
     exit 1
     ;;
   helm:identity_expected)
-    printf '{"chart":{"metadata":{"name":"k8sgpt-operator"}}}\n'
+    printf '[{"name":"k8sgpt-operator","status":"deployed","chart":"k8sgpt-operator-0.2.29"}]\n'
     ;;
   helm:identity_foreign)
-    printf '{"chart":{"metadata":{"name":"foreign-chart"}}}\n'
+    printf '[{"name":"k8sgpt-operator","status":"deployed","chart":"foreign-chart-1.0.0"}]\n'
     ;;
   kubectl:identity_strict)
     if [[ "$*" == *"--ignore-not-found=true"* ]]; then

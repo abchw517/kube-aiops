@@ -274,7 +274,7 @@ if [[ "$LC_STATE" == "absent" ]]; then
   NEW_RELEASE=true
 else
   [[ "$LC_OUTPUT" == "deployed" ]] || fatal "Helm Release 当前状态不是 deployed: ${LC_OUTPUT:-unknown}"
-  lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator || fatal "Helm Release 身份校验失败"
+  lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator 0.2.29 || fatal "Helm Release 身份校验失败"
   PREVIOUS_REVISION="$(helm history "$RELEASE_NAME" -n "$NAMESPACE" -o json |
     python3 -c 'import json,sys; items=json.load(sys.stdin); print(items[-1]["revision"] if items else "")')"
   [[ "$PREVIOUS_REVISION" =~ ^[0-9]+$ ]] || fatal "无法记录升级前 Helm revision"

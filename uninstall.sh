@@ -99,7 +99,7 @@ lc_helm_state "$RELEASE_NAME" "$NAMESPACE"
 [[ "$LC_STATE" != "error" ]] || fatal "无法查询 Helm Release"
 HELM_RELEASE_PRESENT="$LC_STATE"
 if [[ "$HELM_RELEASE_PRESENT" == "present" ]]; then
-  lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator || fatal "Helm Release 身份校验失败"
+  lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator 0.2.29 || fatal "Helm Release 身份校验失败"
 fi
 
 lc_kubectl_state crd k8sgpts.core.k8sgpt.ai

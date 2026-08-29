@@ -71,22 +71,26 @@ lc_assert_helm_release_identity() {
   local release="$1"
   local namespace="$2"
   local expected_chart="$3"
-  local status_json chart_name
+  local expected_version="$4"
+  local releases chart_name
 
-  if ! status_json="$(helm status "$release" -n "$namespace" -o json)"; then
+  if ! releases="$(helm list -n "$namespace" --all --filter "^${release}$" -o json)"; then
     lc_log "ERROR: 无法读取 Helm Release 身份: ${namespace}/${release}"
     return 1
   fi
   if ! chart_name="$(python3 -c '
 import json, sys
-obj = json.load(sys.stdin)
-print(obj.get("chart", {}).get("metadata", {}).get("name", ""))
-' <<<"$status_json")"; then
+name = sys.argv[1]
+items = [item for item in json.load(sys.stdin) if item.get("name") == name]
+if len(items) != 1:
+    raise SystemExit(1)
+print(items[0].get("chart", ""))
+' "$release" <<<"$releases")"; then
     lc_log "ERROR: 无法解析 Helm Release 身份: ${namespace}/${release}"
     return 1
   fi
-  if [[ "$chart_name" != "$expected_chart" ]]; then
-    lc_log "ERROR: 拒绝操作同名外部 Helm Release: expected=${expected_chart} actual=${chart_name:-unknown}"
+  if [[ "$chart_name" != "${expected_chart}-${expected_version}" ]]; then
+    lc_log "ERROR: 拒绝操作同名外部 Helm Release: expected=${expected_chart}-${expected_version} actual=${chart_name:-unknown}"
     return 1
   fi
 }

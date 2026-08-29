@@ -40,9 +40,9 @@ MOCK_MODE=error lc_helm_state k8sgpt-operator k8sgpt-operator-system
 assert_state error
 
 MOCK_MODE=identity_expected lc_assert_helm_release_identity \
-  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator
+  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator 0.2.29
 if MOCK_MODE=identity_foreign lc_assert_helm_release_identity \
-  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator; then
+  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator 0.2.29; then
   echo "ERROR: foreign Helm release identity should be rejected" >&2
   exit 1
 fi
