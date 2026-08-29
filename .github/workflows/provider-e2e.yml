@@ -13,6 +13,7 @@ concurrency:
 jobs:
   provider-e2e:
     name: Provider Result Functional E2E
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: phase-1.1-functional

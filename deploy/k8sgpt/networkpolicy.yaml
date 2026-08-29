@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kube-aiops-egress-baseline
+  namespace: k8sgpt-operator-system
+  labels:
+    app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/instance: k8sgpt-operator
+  annotations:
+    kube-aiops.io/owner: phase-1.1
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # Kubernetes DNS, including NodeLocal DNSCache addresses.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Kubernetes API and HTTPS AI Provider endpoints.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443

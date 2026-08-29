@@ -50,6 +50,9 @@ no
 
 AI Provider Secret 只由 K8sGPT workload 在 Pod 启动过程中按 CR 引用使用，不应被 Analyzer 当作业务数据扫描。
 
+`make bootstrap-secret` 通过 stdin 向 `kubectl` 传递 Token，避免值出现在进程
+argv；安装和验证只查询 `openai-api-key` 是否存在，不把 Secret 值读入 Shell。
+
 ## Log Analyzer
 
 Phase 1.1 不启用 Log Analyzer，同时从业务读取 ClusterRole 中移除 `pods/log` 权限。
@@ -79,8 +82,9 @@ dynamicRBAC:
 关闭后，官方 Helm Chart 会创建静态 `k8sgpt` ServiceAccount、`k8sgpt-clusterrole` 和 `k8sgpt-clusterrole-binding`。
 
 官方静态角色默认包含 `secrets` 和 `pods/log`。本项目使用 Helm post-renderer，
-在资源提交 API Server 之前替换 ClusterRole 规则；安装后再使用 Server-Side
-Apply 复验并收敛 Git 基线：
+在资源提交 API Server 之前替换 ClusterRole 规则、ClusterRoleBinding 的
+`roleRef/subjects` 以及 ServiceAccount 安全字段；安装后再使用 Server-Side Apply
+复验并收敛 Git 基线：
 
 ```bash
 kubectl apply -f deploy/k8sgpt/serviceaccount.yaml
@@ -89,6 +93,19 @@ kubectl apply -f deploy/k8sgpt/clusterrolebinding.yaml
 ```
 
 这会将 `k8sgpt-clusterrole` 收敛到 Phase 1.1 基线。
+
+集群级 RBAC 必须同时带有 owner、part-of、instance 三元身份。同名 Helm
+Release 必须来自 `k8sgpt-operator` Chart。旧双标识资源仅能在安装时通过
+`MIGRATE_LEGACY_OWNERSHIP=true` 显式迁移，且权限与 Binding 指纹必须匹配；
+卸载器永远不对 legacy 身份执行删除。
+
+Namespace 使用 PSA `baseline` enforce，并以 Kubernetes v1.34 `restricted`
+策略执行 audit/warn。Operator 和 Engine 使用 non-root、RuntimeDefault seccomp、
+禁止提权、drop ALL capabilities 与只读根文件系统。
+
+Namespace 还应用 egress NetworkPolicy：仅放行 DNS（TCP/UDP 53）、HTTPS（443）
+和 Kubernetes API 常用端口（6443）。如果 Provider、代理或私有 API 使用其它
+端口，必须先评审并显式扩展清单，不能临时放开全量 egress。
 
 > 不要绕过 `install.sh` 直接执行裸 `helm upgrade`。标准入口会同时执行
 > post-render、Server-Side Apply、安全断言和失败回滚。

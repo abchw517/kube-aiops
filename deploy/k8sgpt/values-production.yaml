@@ -1,7 +1,6 @@
 # K8sGPT Operator production baseline
 # dynamicRBAC=false 时，Helm 会创建静态 k8sgpt ServiceAccount/ClusterRole/Binding。
-# 安装或升级后必须重新 apply 本仓库的 serviceaccount/clusterrole/clusterrolebinding
-# 以覆盖官方默认包含 secrets 与 pods/log 的静态权限。
+# post-renderer 会在提交 API Server 前收敛身份和权限，安装后 SSA 再复验 Git 基线。
 
 dynamicRBAC:
   enabled: false
@@ -13,10 +12,25 @@ grafanaDashboard:
   enabled: false
 
 controllerManager:
+  kubeRbacProxy:
+    image:
+      repository: quay.io/brancz/kube-rbac-proxy
+      tag: v0.19.1@sha256:9f21034731c7c3228611b9d40807f3230ce8ed2b286b913bf2d1e760d8d866fc
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
   manager:
+    image:
+      repository: ghcr.io/k8sgpt-ai/k8sgpt-operator
+      tag: v0.2.29@sha256:82d0adcce816182bbfbef9f1d535db93ab0901f08d45a3a9e572c6e795c5bfa8
     enableResultLogging: false
     containerSecurityContext:
       allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
       capabilities:
         drop:
           - ALL
@@ -30,3 +44,5 @@ controllerManager:
 
   podSecurityContext:
     runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault

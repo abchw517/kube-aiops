@@ -25,6 +25,16 @@ ln -s "${ROOT_DIR}/tests/kubectl-fault-wrapper.sh" "${FAULT_BIN}/kubectl"
 kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" --wait 120s
 cd "$ROOT_DIR"
 
+log "验证不支持的 Operator 版本在任何集群变更前失败"
+if OPERATOR_VERSION=9.9.9 bash ./install.sh; then
+  echo "ERROR: 不支持的 Operator 版本不应进入安装" >&2
+  exit 1
+fi
+if kubectl get namespace k8sgpt-operator-system >/dev/null 2>&1; then
+  echo "ERROR: Operator 版本门禁失败时不应创建 Namespace" >&2
+  exit 1
+fi
+
 log "验证外部同名集群级 RBAC 不会被接管"
 kubectl create clusterrole k8sgpt-clusterrole --verb=get --resource=pods
 kubectl create clusterrolebinding k8sgpt-clusterrole-binding \
@@ -72,6 +82,16 @@ log "重复安装（幂等）"
 make install
 make verify
 
+log "验证 legacy 身份必须显式且通过指纹迁移"
+kubectl label clusterrole k8sgpt-clusterrole app.kubernetes.io/instance-
+kubectl label clusterrolebinding k8sgpt-clusterrole-binding app.kubernetes.io/instance-
+if bash ./install.sh; then
+  echo "ERROR: 未显式授权时不应迁移 legacy 身份" >&2
+  exit 1
+fi
+MIGRATE_LEGACY_OWNERSHIP=true bash ./install.sh
+[[ "$(kubectl get clusterrole k8sgpt-clusterrole -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}')" == "k8sgpt-operator" ]]
+
 log "验证已有 Release 的 Helm 后置失败会回滚并恢复健康状态"
 FAULT_MARKER="$(mktemp -t kube-aiops-ssa-fault.XXXXXX)"
 ROLLBACK_LOG="$(mktemp -t kube-aiops-rollback.XXXXXX)"
@@ -94,8 +114,49 @@ rm -f -- "$ROLLBACK_LOG"
   python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["status"])')" == "deployed" ]]
 make verify
 
+log "验证回滚二次失败时保留 0700 状态与对象级报告"
+FAULT_MARKER="$(mktemp -t kube-aiops-ssa-rollback-fault.XXXXXX)"
+ROLLBACK_STATE_ROOT="$(mktemp -d -t kube-aiops-rollback-state.XXXXXX)"
+touch "$FAULT_MARKER"
+if REAL_KUBECTL="$REAL_KUBECTL" FAULT_MODE=fail_ssa_and_rollback FAULT_MARKER="$FAULT_MARKER" \
+  ROLLBACK_STATE_DIR="$ROLLBACK_STATE_ROOT" PATH="${FAULT_BIN}:${PATH}" bash ./install.sh; then
+  echo "ERROR: 回滚恢复故障注入后安装不应成功" >&2
+  exit 1
+fi
+PRESERVED_STATE="$(find "$ROLLBACK_STATE_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'kube-aiops-install.*' -print -quit)"
+[[ -n "$PRESERVED_STATE" && "$(stat -c '%a' "$PRESERVED_STATE")" == "700" ]]
+grep -q $'restore\t.*\tfailed' "$PRESERVED_STATE/restore-report.tsv"
+[[ -f "$PRESERVED_STATE/operation.json" ]]
+rm -rf -- "$ROLLBACK_STATE_ROOT"
+rm -f -- "$FAULT_MARKER"
+make verify
+
+log "验证 Lease CAS 释放不会删除新持有者"
+bash -Eeuo pipefail -c '
+  source "$1/scripts/lifecycle-common.sh"
+  lc_acquire_lock k8sgpt-operator-system kube-aiops-lifecycle cas-release-test 0
+  kubectl patch lease kube-aiops-lifecycle -n k8sgpt-operator-system --type=merge \
+    -p '\''{"spec":{"holderIdentity":"next-holder"}}'\'' >/dev/null
+  if lc_release_lock; then
+    echo "ERROR: 旧持有者不应释放新持有者 Lease" >&2
+    exit 1
+  fi
+  [[ "$(kubectl get lease kube-aiops-lifecycle -n k8sgpt-operator-system -o jsonpath="{.spec.holderIdentity}")" == next-holder ]]
+' _ "$ROOT_DIR"
+kubectl delete lease kube-aiops-lifecycle -n k8sgpt-operator-system
+
+log "验证短租期 heartbeat 会持续续租"
+LEASE_DURATION_SECONDS=3 LEASE_RENEW_INTERVAL_SECONDS=1 bash -Eeuo pipefail -c '
+  source "$1/scripts/lifecycle-common.sh"
+  lc_acquire_lock k8sgpt-operator-system kube-aiops-lifecycle heartbeat-test 0
+  lc_start_lock_heartbeat
+  sleep 4
+  lc_assert_lock_held
+  lc_release_lock
+' _ "$ROOT_DIR"
+
 log "验证生命周期 Lease 阻止并发安装"
-kubectl create -f - >/dev/null <<'EOF'
+kubectl apply --server-side --force-conflicts -f - >/dev/null <<'EOF'
 apiVersion: coordination.k8s.io/v1
 kind: Lease
 metadata:

@@ -18,6 +18,7 @@ Phase 1.1 的目标是建立一套安全、可重复部署、可验证的 Kubern
 - Phase 1.1 禁止读取 `pods/log`
 - 禁止 `create/update/patch/delete`
 - 禁止 Mutation / Auto Remediation
+- Namespace egress 仅允许 DNS、HTTPS 和 Kubernetes API 端口
 - AI 分析默认启用匿名化
 - 通过 Result CR 输出结构化诊断结果
 - 提供 ImagePullBackOff、CrashLoopBackOff、PVC Pending 三类故障样例
@@ -116,7 +117,8 @@ make preflight
 - 所有 YAML/YML 使用 PyYAML 解析
 - Helm post-renderer 在资源进入 API Server 前替换上游宽权限 RBAC
 - 高置信度 Secret/Token/Private Key 模式扫描
-- 仓库内所有 `Role` / `ClusterRole` 静态 RBAC 安全检查
+- 仓库内所有 Role、ClusterRole 及其 Binding 的静态 RBAC 安全检查
+- post-renderer、Make 参数注入和 Secret argv 回归测试
 
 本地 YAML/RBAC 检查需要：
 
@@ -125,6 +127,9 @@ python3 -m pip install pyyaml
 ```
 
 ShellCheck 可选安装；GitHub Actions 中为强制检查项。
+
+安装/卸载命令依赖 `kubectl`、`helm`、`python3`；安装器还要求 `curl` 与
+`sha256sum`，用于下载并校验固定的 Operator Chart。
 
 ## 1. 创建 AI Provider Secret
 
@@ -168,7 +173,9 @@ make install
 首次安装的后置步骤失败时，安装器会卸载本次 Release 并恢复安装前资源快照；
 已有 Release 的 Helm 外后置步骤失败时，会执行 `helm rollback` 回到升级前
 revision，并恢复 RBAC、ServiceAccount 与 K8sGPT CR 快照。Lease 覆盖安装和
-卸载全生命周期，避免 Jenkins、GitHub Actions 与人工操作并发修改同一 Release。
+卸载全生命周期，后台 heartbeat 持续续租，并在每个变更点执行 fencing 检查，
+避免 Jenkins、GitHub Actions 与人工操作并发修改同一 Release。回滚发生二次
+失败时会保留权限为 `0700` 的快照目录和对象级恢复报告，不会销毁取证状态。
 
 默认版本：
 
@@ -177,11 +184,24 @@ K8sGPT Operator: 0.2.29
 K8sGPT Engine:   v0.4.32
 ```
 
-可覆盖 Operator 版本：
+Operator、kube-rbac-proxy 与 Engine 镜像均使用 `tag@sha256` 固定多架构 manifest
+digest；Operator Chart 也通过固定 URL 下载并校验仓库内置 SHA256，不再信任
+运行时可变的 Helm index。版本变更必须同时更新 digest 并通过 Kind E2E。
+
+Phase 1.1 只允许经过 CI 验证的 Operator 版本：
 
 ```bash
 OPERATOR_VERSION=0.2.29 make install
 ```
+
+从旧版双标识 RBAC 首次升级时，必须显式迁移；安装器会先校验权限规则、
+`roleRef` 和 `subjects` 的语义指纹，匹配后才补齐实例身份：
+
+```bash
+MIGRATE_LEGACY_OWNERSHIP=true make install
+```
+
+卸载器不接受 legacy 所有权，必须先完成上述安全迁移。
 
 ## 3. 安全与功能验收
 
@@ -197,10 +217,12 @@ make verify
 - Namespace
 - K8sGPT / Result / Mutation CRD
 - `k8sgpt` ServiceAccount
+- NetworkPolicy egress 基线
 - `get/list` 业务资源权限
 - Secret 读取必须为 `no`
 - Pod Log 读取必须为 `no`
 - create/update/patch/delete 必须为 `no`
+- 未启用 Analyzer 对应的 DaemonSet、NetworkPolicy、Webhook 权限必须为 `no`
 - AI Provider Secret 存在且包含 `openai-api-key`
 - K8sGPT CR 存在
 - `anonymized=true`
@@ -265,6 +287,9 @@ make clean-demo
 make status
 ```
 
+该命令检查 API、Helm revision、Lease、Operator/Engine 完整 Ready、最近分析错误
+和 Result 数量；关键查询失败或工作负载未收敛时返回非零状态。
+
 ## 6. 卸载
 
 ```bash
@@ -313,8 +338,10 @@ make e2e
 ```
 
 E2E 使用固定 digest 的 `kindest/node:v1.34.8`，验证前置条件失败时零 Helm
-变更、外部同名 RBAC 拒绝接管、首次安装、重复安装、升级后置失败回滚、Lease
-并发拒绝、Forbidden 查询不得假成功、完全卸载、重复卸载和残留资源策略。
+变更、外部或伪造身份的同名 RBAC 拒绝接管、legacy 指纹迁移、同名外部 Helm
+Release 拒绝操作、首次安装、重复安装、升级后置失败回滚、回滚状态保留、Lease
+heartbeat/fencing/CAS 释放、Forbidden 查询不得假成功、完全卸载、重复卸载和
+残留资源策略。
 
 该 Required Check 是确定性的**生命周期 E2E**，不使用假 Token 冒充 AI 功能
 验收。真实 Provider 功能闭环通过独立的手工工作流执行：
@@ -379,7 +406,9 @@ Kubernetes v1.34 Kind E2E
 - Kind node 镜像固定到上游发布的 sha256 digest
 - Checkout 使用完整历史，Secret Scanner 可以覆盖历史提交
 - Secret 输出启用 redact，避免在 CI 日志再次暴露凭据
-- RBAC 若出现 `*`、Secret、Pod Logs 或危险写 verbs，CI 直接失败
+- Provider E2E 只有 `main` ref 才能请求 Environment Secret
+- Secret 通过 stdin 创建，不进入 `kubectl` argv；验证脚本只读取 key 存在状态
+- RBAC 若出现 `*`、Secret、Pod Logs、危险写 verbs、外部 RoleRef 或宽泛 Group，CI 直接失败
 - `create/update/patch/delete/deletecollection/impersonate/bind/escalate` 均属于禁止权限
 
 `main` Ruleset 应分别要求 `Preflight / Lint / RBAC`、`Secret Scan` 和
@@ -402,7 +431,9 @@ ClusterRole:        k8sgpt-clusterrole
 ClusterRoleBinding: k8sgpt-clusterrole-binding
 ```
 
-官方静态 ClusterRole 默认仍包含 `secrets` 与 `pods/log` 读取权限，因此 **每次 Helm install/upgrade 后都必须重新应用本仓库的 RBAC Hardening**。
+官方静态 ClusterRole 默认仍包含 `secrets` 与 `pods/log` 读取权限。post-renderer
+会在资源进入 API Server 前收敛 ServiceAccount、ClusterRole rules 以及
+ClusterRoleBinding 的 `roleRef/subjects`；安装后再用 Server-Side Apply 复验基线。
 
 本项目的 `install.sh` 已自动执行该动作：
 
@@ -427,10 +458,16 @@ patch
 delete
 ```
 
-ClusterRole 与 ClusterRoleBinding 带有 `app.kubernetes.io/part-of=kube-aiops`
-和 `kube-aiops.io/owner=phase-1.1` 所有权标识。为兼容 P0 基线升级，两者满足
-任一即可识别为项目资源；安装器不会接管没有项目标识的同名现有资源，卸载器
-也不会删除没有项目标识的同名资源。完成一次 P1 安装后会收敛为同时具备两项。
+ClusterRole 与 ClusterRoleBinding 必须同时具备以下精确身份，缺少或伪造任意
+一项都会拒绝接管或删除：
+
+```text
+kube-aiops.io/owner=phase-1.1
+app.kubernetes.io/part-of=kube-aiops
+app.kubernetes.io/instance=k8sgpt-operator
+```
+
+同名 Helm Release 还必须验证 Chart 身份为 `k8sgpt-operator`。
 
 Operator `v0.2.28` 引入 gRPC 依赖安全更新、跨 Namespace Prompt Injection
 防护和分析错误状态上报，`v0.2.29` 增加策略门控 Auto Remediation。本阶段虽然

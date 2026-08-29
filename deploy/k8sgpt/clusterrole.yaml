@@ -7,6 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: kube-aiops
     app.kubernetes.io/component: k8sgpt
+    app.kubernetes.io/instance: k8sgpt-operator
   annotations:
     kube-aiops.io/owner: phase-1.1
 rules:
@@ -16,11 +17,9 @@ rules:
       - services
       - endpoints
       - nodes
-      - configmaps
       - namespaces
       - persistentvolumeclaims
       - events
-      - replicationcontrollers
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["apps"]
@@ -28,7 +27,6 @@ rules:
       - deployments
       - replicasets
       - statefulsets
-      - daemonsets
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["batch"]
@@ -45,18 +43,6 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources:
       - ingresses
-      - networkpolicies
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["admissionregistration.k8s.io"]
-    resources:
-      - validatingwebhookconfigurations
-      - mutatingwebhookconfigurations
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["policy"]
-    resources:
-      - poddisruptionbudgets
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["storage.k8s.io"]
@@ -64,14 +50,8 @@ rules:
       - storageclasses
     verbs: ["get", "list", "watch"]
 
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources:
-      - gatewayclasses
-      - gateways
-      - httproutes
-    verbs: ["get", "list", "watch"]
-
 # Phase 1.1 明确不授予：
 # - secrets
 # - pods/log
+# - 未启用 Analyzer 的 daemonsets/networkpolicies/webhook/PDB/Gateway API
 # - create/update/patch/delete/deletecollection

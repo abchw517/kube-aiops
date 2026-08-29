@@ -11,8 +11,11 @@ PURGE_NAMESPACE="${PURGE_NAMESPACE:-false}"
 PURGE_DEMO="${PURGE_DEMO:-false}"
 TIMEOUT="${TIMEOUT:-5m}"
 LOCK_WAIT_SECONDS="${LOCK_WAIT_SECONDS:-30}"
+LEASE_DURATION_SECONDS="${LEASE_DURATION_SECONDS:-1800}"
+LEASE_RENEW_INTERVAL_SECONDS="${LEASE_RENEW_INTERVAL_SECONDS:-30}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="${ROOT_DIR}/deploy/k8sgpt"
 # shellcheck source=scripts/lifecycle-common.sh
 source "${ROOT_DIR}/scripts/lifecycle-common.sh"
 OPERATION_ID="uninstall-$(hostname | tr -cd '[:alnum:].-' | cut -c1-32)-$$-$(date +%s)"
@@ -40,27 +43,9 @@ for value in "$PURGE_SECRET" "$PURGE_NAMESPACE" "$PURGE_DEMO"; do
   [[ "$value" == "true" || "$value" == "false" ]] || fatal "PURGE_* 变量只能为 true 或 false"
 done
 [[ "$LOCK_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fatal "LOCK_WAIT_SECONDS 必须是非负整数"
-
-assert_cluster_resource_owned_or_absent() {
-  local resource="$1"
-  local name="$2"
-  local resource_json ownership
-
-  lc_kubectl_state "$resource" "$name"
-  [[ "$LC_STATE" != "error" ]] || fatal "无法查询所有权: ${resource}/${name}"
-  [[ "$LC_STATE" == "present" ]] || return 0
-
-  resource_json="$(kubectl get "$resource" "$name" -o json)" || fatal "无法读取所有权: ${resource}/${name}"
-  ownership="$(python3 -c '
-import json, sys
-obj = json.load(sys.stdin)
-meta = obj.get("metadata", {})
-print((meta.get("annotations", {}).get("kube-aiops.io/owner", "")) + "|" +
-      (meta.get("labels", {}).get("app.kubernetes.io/part-of", "")))
-' <<<"$resource_json")" || fatal "无法解析所有权: ${resource}/${name}"
-  [[ "$ownership" == "phase-1.1|"* || "$ownership" == *"|kube-aiops" ]] || fatal \
-    "拒绝删除外部资源: ${resource}/${name}；缺少 kube-aiops 所有权标识"
-}
+[[ "$LEASE_DURATION_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_DURATION_SECONDS 必须是正整数"
+[[ "$LEASE_RENEW_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_RENEW_INTERVAL_SECONDS 必须是正整数"
+((LEASE_RENEW_INTERVAL_SECONDS < LEASE_DURATION_SECONDS)) || fatal "Lease 续租间隔必须小于租期"
 
 delete_resource_if_present() {
   local resource="$1"
@@ -99,37 +84,52 @@ lc_kubectl_state namespace "$NAMESPACE"
 NAMESPACE_PRESENT="$LC_STATE"
 if [[ "$NAMESPACE_PRESENT" == "present" ]]; then
   lc_acquire_lock "$NAMESPACE" "$LOCK_NAME" "$OPERATION_ID" "$LOCK_WAIT_SECONDS" || fatal "无法获取生命周期 Lease"
+  lc_start_lock_heartbeat || fatal "无法启动生命周期 Lease heartbeat"
   log "已获取生命周期 Lease: ${NAMESPACE}/${LOCK_NAME}"
 fi
 
 # 在任何删除动作前验证集群级固定名称资源的所有权，避免半卸载。
-assert_cluster_resource_owned_or_absent clusterrole k8sgpt-clusterrole
-assert_cluster_resource_owned_or_absent clusterrolebinding k8sgpt-clusterrole-binding
+lc_assert_cluster_resource_identity uninstall clusterrole k8sgpt-clusterrole \
+  "${DEPLOY_DIR}/clusterrole.yaml" false || fatal "ClusterRole 所有权校验失败"
+lc_assert_cluster_resource_identity uninstall clusterrolebinding k8sgpt-clusterrole-binding \
+  "${DEPLOY_DIR}/clusterrolebinding.yaml" false || fatal "ClusterRoleBinding 所有权校验失败"
+
+# 在任何删除动作前确认同名 Release 确实属于预期 Chart。
+lc_helm_state "$RELEASE_NAME" "$NAMESPACE"
+[[ "$LC_STATE" != "error" ]] || fatal "无法查询 Helm Release"
+HELM_RELEASE_PRESENT="$LC_STATE"
+if [[ "$HELM_RELEASE_PRESENT" == "present" ]]; then
+  lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator || fatal "Helm Release 身份校验失败"
+fi
 
 lc_kubectl_state crd k8sgpts.core.k8sgpt.ai
 [[ "$LC_STATE" != "error" ]] || fatal "无法查询 K8sGPT CRD"
 if [[ "$LC_STATE" == "present" && "$NAMESPACE_PRESENT" == "present" ]]; then
   log "删除并等待 K8sGPT CR"
+  lc_assert_lock_held || fatal "删除 K8sGPT CR 前已失去生命周期 Lease"
   delete_resource_if_present k8sgpt "$K8SGPT_NAME" "$NAMESPACE"
 fi
 
-lc_helm_state "$RELEASE_NAME" "$NAMESPACE"
-[[ "$LC_STATE" != "error" ]] || fatal "无法查询 Helm Release"
-if [[ "$LC_STATE" == "present" ]]; then
+if [[ "$HELM_RELEASE_PRESENT" == "present" ]]; then
   log "卸载 Helm Release"
+  lc_assert_lock_held || fatal "卸载 Helm Release 前已失去生命周期 Lease"
   helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" --wait --timeout "$TIMEOUT"
 fi
 
+[[ "$NAMESPACE_PRESENT" != "present" ]] || lc_assert_lock_held || fatal "删除 RBAC 前已失去生命周期 Lease"
 delete_resource_if_present clusterrolebinding k8sgpt-clusterrole-binding
 delete_resource_if_present clusterrole k8sgpt-clusterrole
 if [[ "$NAMESPACE_PRESENT" == "present" ]]; then
   delete_resource_if_present serviceaccount k8sgpt "$NAMESPACE"
+  delete_resource_if_present networkpolicy kube-aiops-egress-baseline "$NAMESPACE"
 fi
 
 if [[ "$PURGE_DEMO" == "true" ]]; then
+  [[ "$NAMESPACE_PRESENT" != "present" ]] || lc_assert_lock_held || fatal "删除 Demo 前已失去生命周期 Lease"
   delete_resource_if_present namespace k8sgpt-demo
 fi
 if [[ "$PURGE_SECRET" == "true" && "$NAMESPACE_PRESENT" == "present" ]]; then
+  lc_assert_lock_held || fatal "删除 Secret 前已失去生命周期 Lease"
   delete_resource_if_present secret "$SECRET_NAME" "$NAMESPACE"
 fi
 if [[ "$PURGE_NAMESPACE" == "true" && "$NAMESPACE_PRESENT" == "present" ]]; then
@@ -146,6 +146,7 @@ assert_resource_absent clusterrole k8sgpt-clusterrole
 assert_resource_absent clusterrolebinding k8sgpt-clusterrole-binding
 if [[ "$NAMESPACE_PRESENT" == "present" ]]; then
   assert_resource_absent serviceaccount k8sgpt "$NAMESPACE"
+  assert_resource_absent networkpolicy kube-aiops-egress-baseline "$NAMESPACE"
   lc_kubectl_state crd k8sgpts.core.k8sgpt.ai
   [[ "$LC_STATE" != "error" ]] || fatal "K8sGPT CRD 残留检查失败"
   if [[ "$LC_STATE" == "present" ]]; then

@@ -39,4 +39,33 @@ assert_state absent
 MOCK_MODE=error lc_helm_state k8sgpt-operator k8sgpt-operator-system
 assert_state error
 
+MOCK_MODE=identity_expected lc_assert_helm_release_identity \
+  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator
+if MOCK_MODE=identity_foreign lc_assert_helm_release_identity \
+  k8sgpt-operator k8sgpt-operator-system k8sgpt-operator; then
+  echo "ERROR: foreign Helm release identity should be rejected" >&2
+  exit 1
+fi
+
+BASELINE="${ROOT_DIR}/deploy/k8sgpt/clusterrole.yaml"
+MOCK_MODE=identity_strict lc_assert_cluster_resource_identity \
+  uninstall clusterrole k8sgpt-clusterrole "$BASELINE" false
+if MOCK_MODE=identity_partial lc_assert_cluster_resource_identity \
+  install clusterrole k8sgpt-clusterrole "$BASELINE" false; then
+  echo "ERROR: partial ownership must require explicit migration" >&2
+  exit 1
+fi
+if MOCK_MODE=identity_legacy_baseline MOCK_BASELINE="$BASELINE" \
+  lc_assert_cluster_resource_identity uninstall clusterrole k8sgpt-clusterrole "$BASELINE" true; then
+  echo "ERROR: uninstall must never migrate legacy ownership" >&2
+  exit 1
+fi
+MOCK_MODE=identity_legacy_baseline MOCK_BASELINE="$BASELINE" \
+  lc_assert_cluster_resource_identity install clusterrole k8sgpt-clusterrole "$BASELINE" true
+if MOCK_MODE=identity_legacy_drifted lc_assert_cluster_resource_identity \
+  install clusterrole k8sgpt-clusterrole "$BASELINE" true; then
+  echo "ERROR: drifted legacy fingerprint must be rejected" >&2
+  exit 1
+fi
+
 echo "lifecycle common tri-state tests passed"

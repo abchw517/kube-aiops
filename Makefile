@@ -1,8 +1,5 @@
 SHELL := /usr/bin/env bash
 
-DEMO_NAMESPACE ?= k8sgpt-demo
-OPERATOR_VERSION ?= 0.2.29
-
 .PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider
 
 help:
@@ -22,7 +19,7 @@ help:
 	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
 	@echo
 	@echo "可覆盖变量:"
-	@echo "  OPERATOR_VERSION=$(OPERATOR_VERSION)"
+	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
 	@echo "  STRICT_RESULTS=true  # verify 时要求当前实例的新鲜 Result"
 	@echo "  PURGE_SECRET=true    # uninstall 时同时删除 AI Secret"
 	@echo "  PURGE_NAMESPACE=true # uninstall 时同时删除 Namespace"
@@ -35,13 +32,13 @@ bootstrap:
 
 bootstrap-secret: bootstrap
 	@test -n "$${OPENAI_TOKEN:-}" || { echo "ERROR: OPENAI_TOKEN 未设置" >&2; exit 1; }
-	@kubectl create secret generic k8sgpt-openai-secret \
+	@set -Eeuo pipefail; printf '%s' "$${OPENAI_TOKEN}" | kubectl create secret generic k8sgpt-openai-secret \
 		-n k8sgpt-operator-system \
-		--from-literal=openai-api-key="$${OPENAI_TOKEN}" \
+		--from-file=openai-api-key=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
 
 install:
-	@OPERATOR_VERSION="$(OPERATOR_VERSION)" bash ./install.sh
+	@bash ./install.sh
 
 verify:
 	@STRICT_RESULTS="$${STRICT_RESULTS:-false}" \
@@ -62,17 +59,10 @@ demo:
 	@echo "  STRICT_RESULTS=true make verify"
 
 clean-demo:
-	@kubectl delete namespace "$(DEMO_NAMESPACE)" --ignore-not-found=true
+	@kubectl delete namespace k8sgpt-demo --ignore-not-found=true
 
 status:
-	@echo "== Operator / Engine =="
-	@kubectl get pods -n k8sgpt-operator-system -o wide || true
-	@echo
-	@echo "== K8sGPT CR =="
-	@kubectl get k8sgpt -n k8sgpt-operator-system || true
-	@echo
-	@echo "== Result CR =="
-	@kubectl get results -n k8sgpt-operator-system || true
+	@bash ./status.sh
 
 results:
 	@kubectl get results -n k8sgpt-operator-system -o wide
