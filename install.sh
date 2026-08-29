@@ -229,7 +229,7 @@ on_exit() {
 trap 'on_exit $?' EXIT
 
 log "Phase 1.1 安装开始 operation=${OPERATION_ID}"
-for cmd in kubectl helm python3 curl sha256sum; do require_cmd "$cmd"; done
+for cmd in kubectl helm python3 curl sha256sum awk; do require_cmd "$cmd"; done
 python3 -c 'import yaml' >/dev/null 2>&1 || fatal "缺少 Python PyYAML；先执行 python3 -m pip install pyyaml"
 [[ "$LOCK_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fatal "LOCK_WAIT_SECONDS 必须是非负整数"
 [[ "$LEASE_DURATION_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_DURATION_SECONDS 必须是正整数"
@@ -312,11 +312,12 @@ for resource in clusterrole/k8sgpt-clusterrole clusterrolebinding/k8sgpt-cluster
 done
 
 check_denied() {
-  local result rc=0
+  local result decision rc=0
   result="$(kubectl auth can-i "$@" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>&1)" || rc=$?
-  if [[ "$result" == "no" ]]; then return 0; fi
+  decision="$(printf '%s\n' "$result" | awk 'NF {last=$0} END {print last}')"
+  if [[ "$decision" == "no" ]]; then return 0; fi
   ((rc == 0)) || fatal "RBAC 查询失败: $* result=${result:-unknown}"
-  fatal "安全基线失败: $* result=${result:-unknown}"
+  fatal "安全基线失败: $* result=${decision:-unknown}"
 }
 check_denied get secrets
 check_denied get pods --subresource=log
@@ -324,7 +325,7 @@ check_denied patch deployments.apps
 check_denied delete pods
 check_denied list daemonsets.apps
 check_denied list networkpolicies.networking.k8s.io
-check_denied list validatingwebhookconfigurations.admissionregistration.k8s.io
+check_denied list validatingwebhookconfigurations.admissionregistration.k8s.io --all-namespaces
 
 lc_assert_lock_held || fatal "应用 K8sGPT CR 前已失去生命周期 Lease"
 kubectl apply -f "${DEPLOY_DIR}/k8sgpt.yaml"
