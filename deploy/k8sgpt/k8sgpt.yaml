@@ -7,6 +7,7 @@ metadata:
     app.kubernetes.io/name: k8sgpt
     app.kubernetes.io/component: analyzer
     app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/instance: k8sgpt-operator
 spec:
   ai:
     enabled: true
@@ -23,7 +24,27 @@ spec:
 
   noCache: false
   repository: ghcr.io/k8sgpt-ai/k8sgpt
-  version: v0.4.32
+  version: v0.4.32@sha256:199ded88f5e64dde5b3556882e43889e29e24575aacc2b965ce4b88fa103efba
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
   filters:
     - Pod

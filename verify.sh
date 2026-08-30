@@ -36,6 +36,64 @@ warn() {
   log "WARN: $*"
 }
 
+CAPTURE_OUTPUT=""
+CAPTURE_ERROR=""
+CAPTURE_RC=0
+QUERY_STATE=""
+QUERY_JSON=""
+
+capture() {
+  local error_file
+  error_file="$(mktemp -t kube-aiops-verify.XXXXXX)"
+  CAPTURE_OUTPUT=""
+  CAPTURE_ERROR=""
+  CAPTURE_RC=0
+  CAPTURE_OUTPUT="$("$@" 2>"$error_file")" || CAPTURE_RC=$?
+  CAPTURE_ERROR="$(<"$error_file")"
+  rm -f -- "$error_file"
+}
+
+query_object() {
+  local resource="$1"
+  local name="$2"
+  local namespace="${3:-}"
+  local -a args=(get "$resource" "$name" --ignore-not-found=true -o json)
+
+  [[ -z "$namespace" ]] || args+=(-n "$namespace")
+  capture kubectl "${args[@]}"
+  QUERY_JSON="$CAPTURE_OUTPUT"
+  if ((CAPTURE_RC != 0)); then
+    QUERY_STATE="error"
+  elif [[ -z "$QUERY_JSON" ]]; then
+    QUERY_STATE="absent"
+  else
+    QUERY_STATE="present"
+  fi
+}
+
+query_error() {
+  printf '%s' "${CAPTURE_ERROR:-exit=${CAPTURE_RC}, no error detail}"
+}
+
+json_value() {
+  local document="$1"
+  local path="$2"
+  python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+for key in sys.argv[1].split("."):
+    value = value.get(key) if isinstance(value, dict) else None
+    if value is None:
+        break
+if isinstance(value, bool):
+    print(str(value).lower())
+elif isinstance(value, list):
+    print(" ".join(str(item) for item in value))
+elif value is not None:
+    print(value)
+' "$path" <<<"$document"
+}
+
 check_cmd() {
   if command -v "$1" >/dev/null 2>&1; then
     pass "命令可用: $1"
@@ -48,11 +106,14 @@ check_can_i_yes() {
   local verb="$1"
   local resource="$2"
   local result
-  result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+  capture kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}"
+  result="$CAPTURE_OUTPUT"
   if [[ "$result" == "yes" ]]; then
     pass "RBAC allow: ${verb} ${resource}"
+  elif [[ "$result" == "no" ]]; then
+    fail "RBAC 应允许但实际拒绝: ${verb} ${resource}"
   else
-    fail "RBAC 应允许但实际为 ${result:-unknown}: ${verb} ${resource}"
+    fail "RBAC 查询错误: ${verb} ${resource}: $(query_error)"
   fi
 }
 
@@ -61,14 +122,17 @@ check_can_i_no() {
   local resource="$2"
   local result
   if [[ "$resource" == "pods/log" ]]; then
-    result="$(kubectl auth can-i "$verb" pods --subresource=log --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+    capture kubectl auth can-i "$verb" pods --subresource=log --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}"
   else
-    result="$(kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}" 2>/dev/null || true)"
+    capture kubectl auth can-i "$verb" "$resource" --as="system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}"
   fi
+  result="$CAPTURE_OUTPUT"
   if [[ "$result" == "no" ]]; then
     pass "RBAC deny: ${verb} ${resource}"
+  elif [[ "$result" == "yes" ]]; then
+    fail "RBAC 应拒绝但实际允许: ${verb} ${resource}"
   else
-    fail "RBAC 应拒绝但实际为 ${result:-unknown}: ${verb} ${resource}"
+    fail "RBAC 查询错误: ${verb} ${resource}: $(query_error)"
   fi
 }
 
@@ -89,56 +153,84 @@ if ! command -v kubectl >/dev/null 2>&1 || ! command -v helm >/dev/null 2>&1 || 
   exit 1
 fi
 
-CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
-if [[ -n "$CONTEXT" ]]; then
+capture kubectl config current-context
+CONTEXT="$CAPTURE_OUTPUT"
+if ((CAPTURE_RC == 0)) && [[ -n "$CONTEXT" ]]; then
   pass "Current context: ${CONTEXT}"
 else
-  fail "无法获取 current-context"
+  fail "无法获取 current-context: $(query_error)"
 fi
 
-if kubectl version --request-timeout=10s >/dev/null 2>&1; then
+capture kubectl version --request-timeout=10s
+if ((CAPTURE_RC == 0)); then
   pass "Kubernetes API 可访问"
 else
-  fail "Kubernetes API 不可访问"
+  fail "Kubernetes API 不可访问: $(query_error)"
   log "SUMMARY: pass=${PASS} warn=${WARN} fail=${FAIL}"
   exit 1
 fi
 
-if command -v helm >/dev/null 2>&1 && helm status "$RELEASE_NAME" -n "$NAMESPACE" -o json 2>/dev/null |
-  python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("info",{}).get("status") == "deployed" else 1)' 2>/dev/null; then
+capture helm status "$RELEASE_NAME" -n "$NAMESPACE" -o json
+if ((CAPTURE_RC != 0)); then
+  fail "Helm Release 查询失败: $(query_error)"
+elif HELM_STATUS="$(json_value "$CAPTURE_OUTPUT" info.status)" && [[ "$HELM_STATUS" == "deployed" ]]; then
   pass "Helm Release 状态为 deployed"
 else
-  fail "Helm Release 不存在或状态不是 deployed"
+  fail "Helm Release 状态不是 deployed: ${HELM_STATUS:-unknown}"
 fi
 
-if kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
+query_object namespace "$NAMESPACE"
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "Namespace 存在: ${NAMESPACE}"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "Namespace 不存在: ${NAMESPACE}"
+else
+  fail "Namespace 查询失败: ${NAMESPACE}: $(query_error)"
 fi
 
-if kubectl get crd k8sgpts.core.k8sgpt.ai >/dev/null 2>&1; then
+query_object crd k8sgpts.core.k8sgpt.ai
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "CRD 存在: k8sgpts.core.k8sgpt.ai"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "缺少 CRD: k8sgpts.core.k8sgpt.ai"
+else
+  fail "CRD 查询失败: k8sgpts.core.k8sgpt.ai: $(query_error)"
 fi
 
-if kubectl get crd results.core.k8sgpt.ai >/dev/null 2>&1; then
+query_object crd results.core.k8sgpt.ai
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "CRD 存在: results.core.k8sgpt.ai"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "缺少 CRD: results.core.k8sgpt.ai"
+else
+  fail "CRD 查询失败: results.core.k8sgpt.ai: $(query_error)"
 fi
 
-if kubectl get crd mutations.core.k8sgpt.ai >/dev/null 2>&1; then
+query_object crd mutations.core.k8sgpt.ai
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "CRD 存在且仅保留 API: mutations.core.k8sgpt.ai"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "缺少 CRD: mutations.core.k8sgpt.ai"
+else
+  fail "CRD 查询失败: mutations.core.k8sgpt.ai: $(query_error)"
 fi
 
-if kubectl get serviceaccount "${SERVICE_ACCOUNT}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+query_object serviceaccount "$SERVICE_ACCOUNT" "$NAMESPACE"
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "ServiceAccount 存在: ${SERVICE_ACCOUNT}"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "ServiceAccount 不存在: ${SERVICE_ACCOUNT}"
+else
+  fail "ServiceAccount 查询失败: ${SERVICE_ACCOUNT}: $(query_error)"
+fi
+
+query_object networkpolicy kube-aiops-egress-baseline "$NAMESPACE"
+if [[ "$QUERY_STATE" == "present" ]]; then
+  pass "NetworkPolicy egress 基线存在"
+elif [[ "$QUERY_STATE" == "absent" ]]; then
+  fail "NetworkPolicy egress 基线不存在"
+else
+  fail "NetworkPolicy egress 基线查询失败: $(query_error)"
 fi
 
 check_can_i_yes get pods
@@ -151,75 +243,88 @@ check_can_i_no create pods
 check_can_i_no update deployments.apps
 check_can_i_no patch deployments.apps
 check_can_i_no delete pods
+check_can_i_no list daemonsets.apps
+check_can_i_no list networkpolicies.networking.k8s.io
+check_can_i_no list validatingwebhookconfigurations.admissionregistration.k8s.io
 
-if kubectl get secret "$SECRET_NAME" -n "${NAMESPACE}" >/dev/null 2>&1; then
+capture kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" --ignore-not-found=true \
+  -o go-template='{{if .metadata.name}}{{if index .data "openai-api-key"}}present{{else}}missing{{end}}{{end}}'
+SECRET_STATE="$CAPTURE_OUTPUT"
+if ((CAPTURE_RC != 0)); then
+  fail "AI Provider Secret 查询失败: $(query_error)"
+elif [[ "$SECRET_STATE" == "present" ]]; then
   pass "AI Provider Secret 存在"
-  SECRET_KEY="$(kubectl get secret "$SECRET_NAME" -n "${NAMESPACE}" -o jsonpath='{.data.openai-api-key}' 2>/dev/null || true)"
-  if [[ -n "$SECRET_KEY" ]]; then
-    pass "AI Provider Secret key 存在: openai-api-key"
-  else
-    fail "AI Provider Secret 缺少 openai-api-key"
-  fi
-else
+  pass "AI Provider Secret key 存在: openai-api-key"
+elif [[ "$SECRET_STATE" == "missing" ]]; then
+  fail "AI Provider Secret 缺少或包含空 key: openai-api-key"
+elif [[ -z "$SECRET_STATE" ]]; then
   fail "AI Provider Secret 不存在"
+else
+  fail "AI Provider Secret 查询返回未知状态: ${SECRET_STATE}"
 fi
 
-if kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+query_object k8sgpt "$K8SGPT_NAME" "$NAMESPACE"
+K8SGPT_JSON="$QUERY_JSON"
+if [[ "$QUERY_STATE" == "present" ]]; then
   pass "K8sGPT CR 存在: ${K8SGPT_NAME}"
-else
+elif [[ "$QUERY_STATE" == "absent" ]]; then
   fail "K8sGPT CR 不存在: ${K8SGPT_NAME}"
-fi
-
-AI_ENABLED="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.enabled}' 2>/dev/null || true)"
-if [[ "$AI_ENABLED" == "true" ]]; then pass "AI enabled=true"; else fail "AI enabled 非预期: ${AI_ENABLED:-unset}"; fi
-
-ANONYMIZED="$(kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.ai.anonymized}' 2>/dev/null || true)"
-if [[ "$ANONYMIZED" == "true" ]]; then
-  pass "AI anonymized=true"
 else
-  fail "AI anonymized 未开启，当前值: ${ANONYMIZED:-unset}"
+  fail "K8sGPT CR 查询失败: ${K8SGPT_NAME}: $(query_error)"
 fi
 
-BACKEND="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.backend}' 2>/dev/null || true)"
-if [[ "$BACKEND" == "openai" ]]; then pass "AI backend=openai"; else fail "AI backend 非预期: ${BACKEND:-unset}"; fi
+if [[ "$QUERY_STATE" == "present" ]]; then
+  AI_ENABLED="$(json_value "$K8SGPT_JSON" spec.ai.enabled)"
+  ANONYMIZED="$(json_value "$K8SGPT_JSON" spec.ai.anonymized)"
+  BACKEND="$(json_value "$K8SGPT_JSON" spec.ai.backend)"
+  INTERVAL="$(json_value "$K8SGPT_JSON" spec.analysis.interval)"
+  SECRET_NAME_ACTUAL="$(json_value "$K8SGPT_JSON" spec.ai.secret.name)"
+  SECRET_KEY_ACTUAL="$(json_value "$K8SGPT_JSON" spec.ai.secret.key)"
+  FILTERS="$(json_value "$K8SGPT_JSON" spec.filters)"
+  AUTO_REMEDIATION="$(json_value "$K8SGPT_JSON" spec.ai.autoRemediation.enabled)"
 
-INTERVAL="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.analysis.interval}' 2>/dev/null || true)"
-if [[ "$INTERVAL" == "$EXPECTED_ANALYSIS_INTERVAL" ]]; then
-  pass "Analysis interval=${EXPECTED_ANALYSIS_INTERVAL}"
-else
-  fail "Analysis interval 非预期: ${INTERVAL:-unset}，期望 ${EXPECTED_ANALYSIS_INTERVAL}"
+  if [[ "$AI_ENABLED" == "true" ]]; then pass "AI enabled=true"; else fail "AI enabled 非预期: ${AI_ENABLED:-unset}"; fi
+  if [[ "$ANONYMIZED" == "true" ]]; then pass "AI anonymized=true"; else fail "AI anonymized 未开启，当前值: ${ANONYMIZED:-unset}"; fi
+  if [[ "$BACKEND" == "openai" ]]; then pass "AI backend=openai"; else fail "AI backend 非预期: ${BACKEND:-unset}"; fi
+  if [[ "$INTERVAL" == "$EXPECTED_ANALYSIS_INTERVAL" ]]; then pass "Analysis interval=${EXPECTED_ANALYSIS_INTERVAL}"; else fail "Analysis interval 非预期: ${INTERVAL:-unset}，期望 ${EXPECTED_ANALYSIS_INTERVAL}"; fi
+  if [[ "${SECRET_NAME_ACTUAL}/${SECRET_KEY_ACTUAL}" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 引用正确"; else fail "AI Secret 引用非预期: ${SECRET_NAME_ACTUAL:-unset}/${SECRET_KEY_ACTUAL:-unset}"; fi
+  if [[ " ${FILTERS} " == *" Log "* ]]; then fail "Log Analyzer 意外启用"; else pass "Log Analyzer 未启用"; fi
+  if [[ -z "$AUTO_REMEDIATION" || "$AUTO_REMEDIATION" == "false" ]]; then pass "Auto Remediation 未启用"; else fail "Auto Remediation 意外启用: ${AUTO_REMEDIATION}"; fi
 fi
 
-SECRET_REF="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ai.secret.name}/{.spec.ai.secret.key}' 2>/dev/null || true)"
-if [[ "$SECRET_REF" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 引用正确"; else fail "AI Secret 引用非预期: ${SECRET_REF:-unset}"; fi
-
-FILTERS="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.filters[*]}' 2>/dev/null || true)"
-if [[ " ${FILTERS} " == *" Log "* ]]; then fail "Log Analyzer 意外启用"; else pass "Log Analyzer 未启用"; fi
-
-AUTO_REMEDIATION="$(kubectl get k8sgpt "${K8SGPT_NAME}" -n "${NAMESPACE}" -o jsonpath='{.spec.ai.autoRemediation.enabled}' 2>/dev/null || true)"
-if [[ -z "$AUTO_REMEDIATION" || "$AUTO_REMEDIATION" == "false" ]]; then
-  pass "Auto Remediation 未启用"
-else
-  fail "Auto Remediation 意外启用: ${AUTO_REMEDIATION}"
-fi
-
-if MUTATION_JSON="$(kubectl get mutations -n "$NAMESPACE" -o json 2>/dev/null)"; then
+capture kubectl get mutations -n "$NAMESPACE" -o json
+MUTATION_JSON="$CAPTURE_OUTPUT"
+if ((CAPTURE_RC == 0)); then
   MUTATION_COUNT="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items", [])))' <<<"$MUTATION_JSON")"
   if [[ "$MUTATION_COUNT" == "0" ]]; then pass "Mutation 对象未启用"; else fail "发现 Mutation 对象，数量=${MUTATION_COUNT}"; fi
 else
-  fail "Mutation 对象查询失败"
+  fail "Mutation 对象查询失败: $(query_error)"
 fi
 
 RESULT_JSON=""
-if RESULT_JSON="$(kubectl get results -n "$NAMESPACE" \
-  -l "k8sgpts.k8sgpt.ai/name=${K8SGPT_NAME},k8sgpts.k8sgpt.ai/namespace=${NAMESPACE}" -o json)"; then
-  if RESULT_SUMMARY="$(python3 "${ROOT_DIR}/scripts/verify_results.py" \
-    --since "$RESULT_SINCE" --expected-kinds "$EXPECTED_RESULT_KINDS" <<<"$RESULT_JSON")"; then
+capture kubectl get results -n "$NAMESPACE" \
+  -l "k8sgpts.k8sgpt.ai/name=${K8SGPT_NAME},k8sgpts.k8sgpt.ai/namespace=${NAMESPACE}" -o json
+RESULT_JSON="$CAPTURE_OUTPUT"
+if ((CAPTURE_RC == 0)); then
+  RESULT_ERROR_FILE="$(mktemp -t kube-aiops-result-validation.XXXXXX)"
+  RESULT_VALIDATION_RC=0
+  RESULT_SUMMARY="$(python3 "${ROOT_DIR}/scripts/verify_results.py" \
+    --since "$RESULT_SINCE" --expected-kinds "$EXPECTED_RESULT_KINDS" \
+    <<<"$RESULT_JSON" 2>"$RESULT_ERROR_FILE")" || RESULT_VALIDATION_RC=$?
+  RESULT_VALIDATION_ERROR="$(<"$RESULT_ERROR_FILE")"
+  rm -f -- "$RESULT_ERROR_FILE"
+  if ((RESULT_VALIDATION_RC == 0)); then
     RESULT_COUNT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])' <<<"$RESULT_SUMMARY")"
     DETAIL_COUNT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["detail_count"])' <<<"$RESULT_SUMMARY")"
     MISSING_KINDS="$(python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["missing_kinds"]))' <<<"$RESULT_SUMMARY")"
   else
-    fail "RESULT_SINCE 不是有效 RFC3339 时间: ${RESULT_SINCE}"
+    if ((RESULT_VALIDATION_RC == 2)); then
+      fail "Result 验证输入无效（含 RESULT_SINCE）: ${RESULT_VALIDATION_ERROR:-unknown}"
+    elif ((RESULT_VALIDATION_RC == 3)); then
+      fail "Result API 返回结构不符合预期: ${RESULT_VALIDATION_ERROR:-unknown}"
+    else
+      fail "Result 验证器异常 exit=${RESULT_VALIDATION_RC}: ${RESULT_VALIDATION_ERROR:-unknown}"
+    fi
     RESULT_COUNT=0
     DETAIL_COUNT=0
     MISSING_KINDS="$EXPECTED_RESULT_KINDS"
@@ -235,17 +340,41 @@ else
   RESULT_COUNT=0
   DETAIL_COUNT=0
   MISSING_KINDS="$EXPECTED_RESULT_KINDS"
-  fail "Result CR 查询失败，不得按零结果降级"
+  fail "Result CR 查询失败，不得按零结果降级: $(query_error)"
 fi
 
-OPERATOR_READY="$(kubectl get deploy -n "${NAMESPACE}" -l app.kubernetes.io/name=k8sgpt-operator -o jsonpath='{range .items[*]}{.status.readyReplicas}{"\n"}{end}' 2>/dev/null | awk '$1 > 0 {count++} END {print count+0}')"
-if [[ "$OPERATOR_READY" -gt 0 ]]; then
-  pass "K8sGPT Operator Deployment Ready"
+capture kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=k8sgpt-operator -o json
+OPERATOR_JSON="$CAPTURE_OUTPUT"
+if ((CAPTURE_RC != 0)); then
+  fail "K8sGPT Operator Deployment 查询失败: $(query_error)"
+elif OPERATOR_DETAIL="$(python3 -c '
+import json, sys
+items = json.load(sys.stdin).get("items", [])
+if not items:
+    print("no matching Deployment")
+    raise SystemExit(1)
+problems = []
+for item in items:
+    meta, spec, status = item.get("metadata", {}), item.get("spec", {}), item.get("status", {})
+    name = meta.get("name", "<unnamed>")
+    desired = int(spec.get("replicas", 1))
+    if status.get("observedGeneration", 0) < meta.get("generation", 1):
+        problems.append(f"{name}:observedGeneration stale")
+    if status.get("readyReplicas", 0) != desired:
+        problems.append(f"{name}:ready={status.get('"'"'readyReplicas'"'"', 0)}/{desired}")
+    if status.get("availableReplicas", 0) != desired or status.get("unavailableReplicas", 0) != 0:
+        problems.append(f"{name}:not fully available")
+print("; ".join(problems) if problems else f"{len(items)} deployment(s) converged")
+raise SystemExit(1 if problems else 0)
+' <<<"$OPERATOR_JSON")"; then
+  pass "K8sGPT Operator Deployment 完全 Ready: ${OPERATOR_DETAIL}"
 else
-  fail "K8sGPT Operator Deployment 未 Ready"
+  fail "K8sGPT Operator Deployment 未完全 Ready: ${OPERATOR_DETAIL:-invalid response}"
 fi
 
-if ENGINE_JSON="$(kubectl get deployment "$K8SGPT_NAME" -n "$NAMESPACE" -o json 2>/dev/null)"; then
+query_object deployment "$K8SGPT_NAME" "$NAMESPACE"
+ENGINE_JSON="$QUERY_JSON"
+if [[ "$QUERY_STATE" == "present" ]]; then
   if python3 -c '
 import json, sys
 obj = json.load(sys.stdin)
@@ -261,12 +390,14 @@ raise SystemExit(0 if ok else 1)
   else
     fail "K8sGPT Engine Deployment 未完全 Ready"
   fi
+elif [[ "$QUERY_STATE" == "absent" ]]; then
+  fail "K8sGPT Engine Deployment 不存在"
 else
-  fail "K8sGPT Engine Deployment 不存在或不可查询"
+  fail "K8sGPT Engine Deployment 查询失败: $(query_error)"
 fi
 
-if K8SGPT_STATUS_JSON="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o json 2>/dev/null)"; then
-  LAST_ANALYSIS_ERROR="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",{}).get("lastAnalysisError",""))' <<<"$K8SGPT_STATUS_JSON")"
+if [[ -n "$K8SGPT_JSON" ]]; then
+  LAST_ANALYSIS_ERROR="$(json_value "$K8SGPT_JSON" status.lastAnalysisError)"
   if [[ -z "$LAST_ANALYSIS_ERROR" ]]; then
     pass "K8sGPT 最近一次分析无错误"
   elif [[ "$REQUIRE_ANALYSIS_HEALTH" == "true" ]]; then
@@ -275,7 +406,7 @@ if K8SGPT_STATUS_JSON="$(kubectl get k8sgpt "$K8SGPT_NAME" -n "$NAMESPACE" -o js
     warn "K8sGPT 最近一次分析存在 Provider/Analyzer 错误；生命周期验收不阻断: ${LAST_ANALYSIS_ERROR}"
   fi
 else
-  fail "K8sGPT status 查询失败"
+  fail "K8sGPT status 无法验证，因为 CR 不存在或查询失败"
 fi
 
 if [[ "$STRICT_RESULTS" == "true" && "$RESULT_COUNT" -gt 0 ]]; then

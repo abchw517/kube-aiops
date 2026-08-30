@@ -13,6 +13,30 @@
 | Operator 基线 | 默认升级到 v0.2.29 |
 | E2E 异常路径 | 验证外部同名 RBAC 不被接管或删除 |
 
+## 第二轮 P1 深度加固
+
+| 问题 | 修复与验收 |
+|---|---|
+| 单个 label/annotation 可伪造所有权 | 改为 owner、part-of、instance 三元精确身份；legacy 仅允许安装器显式迁移并校验语义指纹 |
+| 同名外部 Helm Release | 升级和卸载前验证 Chart 身份 |
+| Binding 可能保留上游 subject/roleRef | post-renderer 在进入 API Server 前强制替换 rules、subjects、roleRef 和 ServiceAccount 安全字段 |
+| Make 参数命令注入 | recipe 不再文本插入 Make 变量；Operator 版本在脚本中执行 allowlist 校验 |
+| Token 暴露在进程 argv | Secret 经 stdin 创建；安装和验证只返回 key 是否存在，不读取值 |
+| Provider 工作流分支可选 | 只有 `refs/heads/main` 才能进入 Environment job |
+| Lease 长事务失锁和释放竞态 | heartbeat 持续续租、变更前 fencing、resourceVersion CAS 释放 |
+| 回滚二次失败丢失快照 | 保留 `0700` 状态目录、operation metadata 和对象级恢复报告 |
+| `make status` 假成功 | 独立可信状态检查，关键失败返回非零 |
+| Verify/Result 错误被吞或错报 | 保留 stderr/rc，区分 Forbidden、timeout、NotFound 和 schema 错误；CR 单快照验证 |
+| RBAC Binding 未静态检查 | lint 校验 roleRef 必须指向仓库受检 Role，subject 只允许具名 ServiceAccount |
+| Pod 安全上下文不足 | Namespace 启用 PSA baseline enforce、restricted audit/warn；Operator/Engine 启用 seccomp、non-root、drop ALL、只读根文件系统 |
+| Namespace 无网络边界 | egress 仅允许 DNS、HTTPS 和 Kubernetes API 端口 |
+| 运行时镜像只有可变 tag | Operator、kube-rbac-proxy、Engine 使用 `tag@sha256` 固定 manifest digest |
+| Helm index/Chart 可变 | 直接下载固定版本 Chart，并在 Helm 前校验内置 SHA256 |
+
+本轮 Kind E2E 还覆盖所有权伪造、legacy 指纹漂移、同名外部 Release、Lease
+heartbeat/fencing/CAS 以及回滚状态保留。Provider 功能 E2E 仍保持独立人工门禁，
+不能用占位 Token 替代。
+
 ## Operator 版本选择
 
 `v0.2.28` 包含以下与本项目相关的改进：
