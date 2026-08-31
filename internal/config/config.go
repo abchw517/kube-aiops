@@ -18,12 +18,12 @@ const (
 )
 
 type Config struct {
-	HTTPAddr              string
-	ReadyTimeout          time.Duration
-	K8sGPTNamespace       string
-	KubernetesAPIURL      string
-	KubernetesTokenFile   string
-	KubernetesCAFile      string
+	HTTPAddr            string
+	ReadyTimeout        time.Duration
+	K8sGPTNamespace     string
+	KubernetesAPIURL    string
+	KubernetesTokenFile string
+	KubernetesCAFile    string
 }
 
 func Load() (Config, error) {
