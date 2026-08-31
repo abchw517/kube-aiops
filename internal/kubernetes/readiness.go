@@ -58,6 +58,7 @@ func (c *ReadinessChecker) Ready(ctx context.Context) error {
 			},
 		},
 	}
+	defer client.CloseIdleConnections()
 
 	endpoint := strings.TrimRight(c.config.APIURL, "/") +
 		"/apis/core.k8sgpt.ai/v1alpha1/namespaces/" +
