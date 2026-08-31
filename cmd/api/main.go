@@ -25,7 +25,7 @@ func main() {
 	}
 
 	readiness := kubernetes.NewReadinessChecker(kubernetes.ReadinessConfig{
-		APIURL:   cfg.KubernetesAPIURL,
+		APIURL:    cfg.KubernetesAPIURL,
 		TokenFile: cfg.KubernetesTokenFile,
 		CAFile:    cfg.KubernetesCAFile,
 		K8sGPTNS:  cfg.K8sGPTNamespace,
