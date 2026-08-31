@@ -8,15 +8,6 @@ metadata:
     app.kubernetes.io/component: portal-backend
 rules:
   - apiGroups:
-      - ""
-    resources:
-      - namespaces
-    verbs:
-      - get
-      - list
-      - watch
-
-  - apiGroups:
       - core.k8sgpt.ai
     resources:
       - results
