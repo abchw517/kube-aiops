@@ -16,22 +16,22 @@ require_cmd find
 require_cmd grep
 require_cmd python3
 
-log "1/7 Shell 语法检查"
+log "1/8 Shell 语法检查"
 while IFS= read -r -d '' file; do
   bash -n "$file"
 done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
 
 if command -v shellcheck >/dev/null 2>&1; then
-  log "2/7 ShellCheck"
+  log "2/8 ShellCheck"
   mapfile -d '' shell_files < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
   if ((${#shell_files[@]} > 0)); then
     shellcheck -x "${shell_files[@]}"
   fi
 else
-  log "2/7 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
+  log "2/8 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
 fi
 
-log "3/7 YAML 语法检查"
+log "3/8 YAML 语法检查"
 python3 - <<'PY'
 import pathlib
 import sys
@@ -53,7 +53,19 @@ for path in files:
 print(f'[preflight] YAML 文件解析通过: {len(files)}')
 PY
 
-log "4/7 静态 Secret 泄露检查"
+if command -v kubeconform >/dev/null 2>&1; then
+  log "4/8 Kubernetes Schema 检查（kubeconform）"
+  kubeconform \
+    -strict \
+    -summary \
+    -ignore-missing-schemas \
+    -kubernetes-version 1.34.0 \
+    deploy/k8sgpt
+else
+  log "4/8 kubeconform: 本地未安装，跳过（CI 中强制执行）"
+fi
+
+log "5/8 静态 Secret 泄露检查"
 # 只检查高置信度模式；完整历史扫描由 CI 的 Gitleaks 执行。
 if grep -RInE \
   --exclude-dir=.git \
@@ -63,13 +75,13 @@ if grep -RInE \
   fail "检测到疑似真实凭据，请移除后再提交"
 fi
 
-log "5/7 RBAC 静态安全检查"
+log "6/8 RBAC 静态安全检查"
 python3 scripts/rbac_lint.py
 
-log "6/7 Python 语法检查"
+log "7/8 Python 语法检查"
 python3 -m py_compile scripts/*.py
 
-log "7/7 安全控制回归测试"
+log "8/8 安全控制回归测试"
 python3 tests/security-controls-test.py
 bash tests/make-security-test.sh
 
