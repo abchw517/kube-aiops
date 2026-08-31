@@ -22,6 +22,7 @@ run_expect() {
   local rc=0
 
   MOCK_OBSERVABILITY_MODE="$mode" MOCK_K8SGPT_COUNT_FILE="$count_file" \
+    MOCK_REPO_ROOT="$ROOT_DIR" \
     PATH="${MOCK_BIN}:${PATH}" bash "${ROOT_DIR}/${script}" >"$log_file" 2>&1 || rc=$?
   [[ "$rc" == "$expected_rc" ]] || {
     cat "$log_file" >&2
@@ -37,6 +38,18 @@ grep -q 'SUMMARY:.*fail=0' "$log_file"
 
 log_file="$(run_expect 1 operator_partial verify.sh)"
 grep -q 'Operator Deployment 未完全 Ready:.*ready=1/2' "$log_file"
+
+log_file="$(run_expect 1 operator_zero verify.sh)"
+grep -q 'Operator Deployment 未完全 Ready:.*desired replicas must be >=1' "$log_file"
+
+log_file="$(run_expect 1 engine_zero verify.sh)"
+grep -q 'Engine Deployment 未完全 Ready' "$log_file"
+
+log_file="$(run_expect 1 foreign_helm verify.sh)"
+grep -q 'Helm Release Chart 身份非预期: foreign-chart-1.0.0' "$log_file"
+
+log_file="$(run_expect 1 rbac_drift verify.sh)"
+grep -q '安全关键资源发生漂移: clusterrole/k8sgpt-clusterrole:.*rules' "$log_file"
 
 log_file="$(run_expect 1 forbidden_namespace verify.sh)"
 grep -q 'Namespace 查询失败:.*Forbidden' "$log_file"
@@ -59,6 +72,15 @@ grep -q 'SUMMARY:.*fail=0' "$log_file"
 
 log_file="$(run_expect 1 operator_partial status.sh)"
 grep -q 'Operator 未完全 Ready:.*1/2' "$log_file"
+
+log_file="$(run_expect 1 operator_zero status.sh)"
+grep -q 'Operator 未完全 Ready:.*0/0' "$log_file"
+
+log_file="$(run_expect 1 engine_zero status.sh)"
+grep -q 'Engine 未完全 Ready:.*0/0' "$log_file"
+
+log_file="$(run_expect 1 foreign_helm status.sh)"
+grep -q 'Helm Release Chart 身份非预期: foreign-chart-1.0.0' "$log_file"
 
 log_file="$(run_expect 1 api_timeout status.sh)"
 grep -q 'Kubernetes API 不可访问:.*deadline exceeded' "$log_file"

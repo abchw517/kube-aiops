@@ -335,8 +335,18 @@ OPERATOR_DEPLOY="$(kubectl get deploy -n "$NAMESPACE" -l app.kubernetes.io/name=
 [[ -n "$OPERATOR_DEPLOY" ]] || fatal "未发现 Operator Deployment"
 kubectl rollout status deployment/"$OPERATOR_DEPLOY" -n "$NAMESPACE" --timeout="$TIMEOUT"
 
+kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=k8sgpt-operator -o json |
+  python3 -c '
+import json, sys
+items = json.load(sys.stdin).get("items", [])
+if not items or any(int(item.get("spec", {}).get("replicas", 1)) < 1 for item in items):
+    raise SystemExit("Operator Deployment replicas 必须至少为 1")
+'
+
 kubectl wait --for=create deployment/"$K8SGPT_NAME" -n "$NAMESPACE" --timeout="$TIMEOUT"
 kubectl rollout status deployment/"$K8SGPT_NAME" -n "$NAMESPACE" --timeout="$TIMEOUT"
+ENGINE_REPLICAS="$(kubectl get deployment "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')"
+[[ "$ENGINE_REPLICAS" =~ ^[1-9][0-9]*$ ]] || fatal "K8sGPT Engine Deployment replicas 必须至少为 1"
 
 HELM_UPGRADE_SUCCEEDED=false
 log "安装完成；下一步执行: make verify"

@@ -213,11 +213,10 @@ make verify
 
 - Kubernetes Context
 - Kubernetes API 连通性
-- Helm Release 必须为 `deployed`
+- Helm Release 必须为 `deployed`，且 Chart 身份必须为固定的 `k8sgpt-operator-0.2.29`
 - Namespace
 - K8sGPT / Result / Mutation CRD
-- `k8sgpt` ServiceAccount
-- NetworkPolicy egress 基线
+- ServiceAccount、ClusterRole/Binding、NetworkPolicy 必须与仓库安全基线一致
 - `get/list` 业务资源权限
 - Secret 读取必须为 `no`
 - Pod Log 读取必须为 `no`
@@ -230,8 +229,8 @@ make verify
 - Log Analyzer 未启用
 - Auto Remediation 未启用
 - Result CR API 可读取
-- Operator Ready（未就绪直接失败）
-- K8sGPT Engine Deployment Ready 且 observedGeneration 收敛
+- Operator Ready、observedGeneration 收敛且期望副本数至少为 1
+- K8sGPT Engine Deployment Ready、observedGeneration 收敛且期望副本数至少为 1
 - Result 查询错误不得降级为零结果
 
 无 Result 时默认只告警，不判定 Phase 1.1 失败。部署故障样例后可使用严格模式：
@@ -287,8 +286,9 @@ make clean-demo
 make status
 ```
 
-该命令检查 API、Helm revision、Lease、Operator/Engine 完整 Ready、最近分析错误
-和 Result 数量；关键查询失败或工作负载未收敛时返回非零状态。
+该命令检查 API、Helm revision 与 Chart 身份、Lease、Operator/Engine 非零副本完整
+Ready、最近分析错误和当前 K8sGPT 实例的 Result 数量；关键查询失败、Release
+身份异常或工作负载未收敛时返回非零状态。
 
 ## 6. 卸载
 
