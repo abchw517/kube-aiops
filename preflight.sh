@@ -55,12 +55,27 @@ PY
 
 if command -v kubeconform >/dev/null 2>&1; then
   log "4/8 Kubernetes Schema 检查（kubeconform）"
+
+  # 只校验真正提交给 Kubernetes API Server 的 Manifest。
+  # Helm values 文件不是 Kubernetes 对象，不包含 apiVersion/kind，不能交给 kubeconform。
+  mapfile -d '' manifest_files < <(
+    find deploy/k8sgpt \
+      -type f \
+      \( -name '*.yaml' -o -name '*.yml' \) \
+      ! -name 'values-production.yaml' \
+      -print0
+  )
+
+  if ((${#manifest_files[@]} == 0)); then
+    fail "未找到可供 kubeconform 校验的 Kubernetes Manifest"
+  fi
+
   kubeconform \
     -strict \
     -summary \
     -ignore-missing-schemas \
     -kubernetes-version 1.34.0 \
-    deploy/k8sgpt
+    "${manifest_files[@]}"
 else
   log "4/8 kubeconform: 本地未安装，跳过（CI 中强制执行）"
 fi
