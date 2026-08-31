@@ -14,11 +14,11 @@ import (
 )
 
 type fakeBackend struct {
-	readyErr      error
-	namespaceErr  error
-	resourceErr   error
-	namespaces    []kubernetes.Namespace
-	resource      kubernetes.ResourceDetail
+	readyErr     error
+	namespaceErr error
+	resourceErr  error
+	namespaces   []kubernetes.Namespace
+	resource     kubernetes.ResourceDetail
 }
 
 func (f fakeBackend) Ready(context.Context) error { return f.readyErr }
