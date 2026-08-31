@@ -85,6 +85,27 @@ jobs:
           make api-test
           make api-build
 
+      - name: Docker backend smoke test
+        run: |
+          set -Eeuo pipefail
+          image="kube-aiops-api:ci"
+          container="kube-aiops-api-ci"
+
+          docker build --pull --tag "${image}" .
+          docker run --detach --name "${container}" --publish 127.0.0.1:18080:8080 "${image}"
+          trap 'docker rm --force "${container}" >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/healthz >/tmp/healthz.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:18080/healthz
+          ready_code="$(curl --silent --output /tmp/readyz.json --write-out '%{http_code}' http://127.0.0.1:18080/readyz)"
+          test "${ready_code}" = "503"
+
       - name: Run project preflight
         run: |
           bash ./preflight.sh
