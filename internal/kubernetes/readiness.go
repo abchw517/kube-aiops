@@ -13,10 +13,10 @@ import (
 )
 
 type ReadinessConfig struct {
-	APIURL        string
-	TokenFile     string
-	CAFile        string
-	K8sGPTNS      string
+	APIURL    string
+	TokenFile string
+	CAFile    string
+	K8sGPTNS  string
 }
 
 type ReadinessChecker struct {
