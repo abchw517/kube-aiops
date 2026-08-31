@@ -122,9 +122,9 @@ kubectl get results -n k8sgpt-operator-system -o yaml
 | 安装失败回滚 | 新装恢复快照；已有 Release 的 Helm 后置失败回滚旧 revision |
 | 并发生命周期操作 | Kubernetes Lease 拒绝并发 install/uninstall |
 | 长事务锁 | heartbeat 续租、变更前 fencing、CAS 释放均通过 |
-| 资源所有权 | owner/part-of/instance 三元身份及 Helm Chart 身份通过 |
+| 资源所有权 | owner/part-of/instance 三元身份、Helm Chart 身份及运行时安全清单语义通过 |
 | Secret 传递 | Token 不进入 argv，脚本不读取 Secret 值 |
-| 状态检查 | API/权限/Ready 查询失败时 `make status` 返回非零 |
+| 状态检查 | API/权限/Chart 身份/非零副本 Ready 查询失败时 `make status` 返回非零 |
 | Pod 安全 | PSA baseline enforce、restricted audit/warn，Operator/Engine 安全上下文通过 |
 | 卸载与重复卸载 | 通过 |
 | 卸载残留检查 | 查询错误必须 FAIL；CRD 按策略保留 |

@@ -76,6 +76,21 @@ else
   fail "Helm Release 查询失败: $(error_detail)"
 fi
 
+capture helm list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
+if ((RC != 0)); then
+  fail "Helm Release 身份查询失败: $(error_detail)"
+elif HELM_CHART="$(python3 -c '
+import json, sys
+items = [item for item in json.load(sys.stdin) if item.get("name") == sys.argv[1]]
+if len(items) != 1:
+    raise SystemExit(1)
+print(items[0].get("chart", ""))
+' "$RELEASE_NAME" <<<"$OUTPUT")" && [[ "$HELM_CHART" == "k8sgpt-operator-0.2.29" ]]; then
+  pass "Helm Release Chart 身份正确: ${HELM_CHART}"
+else
+  fail "Helm Release Chart 身份非预期: ${HELM_CHART:-unknown}"
+fi
+
 capture kubectl get lease "$LOCK_NAME" -n "$NAMESPACE" --ignore-not-found=true -o json
 if ((RC != 0)); then
   fail "生命周期 Lease 查询失败: $(error_detail)"
@@ -120,7 +135,8 @@ for item in items:
     desired = int(spec.get("replicas", 1))
     ready = status.get("readyReplicas", 0)
     summary.append(f"{name}={ready}/{desired}")
-    if (status.get("observedGeneration", 0) < meta.get("generation", 1) or
+    if (desired < 1 or
+            status.get("observedGeneration", 0) < meta.get("generation", 1) or
             ready != desired or status.get("availableReplicas", 0) != desired or
             status.get("unavailableReplicas", 0) != 0):
         problems.append(name)
@@ -144,7 +160,8 @@ meta, spec, status = item.get("metadata", {}), item.get("spec", {}), item.get("s
 desired = int(spec.get("replicas", 1))
 ready = status.get("readyReplicas", 0)
 print(f"ready={ready}/{desired} available={status.get('"'"'availableReplicas'"'"', 0)}")
-ok = (status.get("observedGeneration", 0) >= meta.get("generation", 1) and
+ok = (desired >= 1 and
+      status.get("observedGeneration", 0) >= meta.get("generation", 1) and
       ready == desired and status.get("availableReplicas", 0) == desired and
       status.get("unavailableReplicas", 0) == 0)
 raise SystemExit(0 if ok else 1)
@@ -168,7 +185,8 @@ else
   fi
 fi
 
-capture kubectl get results -n "$NAMESPACE" -o json
+capture kubectl get results -n "$NAMESPACE" \
+  -l "k8sgpts.k8sgpt.ai/name=${K8SGPT_NAME},k8sgpts.k8sgpt.ai/namespace=${NAMESPACE}" -o json
 if ((RC == 0)); then
   RESULT_COUNT="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("items", [])))' <<<"$OUTPUT")"
   pass "Result CR 数量=${RESULT_COUNT}"

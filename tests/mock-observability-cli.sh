@@ -9,11 +9,30 @@ if [[ "$tool" == "helm" ]]; then
     printf '%s\n' '{"version":3,"info":{"status":"deployed"}}'
     exit 0
   fi
+  if [[ "${1:-}" == "list" ]]; then
+    chart="k8sgpt-operator-0.2.29"
+    [[ "$mode" != "foreign_helm" ]] || chart="foreign-chart-1.0.0"
+    printf '[{"name":"k8sgpt-operator","status":"deployed","chart":"%s"}]\n' "$chart"
+    exit 0
+  fi
   echo "unexpected helm invocation: $*" >&2
   exit 99
 fi
 
 [[ "$tool" == "kubectl" ]] || { echo "unexpected tool: $tool" >&2; exit 99; }
+
+emit_baseline_json() {
+  local path="$1"
+  local drift="${2:-false}"
+  python3 -c '
+import json, sys, yaml
+with open(sys.argv[1], encoding="utf-8") as stream:
+    obj = yaml.safe_load(stream)
+if sys.argv[2] == "true" and obj.get("kind") == "ClusterRole":
+    obj.setdefault("rules", []).append({"apiGroups": [""], "resources": ["secrets"], "verbs": ["get"]})
+json.dump(obj, sys.stdout)
+' "$path" "$drift"
+}
 
 if [[ "${1:-}" == "config" && "${2:-}" == "current-context" ]]; then
   echo mock-context
@@ -72,11 +91,25 @@ if [[ "$resource" == "crd" ]]; then
   exit 0
 fi
 if [[ "$resource" == "serviceaccount" ]]; then
-  printf '%s\n' '{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"k8sgpt"}}'
+  emit_baseline_json "${MOCK_REPO_ROOT}/deploy/k8sgpt/serviceaccount.yaml"
+  printf '\n'
+  exit 0
+fi
+if [[ "$resource" == "clusterrole" && "$name" == "k8sgpt-clusterrole" ]]; then
+  drift=false
+  [[ "$mode" != "rbac_drift" ]] || drift=true
+  emit_baseline_json "${MOCK_REPO_ROOT}/deploy/k8sgpt/clusterrole.yaml" "$drift"
+  printf '\n'
+  exit 0
+fi
+if [[ "$resource" == "clusterrolebinding" && "$name" == "k8sgpt-clusterrole-binding" ]]; then
+  emit_baseline_json "${MOCK_REPO_ROOT}/deploy/k8sgpt/clusterrolebinding.yaml"
+  printf '\n'
   exit 0
 fi
 if [[ "$resource" == "networkpolicy" ]]; then
-  printf '%s\n' '{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"name":"kube-aiops-egress-baseline"}}'
+  emit_baseline_json "${MOCK_REPO_ROOT}/deploy/k8sgpt/networkpolicy.yaml"
+  printf '\n'
   exit 0
 fi
 if [[ "$resource" == "secret" ]]; then
@@ -123,13 +156,19 @@ fi
 if [[ "$resource" == "deployment" && " $* " == *" -l app.kubernetes.io/name=k8sgpt-operator "* ]]; then
   if [[ "$mode" == "operator_partial" ]]; then
     printf '%s\n' '{"items":[{"metadata":{"name":"k8sgpt-operator","generation":2},"spec":{"replicas":2},"status":{"observedGeneration":2,"readyReplicas":1,"availableReplicas":1,"unavailableReplicas":1}}]}'
+  elif [[ "$mode" == "operator_zero" ]]; then
+    printf '%s\n' '{"items":[{"metadata":{"name":"k8sgpt-operator","generation":2},"spec":{"replicas":0},"status":{"observedGeneration":2,"readyReplicas":0,"availableReplicas":0,"unavailableReplicas":0}}]}'
   else
     printf '%s\n' '{"items":[{"metadata":{"name":"k8sgpt-operator","generation":2},"spec":{"replicas":1},"status":{"observedGeneration":2,"readyReplicas":1,"availableReplicas":1,"unavailableReplicas":0}}]}'
   fi
   exit 0
 fi
 if [[ "$resource" == "deployment" && "$name" == "k8sgpt-engine" ]]; then
-  printf '%s\n' '{"metadata":{"name":"k8sgpt-engine","generation":3},"spec":{"replicas":1},"status":{"observedGeneration":3,"readyReplicas":1,"availableReplicas":1,"unavailableReplicas":0}}'
+  if [[ "$mode" == "engine_zero" ]]; then
+    printf '%s\n' '{"metadata":{"name":"k8sgpt-engine","generation":3},"spec":{"replicas":0},"status":{"observedGeneration":3,"readyReplicas":0,"availableReplicas":0,"unavailableReplicas":0}}'
+  else
+    printf '%s\n' '{"metadata":{"name":"k8sgpt-engine","generation":3},"spec":{"replicas":1},"status":{"observedGeneration":3,"readyReplicas":1,"availableReplicas":1,"unavailableReplicas":0}}'
+  fi
   exit 0
 fi
 

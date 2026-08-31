@@ -12,6 +12,7 @@ RESULT_SINCE="${RESULT_SINCE:-}"
 EXPECTED_RESULT_KINDS="${EXPECTED_RESULT_KINDS:-}"
 REQUIRE_ANALYSIS_HEALTH="${REQUIRE_ANALYSIS_HEALTH:-false}"
 EXPECTED_ANALYSIS_INTERVAL="${EXPECTED_ANALYSIS_INTERVAL:-5m}"
+DEPLOY_DIR="${ROOT_DIR}/deploy/k8sgpt"
 
 PASS=0
 FAIL=0
@@ -136,6 +137,35 @@ check_can_i_no() {
   fi
 }
 
+check_runtime_manifest() {
+  local resource="$1"
+  local name="$2"
+  local namespace="$3"
+  local baseline="$4"
+  local validation_error_file validation_error validation_rc=0
+
+  query_object "$resource" "$name" "$namespace"
+  if [[ "$QUERY_STATE" == "absent" ]]; then
+    fail "安全关键资源不存在: ${resource}/${name}"
+    return 0
+  fi
+  if [[ "$QUERY_STATE" == "error" ]]; then
+    fail "安全关键资源查询失败: ${resource}/${name}: $(query_error)"
+    return 0
+  fi
+
+  validation_error_file="$(mktemp -t kube-aiops-runtime-manifest.XXXXXX)"
+  python3 "${ROOT_DIR}/scripts/verify_runtime_manifest.py" --baseline "$baseline" \
+    <<<"$QUERY_JSON" 2>"$validation_error_file" || validation_rc=$?
+  validation_error="$(<"$validation_error_file")"
+  rm -f -- "$validation_error_file"
+  if ((validation_rc == 0)); then
+    pass "安全关键资源与 Git 基线一致: ${resource}/${name}"
+  else
+    fail "安全关键资源发生漂移: ${resource}/${name}: ${validation_error:-exit=${validation_rc}}"
+  fi
+}
+
 log "Phase 1.1 验收开始"
 
 for value in "$STRICT_RESULTS" "$REQUIRE_ANALYSIS_HEALTH"; do
@@ -179,6 +209,21 @@ else
   fail "Helm Release 状态不是 deployed: ${HELM_STATUS:-unknown}"
 fi
 
+capture helm list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
+if ((CAPTURE_RC != 0)); then
+  fail "Helm Release 身份查询失败: $(query_error)"
+elif HELM_CHART="$(python3 -c '
+import json, sys
+items = [item for item in json.load(sys.stdin) if item.get("name") == sys.argv[1]]
+if len(items) != 1:
+    raise SystemExit(1)
+print(items[0].get("chart", ""))
+' "$RELEASE_NAME" <<<"$CAPTURE_OUTPUT")" && [[ "$HELM_CHART" == "k8sgpt-operator-0.2.29" ]]; then
+  pass "Helm Release Chart 身份正确: ${HELM_CHART}"
+else
+  fail "Helm Release Chart 身份非预期: ${HELM_CHART:-unknown}"
+fi
+
 query_object namespace "$NAMESPACE"
 if [[ "$QUERY_STATE" == "present" ]]; then
   pass "Namespace 存在: ${NAMESPACE}"
@@ -215,23 +260,10 @@ else
   fail "CRD 查询失败: mutations.core.k8sgpt.ai: $(query_error)"
 fi
 
-query_object serviceaccount "$SERVICE_ACCOUNT" "$NAMESPACE"
-if [[ "$QUERY_STATE" == "present" ]]; then
-  pass "ServiceAccount 存在: ${SERVICE_ACCOUNT}"
-elif [[ "$QUERY_STATE" == "absent" ]]; then
-  fail "ServiceAccount 不存在: ${SERVICE_ACCOUNT}"
-else
-  fail "ServiceAccount 查询失败: ${SERVICE_ACCOUNT}: $(query_error)"
-fi
-
-query_object networkpolicy kube-aiops-egress-baseline "$NAMESPACE"
-if [[ "$QUERY_STATE" == "present" ]]; then
-  pass "NetworkPolicy egress 基线存在"
-elif [[ "$QUERY_STATE" == "absent" ]]; then
-  fail "NetworkPolicy egress 基线不存在"
-else
-  fail "NetworkPolicy egress 基线查询失败: $(query_error)"
-fi
+check_runtime_manifest serviceaccount "$SERVICE_ACCOUNT" "$NAMESPACE" "${DEPLOY_DIR}/serviceaccount.yaml"
+check_runtime_manifest clusterrole k8sgpt-clusterrole "" "${DEPLOY_DIR}/clusterrole.yaml"
+check_runtime_manifest clusterrolebinding k8sgpt-clusterrole-binding "" "${DEPLOY_DIR}/clusterrolebinding.yaml"
+check_runtime_manifest networkpolicy kube-aiops-egress-baseline "$NAMESPACE" "${DEPLOY_DIR}/networkpolicy.yaml"
 
 check_can_i_yes get pods
 check_can_i_yes list deployments.apps
@@ -358,6 +390,8 @@ for item in items:
     meta, spec, status = item.get("metadata", {}), item.get("spec", {}), item.get("status", {})
     name = meta.get("name", "<unnamed>")
     desired = int(spec.get("replicas", 1))
+    if desired < 1:
+        problems.append(f"{name}:desired replicas must be >=1")
     if status.get("observedGeneration", 0) < meta.get("generation", 1):
         problems.append(f"{name}:observedGeneration stale")
     if status.get("readyReplicas", 0) != desired:
@@ -380,7 +414,8 @@ import json, sys
 obj = json.load(sys.stdin)
 meta, spec, status = obj.get("metadata", {}), obj.get("spec", {}), obj.get("status", {})
 desired = int(spec.get("replicas", 1))
-ok = (status.get("observedGeneration", 0) >= meta.get("generation", 1) and
+ok = (desired >= 1 and
+      status.get("observedGeneration", 0) >= meta.get("generation", 1) and
       status.get("readyReplicas", 0) == desired and
       status.get("availableReplicas", 0) == desired and
       status.get("unavailableReplicas", 0) == 0)

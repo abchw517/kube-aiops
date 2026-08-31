@@ -37,6 +37,17 @@
 heartbeat/fencing/CAS 以及回滚状态保留。Provider 功能 E2E 仍保持独立人工门禁，
 不能用占位 Token 替代。
 
+## 回归审查修复
+
+| 漏洞 | 修复与验收 |
+|---|---|
+| `replicas: 0` 被误判为 Ready | install、verify、status 均要求 Operator/Engine 期望副本数至少为 1 |
+| 同名外部 Release 可通过只读验收 | verify、status 同时校验 Helm Chart 精确身份 |
+| 安全资源只验存在性 | verify 对 ServiceAccount、ClusterRole/Binding、NetworkPolicy 执行运行时语义基线比对 |
+| status 混入其它实例 Result | Result 查询固定使用当前 K8sGPT 实例标签选择器 |
+
+对应负向测试覆盖零副本、外部 Chart 身份和运行时 RBAC 扩权漂移。
+
 ## Operator 版本选择
 
 `v0.2.28` 包含以下与本项目相关的改进：
