@@ -1,4 +1,4 @@
-name: Phase 1.1 CI
+name: kube-aiops CI
 
 on:
   push:
@@ -12,14 +12,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: phase-1-1-ci-${{ github.workflow }}-${{ github.ref }}
+  group: kube-aiops-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   preflight:
     name: Preflight / Lint / RBAC
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -32,6 +32,12 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
 
       - name: Install validation tools
         env:
@@ -70,6 +76,35 @@ jobs:
           set -Eeuo pipefail
           yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: {allowed-values: ["true", "false", "on"]}}}' \
             deploy .github/workflows
+
+      - name: Go backend checks
+        run: |
+          set -Eeuo pipefail
+          make api-fmt-check
+          go vet ./...
+          make api-test
+          make api-build
+
+      - name: Docker backend smoke test
+        run: |
+          set -Eeuo pipefail
+          image="kube-aiops-api:ci"
+          container="kube-aiops-api-ci"
+
+          docker build --pull --tag "${image}" .
+          docker run --detach --name "${container}" --publish 127.0.0.1:18080:8080 "${image}"
+          trap 'docker rm --force "${container}" >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/healthz >/tmp/healthz.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:18080/healthz
+          ready_code="$(curl --silent --output /tmp/readyz.json --write-out '%{http_code}' http://127.0.0.1:18080/readyz)"
+          test "${ready_code}" = "503"
 
       - name: Run project preflight
         run: |

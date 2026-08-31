@@ -1,12 +1,12 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider api-fmt-check api-test api-build api-run
 
 help:
-	@echo "kube-aiops Phase 1.1"
+	@echo "kube-aiops"
 	@echo
-	@echo "常用命令:"
-	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC 静态检查"
+	@echo "Phase 1.1 K8sGPT Engine:"
+	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC/Kubernetes Schema 静态检查"
 	@echo "  make bootstrap     创建固定 Namespace（无其它集群变更）"
 	@echo "  make bootstrap-secret 使用 OPENAI_TOKEN 创建 AI Secret"
 	@echo "  make install       安装/升级 K8sGPT Operator、应用 RBAC Hardening、检查 Secret 并部署 K8sGPT CR"
@@ -17,6 +17,12 @@ help:
 	@echo "  make results       查看 K8sGPT Result CR"
 	@echo "  make uninstall     卸载 Phase 1.1，默认保留 Secret、Namespace 和 CRD"
 	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
+	@echo
+	@echo "Phase 1.2 Portal Backend:"
+	@echo "  make api-fmt-check 检查 Go 代码格式"
+	@echo "  make api-test      执行 Go 单元测试"
+	@echo "  make api-build     编译 kube-aiops-api"
+	@echo "  make api-run       本地运行 kube-aiops-api"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
@@ -75,3 +81,15 @@ e2e:
 
 e2e-provider:
 	@bash ./tests/e2e-provider-kind.sh
+
+api-fmt-check:
+	@test -z "$$(gofmt -l cmd internal)" || { gofmt -d cmd internal; exit 1; }
+
+api-test:
+	@go test ./...
+
+api-build:
+	@go build ./cmd/api
+
+api-run:
+	@go run ./cmd/api

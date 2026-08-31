@@ -59,10 +59,11 @@ if command -v kubeconform >/dev/null 2>&1; then
   # 只校验真正提交给 Kubernetes API Server 的 Manifest。
   # Helm values 文件不是 Kubernetes 对象，不包含 apiVersion/kind，不能交给 kubeconform。
   mapfile -d '' manifest_files < <(
-    find deploy/k8sgpt \
+    find deploy \
       -type f \
       \( -name '*.yaml' -o -name '*.yml' \) \
-      ! -name 'values-production.yaml' \
+      ! -name 'values.yaml' \
+      ! -name 'values-*.yaml' \
       -print0
   )
 

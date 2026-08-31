@@ -1,0 +1,12 @@
+.git
+.github
+.gitignore
+README.md
+docs
+deploy
+tests
+*.md
+*.log
+.env
+.env.*
+secrets
