@@ -10,14 +10,16 @@
 - `GET /healthz`
 - `GET /readyz`
 - 最小 Dockerfile
+- 最小 Deployment / Service
 - 独立 `kube-aiops-api` ServiceAccount
-- 最小只读 ClusterRole / ClusterRoleBinding
+- Result-only 只读 ClusterRole / ClusterRoleBinding
 - Go 单元测试与 CI 编译检查
 - Kubernetes Manifest Schema / RBAC 静态门禁继续生效
 
 明确不包含：
 
 - Findings API
+- Namespace API
 - Pod/Deployment Resource API
 - Portal UI
 - OIDC / SSO
@@ -58,23 +60,25 @@
 
 ## RBAC
 
-Phase 1.2.1 遵循“只给当前代码实际需要的权限”原则。
+Phase 1.2.1 遵循“代码能力和权限同步增长”原则。
 
-允许：
+当前只允许：
 
 ```text
-core/namespaces
-  get/list/watch
-
 core.k8sgpt.ai/results
   get/list/watch
 ```
 
-禁止：
+明确禁止：
 
 ```text
-secrets
+namespaces
+pods
 pods/log
+secrets
+services
+deployments
+statefulsets
 create
 update
 patch
@@ -85,7 +89,7 @@ bind
 escalate
 ```
 
-Pod、Deployment、StatefulSet 等资源权限会等 Phase 1.2.2 对应 API 实现时再逐项增加。
+Namespace、Pod、Deployment 等权限会等 Phase 1.2.2 对应 API 真正实现时再逐项增加。
 
 ## 本地开发
 
@@ -115,30 +119,53 @@ KUBERNETES_CA_FILE
 
 本地没有 Kubernetes ServiceAccount 时，`/healthz` 仍可返回 200，`/readyz` 会返回 503。
 
-## Kubernetes RBAC 安装
+## Docker / Kind 本地运行
+
+```bash
+docker build -t kube-aiops-api:dev .
+kind load docker-image kube-aiops-api:dev --name <kind-cluster-name>
+```
+
+然后应用最小运行资源：
 
 ```bash
 kubectl apply -f deploy/api/namespace.yaml
 kubectl apply -f deploy/api/serviceaccount.yaml
 kubectl apply -f deploy/api/clusterrole.yaml
 kubectl apply -f deploy/api/clusterrolebinding.yaml
+kubectl apply -f deploy/api/deployment.yaml
+kubectl apply -f deploy/api/service.yaml
 ```
 
-安全验收：
+当前 Deployment 使用：
+
+```text
+kube-aiops-api:dev
+```
+
+只用于 Phase 1.2.1 本地/Kind 验证；正式镜像构建、签名、digest 固定和发布流水线后续独立推进。
+
+## RBAC 安全验收
 
 ```bash
 SA='system:serviceaccount:kube-aiops-system:kube-aiops-api'
 
 kubectl auth can-i list results.core.k8sgpt.ai --as="${SA}"
-kubectl auth can-i list namespaces --as="${SA}"
 
+kubectl auth can-i list namespaces --as="${SA}"
+kubectl auth can-i get pods --as="${SA}"
 kubectl auth can-i get secrets --as="${SA}"
 kubectl auth can-i get pods/log --as="${SA}"
 kubectl auth can-i patch deployments.apps --as="${SA}"
 kubectl auth can-i delete pods --as="${SA}"
 ```
 
-预期：前两项 `yes`，后四项 `no`。
+预期：
+
+```text
+list results.core.k8sgpt.ai = yes
+其它检查                    = no
+```
 
 ## Phase 1.2.1 验收标准
 
@@ -151,8 +178,9 @@ kubectl auth can-i delete pods --as="${SA}"
 | `/healthz` | 200 |
 | `/readyz` Kubernetes/Result API 正常 | 200 |
 | `/readyz` Kubernetes/Result API 异常 | 503 |
-| Namespace list | ALLOW |
 | Result get/list/watch | ALLOW |
+| Namespace | DENY |
+| Pod | DENY |
 | Secret | DENY |
 | Pod Logs | DENY |
 | Kubernetes write | DENY |
