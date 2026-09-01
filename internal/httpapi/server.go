@@ -6,9 +6,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 )
 
@@ -19,6 +21,9 @@ type Backend interface {
 	Clusters() []kubernetes.Cluster
 	ListNamespaces(context.Context) ([]kubernetes.Namespace, error)
 	GetResource(context.Context, string, string, string) (kubernetes.ResourceDetail, error)
+	ListFindings(context.Context, finding.Query) (finding.Page, error)
+	GetFinding(context.Context, string) (finding.Finding, error)
+	SummarizeFindings(context.Context, finding.Filter) (finding.Summary, error)
 }
 
 type Server struct {
@@ -40,6 +45,9 @@ func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration
 	mux.HandleFunc("GET /api/v1/clusters", server.clusters)
 	mux.HandleFunc("GET /api/v1/clusters/{cluster}/namespaces", server.namespaces)
 	mux.HandleFunc("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.resource)
+	mux.HandleFunc("GET /api/v1/findings", server.findings)
+	mux.HandleFunc("GET /api/v1/findings/summary", server.findingSummary)
+	mux.HandleFunc("GET /api/v1/findings/{id}", server.findingDetail)
 	return mux
 }
 
@@ -103,6 +111,97 @@ func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resource)
+}
+
+func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
+	filter, ok := parseFindingFilter(w, r)
+	if !ok {
+		return
+	}
+
+	limit := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_LIMIT", "limit must be an integer between 1 and 200")
+			return
+		}
+		limit = value
+	}
+
+	page, err := s.backend.ListFindings(r.Context(), finding.Query{
+		Filter:   filter,
+		Limit:    limit,
+		Continue: r.URL.Query().Get("continue"),
+	})
+	if err != nil {
+		s.writeFindingBackendError(w, err, "FINDING_LIST_FAILED", "unable to list findings")
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
+	filter, ok := parseFindingFilter(w, r)
+	if !ok {
+		return
+	}
+
+	summary, err := s.backend.SummarizeFindings(r.Context(), filter)
+	if err != nil {
+		s.writeFindingBackendError(w, err, "FINDING_SUMMARY_FAILED", "unable to summarize findings")
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
+	item, err := s.backend.GetFinding(r.Context(), r.PathValue("id"))
+	if err != nil {
+		var apiErr *kubernetes.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			writeError(w, http.StatusNotFound, "FINDING_NOT_FOUND", "finding not found")
+			return
+		}
+		s.logger.Warn("get finding failed", "error", err)
+		writeError(w, http.StatusBadGateway, "FINDING_READ_FAILED", "unable to read finding")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter, bool) {
+	query := r.URL.Query()
+	cluster := strings.TrimSpace(query.Get("cluster"))
+	if cluster == "" {
+		cluster = localClusterID
+	}
+	if cluster != localClusterID {
+		writeError(w, http.StatusNotFound, "CLUSTER_NOT_FOUND", "cluster not found")
+		return finding.Filter{}, false
+	}
+
+	return finding.Filter{
+		Cluster:   cluster,
+		Namespace: query.Get("namespace"),
+		Kind:      query.Get("kind"),
+		Severity:  query.Get("severity"),
+		Problem:   query.Get("problem"),
+	}, true
+}
+
+func (s *Server) writeFindingBackendError(w http.ResponseWriter, err error, code, message string) {
+	switch {
+	case errors.Is(err, finding.ErrInvalidLimit):
+		writeError(w, http.StatusBadRequest, "INVALID_LIMIT", "limit must be between 1 and 200")
+	case errors.Is(err, finding.ErrInvalidCursor):
+		writeError(w, http.StatusBadRequest, "INVALID_CONTINUE_TOKEN", "continue token is invalid")
+	case errors.Is(err, finding.ErrTooMany):
+		writeError(w, http.StatusServiceUnavailable, "FINDING_SET_TOO_LARGE", "finding set exceeds the safe scan limit")
+	default:
+		s.logger.Warn("finding backend request failed", "error", err)
+		writeError(w, http.StatusBadGateway, code, message)
+	}
 }
 
 func writeKubernetesError(w http.ResponseWriter, err error, code, message string) {
