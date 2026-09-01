@@ -100,9 +100,15 @@ spec:
           value: do-not-return-me
 EOF
 
-log "构建并加载 API 镜像"
+log "构建并导入 API 镜像到 Kind containerd"
 docker build --pull=false -t "$API_IMAGE" .
-kind load docker-image "$API_IMAGE" --name "$CLUSTER_NAME"
+# 避免依赖 `kind load docker-image` 对 Runner/containerd snapshotter 的探测逻辑；
+# 直接把 Docker image archive 导入当前单节点 Kind control-plane 的 k8s.io namespace。
+docker save "$API_IMAGE" | docker exec -i "${CLUSTER_NAME}-control-plane" \
+  ctr --namespace=k8s.io images import - >/dev/null
+
+docker exec "${CLUSTER_NAME}-control-plane" \
+  ctr --namespace=k8s.io images list name=="docker.io/library/${API_IMAGE}" >/dev/null
 
 kubectl apply -f deploy/api/deployment.yaml
 kubectl apply -f deploy/api/service.yaml
