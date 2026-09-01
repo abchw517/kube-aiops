@@ -1,4 +1,6 @@
 SHELL := /usr/bin/env bash
+BUILD_DIR ?= .build
+API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 
 .PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check
 
@@ -93,7 +95,8 @@ api-test:
 	@go test ./...
 
 api-build:
-	@go build ./cmd/api
+	@mkdir -p "$(BUILD_DIR)"
+	@go build -o "$(API_BINARY)" ./cmd/api
 
 api-run:
 	@go run ./cmd/api

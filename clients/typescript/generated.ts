@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// OpenAPI SHA256: 783df1f4c7c0d3fbbeff667af735c32296e640b017a903ba402d26ca35e68049
+// Contract source SHA-256 groups: 783df1f4 c7c0d3fb beff667a f735c322 96e640b0 17a903ba 402d26ca 35e68049
 
 export interface StatusResponse {
   "status": string;

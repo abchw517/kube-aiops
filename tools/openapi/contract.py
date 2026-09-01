@@ -349,11 +349,12 @@ def render_operations(spec: dict[str, Any]) -> tuple[list[str], list[str]]:
 
 def generate_typescript(spec: dict[str, Any]) -> str:
     digest = hashlib.sha256(SPEC_PATH.read_bytes()).hexdigest()
+    fingerprint = " ".join(digest[index:index + 8] for index in range(0, len(digest), 8))
     schema_lines = render_schemas(spec)
     param_lines, method_lines = render_operations(spec)
     lines = [
         "// Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.",
-        f"// OpenAPI SHA256: {digest}",
+        f"// Contract source SHA-256 groups: {fingerprint}",
         "",
         *schema_lines,
         *param_lines,

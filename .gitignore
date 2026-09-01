@@ -16,6 +16,9 @@ kubeconfig
 .DS_Store
 Thumbs.db
 
+# Build artifacts
+.build/
+
 # Temporary files
 *.tmp
 *.swp
