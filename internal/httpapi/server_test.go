@@ -156,7 +156,7 @@ func TestResourceNotFound(t *testing.T) {
 
 func TestFindingList(t *testing.T) {
 	backend := fakeBackend{findingPage: finding.Page{
-		Items: []finding.Finding{{ID: "finding-1", Cluster: "local", Severity: finding.SeverityWarning, Source: "k8sgpt"}},
+		Items:      []finding.Finding{{ID: "finding-1", Cluster: "local", Severity: finding.SeverityWarning, Source: "k8sgpt"}},
 		Pagination: finding.Pagination{Limit: 50},
 	}}
 	recorder := httptest.NewRecorder()
@@ -187,9 +187,9 @@ func TestFindingDetailNotFound(t *testing.T) {
 
 func TestFindingSummary(t *testing.T) {
 	backend := fakeBackend{findingSummary: finding.Summary{
-		Total: 2,
-		BySeverity: map[string]int{finding.SeverityCritical: 0, finding.SeverityWarning: 2, finding.SeverityInfo: 0},
-		ByKind: map[string]int{"Pod": 1, "Deployment": 1},
+		Total:       2,
+		BySeverity:  map[string]int{finding.SeverityCritical: 0, finding.SeverityWarning: 2, finding.SeverityInfo: 0},
+		ByKind:      map[string]int{"Pod": 1, "Deployment": 1},
 		ByNamespace: map[string]int{"dev": 2},
 	}}
 	recorder := httptest.NewRecorder()
