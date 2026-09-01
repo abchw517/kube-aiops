@@ -13,13 +13,17 @@ import (
 	"strings"
 )
 
-const localClusterID = "local"
+const (
+	localClusterID             = "local"
+	maxKubernetesResponseBytes = 4 << 20
+)
 
 type Config struct {
-	APIURL    string
-	TokenFile string
-	CAFile    string
-	K8sGPTNS  string
+	APIURL     string
+	TokenFile  string
+	CAFile     string
+	K8sGPTNS   string
+	K8sGPTName string
 }
 
 type Client struct {
@@ -193,7 +197,7 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		return &APIError{StatusCode: resp.StatusCode}
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(target); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxKubernetesResponseBytes)).Decode(target); err != nil {
 		return fmt.Errorf("decode Kubernetes response: %w", err)
 	}
 	return nil

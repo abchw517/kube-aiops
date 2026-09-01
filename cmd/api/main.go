@@ -25,10 +25,11 @@ func main() {
 	}
 
 	backend := kubernetes.NewClient(kubernetes.Config{
-		APIURL:    cfg.KubernetesAPIURL,
-		TokenFile: cfg.KubernetesTokenFile,
-		CAFile:    cfg.KubernetesCAFile,
-		K8sGPTNS:  cfg.K8sGPTNamespace,
+		APIURL:     cfg.KubernetesAPIURL,
+		TokenFile:  cfg.KubernetesTokenFile,
+		CAFile:     cfg.KubernetesCAFile,
+		K8sGPTNS:   cfg.K8sGPTNamespace,
+		K8sGPTName: cfg.K8sGPTName,
 	})
 
 	server := &http.Server{

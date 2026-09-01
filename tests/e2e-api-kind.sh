@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for cmd in kind kubectl docker curl grep; do
+for cmd in kind kubectl docker curl grep python3; do
   command -v "$cmd" >/dev/null 2>&1 || fail "缺少命令: $cmd"
 done
 
@@ -50,7 +50,7 @@ spec:
 EOF
 kubectl create namespace k8sgpt-operator-system
 
-log "应用 Phase 1.2.2 API RBAC"
+log "应用 Portal Backend API RBAC"
 kubectl apply -f deploy/api/namespace.yaml
 kubectl apply -f deploy/api/serviceaccount.yaml
 kubectl apply -f deploy/api/clusterrole.yaml
@@ -70,6 +70,7 @@ expect_can_i() {
 
 log "验证精确 RBAC"
 expect_can_i yes list results.core.k8sgpt.ai
+expect_can_i yes get results.core.k8sgpt.ai
 expect_can_i yes list namespaces
 expect_can_i yes get pods
 expect_can_i yes get deployments.apps
@@ -114,6 +115,70 @@ kubectl apply -f deploy/api/deployment.yaml
 kubectl apply -f deploy/api/service.yaml
 kubectl rollout status deployment/kube-aiops-api -n kube-aiops-system --timeout=120s
 
+log "创建 Phase 1.2.3 Finding 测试 Result"
+kubectl apply -f - <<'EOF'
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: Result
+metadata:
+  name: pod-finding
+  namespace: k8sgpt-operator-system
+  labels:
+    k8sgpts.k8sgpt.ai/name: k8sgpt-engine
+    k8sgpts.k8sgpt.ai/namespace: k8sgpt-operator-system
+spec:
+  backend: openai
+  kind: Pod
+  name: api-e2e/demo-pod
+  error:
+    - text: CrashLoopBackOff
+      sensitive:
+        - unmasked: must-not-leak-value
+          masked: redacted
+  details: Pod repeatedly fails during startup.
+  targetRef:
+    apiVersion: v1
+    kind: Pod
+    namespace: api-e2e
+    name: demo-pod
+---
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: Result
+metadata:
+  name: deployment-finding
+  namespace: k8sgpt-operator-system
+  labels:
+    k8sgpts.k8sgpt.ai/name: k8sgpt-engine
+    k8sgpts.k8sgpt.ai/namespace: k8sgpt-operator-system
+spec:
+  backend: openai
+  kind: Deployment
+  name: kube-aiops-system/kube-aiops-api
+  error:
+    - text: AvailableReplicasMismatch
+  details: Deployment available replicas do not match the expected state.
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    namespace: kube-aiops-system
+    name: kube-aiops-api
+---
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: Result
+metadata:
+  name: foreign-finding
+  namespace: k8sgpt-operator-system
+  labels:
+    k8sgpts.k8sgpt.ai/name: foreign-engine
+    k8sgpts.k8sgpt.ai/namespace: k8sgpt-operator-system
+spec:
+  backend: openai
+  kind: Pod
+  name: api-e2e/foreign-pod
+  error:
+    - text: MustNeverAppear
+  details: Foreign K8sGPT instance result.
+EOF
+
 log "启动本地端口转发"
 kubectl port-forward -n kube-aiops-system service/kube-aiops-api 18080:8080 >/tmp/kube-aiops-api-port-forward.log 2>&1 &
 PORT_FORWARD_PID=$!
@@ -150,7 +215,129 @@ if grep -Eq '"spec"|"annotations"|"managedFields"' <<<"$deployment_json"; then
   fail "Deployment API 泄露了被禁止的原始对象字段"
 fi
 
-log "验证 API 白名单与错误映射"
+log "验证 Finding List、实例隔离和敏感字段裁剪"
+findings="$(curl --fail --silent 'http://127.0.0.1:18080/api/v1/findings?cluster=local')"
+FINDINGS_JSON="$findings" python3 - <<'PY'
+import json, os, sys
+payload = json.loads(os.environ['FINDINGS_JSON'])
+items = payload.get('items', [])
+ids = {item.get('id') for item in items}
+if ids != {'pod-finding', 'deployment-finding'}:
+    raise SystemExit(f'unexpected finding ids: {ids}')
+raw = os.environ['FINDINGS_JSON']
+for forbidden in ('foreign-finding', 'MustNeverAppear', 'must-not-leak-value', 'sensitive', 'unmasked', '"spec"', '"labels"', '"status"'):
+    if forbidden in raw:
+        raise SystemExit(f'forbidden content leaked: {forbidden}')
+if any(item.get('severity') != 'warning' for item in items):
+    raise SystemExit('Phase 1.2.3 severity baseline must be warning')
+PY
+
+log "验证 Finding Filter 一致性"
+for query in \
+  'namespace=api-e2e' \
+  'kind=Deployment' \
+  'problem=crashloop'; do
+  filtered="$(curl --fail --silent "http://127.0.0.1:18080/api/v1/findings?${query}")"
+  FILTERED_JSON="$filtered" python3 - <<'PY'
+import json, os
+items = json.loads(os.environ['FILTERED_JSON']).get('items', [])
+if len(items) != 1:
+    raise SystemExit(f'expected one filtered finding, got {len(items)}')
+PY
+done
+
+warning_filtered="$(curl --fail --silent 'http://127.0.0.1:18080/api/v1/findings?severity=warning')"
+WARNING_JSON="$warning_filtered" python3 - <<'PY'
+import json, os
+if len(json.loads(os.environ['WARNING_JSON']).get('items', [])) != 2:
+    raise SystemExit('warning filter must return two findings')
+PY
+
+critical_filtered="$(curl --fail --silent 'http://127.0.0.1:18080/api/v1/findings?severity=critical')"
+CRITICAL_JSON="$critical_filtered" python3 - <<'PY'
+import json, os
+if json.loads(os.environ['CRITICAL_JSON']).get('items', []) != []:
+    raise SystemExit('critical filter must be empty in Phase 1.2.3 baseline')
+PY
+
+log "验证 Finding keyset continue 分页"
+page1="$(curl --fail --silent 'http://127.0.0.1:18080/api/v1/findings?limit=1')"
+read -r first_id continue_token < <(PAGE_JSON="$page1" python3 - <<'PY'
+import json, os
+p = json.loads(os.environ['PAGE_JSON'])
+items = p.get('items', [])
+if len(items) != 1:
+    raise SystemExit('first page must contain one finding')
+token = p.get('pagination', {}).get('continue', '')
+if not token:
+    raise SystemExit('first page must contain continue token')
+print(items[0]['id'], token)
+PY
+)
+page2="$(curl --fail --silent "http://127.0.0.1:18080/api/v1/findings?limit=1&continue=${continue_token}")"
+SECOND_JSON="$page2" FIRST_ID="$first_id" python3 - <<'PY'
+import json, os
+items = json.loads(os.environ['SECOND_JSON']).get('items', [])
+if len(items) != 1:
+    raise SystemExit('second page must contain one finding')
+if items[0].get('id') == os.environ['FIRST_ID']:
+    raise SystemExit('pagination returned duplicate finding')
+PY
+
+log "验证 Finding Detail 与 foreign Result 隔离"
+detail="$(curl --fail --silent http://127.0.0.1:18080/api/v1/findings/pod-finding)"
+grep -q '"id":"pod-finding"' <<<"$detail" || fail "Finding Detail 未返回 pod-finding"
+if grep -Eq 'must-not-leak-value|sensitive|unmasked|"spec"|"labels"' <<<"$detail"; then
+  fail "Finding Detail 泄露了 Result 原始或敏感字段"
+fi
+
+status="$(curl --silent --output /tmp/kube-aiops-foreign-finding.json --write-out '%{http_code}' \
+  http://127.0.0.1:18080/api/v1/findings/foreign-finding)"
+[[ "$status" == "404" ]] || fail "foreign Finding Detail 预期 HTTP 404，实际 ${status}"
+grep -q 'FINDING_NOT_FOUND' /tmp/kube-aiops-foreign-finding.json || fail "缺少 FINDING_NOT_FOUND"
+
+log "验证 Finding Summary"
+summary="$(curl --fail --silent http://127.0.0.1:18080/api/v1/findings/summary)"
+SUMMARY_JSON="$summary" python3 - <<'PY'
+import json, os
+s = json.loads(os.environ['SUMMARY_JSON'])
+if s.get('total') != 2:
+    raise SystemExit(f"unexpected total: {s.get('total')}")
+if s.get('bySeverity', {}).get('warning') != 2:
+    raise SystemExit('warning summary must be 2')
+if s.get('bySeverity', {}).get('critical') != 0 or s.get('bySeverity', {}).get('info') != 0:
+    raise SystemExit('critical/info summary must be zero')
+if s.get('byKind', {}).get('Pod') != 1 or s.get('byKind', {}).get('Deployment') != 1:
+    raise SystemExit(f"unexpected byKind: {s.get('byKind')}")
+if s.get('byNamespace', {}).get('api-e2e') != 1 or s.get('byNamespace', {}).get('kube-aiops-system') != 1:
+    raise SystemExit(f"unexpected byNamespace: {s.get('byNamespace')}")
+PY
+
+filtered_summary="$(curl --fail --silent 'http://127.0.0.1:18080/api/v1/findings/summary?namespace=api-e2e')"
+FILTERED_SUMMARY_JSON="$filtered_summary" python3 - <<'PY'
+import json, os
+s = json.loads(os.environ['FILTERED_SUMMARY_JSON'])
+if s.get('total') != 1 or s.get('byKind', {}).get('Pod') != 1:
+    raise SystemExit(f'filtered summary mismatch: {s}')
+PY
+
+log "验证 Finding 参数错误"
+status="$(curl --silent --output /tmp/kube-aiops-finding-limit.json --write-out '%{http_code}' \
+  'http://127.0.0.1:18080/api/v1/findings?limit=201')"
+[[ "$status" == "400" ]] || fail "非法 limit 预期 HTTP 400，实际 ${status}"
+grep -q 'INVALID_LIMIT' /tmp/kube-aiops-finding-limit.json || fail "缺少 INVALID_LIMIT"
+
+status="$(curl --silent --output /tmp/kube-aiops-finding-cursor.json --write-out '%{http_code}' \
+  'http://127.0.0.1:18080/api/v1/findings?continue=not-a-valid-cursor')"
+[[ "$status" == "400" ]] || fail "非法 continue 预期 HTTP 400，实际 ${status}"
+grep -q 'INVALID_CONTINUE_TOKEN' /tmp/kube-aiops-finding-cursor.json || fail "缺少 INVALID_CONTINUE_TOKEN"
+
+status="$(curl --silent --output /tmp/kube-aiops-finding-cluster.json --write-out '%{http_code}' \
+  'http://127.0.0.1:18080/api/v1/findings?cluster=other')"
+[[ "$status" == "404" ]] || fail "未知 Finding cluster 预期 HTTP 404，实际 ${status}"
+grep -q 'CLUSTER_NOT_FOUND' /tmp/kube-aiops-finding-cluster.json || fail "缺少 CLUSTER_NOT_FOUND"
+
+log "验证 Resource API 白名单与错误映射"
 status="$(curl --silent --output /tmp/kube-aiops-unsupported.json --write-out '%{http_code}' \
   http://127.0.0.1:18080/api/v1/clusters/local/resources/secrets/api-e2e/demo)"
 [[ "$status" == "400" ]] || fail "Secret kind 预期 HTTP 400，实际 ${status}"
@@ -166,4 +353,4 @@ status="$(curl --silent --output /tmp/kube-aiops-cluster.json --write-out '%{htt
 [[ "$status" == "404" ]] || fail "未知 Cluster 预期 HTTP 404，实际 ${status}"
 grep -q 'CLUSTER_NOT_FOUND' /tmp/kube-aiops-cluster.json || fail "缺少 CLUSTER_NOT_FOUND"
 
-log "Phase 1.2.2 Kubernetes API E2E 通过"
+log "Phase 1.2.3 Finding Domain Kubernetes E2E 通过"
