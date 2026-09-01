@@ -125,7 +125,7 @@ clients/typescript/generated.ts
 
 - 只从 `api/openapi.yaml` 生成；
 - 生成过程确定性；
-- 文件头记录 OpenAPI SHA256；
+- 文件头记录完整 OpenAPI SHA-256，但使用固定 8 字符分组展示，避免连续高熵字符串被 Secret Scanner 误识别为凭据；
 - 生成 DTO 类型；
 - 生成 path/query 参数类型；
 - 生成只读 `KubeAIOpsApiClient`；
@@ -133,6 +133,8 @@ clients/typescript/generated.ts
 - 所有 query 参数通过 `URLSearchParams` 构造；
 - 非 2xx 响应统一抛出 `ApiError`；
 - 生成文件禁止人工修改。
+
+分组只改变展示形式，不改变 SHA-256 的 64 个十六进制字符，也不降低生成物 drift 校验强度。
 
 本阶段不创建 React hook、状态管理、UI 组件或业务页面。
 
@@ -167,6 +169,14 @@ make api-contract-check
 - `api-client-generate`：重新生成 TypeScript Client；
 - `api-client-drift-check`：验证生成物未漂移；
 - `api-contract-check`：Phase 1.2.4 完整 Contract Gate。
+
+同时固定 Go Backend 构建输出：
+
+```text
+.build/kube-aiops-api
+```
+
+原因是 Phase 1.2.4 新增顶层 `api/` 目录后，`go build ./cmd/api` 的默认输出名 `api` 会与目录冲突。显式 `-o` 到 `.build/` 可以消除目录/二进制命名冲突，并把构建产物统一隔离在 Git 忽略目录中。
 
 ## 9. CI 门禁
 
