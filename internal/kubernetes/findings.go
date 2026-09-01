@@ -37,7 +37,13 @@ func (c *Client) ListFindings(ctx context.Context, query finding.Query) (finding
 	if end > len(items) {
 		end = len(items)
 	}
-	pageItems := append([]finding.Finding(nil), items[start:end]...)
+
+	// Always allocate the collection, including the zero-length case, so the
+	// public JSON contract is stable (`items: []`) instead of switching to
+	// `items: null` when a filter has no matches.
+	pageItems := make([]finding.Finding, end-start)
+	copy(pageItems, items[start:end])
+
 	next := ""
 	if end < len(items) && len(pageItems) > 0 {
 		next = finding.EncodeCursor(pageItems[len(pageItems)-1])
