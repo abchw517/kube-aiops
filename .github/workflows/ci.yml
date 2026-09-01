@@ -48,8 +48,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
           python -m pip install --disable-pip-version-check --no-cache-dir \
-            pyyaml==6.0.2 \
-            yamllint==1.35.1
+            yamllint==1.35.1 \
+            -r tools/openapi/requirements.txt
 
           archive="kubeconform-linux-amd64.tar.gz"
           url="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${archive}"
@@ -75,7 +75,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: {allowed-values: ["true", "false", "on"]}}}' \
-            deploy .github/workflows
+            deploy api .github/workflows
+
+      - name: API contract gate
+        run: |
+          set -Eeuo pipefail
+          make api-contract-check
 
       - name: Go backend checks
         run: |
@@ -156,7 +161,7 @@ jobs:
           KIND_NODE_IMAGE: kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
         run: bash ./tests/e2e-kind.sh
 
-      - name: Run Phase 1.2.2 readonly API E2E
+      - name: Run Phase 1.2 readonly API E2E
         env:
           KIND_NODE_IMAGE: kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
         run: bash ./tests/e2e-api-kind.sh

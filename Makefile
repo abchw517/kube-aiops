@@ -1,6 +1,8 @@
 SHELL := /usr/bin/env bash
+BUILD_DIR ?= .build
+API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider api-fmt-check api-test api-build api-run
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check
 
 help:
 	@echo "kube-aiops"
@@ -19,10 +21,14 @@ help:
 	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
 	@echo
 	@echo "Phase 1.2 Portal Backend:"
-	@echo "  make api-fmt-check 检查 Go 代码格式"
-	@echo "  make api-test      执行 Go 单元测试"
-	@echo "  make api-build     编译 kube-aiops-api"
-	@echo "  make api-run       本地运行 kube-aiops-api"
+	@echo "  make api-fmt-check         检查 Go 代码格式"
+	@echo "  make api-test              执行 Go 单元测试"
+	@echo "  make api-build             编译 kube-aiops-api"
+	@echo "  make api-run               本地运行 kube-aiops-api"
+	@echo "  make api-contract-validate 校验 OpenAPI、路由、Go DTO 和敏感字段边界"
+	@echo "  make api-client-generate   从 OpenAPI 生成 TypeScript Client"
+	@echo "  make api-client-drift-check 检查 TypeScript 生成物是否漂移"
+	@echo "  make api-contract-check    执行完整 Phase 1.2.4 Contract Gate"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
@@ -89,7 +95,20 @@ api-test:
 	@go test ./...
 
 api-build:
-	@go build ./cmd/api
+	@mkdir -p "$(BUILD_DIR)"
+	@go build -o "$(API_BINARY)" ./cmd/api
 
 api-run:
 	@go run ./cmd/api
+
+api-contract-validate:
+	@python tools/openapi/contract.py validate
+
+api-client-generate:
+	@python tools/openapi/contract.py generate --output clients/typescript/generated.ts
+
+api-client-drift-check:
+	@python tools/openapi/contract.py drift
+
+api-contract-check:
+	@python tools/openapi/contract.py check
