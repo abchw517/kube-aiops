@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	localClusterID              = "local"
+	localClusterID             = "local"
 	maxKubernetesResponseBytes = 4 << 20
 )
 
