@@ -26,7 +26,7 @@ done
 cd "$ROOT_DIR"
 kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" --wait 120s
 
-log "安装最小 Result CRD"
+log "安装最小 Result CRD 与 readiness 目标 Namespace"
 kubectl apply -f - <<'EOF'
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -48,6 +48,7 @@ spec:
           type: object
           x-kubernetes-preserve-unknown-fields: true
 EOF
+kubectl create namespace k8sgpt-operator-system
 
 log "应用 Phase 1.2.2 API RBAC"
 kubectl apply -f deploy/api/namespace.yaml
