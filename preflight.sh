@@ -95,10 +95,11 @@ log "6/8 RBAC 静态安全检查"
 python3 scripts/rbac_lint.py
 
 log "7/8 Python 语法检查"
-python3 -m py_compile scripts/*.py
+python3 -m py_compile scripts/*.py tests/*.py
 
 log "8/8 安全控制回归测试"
 python3 tests/security-controls-test.py
+python3 tests/api-rbac-test.py
 bash tests/make-security-test.sh
 
 log "全部检查通过"

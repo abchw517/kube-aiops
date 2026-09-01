@@ -24,7 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	readiness := kubernetes.NewReadinessChecker(kubernetes.ReadinessConfig{
+	backend := kubernetes.NewClient(kubernetes.Config{
 		APIURL:    cfg.KubernetesAPIURL,
 		TokenFile: cfg.KubernetesTokenFile,
 		CAFile:    cfg.KubernetesCAFile,
@@ -33,7 +33,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewHandler(logger, readiness, cfg.ReadyTimeout),
+		Handler:           httpapi.NewHandler(logger, backend, cfg.ReadyTimeout),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
