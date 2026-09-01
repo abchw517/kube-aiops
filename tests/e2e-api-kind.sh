@@ -75,7 +75,8 @@ expect_can_i yes get pods
 expect_can_i yes get deployments.apps
 expect_can_i no list pods
 expect_can_i no get secrets
-expect_can_i no get pods/log
+# pods/log 必须用 --subresource=log；`pods/log` 位置参数会被 kubectl 当作 TYPE/NAME。
+expect_can_i no get pods --subresource=log
 expect_can_i no get statefulsets.apps
 expect_can_i no patch deployments.apps
 expect_can_i no delete pods
