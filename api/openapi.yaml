@@ -1,0 +1,445 @@
+openapi: 3.1.0
+info:
+  title: kube-aiops Portal Backend API
+  version: 1.2.4
+  description: Stable read-only API contract for the Phase 1.2 Portal Backend.
+servers:
+  - url: http://localhost:8080
+security: []
+tags:
+  - name: Health
+  - name: Kubernetes
+  - name: Findings
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness endpoint
+      responses:
+        '200':
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+  /readyz:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Backend readiness endpoint
+      responses:
+        '200':
+          description: Backend is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '503':
+          description: Backend is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+  /api/v1/clusters:
+    get:
+      tags: [Kubernetes]
+      operationId: listClusters
+      summary: List configured clusters
+      responses:
+        '200':
+          description: Cluster list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterList'
+  /api/v1/clusters/{cluster}/namespaces:
+    get:
+      tags: [Kubernetes]
+      operationId: listNamespaces
+      summary: List namespaces for a cluster
+      parameters:
+        - $ref: '#/components/parameters/ClusterPath'
+      responses:
+        '200':
+          description: Namespace list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NamespaceList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}:
+    get:
+      tags: [Kubernetes]
+      operationId: getResource
+      summary: Read a safe projection of a supported Kubernetes resource
+      parameters:
+        - $ref: '#/components/parameters/ClusterPath'
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [pod, pods, deployment, deployments]
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Resource projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  /api/v1/findings:
+    get:
+      tags: [Findings]
+      operationId: listFindings
+      summary: List normalized K8sGPT findings
+      parameters:
+        - $ref: '#/components/parameters/ClusterQuery'
+        - $ref: '#/components/parameters/NamespaceQuery'
+        - $ref: '#/components/parameters/KindQuery'
+        - $ref: '#/components/parameters/SeverityQuery'
+        - $ref: '#/components/parameters/ProblemQuery'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: continue
+          in: query
+          required: false
+          description: Opaque keyset pagination cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: "Finding page. Empty results are represented as items: []."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/findings/summary:
+    get:
+      tags: [Findings]
+      operationId: summarizeFindings
+      summary: Summarize normalized K8sGPT findings
+      parameters:
+        - $ref: '#/components/parameters/ClusterQuery'
+        - $ref: '#/components/parameters/NamespaceQuery'
+        - $ref: '#/components/parameters/KindQuery'
+        - $ref: '#/components/parameters/SeverityQuery'
+        - $ref: '#/components/parameters/ProblemQuery'
+      responses:
+        '200':
+          description: Finding summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/findings/{id}:
+    get:
+      tags: [Findings]
+      operationId: getFinding
+      summary: Read one normalized K8sGPT finding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Finding detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+components:
+  parameters:
+    ClusterPath:
+      name: cluster
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [local]
+    ClusterQuery:
+      name: cluster
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [local]
+        default: local
+    NamespaceQuery:
+      name: namespace
+      in: query
+      required: false
+      schema:
+        type: string
+    KindQuery:
+      name: kind
+      in: query
+      required: false
+      schema:
+        type: string
+    SeverityQuery:
+      name: severity
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/Severity'
+    ProblemQuery:
+      name: problem
+      in: query
+      required: false
+      description: Case-insensitive substring filter.
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: The request is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The requested cluster, resource, or finding does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: A safe upstream Kubernetes API failure response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: The backend is temporarily unavailable or the safe scan limit was exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    StatusResponse:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+    Cluster:
+      type: object
+      additionalProperties: false
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+    ClusterList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cluster'
+    Namespace:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+    NamespaceList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Namespace'
+    ResourceStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        phase:
+          type: string
+        replicas:
+          type: integer
+          format: int64
+        readyReplicas:
+          type: integer
+          format: int64
+        availableReplicas:
+          type: integer
+          format: int64
+    ResourceDetail:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, namespace, name, status]
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/ResourceStatus'
+    Severity:
+      type: string
+      enum: [critical, warning, info]
+    ResourceRef:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+    Finding:
+      type: object
+      additionalProperties: false
+      required: [id, cluster, severity, resource, problem, source]
+      properties:
+        id:
+          type: string
+        cluster:
+          type: string
+          enum: [local]
+        namespace:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        problem:
+          type: string
+        details:
+          type: string
+        source:
+          type: string
+          enum: [k8sgpt]
+        createdAt:
+          type: string
+          format: date-time
+    Pagination:
+      type: object
+      additionalProperties: false
+      required: [limit]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+        continue:
+          type: string
+    FindingPage:
+      type: object
+      additionalProperties: false
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    FindingSummary:
+      type: object
+      additionalProperties: false
+      required: [total, bySeverity, byKind, byNamespace]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        bySeverity:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        byKind:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        byNamespace:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
