@@ -41,6 +41,8 @@ spec:
               value: "3s"
             - name: K8SGPT_NAMESPACE
               value: k8sgpt-operator-system
+            - name: K8SGPT_NAME
+              value: k8sgpt-engine
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
