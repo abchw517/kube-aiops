@@ -60,8 +60,11 @@ expect_can_i() {
   local expected="$1"
   shift
   local actual
-  actual="$(kubectl auth can-i "$@" --as="$SA")"
-  [[ "$actual" == "$expected" ]] || fail "kubectl auth can-i $* 预期 ${expected}，实际 ${actual}"
+
+  # `kubectl auth can-i` 在回答 `no` 时会返回非零退出码。这里的 DENY 是
+  # 安全验收的预期结果，不能被全局 `set -e` 当成脚本异常提前终止。
+  actual="$(kubectl auth can-i "$@" --as="$SA" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]] || fail "kubectl auth can-i $* 预期 ${expected}，实际 ${actual:-<empty>}"
 }
 
 log "验证精确 RBAC"
