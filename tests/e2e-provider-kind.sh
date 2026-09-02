@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-kube-aiops-provider-e2e}"
-readonly NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=config/platform-versions.env
+source "${ROOT_DIR}/config/platform-versions.env"
+
+readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-kube-aiops-provider-e2e}"
+readonly NODE_IMAGE="${KIND_NODE_IMAGE}"
 FUNCTIONAL_TIMEOUT_SECONDS="${FUNCTIONAL_TIMEOUT_SECONDS:-900}"
 VERIFY_LOG="$(mktemp -t kube-aiops-provider-verify.XXXXXX)"
 
