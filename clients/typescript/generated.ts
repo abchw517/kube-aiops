@@ -1,8 +1,15 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 783df1f4 c7c0d3fb beff667a f735c322 96e640b0 17a903ba 402d26ca 35e68049
+// Contract source SHA-256 groups: 7035d267 2ec8c7d6 6a2dd072 ebac173a 4e4ad657 5360d55f 1443e83d fec2902e
 
 export interface StatusResponse {
   "status": string;
+}
+
+export interface Principal {
+  "subject": string;
+  "provider": string;
+  "displayName"?: string;
+  "groups"?: Array<string>;
 }
 
 export interface Cluster {
