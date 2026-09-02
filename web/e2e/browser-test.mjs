@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,7 +67,13 @@ try {
   console.log("Phase 1.3 web browser E2E: PASS");
 } finally {
   chrome.kill("SIGTERM");
-  await rm(userDataDir, { recursive: true, force: true });
+  if (chrome.exitCode === null) await once(chrome, "exit");
+  await rm(userDataDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 async function waitForPage(debugPort) {
