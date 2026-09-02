@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly CLUSTER_NAME="${API_KIND_CLUSTER_NAME:-kube-aiops-api-e2e}"
-readonly NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256}"
-readonly API_IMAGE="kube-aiops-api:dev"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=config/platform-versions.env
+source "${ROOT_DIR}/config/platform-versions.env"
+
+readonly CLUSTER_NAME="${API_KIND_CLUSTER_NAME:-kube-aiops-api-e2e}"
+readonly NODE_IMAGE="${KIND_NODE_IMAGE}"
+readonly API_IMAGE="kube-aiops-api:dev"
 PORT_FORWARD_PID=""
 
 log() { printf '[api-e2e] %s\n' "$*"; }
