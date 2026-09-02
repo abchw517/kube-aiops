@@ -10,4 +10,5 @@ function resolveApiBaseUrl(): string {
 
 export const apiClient = new KubeAIOpsApiClient({
   baseUrl: resolveApiBaseUrl(),
+  fetch: globalThis.fetch.bind(globalThis),
 });
