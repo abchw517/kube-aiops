@@ -1,5 +1,21 @@
 # kube-aiops Kubernetes v1.36 Platform Baseline
 
+## 状态
+
+**Active**
+
+激活证据：
+
+- Upgrade PR: `#14`；
+- Merge commit: `f7e785b6f1d06c9cde2a49407ce49fc03381f941`；
+- Post-merge `main` CI: run `#49` (`33587446292`)；
+- `Secret Scan`: PASS；
+- `Preflight / Lint / RBAC`: PASS；
+- `Kubernetes v1.36 Kind E2E`: PASS；
+- `main-protection` Ruleset 已将 Required Check 从 `Kubernetes v1.34 Kind E2E` 原位替换为 `Kubernetes v1.36 Kind E2E`，并继续启用 strict required status checks policy。
+
+本状态表示 Kubernetes v1.36.4 已成为 kube-aiops 当前受支持的平台验证基线，后续 Phase 1.3 Web Portal 必须从该绿色 `main` 基线继续开发。
+
 ## 1. 目标
 
 本基线在 Phase 1.2 Portal Backend 完成后、Phase 1.3 Web Portal 开始前执行一次平台升级，把 kube-aiops 的受支持 Kubernetes 验证环境从 v1.34 提升到 v1.36。
@@ -190,7 +206,7 @@ internal/kubernetes/client.go API surface
 
 `docx/phase-1.2-completion.md` 中 run #45 的 Kubernetes v1.34 E2E 是 Phase 1.2 当时真实发生的历史验收证据，不应改写为 v1.36。
 
-本升级完成并合并后，文档会增加“当前平台基线已由 v1.34 supersede 为 v1.36.4”的说明，但保留原始 run #45 记录，确保审计可追溯。
+当前平台基线已经由 v1.34 supersede 为 v1.36.4，但原始 run #45 记录继续保留，确保审计可追溯。v1.36 激活证据记录在 `docx/kubernetes-v1.36-activation.md`。
 
 ## 9. 验收门禁
 
@@ -216,4 +232,4 @@ Kubernetes v1.36 platform baseline = Active
 进入 Phase 1.3 Web Portal
 ```
 
-在最后一项 `main` E2E 全绿之前，不把 v1.36 基线标记为 Active。
+上述门禁已全部满足，Kubernetes v1.36 platform baseline 当前状态为 **Active**。
