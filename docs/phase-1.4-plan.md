@@ -2,10 +2,17 @@
 
 ## Status
 
-**Entry state: Active**
+**Phase 1.4 active — current stage: Phase 1.4.2 Authorization.**
 
 Phase 1.3 is formally completed on the green `main@0248de41466d3e4746f1f6e3b1035a95c63a7940` baseline.
-Phase 1.4.1 Identity Contract is implemented on `phase-1.4-authn-authz-audit-sanitizer` and is pending Required Check acceptance.
+
+Phase 1.4.1 Identity Contract is formally completed on `main@7b13b250f035657a1edf24e9590a6560488186bf` after PR #18 was squash-merged and post-merge `main` CI run #63 passed all Required Checks:
+
+- `Preflight / Lint / RBAC`
+- `Secret Scan`
+- `Kubernetes v1.36 Kind E2E`
+
+The active implementation baseline for Phase 1.4.2 is branch `phase-1.4.2-authorization`, created directly from that green `main` commit.
 
 ## Goal
 
@@ -133,7 +140,7 @@ Request lifecycle ───────────────► Audit Sink
 
 ## Implementation Stages
 
-### Phase 1.4.1 — Identity Contract — Implemented / CI Pending
+### Phase 1.4.1 — Identity Contract — Completed
 
 - principal model
 - auth middleware interface
@@ -142,15 +149,17 @@ Request lifecycle ───────────────► Audit Sink
 - OpenAPI contract updates
 - generated TypeScript client regeneration
 
-Detailed design and acceptance scope: `docs/phase-1.4.1-identity-contract.md`.
+Completion record: `docs/phase-1.4.1-identity-contract.md`.
 
-### Phase 1.4.2 — Authorization
+### Phase 1.4.2 — Authorization — Active
 
 - capability model
 - deny-by-default middleware
 - cluster/namespace scope rules
 - backend tests for allow/deny matrices
 - frontend authenticated/forbidden states
+
+Stage design and acceptance boundary: `docs/phase-1.4.2-authorization.md`.
 
 ### Phase 1.4.3 — Audit
 
