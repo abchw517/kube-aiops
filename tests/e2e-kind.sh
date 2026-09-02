@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-kube-aiops-e2e}"
-readonly NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=config/platform-versions.env
+source "${ROOT_DIR}/config/platform-versions.env"
+
+readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-kube-aiops-e2e}"
+readonly NODE_IMAGE="${KIND_NODE_IMAGE}"
 FAULT_BIN="$(mktemp -d -t kube-aiops-fault-bin.XXXXXX)"
 REAL_KUBECTL="$(command -v kubectl || true)"
 
