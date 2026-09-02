@@ -30,7 +30,7 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 				metadata := requestMetadataFromContext(r.Context())
 				s.logger.Warn(
 					"authentication provider unavailable",
-					"error", err,
+					"reason", "provider_error",
 					"request_id", metadata.RequestID,
 					"correlation_id", metadata.CorrelationID,
 				)
@@ -43,7 +43,7 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 			metadata := requestMetadataFromContext(r.Context())
 			s.logger.Warn(
 				"authentication provider returned invalid principal",
-				"error", err,
+				"reason", "invalid_principal",
 				"request_id", metadata.RequestID,
 				"correlation_id", metadata.CorrelationID,
 			)
