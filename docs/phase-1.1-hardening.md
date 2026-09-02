@@ -1,6 +1,7 @@
 # Phase 1.1 P1 Hardening
 
-本文记录 Phase 1.1 生产准入审查后独立实施的 P1 加固项。
+本文记录 Phase 1.1 生产准入审查后实施的加固项。Phase 1.1 功能范围已经冻结，
+当前持续回归平台基线升级为 Kubernetes v1.36.4。
 
 ## 加固范围
 
@@ -9,15 +10,20 @@
 | RBAC 静态扫描 | 扫描仓库所有 YAML 中的 `Role` 与 `ClusterRole` |
 | 集群级资源所有权 | 项目 label/annotation，接管或删除前强制校验 |
 | GitHub Actions | 第三方 Action 固定到完整 commit SHA |
-| Kind node 镜像 | Kubernetes v1.34.8 固定上游发布 digest |
-| Operator 基线 | 默认升级到 v0.2.29 |
+| Kind node 镜像 | Kubernetes v1.36.4 固定上游发布 digest |
+| Kind CLI | v0.33.0 显式固定 |
+| kubectl | v1.36.4 显式固定 |
+| Go toolchain | Kubernetes release-1.36 对齐 Go 1.26.5 |
+| Operator 基线 | v0.2.29 immutable digest |
+| Engine 基线 | v0.4.37 immutable digest |
 | E2E 异常路径 | 验证外部同名 RBAC 不被接管或删除 |
+| 平台漂移 | `tests/platform-baseline-test.py` fail closed |
 
-## 第二轮 P1 深度加固
+## 深度加固
 
 | 问题 | 修复与验收 |
 |---|---|
-| 单个 label/annotation 可伪造所有权 | 改为 owner、part-of、instance 三元精确身份；legacy 仅允许安装器显式迁移并校验语义指纹 |
+| 单个 label/annotation 可伪造所有权 | owner、part-of、instance 三元精确身份；legacy 仅允许安装器显式迁移并校验语义指纹 |
 | 同名外部 Helm Release | 升级和卸载前验证 Chart 身份 |
 | Binding 可能保留上游 subject/roleRef | post-renderer 在进入 API Server 前强制替换 rules、subjects、roleRef 和 ServiceAccount 安全字段 |
 | Make 参数命令注入 | recipe 不再文本插入 Make 变量；Operator 版本在脚本中执行 allowlist 校验 |
@@ -32,10 +38,13 @@
 | Namespace 无网络边界 | egress 仅允许 DNS、HTTPS 和 Kubernetes API 端口 |
 | 运行时镜像只有可变 tag | Operator、kube-rbac-proxy、Engine 使用 `tag@sha256` 固定 manifest digest |
 | Helm index/Chart 可变 | 直接下载固定版本 Chart，并在 Helm 前校验内置 SHA256 |
+| CI 名称与实际 Kubernetes 版本可能漂移 | v1.36 smoke 同时检查 Kind、kubectl、API Server、kubelet 精确版本 |
+| Manifest 使用已删除 Kubernetes API | kubeconform 1.36 + removed API static denylist |
+| Go CI 与容器构建版本可能漂移 | `go.mod toolchain go1.26.5` + Docker builder 1.26.5 + baseline guard |
 
-本轮 Kind E2E 还覆盖所有权伪造、legacy 指纹漂移、同名外部 Release、Lease
-heartbeat/fencing/CAS 以及回滚状态保留。Provider 功能 E2E 仍保持独立人工门禁，
-不能用占位 Token 替代。
+Kind E2E 覆盖所有权伪造、legacy 指纹漂移、同名外部 Release、Lease
+heartbeat/fencing/CAS、回滚状态保留以及 Phase 1.2 readonly API。Provider 功能
+E2E 保持独立人工门禁，不能用占位 Token 替代。
 
 ## 回归审查修复
 
@@ -48,31 +57,52 @@ heartbeat/fencing/CAS 以及回滚状态保留。Provider 功能 E2E 仍保持�
 
 对应负向测试覆盖零副本、外部 Chart 身份和运行时 RBAC 扩权漂移。
 
-## Operator 版本选择
+## Kubernetes v1.36 API 加固
 
-`v0.2.28` 包含以下与本项目相关的改进：
+Portal Backend 不使用 `client-go`，当前通过受限 HTTP client 调用稳定 API：
 
-- gRPC 依赖安全更新；
-- 防止 Prompt Injection 导致跨 Namespace Mutation；
-- 将分析错误写入 K8sGPT status，便于严格验证与告警。
+```text
+/api/v1
+/apis/apps/v1
+```
 
-`v0.2.29` 在此基础上增加策略门控 Auto Remediation。本项目仍执行最小权限
-基线：Mutation 与 Auto Remediation 禁用，ServiceAccount 不具备写权限。
+持续 E2E 另外验证：
+
+```text
+/apis/rbac.authorization.k8s.io/v1
+/apis/batch/v1
+/apis/networking.k8s.io/v1
+/apis/autoscaling/v2
+```
+
+`core.k8sgpt.ai/v1alpha1` 是 K8sGPT CRD API，不属于 Kubernetes built-in beta API。
+平台检查禁止 `extensions/v1beta1`、`networking.k8s.io/v1beta1`、`policy/v1beta1`
+等已删除 built-in API 回流。
+
+## Operator / Engine 版本选择
+
+Operator 保持 `v0.2.29`：其已有策略门控 Auto Remediation，但本项目继续禁用
+Mutation 与 Auto Remediation，ServiceAccount 不具备业务写权限。
+
+Engine 从 `v0.4.32` 升级到 `v0.4.37`，使用经独立确认的语义 tag digest。生产
+基线不为了追逐最新 tag 而放弃不可变镜像约束；更高版本必须先获得可信 digest
+并通过 Kubernetes v1.36 完整 E2E。
 
 ## Required Status Checks
 
-`main` 分支应禁止绕过以下三个检查：
+`main` 分支应禁止绕过：
 
 - `Preflight / Lint / RBAC`
 - `Secret Scan`
-- `Kubernetes v1.34 Kind E2E`
+- `Kubernetes v1.36 Kind E2E`
 
-仓库管理员在 GitHub `Settings → Rules → Rulesets` 创建面向 `main` 的规则：
+Ruleset 要求：
 
 1. Require a pull request before merging；
 2. Require status checks to pass；
 3. 选择以上三个检查并启用 branch must be up to date；
-4. 禁止直接 Push 与绕过规则，仅保留必要的紧急管理员通道。
+4. 禁止直接 Push 与普通绕过；
+5. v1.36 新检查实际成功后再替换旧 v1.34 Required Check，不通过降低保护完成切换。
 
 规则属于仓库控制面配置，不存储在 Git 工作树中。合并前应通过 GitHub API 或
 Settings 页面确认 Ruleset 已生效。
