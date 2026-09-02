@@ -2,15 +2,21 @@
 
 ## Status
 
-**Implemented on `phase-1.4-authn-authz-audit-sanitizer`; acceptance pending CI.**
+**Completed.**
 
-Entry baseline:
+Completion evidence:
 
-- `main`: `0248de41466d3e4746f1f6e3b1035a95c63a7940`
-- Kubernetes: `v1.36.4`
-- Phase 1.1: Completed
-- Phase 1.2: Completed
-- Phase 1.3: Completed
+- entry baseline: `main@0248de41466d3e4746f1f6e3b1035a95c63a7940`
+- implementation branch: `phase-1.4-authn-authz-audit-sanitizer`
+- implementation PR: `#18 feat: Phase 1.4.1 Identity Contract`
+- merged baseline: `main@7b13b250f035657a1edf24e9590a6560488186bf`
+- post-merge CI: run `#63`
+- Required Checks: all green
+  - `Preflight / Lint / RBAC`
+  - `Secret Scan`
+  - `Kubernetes v1.36 Kind E2E`
+
+The post-merge Kind job also passed Kubernetes `v1.36.4` platform validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
 
 ## Goal
 
@@ -62,19 +68,19 @@ spoofable header is production authentication.
 When an Authenticator is configured, behavior is fail-closed:
 
 ```text
-No valid identity              -> 401 AUTHENTICATION_REQUIRED
-Provider unavailable/error     -> 503 AUTHENTICATION_UNAVAILABLE
+No valid identity               -> 401 AUTHENTICATION_REQUIRED
+Provider unavailable/error      -> 503 AUTHENTICATION_UNAVAILABLE
 Invalid Principal from provider -> 503 AUTHENTICATION_UNAVAILABLE
-Valid Principal                -> context -> read-only handler
+Valid Principal                 -> context -> read-only handler
 ```
 
-The authorization-denied contract is reserved now as:
+The authorization-denied contract is reserved as:
 
 ```text
 403 AUTHORIZATION_DENIED
 ```
 
-Actual capability/scope policy evaluation remains Phase 1.4.2.
+Actual capability/scope policy evaluation is Phase 1.4.2.
 
 ## Request / Correlation Identity
 
@@ -99,11 +105,11 @@ These identifiers contain no credentials and are designed for the Phase 1.4.3 au
 
 ## OpenAPI Contract
 
-`api/openapi.yaml` is advanced to contract version `1.4.1`.
+`api/openapi.yaml` is contract version `1.4.1`.
 
 Changes:
 
-- `Principal` schema added and mapped byte-for-byte to the Go JSON projection contract;
+- `Principal` schema added and mapped to the Go JSON projection contract;
 - reusable `RequestID` and `CorrelationID` response headers added;
 - standardized `Unauthorized` and `Forbidden` responses added;
 - every `/api/v1/*` operation declares `401` and `403` responses;
@@ -111,7 +117,7 @@ Changes:
 - health endpoints remain public;
 - no provider-specific OpenAPI security scheme is claimed before a trusted provider is selected.
 
-`tools/openapi/contract.py` now fails CI if:
+`tools/openapi/contract.py` fails CI if:
 
 - `Principal` drifts between Go and OpenAPI;
 - the two identity headers disappear from 401/403 responses;
@@ -146,7 +152,7 @@ Still forbidden:
 
 Authentication provider failures do not downgrade to anonymous access when an Authenticator is active.
 Authentication error bodies are generic and do not include provider errors, tokens, headers or session
-material.
+material. Raw provider errors are not logged.
 
 ## Test Coverage
 
@@ -165,7 +171,7 @@ Go tests cover:
 - authenticated Principal injection;
 - reserved authorization-denied -> 403 contract.
 
-Existing Phase 1.1/1.2/1.3 tests and Kubernetes v1.36 Kind E2E remain mandatory.
+Existing Phase 1.1/1.2/1.3 tests and Kubernetes v1.36 Kind E2E remain mandatory and passed on both PR and post-merge main verification.
 
 ## Phase Boundary
 
@@ -179,4 +185,4 @@ Not implemented in Phase 1.4.1:
 - sanitizer
 - Events/Prometheus/Loki/Alertmanager correlation
 
-Next stage after Phase 1.4.1 acceptance: **Phase 1.4.2 — Authorization**.
+Next active stage: **Phase 1.4.2 — Authorization** on `phase-1.4.2-authorization`.
