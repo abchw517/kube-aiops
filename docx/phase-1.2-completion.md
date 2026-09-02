@@ -9,7 +9,12 @@ Completion baseline:
 - `main` merge commit: `de79b5536ee2a1e5bca7206d8b1268faab3fdc06`
 - Phase 1.2.4 PR: `#12`
 - Post-merge GitHub Actions run: `#45` (`33520705138`)
-- Kubernetes validation baseline: `v1.34 Kind E2E`
+- Historical Kubernetes validation baseline: `v1.34 Kind E2E`
+
+> `v1.34` is retained here as historical evidence of the exact Phase 1.2 completion run.
+> The repository's current supported platform baseline is maintained separately in
+> `docs/kubernetes-v1.36-baseline.md` and is upgraded to Kubernetes v1.36.4 only after
+> its PR and post-merge `main` gates are green.
 
 ## Completion Gate
 
@@ -27,7 +32,7 @@ main Required Checks all green again
 Phase 1.2 = Completed
 ```
 
-All gates above have been satisfied.
+All gates above were satisfied for the Phase 1.2 completion baseline.
 
 ## Required Checks Evidence
 
@@ -44,10 +49,13 @@ The `Preflight / Lint / RBAC` job also confirmed:
 - Docker backend smoke test: PASS
 - Project preflight: PASS
 
-The Kind E2E job confirmed:
+The historical Kind E2E job confirmed:
 
 - lifecycle / rollback / concurrency / trusted uninstall E2E: PASS
 - Phase 1.2 readonly API E2E: PASS
+
+These entries intentionally preserve the original run #45 job names. They must not be
+rewritten to v1.36 because that would falsify the audit trail.
 
 ## Phase 1.2 Delivered Scope
 
@@ -69,7 +77,7 @@ Phase 1.2 established the read-only Portal Backend contract and implementation r
 - generated-client drift guard
 - sensitive/raw-field contract guard
 
-The Phase 1.2 API contract currently covers the following GET routes:
+The Phase 1.2 API contract covers the following GET routes:
 
 ```http
 GET /healthz
@@ -97,22 +105,45 @@ Phase 1.2 did not expand the production mutation boundary:
 
 These constraints remain mandatory for Phase 1.3 unless a later security phase explicitly changes them.
 
+## Kubernetes v1.36 Platform Supersession
+
+After Phase 1.2 completion, kube-aiops performs a dedicated platform-baseline upgrade before
+Phase 1.3. The target/current support contract is defined by:
+
+```text
+Kubernetes:      v1.36.4
+Kind:            v0.33.0
+kubectl:         v1.36.4
+Go toolchain:    1.26.5
+K8sGPT Operator: v0.2.29
+K8sGPT Engine:   v0.4.37 (immutable digest)
+```
+
+This supersession does **not** reopen Phase 1.2 feature scope. It validates the already frozen
+Phase 1.2 backend and Phase 1.1 lifecycle on Kubernetes v1.36.4. Activation requires the new
+`Kubernetes v1.36 Kind E2E` Required Check to pass on both the upgrade PR and post-merge `main`.
+
 ## Phase 1.3 Entry Gate
 
-Phase 1.3 Web Portal may start only from a green `main` baseline after this completion record is merged.
+Phase 1.3 Web Portal may start only from a green `main` after the Kubernetes v1.36 platform
+baseline is merged and its post-merge Required Checks are green.
 
 Phase 1.3 must consume the committed OpenAPI/TypeScript client contract rather than introducing a second handwritten API model.
 
-Recommended next sequence:
+Required sequence:
 
 ```text
-Merge Phase 1.2 completion record
+Phase 1.2 Completed (historical v1.34 evidence retained)
         ↓
-Confirm main CI green
+Kubernetes v1.36 platform upgrade PR all green
         ↓
-Create Phase 1.3 Web Portal implementation branch
+Required Check switched to Kubernetes v1.36 Kind E2E
         ↓
-Build UI against generated TypeScript client
+Merge platform baseline to main
+        ↓
+main all green again on Kubernetes v1.36.4
+        ↓
+Start Phase 1.3 Web Portal
 ```
 
-Phase 1.2 backend scope is frozen as **Completed** at the baseline documented above.
+Phase 1.2 backend scope remains frozen as **Completed**.

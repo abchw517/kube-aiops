@@ -2,10 +2,14 @@ SHELL := /usr/bin/env bash
 BUILD_DIR ?= .build
 API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check
 
 help:
 	@echo "kube-aiops"
+	@echo
+	@echo "Platform baseline: Kubernetes v1.36.4 / Kind v0.33.0 / Go 1.26.5"
+	@echo "  make platform-check  校验 Kubernetes/Kind/Go/K8sGPT/CI 基线一致性"
+	@echo "  make platform-smoke  创建临时 Kind 集群并验证 Kubernetes v1.36 API Server"
 	@echo
 	@echo "Phase 1.1 K8sGPT Engine:"
 	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC/Kubernetes Schema 静态检查"
@@ -38,6 +42,12 @@ help:
 
 preflight:
 	@bash ./preflight.sh
+
+platform-check:
+	@python3 tests/platform-baseline-test.py
+
+platform-smoke:
+	@bash ./tests/kubernetes-v1.36-smoke.sh
 
 bootstrap:
 	@kubectl apply -f deploy/k8sgpt/namespace.yaml
@@ -83,10 +93,10 @@ uninstall:
 	@PURGE_SECRET="$${PURGE_SECRET:-false}" PURGE_NAMESPACE="$${PURGE_NAMESPACE:-false}" PURGE_DEMO="$${PURGE_DEMO:-false}" bash ./uninstall.sh
 
 e2e:
-	@bash ./tests/e2e-kind.sh
+	@set -a; source ./config/platform-versions.env; set +a; bash ./tests/e2e-kind.sh
 
 e2e-provider:
-	@bash ./tests/e2e-provider-kind.sh
+	@set -a; source ./config/platform-versions.env; set +a; bash ./tests/e2e-provider-kind.sh
 
 api-fmt-check:
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -d cmd internal; exit 1; }
