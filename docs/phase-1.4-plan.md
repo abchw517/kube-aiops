@@ -2,9 +2,10 @@
 
 ## Status
 
-**Entry state: Planned**
+**Entry state: Active**
 
-Phase 1.4 starts only after the Phase 1.3 completion record is merged into a green `main` baseline.
+Phase 1.3 is formally completed on the green `main@0248de41466d3e4746f1f6e3b1035a95c63a7940` baseline.
+Phase 1.4.1 Identity Contract is implemented on `phase-1.4-authn-authz-audit-sanitizer` and is pending Required Check acceptance.
 
 ## Goal
 
@@ -132,7 +133,7 @@ Request lifecycle ───────────────► Audit Sink
 
 ## Implementation Stages
 
-### Phase 1.4.1 — Identity Contract
+### Phase 1.4.1 — Identity Contract — Implemented / CI Pending
 
 - principal model
 - auth middleware interface
@@ -140,6 +141,8 @@ Request lifecycle ───────────────► Audit Sink
 - request/correlation ID
 - OpenAPI contract updates
 - generated TypeScript client regeneration
+
+Detailed design and acceptance scope: `docs/phase-1.4.1-identity-contract.md`.
 
 ### Phase 1.4.2 — Authorization
 
