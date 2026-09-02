@@ -32,7 +32,16 @@ type Server struct {
 	readyTimeout time.Duration
 }
 
+// NewHandler preserves the Phase 1.3 runtime behavior while Phase 1.4.1 establishes the
+// provider-neutral identity contract. Authentication enforcement is activated by passing an
+// Authenticator to NewHandlerWithOptions; no insecure built-in credential mechanism is assumed.
 func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration) http.Handler {
+	return NewHandlerWithOptions(logger, backend, readyTimeout, HandlerOptions{})
+}
+
+// NewHandlerWithOptions builds the HTTP pipeline with request metadata first, then optional AuthN,
+// then the existing read-only API routes. Request/correlation IDs therefore exist on AuthN errors.
+func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout time.Duration, options HandlerOptions) http.Handler {
 	server := &Server{
 		logger:       logger,
 		backend:      backend,
@@ -48,7 +57,12 @@ func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration
 	mux.HandleFunc("GET /api/v1/findings", server.findings)
 	mux.HandleFunc("GET /api/v1/findings/summary", server.findingSummary)
 	mux.HandleFunc("GET /api/v1/findings/{id}", server.findingDetail)
-	return mux
+
+	var handler http.Handler = mux
+	if options.Authenticator != nil {
+		handler = server.authenticationMiddleware(options.Authenticator, handler)
+	}
+	return requestMetadataMiddleware(handler)
 }
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
