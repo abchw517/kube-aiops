@@ -34,7 +34,10 @@ grep -q 'Replica availability degraded' <<<"${LIST_DOM}"
 FILTERED_DOM="$(chrome_dump 'http://127.0.0.1:4173/#/findings?cluster=local&severity=critical')"
 grep -q '1 finding' <<<"${FILTERED_DOM}"
 grep -q 'CrashLoopBackOff detected' <<<"${FILTERED_DOM}"
-! grep -q 'Replica availability degraded' <<<"${FILTERED_DOM}"
+if grep -q 'Replica availability degraded' <<<"${FILTERED_DOM}"; then
+  echo "ERROR: severity filter returned an unexpected warning Finding" >&2
+  exit 1
+fi
 
 DETAIL_DOM="$(chrome_dump 'http://127.0.0.1:4173/#/findings/finding-critical')"
 grep -q 'Finding ID' <<<"${DETAIL_DOM}"
