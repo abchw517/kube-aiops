@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: kube-aiops Portal Backend API
-  version: 1.2.4
-  description: Stable read-only API contract for the Phase 1.2 Portal Backend.
+  version: 1.4.1
+  description: >-
+    Read-only Portal Backend contract with the Phase 1.4.1 provider-neutral identity boundary.
+    Authentication enforcement is adapter-driven; health endpoints remain public and no provider-specific
+    credential mechanism is embedded in this contract.
 servers:
   - url: http://localhost:8080
 security: []
@@ -53,6 +56,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClusterList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/clusters/{cluster}/namespaces:
     get:
       tags: [Kubernetes]
@@ -67,10 +76,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NamespaceList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}:
     get:
       tags: [Kubernetes]
@@ -105,10 +120,16 @@ paths:
                 $ref: '#/components/schemas/ResourceDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/findings:
     get:
       tags: [Findings]
@@ -144,6 +165,10 @@ paths:
                 $ref: '#/components/schemas/FindingPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
@@ -168,6 +193,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FindingSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
@@ -193,10 +222,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Finding'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     ClusterPath:
@@ -239,9 +274,44 @@ components:
       description: Case-insensitive substring filter.
       schema:
         type: string
+  headers:
+    RequestID:
+      description: Validated request identifier emitted by the Portal Backend.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    CorrelationID:
+      description: Validated correlation identifier for cross-component request tracing.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
   responses:
     BadRequest:
       description: The request is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: No valid authenticated identity is available for this API request.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized for the requested capability or scope.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationID'
       content:
         application/json:
           schema:
@@ -259,7 +329,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     ServiceUnavailable:
-      description: The backend is temporarily unavailable or the safe scan limit was exceeded.
+      description: The backend or authentication provider is temporarily unavailable, or the safe scan limit was exceeded.
       content:
         application/json:
           schema:
@@ -272,6 +342,30 @@ components:
       properties:
         status:
           type: string
+    Principal:
+      type: object
+      additionalProperties: false
+      required: [subject, provider]
+      properties:
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 256
+        provider:
+          type: string
+          minLength: 1
+          maxLength: 64
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 256
+        groups:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
     Cluster:
       type: object
       additionalProperties: false
