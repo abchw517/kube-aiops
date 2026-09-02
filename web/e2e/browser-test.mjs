@@ -79,7 +79,7 @@ try {
 async function waitForPage(debugPort) {
   const url = `http://127.0.0.1:${debugPort}/json/list`;
   let lastError;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
       const response = await fetch(url);
       if (response.ok) {
