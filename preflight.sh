@@ -16,22 +16,22 @@ require_cmd find
 require_cmd grep
 require_cmd python3
 
-log "1/8 Shell 语法检查"
+log "1/9 Shell 语法检查"
 while IFS= read -r -d '' file; do
   bash -n "$file"
 done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
 
 if command -v shellcheck >/dev/null 2>&1; then
-  log "2/8 ShellCheck"
+  log "2/9 ShellCheck"
   mapfile -d '' shell_files < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
   if ((${#shell_files[@]} > 0)); then
     shellcheck -x "${shell_files[@]}"
   fi
 else
-  log "2/8 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
+  log "2/9 ShellCheck: 本地未安装，跳过（CI 中强制执行）"
 fi
 
-log "3/8 YAML 语法检查"
+log "3/9 YAML 语法检查"
 python3 - <<'PY'
 import pathlib
 import sys
@@ -54,7 +54,7 @@ print(f'[preflight] YAML 文件解析通过: {len(files)}')
 PY
 
 if command -v kubeconform >/dev/null 2>&1; then
-  log "4/8 Kubernetes Schema 检查（kubeconform）"
+  log "4/9 Kubernetes v1.36 Schema 检查（kubeconform）"
 
   # 只校验真正提交给 Kubernetes API Server 的 Manifest。
   # Helm values 文件不是 Kubernetes 对象，不包含 apiVersion/kind，不能交给 kubeconform。
@@ -75,13 +75,13 @@ if command -v kubeconform >/dev/null 2>&1; then
     -strict \
     -summary \
     -ignore-missing-schemas \
-    -kubernetes-version 1.34.0 \
+    -kubernetes-version 1.36.0 \
     "${manifest_files[@]}"
 else
-  log "4/8 kubeconform: 本地未安装，跳过（CI 中强制执行）"
+  log "4/9 kubeconform: 本地未安装，跳过（CI 中强制执行）"
 fi
 
-log "5/8 静态 Secret 泄露检查"
+log "5/9 静态 Secret 泄露检查"
 # 只检查高置信度模式；完整历史扫描由 CI 的 Gitleaks 执行。
 if grep -RInE \
   --exclude-dir=.git \
@@ -91,13 +91,16 @@ if grep -RInE \
   fail "检测到疑似真实凭据，请移除后再提交"
 fi
 
-log "6/8 RBAC 静态安全检查"
+log "6/9 RBAC 静态安全检查"
 python3 scripts/rbac_lint.py
 
-log "7/8 Python 语法检查"
+log "7/9 Python 语法检查"
 python3 -m py_compile scripts/*.py tests/*.py
 
-log "8/8 安全控制回归测试"
+log "8/9 Kubernetes v1.36 平台基线一致性检查"
+python3 tests/platform-baseline-test.py
+
+log "9/9 安全控制回归测试"
 python3 tests/security-controls-test.py
 python3 tests/api-rbac-test.py
 bash tests/make-security-test.sh
