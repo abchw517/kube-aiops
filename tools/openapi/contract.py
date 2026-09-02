@@ -18,6 +18,7 @@ SERVER_PATH = ROOT / "internal" / "httpapi" / "server.go"
 GENERATED_PATH = ROOT / "clients" / "typescript" / "generated.ts"
 FINDING_MODEL_PATH = ROOT / "internal" / "finding" / "model.go"
 KUBERNETES_MODEL_PATH = ROOT / "internal" / "kubernetes" / "client.go"
+IDENTITY_MODEL_PATH = ROOT / "internal" / "identity" / "principal.go"
 
 HTTP_METHODS = {"get", "put", "post", "delete", "patch", "head", "options", "trace"}
 FORBIDDEN_PROPERTY_NAMES = {
@@ -158,6 +159,7 @@ def validate_go_schema_projection(spec: dict[str, Any]) -> None:
         (FINDING_MODEL_PATH, "Pagination", "Pagination"),
         (FINDING_MODEL_PATH, "Page", "FindingPage"),
         (FINDING_MODEL_PATH, "Summary", "FindingSummary"),
+        (IDENTITY_MODEL_PATH, "Principal", "Principal"),
     ]
     schemas = spec.get("components", {}).get("schemas", {})
     for path, struct_name, schema_name in mappings:
@@ -202,6 +204,46 @@ def validate_sensitive_guard(spec: dict[str, Any]) -> None:
     items = finding_page.get("properties", {}).get("items", {})
     if "items" not in required or items.get("type") != "array":
         fail("FindingPage.items must be a required array so empty results serialize as []")
+
+
+def validate_identity_contract(spec: dict[str, Any]) -> None:
+    components = spec.get("components", {})
+    responses = components.get("responses", {})
+    headers = components.get("headers", {})
+    schemas = components.get("schemas", {})
+
+    principal = schemas.get("Principal")
+    if not isinstance(principal, dict):
+        fail("Phase 1.4.1 requires components.schemas.Principal")
+    required_principal_fields = {"subject", "provider"}
+    if set(principal.get("required", [])) != required_principal_fields:
+        fail("Principal must require exactly subject and provider")
+
+    for header_name in ("RequestID", "CorrelationID"):
+        if not isinstance(headers.get(header_name), dict):
+            fail(f"Phase 1.4.1 requires components.headers.{header_name}")
+
+    for response_name in ("Unauthorized", "Forbidden"):
+        response = responses.get(response_name)
+        if not isinstance(response, dict):
+            fail(f"Phase 1.4.1 requires components.responses.{response_name}")
+        response_headers = response.get("headers", {})
+        if set(response_headers) != {"X-Request-ID", "X-Correlation-ID"}:
+            fail(f"{response_name} must expose X-Request-ID and X-Correlation-ID headers")
+
+    for path, path_item in spec.get("paths", {}).items():
+        if not str(path).startswith("/api/v1/") or not isinstance(path_item, dict):
+            continue
+        for method, operation in path_item.items():
+            if method.lower() not in HTTP_METHODS or not isinstance(operation, dict):
+                continue
+            response_codes = {str(code) for code in operation.get("responses", {})}
+            missing = {"401", "403"} - response_codes
+            if missing:
+                fail(
+                    f"Phase 1.4.1 identity response drift for {method.upper()} {path}: "
+                    f"missing {sorted(missing)}"
+                )
 
 
 def to_pascal(value: str) -> str:
@@ -430,6 +472,7 @@ def run_checks(spec: dict[str, Any], include_drift: bool) -> None:
     validate_operation_ids(spec)
     validate_go_schema_projection(spec)
     validate_sensitive_guard(spec)
+    validate_identity_contract(spec)
     if include_drift:
         drift_check(spec)
 
@@ -461,6 +504,7 @@ def main() -> None:
         validate_operation_ids(spec)
         validate_go_schema_projection(spec)
         validate_sensitive_guard(spec)
+        validate_identity_contract(spec)
         drift_check(spec)
         print("OpenAPI generated client drift check: PASS")
     elif args.command == "check":
