@@ -1,106 +1,102 @@
-# Phase 1.1 架构设计
+# kube-aiops Architecture
 
-## 目标
-
-Phase 1.1 只建设 K8sGPT Engine，不建设 Web Portal、不接入 Prometheus/Loki/Alertmanager，也不启用任何自动修复。
-
-核心目标：
-
-> 在最小权限模型下，让 K8sGPT 能够读取 Kubernetes 资源、执行 AI 诊断，并将结果写入 Result CR。
-
-## 架构
+## Current Phase Model
 
 ```text
-Kubernetes Cluster
-│
-├── k8sgpt-operator-system
-│   │
-│   ├── K8sGPT Operator
-│   │      │
-│   │      └── reconcile K8sGPT CR
-│   │
-│   ├── K8sGPT CR
-│   │
-│   ├── K8sGPT Engine
-│   │      │
-│   │      ├── ServiceAccount: k8sgpt
-│   │      └── ClusterRole: k8sgpt-clusterrole
-│   │
-│   └── Result CR
-│
-└── Application Namespaces
-    ├── Pod
-    ├── Deployment
-    ├── StatefulSet
-    ├── Service
-    ├── PVC
-    ├── Job/CronJob
-    ├── Ingress
-    └── HPA
+Phase 1.1 K8sGPT Engine        — Completed
+Phase 1.2 Portal Backend API   — Completed
+Phase 1.3 Web Portal           — In Development
 ```
 
-## 数据链路
+## End-to-End Architecture
 
 ```text
-Kubernetes Resource
-        │
-        ▼
-K8sGPT Analyzer
-        │
-        ▼
-Anonymization
-        │
-        ▼
-AI Provider
-        │
-        ▼
-K8sGPT Result
-        │
-        ▼
-Result CR
-        │
-        ▼
-Phase 1.2 Portal Backend
+User / SRE
+    |
+    v
+Phase 1.3 Web Portal
+    |
+    | generated TypeScript Client only
+    v
+Phase 1.2 Portal Backend API
+    |
+    +-----------------------------+
+    |                             |
+    v                             v
+Safe Kubernetes Projection    Finding Model
+                                  ^
+                                  |
+                           Result Adapter
+                                  ^
+                                  |
+                           K8sGPT Result CR
+                                  ^
+                                  |
+                           K8sGPT Engine
+                                  ^
+                                  |
+                           K8sGPT Operator
 ```
 
-## Phase 1.1 与后续阶段边界
+## Phase 1.3 Contract Boundary
 
-Phase 1.1：
-
-- Kubernetes Resource ReadOnly
-- K8sGPT Analyzer
-- AI Explain
-- Result CR
-- RBAC Hardening
-- Demo Fault Injection
-
-不包含：
-
-- Web Portal
-- Chat UI
-- Prometheus RCA
-- Loki Log RCA
-- Alertmanager
-- Event Pipeline
-- MCP Tool Calling
-- Mutation
-- Auto Remediation
-
-## Result CR 作为阶段契约
-
-Phase 1.2 Backend 不解析 K8sGPT 日志，而是通过 Kubernetes API 读取 Result CR。
+OpenAPI remains the single external contract source:
 
 ```text
-K8sGPT Result CR
-       │
-       ▼
-Result Adapter
-       │
-       ▼
-Internal Finding Model
-       │
-       ▼
-Portal API
+api/openapi.yaml
+      ↓
+tools/openapi/contract.py
+      ↓
+clients/typescript/generated.ts
+      ↓
+web/src/api/client.ts
+      ↓
+Portal views
 ```
 
-这样后续 Prometheus、Loki、Alertmanager、JMX、eBPF 等数据源都可以统一映射到 Finding 模型，而不会让 Portal 与 K8sGPT 的具体输出格式强耦合。
+Portal code must not define a second copy of Finding, Summary, Cluster, Namespace or error DTOs and must not issue direct handwritten API requests.
+
+## Finding Domain Flow
+
+```text
+Route / Filter change
+        ↓
+Generated KubeAIOpsApiClient
+        ├── listClusters
+        ├── listNamespaces
+        ├── listFindings
+        ├── summarizeFindings
+        └── getFinding
+        ↓
+Loading / Empty / Error / Retry state machine
+        ↓
+Finding List / Summary / Detail rendering
+```
+
+A render generation counter prevents an older asynchronous response from replacing a newer filter or route result.
+
+## Deployment Model
+
+The Portal is built into static assets and served by a non-root Nginx container on port 8080. The production routing model should keep the Portal and Backend behind the same origin, with `/api/` routed to Portal Backend and all other Portal paths routed to the static service.
+
+The static container does not contain Kubernetes credentials and does not communicate with Kubernetes directly.
+
+## Phase Boundaries
+
+Current supported capabilities:
+
+- read-only Kubernetes safe projections
+- normalized Finding List / Detail / Summary
+- cluster / namespace / severity / kind filtering
+- K8sGPT advisory diagnostics
+
+Not part of Phase 1.3:
+
+- Pod Logs
+- Secrets
+- raw Kubernetes objects
+- raw Result CR
+- mutation
+- auto remediation
+- arbitrary GVR passthrough
+- Prometheus/Loki correlation
