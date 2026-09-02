@@ -18,7 +18,7 @@ export function parseFindingFilters(hash: string): FindingFilters {
   const severity = params.get("severity");
 
   return compactFilters({
-    cluster: params.get("cluster") === "local" ? "local" : "local",
+    cluster: "local",
     namespace: cleanValue(params.get("namespace")),
     kind: cleanValue(params.get("kind")),
     severity:

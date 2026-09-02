@@ -18,6 +18,8 @@ Thumbs.db
 
 # Build artifacts
 .build/
+web/dist/
+web/node_modules/
 
 # Temporary files
 *.tmp

@@ -24,7 +24,7 @@ jobs:
   preflight:
     name: Preflight / Lint / RBAC
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -42,6 +42,12 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.19.0'
           cache: false
 
       - name: Install validation tools
@@ -100,6 +106,11 @@ jobs:
           make api-test
           make api-build
 
+      - name: Phase 1.3 Web checks
+        run: |
+          set -Eeuo pipefail
+          make web-check
+
       - name: Docker backend smoke test
         run: |
           set -Eeuo pipefail
@@ -120,6 +131,16 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18080/healthz
           ready_code="$(curl --silent --output /tmp/readyz.json --write-out '%{http_code}' http://127.0.0.1:18080/readyz)"
           test "${ready_code}" = "503"
+
+      - name: Docker web smoke test
+        run: |
+          set -Eeuo pipefail
+          make web-docker-smoke
+
+      - name: Phase 1.3 browser E2E
+        run: |
+          set -Eeuo pipefail
+          make web-e2e
 
       - name: Run project preflight
         run: |

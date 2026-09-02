@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 BUILD_DIR ?= .build
 API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e
 
 help:
 	@echo "kube-aiops"
@@ -25,14 +25,23 @@ help:
 	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
 	@echo
 	@echo "Phase 1.2 Portal Backend:"
-	@echo "  make api-fmt-check         检查 Go 代码格式"
-	@echo "  make api-test              执行 Go 单元测试"
-	@echo "  make api-build             编译 kube-aiops-api"
-	@echo "  make api-run               本地运行 kube-aiops-api"
-	@echo "  make api-contract-validate 校验 OpenAPI、路由、Go DTO 和敏感字段边界"
-	@echo "  make api-client-generate   从 OpenAPI 生成 TypeScript Client"
+	@echo "  make api-fmt-check          检查 Go 代码格式"
+	@echo "  make api-test               执行 Go 单元测试"
+	@echo "  make api-build              编译 kube-aiops-api"
+	@echo "  make api-run                本地运行 kube-aiops-api"
+	@echo "  make api-contract-validate  校验 OpenAPI、路由、Go DTO 和敏感字段边界"
+	@echo "  make api-client-generate    从 OpenAPI 生成 TypeScript Client"
 	@echo "  make api-client-drift-check 检查 TypeScript 生成物是否漂移"
-	@echo "  make api-contract-check    执行完整 Phase 1.2.4 Contract Gate"
+	@echo "  make api-contract-check     执行完整 Phase 1.2.4 Contract Gate"
+	@echo
+	@echo "Phase 1.3 Web Portal:"
+	@echo "  make web-lint          执行前端 Biome lint"
+	@echo "  make web-typecheck     执行 TypeScript contract-aware typecheck"
+	@echo "  make web-test          执行前端单元测试"
+	@echo "  make web-build         构建生产静态资源"
+	@echo "  make web-check         执行 lint/typecheck/test/build"
+	@echo "  make web-docker-smoke  构建非 root Web 镜像并执行 smoke test"
+	@echo "  make web-e2e           使用 headless Chrome 执行 Finding Portal E2E"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
@@ -122,3 +131,34 @@ api-client-drift-check:
 
 api-contract-check:
 	@python tools/openapi/contract.py check
+
+web-lint:
+	@cd web && npm run lint
+
+web-typecheck:
+	@cd web && npm run typecheck
+
+web-test:
+	@cd web && npm run test
+
+web-build:
+	@cd web && npm run build
+
+web-check: web-lint web-typecheck web-test web-build
+
+web-docker-smoke:
+	@set -Eeuo pipefail; \
+		image="kube-aiops-web:ci"; \
+		container="kube-aiops-web-ci"; \
+		docker build --pull -f web/Dockerfile --tag "$${image}" .; \
+		docker run --detach --name "$${container}" --publish 127.0.0.1:18081:8080 "$${image}"; \
+		trap 'docker rm --force "'$${container}'" >/dev/null 2>&1 || true' EXIT; \
+		for _ in $$(seq 1 20); do \
+			if curl --fail --silent --show-error http://127.0.0.1:18081/portal-healthz >/tmp/portal-healthz.txt; then break; fi; \
+			sleep 1; \
+		done; \
+		grep -qx 'ok' /tmp/portal-healthz.txt; \
+		curl --fail --silent --show-error http://127.0.0.1:18081/ | grep -q 'kube-aiops Portal'
+
+web-e2e:
+	@cd web && npm run e2e
