@@ -53,6 +53,10 @@ func protectedRoutes() []protectedRoute {
 	}
 }
 
+func (s *Server) protectedRoutes() []protectedRoute {
+	return protectedRoutes()
+}
+
 func protectedRouteFor(pattern string) (protectedRoute, bool) {
 	for _, route := range protectedRoutes() {
 		if route.pattern == pattern {
