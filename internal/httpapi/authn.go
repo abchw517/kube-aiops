@@ -5,13 +5,18 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/identity"
 )
 
 type HandlerOptions struct {
 	// Authenticator activates authentication enforcement for /api/v1/* when non-nil.
-	// Phase 1.4.1 intentionally does not provide an insecure built-in credential mechanism.
+	// Phase 1.4 intentionally does not provide an insecure built-in credential mechanism.
 	Authenticator identity.Authenticator
+	// Authorizer narrows the authenticated read-only API surface using application-level capability
+	// and cluster/namespace scope decisions. When authentication is active and Authorizer is nil,
+	// protected routes fail closed instead of silently bypassing authorization.
+	Authorizer authorization.Authorizer
 }
 
 func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, next http.Handler) http.Handler {
@@ -70,8 +75,6 @@ func writeAuthenticationUnavailable(w http.ResponseWriter) {
 	writeError(w, http.StatusServiceUnavailable, "AUTHENTICATION_UNAVAILABLE", "authentication service unavailable")
 }
 
-// writeForbidden provides the stable Phase 1.4 authorization-denied response contract.
-// Authorization policy enforcement is implemented in Phase 1.4.2.
 func writeForbidden(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	writeError(w, http.StatusForbidden, "AUTHORIZATION_DENIED", "access denied")
