@@ -68,11 +68,33 @@ func (s *Server) registerProtectedRoutes(mux *http.ServeMux, options HandlerOpti
 		handler := route.handler
 		if route.deferredScope {
 			s.findingDetailCapability = route.capability
+			if authorizationEnabled {
+				handler = s.authorizationPrerequisiteMiddleware(options.Authorizer, route.capability, handler)
+			}
 		} else if authorizationEnabled {
 			handler = s.authorizationMiddleware(options.Authorizer, route.capability, route.resolveScope, handler)
 		}
 		mux.Handle(route.pattern, handler)
 	}
+}
+
+func (s *Server) authorizationPrerequisiteMiddleware(
+	authorizer authorization.Authorizer,
+	capability authorization.Capability,
+	next http.Handler,
+) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := identity.PrincipalFromContext(r.Context()); !ok {
+			writeAuthenticationRequired(w)
+			return
+		}
+		if authorizer == nil {
+			s.logAuthorizationUnavailable(r, capability, authorization.Scope{}, "authorizer_not_configured")
+			writeAuthorizationUnavailable(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) authorizationMiddleware(
