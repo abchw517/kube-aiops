@@ -2,14 +2,23 @@
 
 ## Status
 
-**Implementation in progress / CI acceptance pending.**
+**Completed.**
 
-Entry baseline:
+Completion evidence:
 
-- `main`: `a648c50e650f18313e30e054051e3dd2f07b738b`
+- entry baseline: `main@a648c50e650f18313e30e054051e3dd2f07b738b`
 - previous stage: Phase 1.4.1 Identity Contract — Completed
 - implementation branch: `phase-1.4.2-authorization`
-- Kubernetes baseline: `v1.36.4`
+- implementation PR: `#20 feat: Phase 1.4.2 Authorization enforcement`
+- merged baseline: `main@8186bfeff2682677b468ebc397cf248afd2f3213`
+- post-merge CI: run `#70`
+- post-merge workflow conclusion: `success`
+- Required Checks: all green
+  - `Preflight / Lint / RBAC`
+  - `Secret Scan`
+  - `Kubernetes v1.36 Kind E2E`
+
+The post-merge Kind job passed Kubernetes `v1.36.4` platform validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E. The authorization stage therefore satisfies the project rule: implementation PR green -> merge -> resulting main green.
 
 ## Goal
 
@@ -22,11 +31,11 @@ Can this authenticated Principal perform this read-only capability
 for this requested cluster/namespace scope?
 ```
 
-It must not turn the Portal into a Kubernetes API proxy and must not derive authorization from frontend visibility.
+It does not turn the Portal into a Kubernetes API proxy and does not derive authorization from frontend visibility.
 
-## Implementation Progress
+## Delivered Implementation
 
-Implemented on the Phase 1.4.2 branch:
+Phase 1.4.2 delivered:
 
 - centralized `internal/authorization` package;
 - provider-neutral `Capability`, `Scope`, `DecisionRequest`, `Decision`, and `Authorizer` contracts;
@@ -38,20 +47,15 @@ Implemented on the Phase 1.4.2 branch:
 - authorization failures and authorizer errors fail closed;
 - authenticated requests with no Authorizer fail closed;
 - cluster and namespace scope extraction uses normalized request values;
-- Finding Detail resolves the normalized Finding first and authorizes against its real cluster/namespace before returning it;
+- Finding Detail resolves the normalized Finding and authorizes against its real cluster/namespace before returning it;
 - deferred Finding authorization checks Principal/Authorizer prerequisites before resolving the Finding, preventing data-source reads under an incomplete security pipeline;
 - Web Portal renders explicit `401` authentication-required and `403` authorization-denied states using the generated client `ApiError`;
 - frontend remains presentation-only and does not make authorization decisions;
-- table-driven backend route/capability/scope tests and deterministic policy tests added.
-
-Still pending before Phase 1.4.2 can be marked Completed:
-
-- PR Required Checks acceptance;
-- post-merge `main` Required Checks acceptance.
+- table-driven backend route/capability/scope tests and deterministic policy tests.
 
 ## Capability Model
 
-Initial capabilities are deliberately small and map to the existing read-only API surface:
+Initial capabilities deliberately map only to the existing read-only API surface:
 
 | Capability | API intent |
 | --- | --- |
@@ -120,7 +124,7 @@ No policy entry means deny. Authorization provider/internal errors never downgra
 
 When AuthN is active but no Authorizer is configured, protected API routes fail closed with `AUTHORIZATION_UNAVAILABLE` rather than silently reverting to the Phase 1.3 anonymous behavior.
 
-## Backend Interfaces
+## Backend Interface
 
 The implementation uses a provider-neutral decision seam:
 
@@ -236,7 +240,7 @@ Authorization only narrows access inside the existing safe projection. It does n
 
 ## Test Matrix
 
-Implemented backend coverage includes:
+Backend coverage includes:
 
 ```text
 Authentication
@@ -272,31 +276,29 @@ Failure handling
 
 Frontend unit coverage includes explicit 401 and 403 states while preserving loading/empty/error/retry behavior.
 
-## CI / Acceptance
+## CI / Acceptance Result
 
-Phase 1.4.2 is complete only when:
+All Phase 1.4.2 acceptance conditions are satisfied:
 
-- capability model is centralized;
-- route-to-capability mapping is exhaustive;
-- Authorizer abstraction exists;
-- deny-by-default enforcement is proven;
-- cluster/namespace scope checks are proven;
-- Finding Detail real-scope authorization is proven;
-- frontend 401/403 states are handled without becoming an authorization control;
-- AuthZ matrix tests are green;
-- existing API Contract Gate is green;
-- existing Go/Web/Docker/browser checks are green;
-- Secret Scan is green;
-- Kubernetes v1.36 Kind E2E is green;
-- no Kubernetes privilege expansion occurs;
-- implementation PR is merged to `main`;
-- resulting `main` Required Checks are green.
+- capability model centralized;
+- route-to-capability mapping exhaustive;
+- Authorizer abstraction implemented;
+- deny-by-default enforcement proven;
+- cluster/namespace scope checks proven;
+- Finding Detail real-scope authorization proven;
+- frontend 401/403 states handled without becoming an authorization control;
+- AuthZ matrix tests green;
+- API Contract Gate green;
+- Go/Web/Docker/browser checks green;
+- Secret Scan green;
+- Kubernetes v1.36 Kind E2E green;
+- no Kubernetes privilege expansion;
+- implementation PR merged to `main`;
+- resulting `main` Required Checks green.
 
-Until the last two conditions are true, Phase 1.4.2 remains **Active**, not Completed.
+## Phase Boundary
 
-## Non-Goals for Phase 1.4.2
-
-Not part of this stage:
+Not implemented in Phase 1.4.2:
 
 - enterprise OIDC/SSO provider selection;
 - login/logout UX beyond safe 401/403 states;
@@ -305,4 +307,4 @@ Not part of this stage:
 - Events/Prometheus/Loki/Alertmanager correlation;
 - writes or remediation.
 
-The next stage after Authorization acceptance is **Phase 1.4.3 — Audit**.
+Next stage: **Phase 1.4.3 — Audit**. The implementation branch is created only after the completion/entry transition is merged and its resulting `main` is green.

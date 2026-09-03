@@ -2,17 +2,21 @@
 
 ## Status
 
-**Phase 1.4 active — current stage: Phase 1.4.2 Authorization.**
+**Phase 1.4 active — current stage: Phase 1.4.3 Audit entering.**
 
 Phase 1.3 is formally completed on the green `main@0248de41466d3e4746f1f6e3b1035a95c63a7940` baseline.
 
-Phase 1.4.1 Identity Contract is formally completed on `main@7b13b250f035657a1edf24e9590a6560488186bf` after PR #18 was squash-merged and post-merge `main` CI run #63 passed all Required Checks:
+Phase 1.4.1 Identity Contract is formally completed on `main@7b13b250f035657a1edf24e9590a6560488186bf` after PR #18 was merged and post-merge `main` CI run #63 passed all Required Checks.
+
+Phase 1.4.2 Authorization is formally completed on `main@8186bfeff2682677b468ebc397cf248afd2f3213` after PR #20 was merged and post-merge `main` CI run #70 passed all Required Checks:
 
 - `Preflight / Lint / RBAC`
 - `Secret Scan`
 - `Kubernetes v1.36 Kind E2E`
 
-The active implementation baseline for Phase 1.4.2 is branch `phase-1.4.2-authorization`, created directly from that green `main` commit.
+The post-merge Kind job also passed Kubernetes `v1.36.4` platform validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
+
+The Phase 1.4.3 implementation branch must be created from the next green `main` after this completion/entry transition is merged.
 
 ## Goal
 
@@ -33,7 +37,7 @@ Sanitizer / Safe Finding Projection
     ↓
 Kubernetes + K8sGPT read-only data sources
 
-Every accepted request
+Every accepted or rejected protected request
     ↓
 Structured Audit Event
 ```
@@ -57,22 +61,26 @@ Initial authorization is read-only and capability based:
 - `findings:summary`
 - `clusters:list`
 - `namespaces:list`
+- `resources:read`
 
-Authorization must be enforced by the backend. Frontend hiding alone is never an authorization control.
+Authorization is enforced by the backend. Frontend hiding alone is never an authorization control.
 
 ### Audit
 
 Record structured, security-safe audit events for Portal/API access:
 
 - request ID / correlation ID
-- authenticated principal identifier
+- authenticated principal identifier when available
 - operation/capability
 - cluster/namespace scope when applicable
-- result status
+- authorization/authentication/result outcome
+- HTTP status class / result status
 - timestamp
 - latency
 
-Audit records must not contain Secret values, raw Kubernetes objects, raw Result CR content, tokens or authorization headers.
+Audit records must not contain Secret values, raw Kubernetes objects, raw Result CR content, bearer/session tokens, authorization headers, cookies, provider credentials, or request/response bodies containing unbounded diagnostic data.
+
+Audit emission must not weaken the request security path: an audit sink failure must be observable but must not silently change an authorization deny into an allow.
 
 ### Sanitizer
 
@@ -135,7 +143,7 @@ Sanitizer
   ▼
 OpenAPI Response DTO
 
-Request lifecycle ───────────────► Audit Sink
+Request lifecycle ───────────────► Security-safe Audit Recorder ──► Audit Sink
 ```
 
 ## Implementation Stages
@@ -151,22 +159,29 @@ Request lifecycle ───────────────► Audit Sink
 
 Completion record: `docs/phase-1.4.1-identity-contract.md`.
 
-### Phase 1.4.2 — Authorization — Active
+### Phase 1.4.2 — Authorization — Completed
 
-- capability model
-- deny-by-default middleware
+- centralized capability model
+- backend-enforced deny-by-default authorization
 - cluster/namespace scope rules
-- backend tests for allow/deny matrices
-- frontend authenticated/forbidden states
+- `resources:read` coverage for the existing safe resource projection
+- Finding Detail real-scope authorization to prevent opaque-ID scope bypass
+- backend allow/deny matrix tests
+- frontend authentication/forbidden states without frontend authorization decisions
 
-Stage design and acceptance boundary: `docs/phase-1.4.2-authorization.md`.
+Completion record: `docs/phase-1.4.2-authorization.md`.
 
-### Phase 1.4.3 — Audit
+### Phase 1.4.3 — Audit — Entering
 
 - structured audit event schema
-- safe audit sink abstraction
-- access/result/latency fields
+- provider-neutral, security-safe audit recorder/sink abstraction
+- request/correlation ID propagation
+- principal/capability/scope/result/latency fields
+- authentication/authorization denial and backend result coverage
+- sink failure handling that never weakens AuthN/AuthZ
 - tests preventing sensitive-data leakage
+
+Stage design and acceptance boundary: `docs/phase-1.4.3-audit.md`.
 
 ### Phase 1.4.4 — Sanitizer
 
