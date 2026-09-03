@@ -9,7 +9,7 @@
 - Phase 1.4: Authentication / Authorization / Audit / Sanitizer — **Active**
   - Phase 1.4.1: Identity Contract — **Completed**
   - Phase 1.4.2: Authorization — **Completed**
-  - Phase 1.4.3: Audit — **Entering**
+  - Phase 1.4.3: Audit — **Active / Implementation**
   - Phase 1.4.4: Sanitizer — **Planned**
   - Phase 1.4.5: Production Gates — **Planned**
 
@@ -46,9 +46,15 @@ Detailed record: `docs/phase-1.4.1-identity-contract.md`.
 
 Detailed record: `docs/phase-1.4.2-authorization.md`.
 
-## Phase 1.4.3 Entry
+## Phase 1.4.3 Active Implementation
 
-Phase 1.4.3 introduces structured, security-safe audit events around the existing authenticated and authorized read-only API path. It does not expand Kubernetes permissions or introduce observability-source correlation.
+- entry transition PR: `#21 docs: close Phase 1.4.2 and enter Phase 1.4.3 Audit`
+- verified entry baseline: `main@1129dc786a3de4400a1ab65cfe3948115c90fd30`
+- entry baseline workflow: `kube-aiops CI #72` — `success`
+- implementation branch: `phase-1.4.3-audit`
+- implementation PR: `#22 feat: Phase 1.4.3 structured audit pipeline`
+- current implementation includes a bounded typed audit event, provider-neutral sink, request-local recorder, AuthN/AuthZ outcome annotation, canonical route capture, normalized scope capture, response status/latency finalization, sink-failure isolation and sensitive-data regression tests.
+- Phase 1.4.3 remains **Active**, not Completed, until PR #22 Required Checks are green, the PR is merged, and the resulting `main` Required Checks are green.
 
 Detailed design and acceptance boundary: `docs/phase-1.4.3-audit.md`.
 
