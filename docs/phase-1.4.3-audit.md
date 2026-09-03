@@ -2,36 +2,46 @@
 
 ## Status
 
-**Active / Implementation.**
+**Completed.**
 
-Entry evidence:
+Completion evidence:
 
 - previous stage: Phase 1.4.2 Authorization — Completed
-- transition PR: `#21 docs: close Phase 1.4.2 and enter Phase 1.4.3 Audit`
+- entry transition PR: `#21 docs: close Phase 1.4.2 and enter Phase 1.4.3 Audit`
 - verified entry baseline: `main@1129dc786a3de4400a1ab65cfe3948115c90fd30`
 - entry baseline workflow: `kube-aiops CI #72` — `success`
-- Kubernetes baseline: `v1.36.4`
 - implementation branch: `phase-1.4.3-audit`
 - implementation PR: `#22 feat: Phase 1.4.3 structured audit pipeline`
+- final implementation head: `7fdb3d5ec30f24fd027896bb20a83069225e51a0`
+- PR Required Checks: all green
+- merged main commit: `10e152dd54b0f98d77bd0595e54c4b021d7679f8`
+- post-merge workflow: `kube-aiops CI #76` — `success`
+- Kubernetes baseline: `v1.36.4`
 
-Phase 1.4.3 remains **Active**, not Completed, until PR #22 Required Checks are green, the implementation is merged to `main`, and the resulting `main` Required Checks are green.
+Post-merge Required Checks all passed:
 
-## Goal
+- `Preflight / Lint / RBAC`
+- `Secret Scan`
+- `Kubernetes v1.36 Kind E2E`
 
-Add a structured, provider-neutral and security-safe audit pipeline around the existing authenticated and authorized read-only API path.
+The Kind job also passed Kubernetes `v1.36.4` baseline validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
 
-Audit must answer:
+## Goal Achieved
+
+Phase 1.4.3 added a structured, provider-neutral and security-safe audit pipeline around the authenticated and authorized read-only API path.
+
+Audit can answer:
 
 ```text
 Who attempted which Portal capability,
-for which cluster/namespace scope,
+for which normalized cluster/namespace scope,
 what security/result outcome occurred,
 and how long the request took?
 ```
 
-It must do this without recording credentials, request/response bodies, raw Kubernetes objects, raw K8sGPT Result CR payloads, Finding diagnostic payloads, raw URL/query strings, or provider/sink error payloads.
+without recording credentials, request/response bodies, raw Kubernetes objects, raw K8sGPT Result CR payloads, Finding diagnostic payloads, raw URL/query strings or provider/sink error payloads.
 
-## Implemented Runtime Architecture
+## Runtime Architecture
 
 ```text
 Request
@@ -39,13 +49,13 @@ Request
 Request / Correlation ID
   ↓
 Audit Lifecycle Recorder
-  │   canonical route + centralized capability
+  │ canonical route + centralized capability
   ↓
 Authentication
-  │   validated subject/provider only
+  │ validated subject/provider only
   ↓
 Authorization
-  │   normalized cluster/namespace scope + decision
+  │ normalized cluster/namespace scope + decision
   ↓
 Read-only Handler
   ↓
@@ -58,15 +68,9 @@ Event validation
 Provider-neutral Audit Sink
 ```
 
-The audit lifecycle sits outside AuthN/AuthZ so `401`, `403`, security-provider `503`, safe `404`, invalid requests, backend errors and successful handler responses can all produce a final event when an Audit Sink is configured.
+The audit lifecycle is outside AuthN/AuthZ so `401`, `403`, security-provider `503`, safe `404`, invalid requests, backend failures and successful responses can all produce a final event when a Sink is configured.
 
-Canonical route metadata is obtained from the real `http.ServeMux` matcher before AuthN. This allows an unauthenticated request to be audited as a route template such as:
-
-```text
-GET /api/v1/findings/{id}
-```
-
-without persisting the opaque Finding ID, raw URL path or query string.
+Canonical route metadata comes from the real `http.ServeMux` matcher, so paths such as `GET /api/v1/findings/{id}` are recorded as templates rather than raw URLs or opaque IDs.
 
 ## Implemented Components
 
@@ -78,16 +82,16 @@ internal/audit/
 └── recorder.go       # request-local bounded lifecycle state
 
 internal/httpapi/
-├── audit.go          # route match, response status, outcome, latency, sink delivery
-├── audit_test.go     # security/outcome/leakage regression coverage
+├── audit.go          # route match, status, outcome, latency, sink delivery
+├── audit_test.go     # outcome/security/leakage regression coverage
 ├── authn.go          # principal + AuthN outcome annotation
 ├── authz.go          # capability/scope + AuthZ outcome annotation
-└── server.go         # request metadata -> audit -> AuthN -> AuthZ -> handler pipeline
+└── server.go         # request metadata -> audit -> AuthN -> AuthZ -> handler
 ```
 
 ## Audit Event Contract
 
-The event model is a fixed Go struct, not an arbitrary map.
+The event is a fixed typed structure, not an arbitrary payload map.
 
 ```text
 Event
@@ -105,9 +109,7 @@ Event
 └── latencyMs
 ```
 
-### Outcomes
-
-Implemented bounded outcomes:
+Bounded outcomes:
 
 - `success`
 - `unauthenticated`
@@ -117,65 +119,44 @@ Implemented bounded outcomes:
 - `invalid_request`
 - `backend_error`
 
-### Validation rules
-
-- timestamp is server generated;
-- request/correlation IDs are required and bounded;
-- route pattern is required, bounded and control-character safe;
-- capability must be one of the centralized Phase 1.4.2 capabilities;
-- principal subject/provider must appear together and remain bounded;
-- namespace cannot exist without cluster;
-- scope values remain bounded and control-character safe;
-- HTTP status must be in the valid status range;
-- latency is bounded to a finite server-side duration;
-- unknown outcomes are rejected.
+Validation rejects unknown outcomes, control characters, oversized fields, invalid status codes, invalid latency and malformed identity/scope combinations.
 
 ## Authentication Boundary
 
-On successful AuthN, Audit receives only:
+On successful authentication Audit receives only:
 
 ```text
 principal.Subject
 principal.Provider
 ```
 
-Audit does not receive:
+It does not receive display name, groups, credentials, Authorization headers or Cookie values.
 
-- display name;
-- groups;
-- bearer/session/provider credentials;
-- Authorization header;
-- Cookie values.
+AuthN failure mapping:
 
-AuthN outcomes:
-
-| Request result | Audit outcome |
+| Result | Audit outcome |
 | --- | --- |
 | no valid identity | `unauthenticated` |
 | provider unavailable/error | `security_unavailable` |
-| provider returns invalid Principal | `security_unavailable` |
+| invalid Principal | `security_unavailable` |
 
-Raw provider errors are not copied into the event.
+Raw provider errors are never copied into the event.
 
 ## Authorization Boundary
 
-Audit reuses the centralized Phase 1.4.2 route capability map and normalized `authorization.Scope`.
+Audit reuses the centralized Phase 1.4.2 capability model and validated `authorization.Scope`.
 
-It does not accept browser-provided capability names or arbitrary policy metadata.
-
-AuthZ outcomes:
-
-| Request result | Audit outcome |
+| Result | Audit outcome |
 | --- | --- |
-| policy allows | final handler outcome |
-| policy denies | `denied` |
-| Authorizer missing/unavailable/error | `security_unavailable` |
+| allow | final handler outcome |
+| deny | `denied` |
+| Authorizer unavailable/error | `security_unavailable` |
 
-Only scope values that pass authorization scope validation are copied into the recorder. Unsafe hostile scope input is omitted rather than copied into an event.
+Only validated normalized scope is copied into Audit.
 
 ## Finding Detail Boundary
 
-Finding Detail preserves the anti-bypass sequence:
+Finding Detail preserves the Phase 1.4.2 anti-bypass sequence:
 
 ```text
 AuthN prerequisites
@@ -191,198 +172,106 @@ handler result
 audit final event
 ```
 
-The final event may contain the normalized cluster/namespace and `findings:read` capability, but never contains:
+The event can contain the normalized cluster/namespace and `findings:read`, but never the opaque Finding ID, Finding explanation text or raw Result CR payload. A missing Finding produces `not_found` without fabricating scope.
 
-- the opaque Finding ID;
-- Finding description/explanation text;
-- raw Result CR payload.
-
-If the Finding does not exist, Audit records `not_found` without fabricating cluster/namespace scope.
-
-## Handler Result Mapping
-
-Default HTTP result mapping after AuthN/AuthZ:
+## Handler Outcome Mapping
 
 | HTTP result | Audit outcome |
 | --- | --- |
 | 2xx / 3xx | `success` |
-| 400-class validation/client error | `invalid_request` |
+| validation/client error | `invalid_request` |
 | 404 | `not_found` |
-| 5xx backend failure | `backend_error` |
+| backend 5xx | `backend_error` |
 
-Explicit AuthN/AuthZ outcomes take precedence over generic status mapping, so an authorization-service `503` remains `security_unavailable`, not `backend_error`.
-
-## Sink Abstraction
-
-The backend depends on a provider-neutral interface:
-
-```go
-type Sink interface {
-    Record(context.Context, Event) error
-}
-```
-
-A `SinkFunc` adapter is also available.
-
-The HTTP/security pipeline does not depend on Loki, Elasticsearch, Kafka, a database or a particular SIEM.
-
-A Sink receives an already validated bounded Event only.
+Explicit AuthN/AuthZ outcomes take precedence over generic HTTP mapping.
 
 ## Sink Failure Semantics
 
-Audit delivery failure must not rewrite an existing security or handler result.
+The provider-neutral Sink receives only a validated bounded Event.
 
-Examples:
-
-```text
-AuthN deny + audit sink failure -> request remains denied
-AuthZ deny + audit sink failure -> request remains denied
-Authorizer error + audit sink failure -> request remains fail-closed
-Allowed request + audit sink failure -> original handler response remains unchanged
-```
-
-Safe operational logging records only bounded metadata such as:
-
-- stable reason: `invalid_event` or `sink_error`;
-- request ID;
-- correlation ID;
-- capability.
-
-Raw sink errors and full events are not dumped to application logs.
-
-## Data Explicitly Excluded
-
-Audit events must not contain:
-
-- `Authorization` headers;
-- `Cookie` / `Set-Cookie` values;
-- bearer, session or provider tokens;
-- passwords, API keys or private keys;
-- kubeconfig or ServiceAccount tokens;
-- request body;
-- response body;
-- raw URL/query string;
-- raw Kubernetes object payload;
-- raw K8sGPT Result CR payload;
-- Finding detail text or diagnostic explanations;
-- opaque Finding IDs;
-- display name or group lists;
-- Pod Logs or Secret values;
-- user-agent or client IP by default;
-- raw provider/sink error strings.
-
-The implementation uses an **allowlisted typed event** rather than broad redaction of arbitrary payloads.
-
-## Health / Readiness Boundary
-
-`/healthz` and `/readyz` stay outside the user-access audit stream. They do not generate misleading user security events.
-
-## Test Coverage
-
-Current implementation tests cover:
+Audit delivery failure does not rewrite security or handler behavior:
 
 ```text
-Schema safety
-  bounded valid event -> accepted
-  control chars / oversized fields -> rejected
-  unknown outcome -> rejected
-  invalid status/latency -> rejected
-
-Request metadata
-  request ID propagated
-  correlation ID propagated
-
-Authentication
-  401 -> unauthenticated
-  AuthN provider error -> security_unavailable
-  valid Principal -> subject/provider only
-
-Authorization
-  allow -> capability/scope captured
-  deny -> denied
-  Authorizer error -> security_unavailable
-
-Handlers
-  2xx -> success
-  400 -> invalid_request
-  safe 404 -> not_found
-  backend 5xx -> backend_error
-
-Finding Detail
-  normalized real scope captured after resolution
-  opaque Finding ID absent
-  missing Finding does not fabricate scope
-
-Sensitive-data regression
-  Authorization absent
-  Cookie/token absent
-  query payload absent
-  Finding ID absent
-  displayName/groups absent
-
-Sink failure
-  existing deny remains deny
-  raw sink error absent from client response and application logs
-
-Operational boundary
-  health endpoint does not emit a user audit event
+AuthN deny + sink failure -> remains denied
+AuthZ deny + sink failure -> remains denied
+Authorizer failure + sink failure -> remains fail-closed
+Allowed response + sink failure -> original handler result remains unchanged
 ```
 
-Existing AuthN, AuthZ, OpenAPI, Go/Web, Docker, browser and Kubernetes v1.36 Kind tests remain mandatory.
+Operational logging uses only stable reason codes and bounded metadata; raw sink errors or full events are not dumped.
 
-## Security Boundary
+## Explicitly Excluded Data
 
-Phase 1.4.3 does **not** expand Kubernetes privileges and does not add new business-data reads.
+Audit events exclude:
 
-Still forbidden:
+- Authorization / Cookie / Set-Cookie material
+- bearer/session/provider tokens
+- passwords, API keys, private keys
+- kubeconfig / ServiceAccount tokens
+- request body / response body
+- raw URL/query string
+- raw Kubernetes objects
+- raw K8sGPT Result CR payloads
+- Finding detail text or opaque Finding IDs
+- displayName/groups
+- Pod Logs / Secret values
+- client IP / user-agent by default
+- raw provider/sink errors
 
-- Pod Logs;
-- Secret reads;
-- raw Kubernetes YAML/JSON;
-- raw K8sGPT Result CR content;
-- create/update/patch/delete/deletecollection;
-- Mutation;
-- Auto Remediation;
-- arbitrary Kubernetes API proxying;
-- browser identity impersonation of Kubernetes users;
-- Events/Prometheus/Loki/Alertmanager correlation.
+The implementation uses an allowlisted typed event instead of broad redaction of arbitrary payloads.
 
-The last item remains Phase 2. Audit is a security/accountability pipeline, not the observability-correlation phase.
+## Regression Coverage
 
-## CI / Acceptance
+Tests prove:
 
-Phase 1.4.3 is complete only when:
+- bounded valid events are accepted;
+- unsafe/oversized fields and unknown outcomes are rejected;
+- request/correlation IDs propagate;
+- 401, AuthN 503, 403 and AuthZ 503 map correctly;
+- 2xx, 400, 404 and backend 5xx map correctly;
+- Finding Detail records only real normalized scope after resolution;
+- missing Finding does not fabricate scope;
+- Authorization, Cookie, tokens, query payloads, Finding IDs, displayName and groups do not appear in serialized events;
+- sink failure does not alter an existing deny or handler response;
+- health/readiness remain outside the user-access audit stream.
 
-- fixed typed audit event schema exists;
-- request/correlation IDs are recorded safely;
-- authenticated principal identity is recorded without credential material;
+Existing AuthN, AuthZ, OpenAPI, Go/Web, Docker, browser and Kubernetes v1.36 Kind tests stayed green.
+
+## Security Boundary Preserved
+
+Phase 1.4.3 did **not** add:
+
+- Pod Logs
+- Secret reads
+- raw Kubernetes YAML/JSON
+- raw K8sGPT Result CR access
+- create/update/patch/delete/deletecollection
+- Mutation
+- Auto Remediation
+- arbitrary Kubernetes API proxying
+- Kubernetes user impersonation
+- Events/Prometheus/Loki/Alertmanager correlation
+
+Observability correlation remains Phase 2.
+
+## Acceptance Result
+
+All Phase 1.4.3 acceptance conditions are satisfied:
+
+- typed bounded Event exists;
+- request/correlation identity is safe;
+- validated Principal identity is recorded without credentials;
 - centralized capability and normalized scope are recorded;
-- AuthN/AuthZ deny/unavailable outcomes are covered;
-- final handler result/status/latency are covered;
-- Sink abstraction remains provider-neutral;
-- sensitive-data leakage regression tests are green;
-- audit sink failures do not weaken AuthN/AuthZ;
-- no Kubernetes privilege expansion occurs;
-- API Contract Gate is green;
-- Go/Web/Docker/browser checks are green;
-- Secret Scan is green;
-- Kubernetes v1.36 Kind E2E is green;
-- implementation PR #22 Required Checks are all green;
-- implementation is merged to `main`;
-- resulting `main` Required Checks are all green.
+- AuthN/AuthZ outcomes are covered;
+- handler status/outcome/latency are covered;
+- Sink is provider-neutral;
+- sensitive-data leakage regression tests pass;
+- sink failure cannot weaken AuthN/AuthZ;
+- no Kubernetes privilege expansion occurred;
+- API Contract, Go/Web/Docker/browser, Secret Scan and Kind v1.36 checks pass;
+- PR #22 merged;
+- post-merge `main` CI #76 passes all Required Checks.
 
-Until the repository-level merge and post-merge conditions are satisfied, Phase 1.4.3 remains **Active**, not Completed.
+**Phase 1.4.3 Audit is therefore formally Completed.**
 
-## Non-Goals
-
-Not part of Phase 1.4.3:
-
-- selecting a concrete enterprise SIEM/backend;
-- Loki/Elasticsearch/Kafka-specific coupling;
-- Events/Prometheus/Loki/Alertmanager correlation;
-- distributed tracing implementation;
-- response sanitizer implementation;
-- Pod Logs or Secret access;
-- write/remediation actions.
-
-The next stage after Audit acceptance is **Phase 1.4.4 — Sanitizer**.
+The next stage is **Phase 1.4.4 — Sanitizer**.
