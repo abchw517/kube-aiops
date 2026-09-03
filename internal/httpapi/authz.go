@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
 	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/identity"
 )
@@ -90,10 +91,12 @@ func (s *Server) authorizationPrerequisiteMiddleware(
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := identity.PrincipalFromContext(r.Context()); !ok {
+			setAuditOutcome(r, internalaudit.OutcomeUnauthenticated)
 			writeAuthenticationRequired(w)
 			return
 		}
 		if authorizer == nil {
+			setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
 			s.logAuthorizationUnavailable(r, capability, authorization.Scope{}, "authorizer_not_configured")
 			writeAuthorizationUnavailable(w)
 			return
@@ -123,12 +126,15 @@ func (s *Server) authorizeRequest(
 	capability authorization.Capability,
 	scope authorization.Scope,
 ) bool {
+	setAuditScope(r, scope)
 	principal, ok := identity.PrincipalFromContext(r.Context())
 	if !ok {
+		setAuditOutcome(r, internalaudit.OutcomeUnauthenticated)
 		writeAuthenticationRequired(w)
 		return false
 	}
 	if authorizer == nil {
+		setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
 		s.logAuthorizationUnavailable(r, capability, scope, "authorizer_not_configured")
 		writeAuthorizationUnavailable(w)
 		return false
@@ -140,15 +146,23 @@ func (s *Server) authorizeRequest(
 		Scope:      scope,
 	})
 	if err != nil {
+		setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
 		s.logAuthorizationUnavailable(r, capability, scope, "authorizer_error")
 		writeAuthorizationUnavailable(w)
 		return false
 	}
 	if !decision.Allowed {
+		setAuditOutcome(r, internalaudit.OutcomeDenied)
 		writeForbidden(w)
 		return false
 	}
 	return true
+}
+
+func setAuditScope(r *http.Request, scope authorization.Scope) {
+	if recorder, ok := internalaudit.RecorderFromContext(r.Context()); ok {
+		recorder.SetScope(scope)
+	}
 }
 
 func (s *Server) logAuthorizationUnavailable(

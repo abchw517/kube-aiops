@@ -42,8 +42,9 @@ func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration
 	return NewHandlerWithOptions(logger, backend, readyTimeout, HandlerOptions{})
 }
 
-// NewHandlerWithOptions builds request metadata -> optional AuthN -> route-level AuthZ -> read-only
-// handlers. Request/correlation IDs therefore exist on authentication and authorization errors.
+// NewHandlerWithOptions builds request metadata -> optional Audit -> optional AuthN -> route-level
+// AuthZ -> read-only handlers. Request/correlation IDs therefore exist on every audited security
+// outcome, while Audit can observe 401/403/503 without changing the AuthN/AuthZ decision.
 func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout time.Duration, options HandlerOptions) http.Handler {
 	server := &Server{
 		logger:               logger,
@@ -66,6 +67,9 @@ func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout ti
 	var handler http.Handler = mux
 	if options.Authenticator != nil {
 		handler = server.authenticationMiddleware(options.Authenticator, handler)
+	}
+	if options.AuditSink != nil {
+		handler = server.auditMiddleware(mux, options.AuditSink, handler)
 	}
 	return requestMetadataMiddleware(handler)
 }
