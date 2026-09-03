@@ -46,15 +46,22 @@ func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration
 // handlers. Request/correlation IDs therefore exist on authentication and authorization errors.
 func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout time.Duration, options HandlerOptions) http.Handler {
 	server := &Server{
-		logger:       logger,
-		backend:      backend,
-		readyTimeout: readyTimeout,
+		logger:               logger,
+		backend:              backend,
+		readyTimeout:         readyTimeout,
+		authorizer:           options.Authorizer,
+		authorizationEnabled: options.Authenticator != nil || options.Authorizer != nil,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", server.healthz)
 	mux.HandleFunc("GET /readyz", server.readyz)
-	server.registerProtectedRoutes(mux, options)
+	mux.HandleFunc("GET /api/v1/clusters", server.protectRoute("GET /api/v1/clusters", server.clusters))
+	mux.HandleFunc("GET /api/v1/clusters/{cluster}/namespaces", server.protectRoute("GET /api/v1/clusters/{cluster}/namespaces", server.namespaces))
+	mux.HandleFunc("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.protectRoute("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.resource))
+	mux.HandleFunc("GET /api/v1/findings", server.protectRoute("GET /api/v1/findings", server.findings))
+	mux.HandleFunc("GET /api/v1/findings/summary", server.protectRoute("GET /api/v1/findings/summary", server.findingSummary))
+	mux.HandleFunc("GET /api/v1/findings/{id}", server.protectRoute("GET /api/v1/findings/{id}", server.findingDetail))
 
 	var handler http.Handler = mux
 	if options.Authenticator != nil {
