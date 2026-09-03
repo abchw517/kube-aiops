@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 )
@@ -27,36 +28,40 @@ type Backend interface {
 }
 
 type Server struct {
-	logger       *slog.Logger
-	backend      Backend
-	readyTimeout time.Duration
+	logger                  *slog.Logger
+	backend                 Backend
+	readyTimeout            time.Duration
+	authorizer              authorization.Authorizer
+	authorizationEnabled    bool
+	findingDetailCapability authorization.Capability
 }
 
-// NewHandler preserves the Phase 1.3 runtime behavior while Phase 1.4.1 establishes the
-// provider-neutral identity contract. Authentication enforcement is activated by passing an
-// Authenticator to NewHandlerWithOptions; no insecure built-in credential mechanism is assumed.
+// NewHandler preserves the existing provider-neutral runtime until concrete trusted AuthN/AuthZ
+// adapters are configured. NewHandlerWithOptions activates the Phase 1.4 security pipeline.
 func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration) http.Handler {
 	return NewHandlerWithOptions(logger, backend, readyTimeout, HandlerOptions{})
 }
 
-// NewHandlerWithOptions builds the HTTP pipeline with request metadata first, then optional AuthN,
-// then the existing read-only API routes. Request/correlation IDs therefore exist on AuthN errors.
+// NewHandlerWithOptions builds request metadata -> optional AuthN -> route-level AuthZ -> read-only
+// handlers. Request/correlation IDs therefore exist on authentication and authorization errors.
 func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout time.Duration, options HandlerOptions) http.Handler {
 	server := &Server{
-		logger:       logger,
-		backend:      backend,
-		readyTimeout: readyTimeout,
+		logger:               logger,
+		backend:              backend,
+		readyTimeout:         readyTimeout,
+		authorizer:           options.Authorizer,
+		authorizationEnabled: options.Authenticator != nil || options.Authorizer != nil,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", server.healthz)
 	mux.HandleFunc("GET /readyz", server.readyz)
-	mux.HandleFunc("GET /api/v1/clusters", server.clusters)
-	mux.HandleFunc("GET /api/v1/clusters/{cluster}/namespaces", server.namespaces)
-	mux.HandleFunc("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.resource)
-	mux.HandleFunc("GET /api/v1/findings", server.findings)
-	mux.HandleFunc("GET /api/v1/findings/summary", server.findingSummary)
-	mux.HandleFunc("GET /api/v1/findings/{id}", server.findingDetail)
+	mux.HandleFunc("GET /api/v1/clusters", server.protectRoute("GET /api/v1/clusters", server.clusters))
+	mux.HandleFunc("GET /api/v1/clusters/{cluster}/namespaces", server.protectRoute("GET /api/v1/clusters/{cluster}/namespaces", server.namespaces))
+	mux.HandleFunc("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.protectRoute("GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}", server.resource))
+	mux.HandleFunc("GET /api/v1/findings", server.protectRoute("GET /api/v1/findings", server.findings))
+	mux.HandleFunc("GET /api/v1/findings/summary", server.protectRoute("GET /api/v1/findings/summary", server.findingSummary))
+	mux.HandleFunc("GET /api/v1/findings/{id}", server.protectRoute("GET /api/v1/findings/{id}", server.findingDetail))
 
 	var handler http.Handler = mux
 	if options.Authenticator != nil {
@@ -146,7 +151,7 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	page, err := s.backend.ListFindings(r.Context(), finding.Query{
 		Filter:   filter,
 		Limit:    limit,
-		Continue: r.URL.Query().Get("continue"),
+		Continue: strings.TrimSpace(r.URL.Query().Get("continue")),
 	})
 	if err != nil {
 		s.writeFindingBackendError(w, err, "FINDING_LIST_FAILED", "unable to list findings")
@@ -181,6 +186,16 @@ func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "FINDING_READ_FAILED", "unable to read finding")
 		return
 	}
+
+	if s.authorizationEnabled {
+		scope := authorization.ClusterScope(item.Cluster)
+		if strings.TrimSpace(item.Namespace) != "" {
+			scope = authorization.NamespaceScope(item.Cluster, item.Namespace)
+		}
+		if !s.authorizeRequest(w, r, s.authorizer, s.findingDetailCapability, scope) {
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -197,10 +212,10 @@ func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter,
 
 	return finding.Filter{
 		Cluster:   cluster,
-		Namespace: query.Get("namespace"),
-		Kind:      query.Get("kind"),
-		Severity:  query.Get("severity"),
-		Problem:   query.Get("problem"),
+		Namespace: strings.TrimSpace(query.Get("namespace")),
+		Kind:      strings.TrimSpace(query.Get("kind")),
+		Severity:  strings.TrimSpace(query.Get("severity")),
+		Problem:   strings.TrimSpace(query.Get("problem")),
 	}, true
 }
 

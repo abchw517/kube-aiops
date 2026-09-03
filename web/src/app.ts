@@ -1,11 +1,18 @@
-import type {
-  Cluster,
-  FindingPage,
-  FindingSummary,
-  Namespace,
+import {
+  ApiError,
+  type Cluster,
+  type FindingPage,
+  type FindingSummary,
+  type Namespace,
 } from "../../clients/typescript/generated.ts";
 import { apiClient } from "./api/client.ts";
-import { errorState, emptyState, loadingState } from "./components/states.ts";
+import {
+  authenticationRequiredState,
+  authorizationDeniedState,
+  emptyState,
+  errorState,
+  loadingState,
+} from "./components/states.ts";
 import {
   parseFindingFilters,
   serializeFindingFilters,
@@ -72,7 +79,7 @@ export class PortalApp {
       this.renderFindingDomain(clusters, namespaces, filters, page, summary);
     } catch (error) {
       if (generation !== this.renderGeneration) return;
-      this.renderShell(errorState(this.safeErrorMessage(error)));
+      this.renderShell(this.requestErrorState(error));
     }
   }
 
@@ -84,7 +91,7 @@ export class PortalApp {
       this.renderShell(renderFindingDetail(finding));
     } catch (error) {
       if (generation !== this.renderGeneration) return;
-      this.renderShell(errorState(this.safeErrorMessage(error)));
+      this.renderShell(this.requestErrorState(error));
     }
   }
 
@@ -130,7 +137,7 @@ export class PortalApp {
       <main class="page-shell">
         <section class="page-intro">
           <div>
-            <p class="eyebrow">Phase 1.3 · Web Portal</p>
+            <p class="eyebrow">Phase 1.4 · Secured Portal</p>
             <h1>Finding Operations Console</h1>
             <p>Explore normalized K8sGPT findings without exposing Pod logs, Secrets, raw Kubernetes objects, or mutation controls.</p>
           </div>
@@ -172,6 +179,14 @@ export class PortalApp {
     }
 
     window.location.hash = `#/findings?${serializeFindingFilters(filters)}`;
+  }
+
+  private requestErrorState(error: unknown): string {
+    if (error instanceof ApiError) {
+      if (error.status === 401) return authenticationRequiredState();
+      if (error.status === 403) return authorizationDeniedState();
+    }
+    return errorState(this.safeErrorMessage(error));
   }
 
   private safeErrorMessage(error: unknown): string {
