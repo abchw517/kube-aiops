@@ -2,25 +2,27 @@
 
 ## Status
 
-**Phase 1.4 active — current stage: Phase 1.4.3 Audit entering.**
+**Phase 1.4 active — current stage: Phase 1.4.4 Sanitizer entering.**
 
-Phase 1.3 is formally completed on the green `main@0248de41466d3e4746f1f6e3b1035a95c63a7940` baseline.
+Completed stages:
 
-Phase 1.4.1 Identity Contract is formally completed on `main@7b13b250f035657a1edf24e9590a6560488186bf` after PR #18 was merged and post-merge `main` CI run #63 passed all Required Checks.
+- Phase 1.4.1 Identity Contract — completed on `main@7b13b250f035657a1edf24e9590a6560488186bf`; post-merge CI #63 green.
+- Phase 1.4.2 Authorization — completed on `main@8186bfeff2682677b468ebc397cf248afd2f3213`; post-merge CI #70 green.
+- Phase 1.4.3 Audit — completed on `main@10e152dd54b0f98d77bd0595e54c4b021d7679f8`; implementation PR #22 and post-merge CI #76 passed all Required Checks.
 
-Phase 1.4.2 Authorization is formally completed on `main@8186bfeff2682677b468ebc397cf248afd2f3213` after PR #20 was merged and post-merge `main` CI run #70 passed all Required Checks:
+For Phase 1.4.3, post-merge CI #76 passed:
 
 - `Preflight / Lint / RBAC`
 - `Secret Scan`
 - `Kubernetes v1.36 Kind E2E`
 
-The post-merge Kind job also passed Kubernetes `v1.36.4` platform validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
+The Kind job also passed Kubernetes `v1.36.4` platform validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
 
-The Phase 1.4.3 implementation branch must be created from the next green `main` after this completion/entry transition is merged.
+The Phase 1.4.4 implementation branch must be created from the green `main` produced after the Phase 1.4.3 completion / Phase 1.4.4 entry transition is merged and its own Required Checks are green.
 
 ## Goal
 
-Add a production-grade identity and trust boundary around the existing read-only Portal without expanding Kubernetes mutation privileges.
+Add a production-grade identity, authorization, accountability and response-safety boundary around the existing read-only Portal without expanding Kubernetes mutation or sensitive-data privileges.
 
 ```text
 User / SRE
@@ -29,15 +31,15 @@ Authentication
     ↓
 Authorization Policy
     ↓
-Phase 1.3 Web Portal
+Read-only Portal API
     ↓
-Phase 1.2 Backend API
+Safe Domain / DTO Projection
     ↓
-Sanitizer / Safe Finding Projection
+Sanitizer
     ↓
-Kubernetes + K8sGPT read-only data sources
+OpenAPI Response
 
-Every accepted or rejected protected request
+Every protected request
     ↓
 Structured Audit Event
 ```
@@ -46,15 +48,14 @@ Structured Audit Event
 
 ### Authentication
 
-- define the Portal identity boundary
-- establish a provider-neutral authenticated principal model
-- keep authentication configuration outside frontend source code
-- do not place long-lived credentials in browser storage
-- preserve same-origin deployment where practical
+- provider-neutral validated Principal
+- request/correlation IDs
+- no long-lived credentials in browser source/storage
+- provider errors do not leak raw credentials or tokens
 
 ### Authorization
 
-Initial authorization is read-only and capability based:
+Backend-enforced, deny-by-default read-only capabilities:
 
 - `findings:list`
 - `findings:read`
@@ -63,39 +64,29 @@ Initial authorization is read-only and capability based:
 - `namespaces:list`
 - `resources:read`
 
-Authorization is enforced by the backend. Frontend hiding alone is never an authorization control.
+Frontend hiding is never an authorization control.
 
 ### Audit
 
-Record structured, security-safe audit events for Portal/API access:
+Phase 1.4.3 now provides structured, security-safe audit events containing bounded request metadata, validated principal identity, centralized capability, normalized scope, outcome, HTTP status and latency. Audit events exclude request/response bodies, credentials, raw Kubernetes objects, raw K8sGPT Result CR data and opaque Finding IDs.
 
-- request ID / correlation ID
-- authenticated principal identifier when available
-- operation/capability
-- cluster/namespace scope when applicable
-- authorization/authentication/result outcome
-- HTTP status class / result status
-- timestamp
-- latency
-
-Audit records must not contain Secret values, raw Kubernetes objects, raw Result CR content, bearer/session tokens, authorization headers, cookies, provider credentials, or request/response bodies containing unbounded diagnostic data.
-
-Audit emission must not weaken the request security path: an audit sink failure must be observable but must not silently change an authorization deny into an allow.
+Audit Sink failure never weakens AuthN/AuthZ or rewrites the original handler result.
 
 ### Sanitizer
 
-Add a reusable output sanitization layer before data leaves the backend trust boundary.
+Phase 1.4.4 adds a reusable response safety layer before data leaves the backend trust boundary.
 
 Minimum guards:
 
-- Secret/token/password/private-key patterns
-- authorization/cookie header material
-- raw Kubernetes object payloads
-- raw K8sGPT Result CR payloads
-- unsafe HTML/script content
-- oversized/unbounded diagnostic text
+- bounded diagnostic text and bounded aggregate response size;
+- credential-like material such as bearer/session tokens, passwords, API keys and private-key blocks;
+- authorization/cookie header material accidentally embedded in text;
+- unsafe HTML/script content and active markup;
+- raw Kubernetes object / raw K8sGPT Result CR regression guards;
+- deterministic safe replacement / rejection behavior;
+- structured tests proving no sensitive fixture crosses the response boundary.
 
-The sanitizer is defense in depth and must not replace the OpenAPI allowlist/DTO boundary.
+Sanitizer is **defense in depth**. It must not replace typed DTO/OpenAPI allowlists, and it must never justify reading Secrets, Pod Logs, raw Kubernetes objects, raw Result CR payloads or broader Kubernetes resources.
 
 ## Explicit Non-Goals
 
@@ -105,37 +96,34 @@ Phase 1.4 does **not** add:
 - Secret reads
 - raw Kubernetes YAML/JSON explorer
 - raw Result CR viewer
-- create/update/patch/delete
+- create/update/patch/delete/deletecollection
 - Mutation
 - Auto Remediation
 - arbitrary Kubernetes API proxying
+- browser identity impersonation of Kubernetes users
 - Events/Prometheus/Loki/Alertmanager correlation
 
-The last item remains Phase 2.
+Observability correlation remains Phase 2.
 
-## Proposed Architecture
+## Architecture
 
 ```text
 Browser
   │
-  │ authenticated session / identity context
   ▼
 Portal Edge / AuthN
   │
   ▼
-Backend AuthN Adapter
+Backend Principal
   │
-  ├── Principal
   ▼
 Authorization Guard
-  │
-  ├── deny by default
-  ├── capability + scope evaluation
+  │ deny by default
   ▼
-Read-only API Handler
+Read-only Handler / Service
   │
   ▼
-Finding Service
+Typed Safe Projection
   │
   ▼
 Sanitizer
@@ -143,63 +131,72 @@ Sanitizer
   ▼
 OpenAPI Response DTO
 
-Request lifecycle ───────────────► Security-safe Audit Recorder ──► Audit Sink
+Request lifecycle ─────────► Audit Recorder ─────────► Audit Sink
 ```
 
 ## Implementation Stages
 
 ### Phase 1.4.1 — Identity Contract — Completed
 
-- principal model
-- auth middleware interface
-- unauthenticated/forbidden response contract
-- request/correlation ID
-- OpenAPI contract updates
-- generated TypeScript client regeneration
+- Principal model
+- Authenticator boundary
+- 401/403 response contract
+- request/correlation IDs
+- OpenAPI contract and generated client updates
 
 Completion record: `docs/phase-1.4.1-identity-contract.md`.
 
 ### Phase 1.4.2 — Authorization — Completed
 
-- centralized capability model
-- backend-enforced deny-by-default authorization
-- cluster/namespace scope rules
-- `resources:read` coverage for the existing safe resource projection
-- Finding Detail real-scope authorization to prevent opaque-ID scope bypass
-- backend allow/deny matrix tests
-- frontend authentication/forbidden states without frontend authorization decisions
+- centralized capabilities
+- deny-by-default backend enforcement
+- cluster/namespace scopes
+- `resources:read`
+- Finding Detail real-scope authorization
+- allow/deny matrix tests
+- frontend 401/403 states without frontend authorization decisions
 
 Completion record: `docs/phase-1.4.2-authorization.md`.
 
-### Phase 1.4.3 — Audit — Entering
+### Phase 1.4.3 — Audit — Completed
 
-- structured audit event schema
-- provider-neutral, security-safe audit recorder/sink abstraction
-- request/correlation ID propagation
-- principal/capability/scope/result/latency fields
-- authentication/authorization denial and backend result coverage
-- sink failure handling that never weakens AuthN/AuthZ
-- tests preventing sensitive-data leakage
+- fixed typed Event and bounded Outcome model
+- provider-neutral Sink / SinkFunc
+- request-local Recorder
+- canonical route pattern capture
+- Principal subject/provider only
+- normalized capability/scope capture
+- AuthN/AuthZ/result outcome and latency capture
+- sink-failure isolation
+- sensitive-data leakage regression coverage
+- implementation PR #22 merged
+- post-merge `main` CI #76 green
 
-Stage design and acceptance boundary: `docs/phase-1.4.3-audit.md`.
+Completion record: `docs/phase-1.4.3-audit.md`.
 
-### Phase 1.4.4 — Sanitizer
+### Phase 1.4.4 — Sanitizer — Entering
 
-- centralized response sanitizer
-- secret/token/header guards
-- text length bounds
-- HTML/script safety tests
-- raw-object/raw-Result regression guards
+- centralized sanitizer package and policy
+- safe text normalization and maximum-length policy
+- credential/header/private-key pattern guards
+- HTML/script safety rules
+- response-boundary integration without arbitrary-object reflection
+- raw Kubernetes/raw Result regression tests
+- finding/list/summary/resource response leakage tests
+- deterministic sanitize/reject result contract
+- no Kubernetes privilege expansion
+
+Design and acceptance boundary: `docs/phase-1.4.4-sanitizer.md`.
 
 ### Phase 1.4.5 — Production Gates
 
-Required pipeline additions should include:
+Aggregate production gates include:
 
-- AuthN middleware unit/integration tests
+- AuthN tests
 - AuthZ matrix tests
+- Audit leakage tests
+- Sanitizer security regression tests
 - unauthenticated/forbidden browser E2E
-- sanitizer security regression tests
-- audit leakage tests
 - OpenAPI/client drift gate
 - Docker smoke
 - Kubernetes v1.36 Kind E2E
@@ -210,19 +207,19 @@ Required pipeline additions should include:
 Phase 1.4 is complete only when:
 
 ```text
-AuthN implemented
+AuthN proven
     +
 AuthZ deny-by-default proven
     +
 Audit coverage proven
     +
-Sanitizer regression suite proven
+Sanitizer response-safety proven
     +
 No privilege expansion
     +
-PR Required Checks all green
+PR Required Checks green
     +
 Merge to main
     +
-main Required Checks all green
+main Required Checks green
 ```
