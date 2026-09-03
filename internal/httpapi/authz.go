@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,67 +16,67 @@ type protectedRoute struct {
 	capability    authorization.Capability
 	resolveScope  scopeResolver
 	deferredScope bool
-	handler       http.Handler
 }
 
-func (s *Server) protectedRoutes() []protectedRoute {
+func protectedRoutes() []protectedRoute {
 	return []protectedRoute{
 		{
 			pattern:      "GET /api/v1/clusters",
 			capability:   authorization.CapabilityClustersList,
 			resolveScope: func(*http.Request) authorization.Scope { return authorization.GlobalScope() },
-			handler:      http.HandlerFunc(s.clusters),
 		},
 		{
 			pattern:      "GET /api/v1/clusters/{cluster}/namespaces",
 			capability:   authorization.CapabilityNamespacesList,
 			resolveScope: clusterPathScope,
-			handler:      http.HandlerFunc(s.namespaces),
 		},
 		{
 			pattern:      "GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}",
 			capability:   authorization.CapabilityResourcesRead,
 			resolveScope: namespacePathScope,
-			handler:      http.HandlerFunc(s.resource),
 		},
 		{
 			pattern:      "GET /api/v1/findings",
 			capability:   authorization.CapabilityFindingsList,
 			resolveScope: findingQueryScope,
-			handler:      http.HandlerFunc(s.findings),
 		},
 		{
 			pattern:      "GET /api/v1/findings/summary",
 			capability:   authorization.CapabilityFindingsSummary,
 			resolveScope: findingQueryScope,
-			handler:      http.HandlerFunc(s.findingSummary),
 		},
 		{
 			pattern:       "GET /api/v1/findings/{id}",
 			capability:    authorization.CapabilityFindingsRead,
 			deferredScope: true,
-			handler:       http.HandlerFunc(s.findingDetail),
 		},
 	}
 }
 
-func (s *Server) registerProtectedRoutes(mux *http.ServeMux, options HandlerOptions) {
-	authorizationEnabled := options.Authenticator != nil || options.Authorizer != nil
-	s.authorizer = options.Authorizer
-	s.authorizationEnabled = authorizationEnabled
-
-	for _, route := range s.protectedRoutes() {
-		handler := route.handler
-		if route.deferredScope {
-			s.findingDetailCapability = route.capability
-			if authorizationEnabled {
-				handler = s.authorizationPrerequisiteMiddleware(options.Authorizer, route.capability, handler)
-			}
-		} else if authorizationEnabled {
-			handler = s.authorizationMiddleware(options.Authorizer, route.capability, route.resolveScope, handler)
+func protectedRouteFor(pattern string) (protectedRoute, bool) {
+	for _, route := range protectedRoutes() {
+		if route.pattern == pattern {
+			return route, true
 		}
-		mux.Handle(route.pattern, handler)
 	}
+	return protectedRoute{}, false
+}
+
+// protectRoute keeps ServeMux registration in server.go so the OpenAPI Contract Gate continues to
+// validate the actual registered routes, while capability/scope metadata remains centralized here.
+func (s *Server) protectRoute(pattern string, next http.HandlerFunc) http.HandlerFunc {
+	route, ok := protectedRouteFor(pattern)
+	if !ok {
+		panic(fmt.Sprintf("protected route metadata missing for %q", pattern))
+	}
+	if !s.authorizationEnabled {
+		return next
+	}
+	if route.deferredScope {
+		s.findingDetailCapability = route.capability
+		return s.authorizationPrerequisiteMiddleware(s.authorizer, route.capability, next).ServeHTTP
+	}
+	return s.authorizationMiddleware(s.authorizer, route.capability, route.resolveScope, next).ServeHTTP
 }
 
 func (s *Server) authorizationPrerequisiteMiddleware(
