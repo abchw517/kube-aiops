@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
 	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/identity"
 )
@@ -17,6 +18,9 @@ type HandlerOptions struct {
 	// and cluster/namespace scope decisions. When authentication is active and Authorizer is nil,
 	// protected routes fail closed instead of silently bypassing authorization.
 	Authorizer authorization.Authorizer
+	// AuditSink activates the provider-neutral Phase 1.4.3 audit pipeline for known protected routes.
+	// The sink receives only validated bounded events and cannot alter AuthN/AuthZ decisions.
+	AuditSink internalaudit.Sink
 }
 
 func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, next http.Handler) http.Handler {
@@ -30,8 +34,10 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 		if err != nil {
 			switch {
 			case errors.Is(err, identity.ErrUnauthenticated):
+				setAuditOutcome(r, internalaudit.OutcomeUnauthenticated)
 				writeAuthenticationRequired(w)
 			default:
+				setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
 				metadata := requestMetadataFromContext(r.Context())
 				s.logger.Warn(
 					"authentication provider unavailable",
@@ -45,6 +51,7 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 		}
 
 		if err := principal.Validate(); err != nil {
+			setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
 			metadata := requestMetadataFromContext(r.Context())
 			s.logger.Warn(
 				"authentication provider returned invalid principal",
@@ -56,9 +63,18 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 			return
 		}
 
+		if recorder, ok := internalaudit.RecorderFromContext(r.Context()); ok {
+			recorder.SetPrincipal(principal.Subject, principal.Provider)
+		}
 		ctx := identity.WithPrincipal(r.Context(), principal)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func setAuditOutcome(r *http.Request, outcome internalaudit.Outcome) {
+	if recorder, ok := internalaudit.RecorderFromContext(r.Context()); ok {
+		recorder.SetOutcome(outcome)
+	}
 }
 
 func requiresAuthentication(path string) bool {
