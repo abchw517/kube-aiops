@@ -11,12 +11,12 @@ import (
 const (
 	GlobalCluster = "*"
 
-	CapabilityClustersList   Capability = "clusters:list"
-	CapabilityNamespacesList Capability = "namespaces:list"
-	CapabilityFindingsList   Capability = "findings:list"
+	CapabilityClustersList    Capability = "clusters:list"
+	CapabilityNamespacesList  Capability = "namespaces:list"
+	CapabilityFindingsList    Capability = "findings:list"
 	CapabilityFindingsSummary Capability = "findings:summary"
-	CapabilityFindingsRead   Capability = "findings:read"
-	CapabilityResourcesRead  Capability = "resources:read"
+	CapabilityFindingsRead    Capability = "findings:read"
+	CapabilityResourcesRead   Capability = "resources:read"
 )
 
 var knownCapabilities = map[Capability]struct{}{
@@ -64,9 +64,6 @@ func (s Scope) Validate() error {
 		if err := validateScopeValue("namespace", s.Namespace, true); err != nil {
 			return err
 		}
-	}
-	if s.Cluster == GlobalCluster && s.Namespace != "" {
-		return fmt.Errorf("global cluster scope cannot contain a namespace")
 	}
 	return nil
 }
