@@ -15,13 +15,13 @@ func TestProtectedRouteCoverageMatchesServeMuxRegistrations(t *testing.T) {
 	}
 
 	allAPI := map[string]struct{}{}
-	registrationPattern := regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1[^"\\]*)"`)
+	registrationPattern := regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1[^\"]*)"`)
 	for _, match := range registrationPattern.FindAllStringSubmatch(string(serverSource), -1) {
 		allAPI[match[1]+" "+match[2]] = struct{}{}
 	}
 
 	wrapped := map[string]struct{}{}
-	wrappedPattern := regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1[^"\\]*)", server\.protectRoute\("([A-Z]+) (/api/v1[^"\\]*)"`)
+	wrappedPattern := regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1[^\"]*)", server\.protectRoute\("([A-Z]+) (/api/v1[^\"]*)"`)
 	for _, match := range wrappedPattern.FindAllStringSubmatch(string(serverSource), -1) {
 		outer := match[1] + " " + match[2]
 		inner := match[3] + " " + match[4]
