@@ -13,6 +13,7 @@ import (
 	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
+	"github.com/abchw517/kube-aiops/internal/sanitizer"
 )
 
 const localClusterID = "local"
@@ -34,6 +35,7 @@ type Server struct {
 	authorizer              authorization.Authorizer
 	authorizationEnabled    bool
 	findingDetailCapability authorization.Capability
+	responseSanitizer       sanitizer.Sanitizer
 }
 
 // NewHandler preserves the existing provider-neutral runtime until concrete trusted AuthN/AuthZ
@@ -43,15 +45,21 @@ func NewHandler(logger *slog.Logger, backend Backend, readyTimeout time.Duration
 }
 
 // NewHandlerWithOptions builds request metadata -> optional Audit -> optional AuthN -> route-level
-// AuthZ -> read-only handlers. Request/correlation IDs therefore exist on every audited security
-// outcome, while Audit can observe 401/403/503 without changing the AuthN/AuthZ decision.
+// AuthZ -> read-only handlers -> typed Sanitizer -> JSON response. Request/correlation IDs therefore
+// exist on every audited security outcome, while Audit can observe 401/403/5xx without changing the
+// AuthN/AuthZ decision. A nil Sanitizer never disables response sanitization.
 func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout time.Duration, options HandlerOptions) http.Handler {
+	responseSanitizer := options.Sanitizer
+	if responseSanitizer == nil {
+		responseSanitizer = sanitizer.Default()
+	}
 	server := &Server{
 		logger:               logger,
 		backend:              backend,
 		readyTimeout:         readyTimeout,
 		authorizer:           options.Authorizer,
 		authorizationEnabled: options.Authenticator != nil || options.Authorizer != nil,
+		responseSanitizer:    responseSanitizer,
 	}
 
 	mux := http.NewServeMux()
@@ -133,7 +141,12 @@ func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
 		writeKubernetesError(w, err, "RESOURCE_READ_FAILED", "unable to read resource")
 		return
 	}
-	writeJSON(w, http.StatusOK, resource)
+	safeResource, err := s.responseSanitizer.Resource(resource)
+	if err != nil {
+		s.writeSanitizationFailure(w, r, authorization.CapabilityResourcesRead)
+		return
+	}
+	writeJSON(w, http.StatusOK, safeResource)
 }
 
 func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +174,12 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 		s.writeFindingBackendError(w, err, "FINDING_LIST_FAILED", "unable to list findings")
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	safePage, err := s.responseSanitizer.FindingPage(page)
+	if err != nil {
+		s.writeSanitizationFailure(w, r, authorization.CapabilityFindingsList)
+		return
+	}
+	writeJSON(w, http.StatusOK, safePage)
 }
 
 func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +193,12 @@ func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
 		s.writeFindingBackendError(w, err, "FINDING_SUMMARY_FAILED", "unable to summarize findings")
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	safeSummary, err := s.responseSanitizer.FindingSummary(summary)
+	if err != nil {
+		s.writeSanitizationFailure(w, r, authorization.CapabilityFindingsSummary)
+		return
+	}
+	writeJSON(w, http.StatusOK, safeSummary)
 }
 
 func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +223,12 @@ func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, item)
+	safeItem, err := s.responseSanitizer.Finding(item)
+	if err != nil {
+		s.writeSanitizationFailure(w, r, authorization.CapabilityFindingsRead)
+		return
+	}
+	writeJSON(w, http.StatusOK, safeItem)
 }
 
 func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter, bool) {
@@ -235,6 +263,19 @@ func (s *Server) writeFindingBackendError(w http.ResponseWriter, err error, code
 		s.logger.Warn("finding backend request failed", "error", err)
 		writeError(w, http.StatusBadGateway, code, message)
 	}
+}
+
+func (s *Server) writeSanitizationFailure(w http.ResponseWriter, r *http.Request, capability authorization.Capability) {
+	metadata := requestMetadataFromContext(r.Context())
+	s.logger.Warn(
+		"response sanitization blocked",
+		"reason", "sanitizer_blocked",
+		"request_id", metadata.RequestID,
+		"correlation_id", metadata.CorrelationID,
+		"capability", capability,
+	)
+	w.Header().Set("Cache-Control", "no-store")
+	writeError(w, http.StatusBadGateway, "RESPONSE_SANITIZATION_FAILED", "response could not be emitted safely")
 }
 
 func writeKubernetesError(w http.ResponseWriter, err error, code, message string) {

@@ -8,6 +8,7 @@ import (
 	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
 	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/identity"
+	"github.com/abchw517/kube-aiops/internal/sanitizer"
 )
 
 type HandlerOptions struct {
@@ -21,6 +22,10 @@ type HandlerOptions struct {
 	// AuditSink activates the provider-neutral Phase 1.4.3 audit pipeline for known protected routes.
 	// The sink receives only validated bounded events and cannot alter AuthN/AuthZ decisions.
 	AuditSink internalaudit.Sink
+	// Sanitizer optionally replaces the default Phase 1.4.4 typed response sanitizer, primarily for
+	// deterministic tests. A nil value never disables sanitization; NewHandlerWithOptions installs
+	// the immutable default policy instead.
+	Sanitizer sanitizer.Sanitizer
 }
 
 func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, next http.Handler) http.Handler {
