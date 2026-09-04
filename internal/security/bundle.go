@@ -12,9 +12,9 @@ import (
 
 type Bundle struct {
 	Authenticator identity.Authenticator
-	Authorizer     authorization.Authorizer
-	AuditSink      internalaudit.Sink
-	Sanitizer      sanitizer.Sanitizer
+	Authorizer    authorization.Authorizer
+	AuditSink     internalaudit.Sink
+	Sanitizer     sanitizer.Sanitizer
 }
 
 type ValidationError struct {
