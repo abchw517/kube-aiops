@@ -35,6 +35,8 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            - name: SECURITY_MODE
+              value: production
             - name: HTTP_ADDR
               value: ":8080"
             - name: READY_TIMEOUT

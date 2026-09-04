@@ -103,6 +103,7 @@ python3 tests/platform-baseline-test.py
 log "9/9 安全控制回归测试"
 python3 tests/security-controls-test.py
 python3 tests/api-rbac-test.py
+python3 tests/production-security-gate.py
 bash tests/make-security-test.sh
 
 log "全部检查通过"

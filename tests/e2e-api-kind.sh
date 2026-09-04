@@ -82,8 +82,11 @@ expect_can_i no get secrets
 # pods/log 必须用 --subresource=log；`pods/log` 位置参数会被 kubectl 当作 TYPE/NAME。
 expect_can_i no get pods --subresource=log
 expect_can_i no get statefulsets.apps
+expect_can_i no create pods
+expect_can_i no update deployments.apps
 expect_can_i no patch deployments.apps
 expect_can_i no delete pods
+expect_can_i no deletecollection pods
 
 log "创建 Resource API 测试对象"
 kubectl create namespace api-e2e
@@ -115,6 +118,9 @@ docker exec "${CLUSTER_NAME}-control-plane" \
   ctr --namespace=k8s.io images list name=="docker.io/library/${API_IMAGE}" >/dev/null
 
 kubectl apply -f deploy/api/deployment.yaml
+# Phase 1.2 readonly E2E intentionally exercises the compatibility surface. Production manifests
+# remain fail-closed; only this test deployment opts into development mode.
+kubectl set env deployment/kube-aiops-api -n kube-aiops-system SECURITY_MODE=development >/dev/null
 kubectl apply -f deploy/api/service.yaml
 kubectl rollout status deployment/kube-aiops-api -n kube-aiops-system --timeout=120s
 
