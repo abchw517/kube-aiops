@@ -13,7 +13,7 @@ const findings = [
     severity: "critical",
     resource: { apiVersion: "v1", kind: "Pod", namespace: "default", name: "api-0" },
     problem: "CrashLoopBackOff detected",
-    details: "Container restart backoff is increasing.",
+    details: "Container restart backoff is increasing. <img id=\"sanitizer-xss-probe\" src=x onerror=\"globalThis.__kubeAiopsXss=1\"> javascript:alert(1)",
     source: "k8sgpt",
     createdAt: "2026-09-02T03:00:00Z"
   },

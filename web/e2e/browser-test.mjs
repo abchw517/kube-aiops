@@ -57,14 +57,34 @@ try {
       "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) =>
         text.includes("Finding ID") &&
-        text.includes("Container restart backoff is increasing."),
-      "Finding Detail did not render the selected Finding",
+        text.includes("Container restart backoff is increasing.") &&
+        text.includes("sanitizer-xss-probe"),
+      "Finding Detail did not render the selected Finding as safe text",
     );
+
+    const xssEvaluation = await cdp.send("Runtime.evaluate", {
+      expression: `({
+        text: document.body?.innerText ?? "",
+        probeNode: Boolean(document.querySelector("#sanitizer-xss-probe")),
+        executed: globalThis.__kubeAiopsXss === 1
+      })`,
+      returnByValue: true,
+    });
+    const xssState = xssEvaluation.result?.value ?? {};
+    if (
+      xssState.probeNode ||
+      xssState.executed ||
+      !String(xssState.text ?? "").includes("<img id=\"sanitizer-xss-probe\"")
+    ) {
+      throw new Error(
+        `Finding diagnostic text crossed the browser safety boundary: ${JSON.stringify(xssState)}`,
+      );
+    }
   } finally {
     cdp.close();
   }
 
-  console.log("Phase 1.3 web browser E2E: PASS");
+  console.log("Phase 1.4.4 sanitizer browser E2E: PASS");
 } finally {
   chrome.kill("SIGTERM");
   if (chrome.exitCode === null) await once(chrome, "exit");
