@@ -115,9 +115,20 @@ jobs:
           set -Eeuo pipefail
           image="kube-aiops-api:ci"
           container="kube-aiops-api-ci"
+          prod_container="${container}-production"
 
           docker build --pull --tag "${image}" .
-          docker run --detach --name "${container}" --publish 127.0.0.1:18080:8080 "${image}"
+
+          set +e
+          prod_output="$(docker run --name "${prod_container}" "${image}" 2>&1)"
+          prod_rc=$?
+          set -e
+          docker rm "${prod_container}" >/dev/null 2>&1 || true
+          test "${prod_rc}" -ne 0
+          grep -q '"reason":"security_bundle_invalid"' <<<"${prod_output}"
+          grep -q '"component":"authenticator"' <<<"${prod_output}"
+
+          docker run --detach --name "${container}" --env SECURITY_MODE=development --publish 127.0.0.1:18080:8080 "${image}"
           trap 'docker rm --force "${container}" >/dev/null 2>&1 || true' EXIT
 
           for _ in $(seq 1 20); do

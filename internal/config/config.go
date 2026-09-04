@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/abchw517/kube-aiops/internal/security"
 )
 
 const (
@@ -26,9 +28,15 @@ type Config struct {
 	KubernetesAPIURL    string
 	KubernetesTokenFile string
 	KubernetesCAFile    string
+	SecurityMode        security.Mode
 }
 
 func Load() (Config, error) {
+	securityMode, err := security.ParseMode(getenv("SECURITY_MODE", string(security.ModeProduction)))
+	if err != nil {
+		return Config{}, fmt.Errorf("parse SECURITY_MODE: %w", err)
+	}
+
 	cfg := Config{
 		HTTPAddr:            getenv("HTTP_ADDR", defaultHTTPAddr),
 		K8sGPTNamespace:     getenv("K8SGPT_NAMESPACE", defaultK8sGPTNS),
@@ -37,6 +45,7 @@ func Load() (Config, error) {
 		KubernetesTokenFile: getenv("KUBERNETES_BEARER_TOKEN_FILE", defaultSATokenFile),
 		KubernetesCAFile:    getenv("KUBERNETES_CA_FILE", defaultServiceCAFile),
 		ReadyTimeout:        defaultReadyTimeout,
+		SecurityMode:        securityMode,
 	}
 
 	if value := strings.TrimSpace(os.Getenv("READY_TIMEOUT")); value != "" {

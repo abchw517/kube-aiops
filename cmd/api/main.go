@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
-	"github.com/abchw517/kube-aiops/internal/httpapi"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
+	"github.com/abchw517/kube-aiops/internal/security"
 )
 
 func main() {
@@ -32,9 +32,31 @@ func main() {
 		K8sGPTName: cfg.K8sGPTName,
 	})
 
+	handler, err := buildHandler(
+		logger,
+		backend,
+		cfg.ReadyTimeout,
+		cfg.SecurityMode,
+		defaultProductionBundle(logger),
+	)
+	if err != nil {
+		component := "composition"
+		var validationErr *security.ValidationError
+		if errors.As(err, &validationErr) {
+			component = validationErr.Component
+		}
+		logger.Error(
+			"security composition invalid",
+			"reason", "security_bundle_invalid",
+			"component", component,
+			"mode", cfg.SecurityMode,
+		)
+		os.Exit(1)
+	}
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewHandler(logger, backend, cfg.ReadyTimeout),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -46,7 +68,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("kube-aiops-api started", "addr", cfg.HTTPAddr)
+		logger.Info("kube-aiops-api started", "addr", cfg.HTTPAddr, "security_mode", cfg.SecurityMode)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
