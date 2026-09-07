@@ -40,7 +40,7 @@ func TestFindingCorrelationSanitizesSummaryAndHasNoForbiddenRawFields(t *testing
 		bundle := validHTTPBundle(request)
 		bundle.Sources[2].State = correlation.SourceAvailable
 		bundle.Signals = []correlation.CorrelationSignal{{
-			ID: "loki-fingerprint-1", Source: correlation.SourceLoki, Type: correlation.SignalTypeLog,
+			ID: "victorialogs-fingerprint-1", Source: correlation.SourceVictoriaLogs, Type: correlation.SignalTypeLog,
 			Fingerprint: "sha256:abc123", Count: 3,
 			Summary: "token=" + secret + " <script>alert(1)</script>",
 		}}
@@ -62,7 +62,7 @@ func TestFindingCorrelationSanitizesSummaryAndHasNoForbiddenRawFields(t *testing
 	if strings.Contains(body, secret) || strings.Contains(strings.ToLower(body), "<script") {
 		t.Fatalf("unsafe signal content crossed response boundary: %s", body)
 	}
-	for _, forbidden := range []string{"promql", "logql", "upstreamurl", "rawlog", "rawline", "rawobject", "rawresult"} {
+	for _, forbidden := range []string{"promql", "logsql", "logql", "upstreamurl", "rawlog", "rawline", "rawobject", "rawresult"} {
 		if strings.Contains(strings.ToLower(body), forbidden) {
 			t.Fatalf("forbidden field %q present: %s", forbidden, body)
 		}
