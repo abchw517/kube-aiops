@@ -81,12 +81,28 @@ expect_can_i no deletecollection events
 log "创建 Finding 目标资源、真实 Event 与 Result"
 kubectl create namespace events-e2e
 kubectl run demo-pod -n events-e2e --image=registry.invalid.example/kube-aiops/demo:not-exist --restart=Never >/dev/null
-kubectl create event phase22-backoff \
-  -n events-e2e \
-  --for=pod/demo-pod \
-  --type=Warning \
-  --reason=Phase22BackOff \
-  --message='Authorization: Bearer phase22-redaction-token container restart detected' >/dev/null
+
+event_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+kubectl apply -f - <<EOF >/dev/null
+apiVersion: v1
+kind: Event
+metadata:
+  name: phase22-backoff
+  namespace: events-e2e
+involvedObject:
+  apiVersion: v1
+  kind: Pod
+  namespace: events-e2e
+  name: demo-pod
+reason: Phase22BackOff
+message: 'Authorization: Bearer phase22-redaction-token container restart detected'
+source:
+  component: kube-aiops-e2e
+type: Warning
+firstTimestamp: ${event_time}
+lastTimestamp: ${event_time}
+count: 1
+EOF
 
 kubectl apply -f - <<'EOF'
 apiVersion: core.k8sgpt.ai/v1alpha1
