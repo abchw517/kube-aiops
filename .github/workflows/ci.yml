@@ -206,3 +206,6 @@ jobs:
 
       - name: Run Phase 1.2 readonly API E2E
         run: bash ./tests/e2e-api-kind.sh
+
+      - name: Run Phase 2.2 Kubernetes Events correlation E2E
+        run: bash ./tests/e2e-correlation-events-kind.sh
