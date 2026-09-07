@@ -13,7 +13,7 @@ import (
 	"github.com/abchw517/kube-aiops/internal/security"
 )
 
-func TestBuildHandlerWithCorrelatorInjectsEventsPipeline(t *testing.T) {
+func TestBuildHandlerInjectsEventsPipeline(t *testing.T) {
 	calls := 0
 	correlator := correlation.CorrelatorFunc(func(_ context.Context, request correlation.Request) (correlation.CorrelationBundle, error) {
 		calls++
@@ -39,7 +39,7 @@ func TestBuildHandlerWithCorrelatorInjectsEventsPipeline(t *testing.T) {
 		}, nil
 	})
 
-	handler, err := buildHandlerWithCorrelator(
+	handler, err := buildHandler(
 		testLogger(),
 		correlationCompositionBackend{},
 		time.Second,
@@ -48,7 +48,7 @@ func TestBuildHandlerWithCorrelatorInjectsEventsPipeline(t *testing.T) {
 		correlator,
 	)
 	if err != nil {
-		t.Fatalf("buildHandlerWithCorrelator() error=%v", err)
+		t.Fatalf("buildHandler() error=%v", err)
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/findings/finding-1/correlation", nil))
