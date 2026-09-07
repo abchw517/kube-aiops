@@ -1,0 +1,8 @@
+phase=1.4
+status=completed
+implementation_pr=26
+runtime_main=f3e794784fea1986f731191e4be4aa3153fe292d
+post_merge_ci=87
+post_merge_ci_status=success
+kubernetes_baseline=v1.36.4
+next_phase=2-observability-correlation

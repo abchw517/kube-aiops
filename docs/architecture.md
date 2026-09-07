@@ -3,9 +3,14 @@
 ## Current Phase Model
 
 ```text
-Phase 1.1 K8sGPT Engine        — Completed
-Phase 1.2 Portal Backend API   — Completed
-Phase 1.3 Web Portal           — In Development
+Phase 1.1 K8sGPT Engine            — Completed
+Phase 1.2 Portal Backend API       — Completed
+Phase 1.3 Web Portal               — Completed
+Phase 1.4 Security Hardening       — Completed
+Phase 2   Observability Correlation — Entering
+Phase 3   RCA Agent + Runbook      — Planned
+Phase 4   HITL Remediation         — Planned
+Phase 5   Controlled Auto Remediation — Planned
 ```
 
 ## End-to-End Architecture
@@ -14,31 +19,57 @@ Phase 1.3 Web Portal           — In Development
 User / SRE
     |
     v
-Phase 1.3 Web Portal
+Web Portal
     |
     | generated TypeScript Client only
     v
-Phase 1.2 Portal Backend API
+Portal Backend API
     |
-    +-----------------------------+
-    |                             |
-    v                             v
-Safe Kubernetes Projection    Finding Model
-                                  ^
-                                  |
-                           Result Adapter
-                                  ^
-                                  |
-                           K8sGPT Result CR
-                                  ^
-                                  |
-                           K8sGPT Engine
-                                  ^
-                                  |
-                           K8sGPT Operator
+    +----------------------+--------------------------+
+    |                      |                          |
+    v                      v                          v
+Safe Kubernetes        Finding Model          Phase 2 Correlation
+Projection                 ^                         Engine
+                           |                          |
+                    Result Adapter        +----------+----------+
+                           ^               |          |          |
+                           |               v          v          v
+                    K8sGPT Result CR   Events     Prometheus    Loki
+                           ^                                      |
+                           |                                      v
+                    K8sGPT Engine                           Alertmanager
+                           ^
+                           |
+                    K8sGPT Operator
 ```
 
-## Phase 1.3 Contract Boundary
+Phase 2 source adapters remain server-side. The browser never talks directly to Kubernetes, Prometheus, Loki or Alertmanager.
+
+## Security Composition
+
+Phase 1.4 completed the Portal security boundary:
+
+```text
+Request / Correlation Metadata
+        ↓
+Structured Audit
+        ↓
+Trusted Authentication contract
+        ↓
+Deny-by-default Authorization
+        ↓
+Read-only handler
+        ↓
+Typed safe projection
+        ↓
+Typed Sanitizer
+        ↓
+OpenAPI response
+```
+
+Production startup fails closed when mandatory security components are missing. Development compatibility is explicit and cannot silently become the production path.
+
+## Contract Boundary
 
 OpenAPI remains the single external contract source:
 
@@ -54,7 +85,7 @@ web/src/api/client.ts
 Portal views
 ```
 
-Portal code must not define a second copy of Finding, Summary, Cluster, Namespace or error DTOs and must not issue direct handwritten API requests.
+Portal code must not define a second copy of Finding, Summary, CorrelationBundle, Cluster, Namespace or error DTOs and must not issue direct handwritten API requests.
 
 ## Finding Domain Flow
 
@@ -66,37 +97,68 @@ Generated KubeAIOpsApiClient
         ├── listNamespaces
         ├── listFindings
         ├── summarizeFindings
-        └── getFinding
+        ├── getFinding
+        └── Phase 2: getFindingCorrelation
         ↓
-Loading / Empty / Error / Retry state machine
+Loading / Empty / Partial / Error / Retry state machine
         ↓
-Finding List / Summary / Detail rendering
+Finding List / Summary / Detail / Correlation rendering
 ```
 
 A render generation counter prevents an older asynchronous response from replacing a newer filter or route result.
+
+## Phase 2 Correlation Boundary
+
+Phase 2 enriches an already-authorized Finding with bounded observability evidence:
+
+```text
+Finding
+   ↓ resolve real scope
+correlations:read authorization
+   ↓
+Correlation Engine
+   ├── Kubernetes EventSource
+   ├── Prometheus MetricSource
+   ├── Loki LogSignalSource
+   └── Alertmanager AlertSource
+   ↓
+Normalize / Budget / Correlate
+   ↓
+Typed CorrelationBundle
+   ↓
+Sanitizer / Audit / OpenAPI
+```
+
+Phase 2 does not expose arbitrary PromQL, LogQL, Alertmanager API calls or Kubernetes API passthrough. Loki initially produces normalized log fingerprints/counts/time ranges rather than raw log lines.
 
 ## Deployment Model
 
 The Portal is built into static assets and served by a non-root Nginx container on port 8080. The production routing model should keep the Portal and Backend behind the same origin, with `/api/` routed to Portal Backend and all other Portal paths routed to the static service.
 
-The static container does not contain Kubernetes credentials and does not communicate with Kubernetes directly.
+The static container does not contain Kubernetes credentials and does not communicate with Kubernetes or observability backends directly.
 
 ## Phase Boundaries
 
-Current supported capabilities:
+Currently supported capabilities:
 
 - read-only Kubernetes safe projections
 - normalized Finding List / Detail / Summary
 - cluster / namespace / severity / kind filtering
 - K8sGPT advisory diagnostics
+- Phase 1.4 AuthN/AuthZ/Audit/Sanitizer/Production Gates
 
-Not part of Phase 1.3:
+Phase 2 adds only read-only observability correlation.
 
-- Pod Logs
+Not part of Phase 2:
+
+- raw Pod Logs
 - Secrets
 - raw Kubernetes objects
 - raw Result CR
+- arbitrary PromQL/LogQL query editors
 - mutation
-- auto remediation
+- RCA Agent
+- Runbook execution
+- HITL remediation
+- Auto Remediation
 - arbitrary GVR passthrough
-- Prometheus/Loki correlation
