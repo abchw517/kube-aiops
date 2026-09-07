@@ -84,7 +84,7 @@ export interface FindingSummary {
   "byNamespace": Record<string, number>;
 }
 
-export type CorrelationSource = "kubernetes-events" | "prometheus" | "loki" | "alertmanager";
+export type CorrelationSource = "kubernetes-events" | "prometheus" | "victorialogs" | "alertmanager";
 
 export type SourceState = "available" | "unavailable" | "disabled" | "partial";
 
