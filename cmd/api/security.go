@@ -19,20 +19,14 @@ func buildHandler(
 	readyTimeout time.Duration,
 	mode security.Mode,
 	bundle security.Bundle,
+	correlators ...correlation.Correlator,
 ) (http.Handler, error) {
-	return buildHandlerWithCorrelator(logger, backend, readyTimeout, mode, bundle, correlation.Disabled())
-}
-
-func buildHandlerWithCorrelator(
-	logger *slog.Logger,
-	backend httpapi.Backend,
-	readyTimeout time.Duration,
-	mode security.Mode,
-	bundle security.Bundle,
-	correlator correlation.Correlator,
-) (http.Handler, error) {
-	if correlator == nil {
-		correlator = correlation.Disabled()
+	correlator := correlation.Disabled()
+	if len(correlators) > 1 {
+		return nil, fmt.Errorf("multiple correlators are not supported")
+	}
+	if len(correlators) == 1 && correlators[0] != nil {
+		correlator = correlators[0]
 	}
 
 	switch mode {
