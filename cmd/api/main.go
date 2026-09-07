@@ -38,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := buildHandlerWithCorrelator(
+	handler, err := buildHandler(
 		logger,
 		backend,
 		cfg.ReadyTimeout,
