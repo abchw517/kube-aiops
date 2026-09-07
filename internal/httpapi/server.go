@@ -35,9 +35,9 @@ type Server struct {
 	readyTimeout         time.Duration
 	authorizer           authorization.Authorizer
 	authorizationEnabled bool
-	responseSanitizer     sanitizer.Sanitizer
+	responseSanitizer    sanitizer.Sanitizer
 	correlationSanitizer sanitizer.CorrelationSanitizer
-	correlator            correlation.Correlator
+	correlator           correlation.Correlator
 }
 
 // NewHandler preserves the existing provider-neutral runtime until concrete trusted AuthN/AuthZ
@@ -73,9 +73,9 @@ func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout ti
 		readyTimeout:         readyTimeout,
 		authorizer:           options.Authorizer,
 		authorizationEnabled: options.Authenticator != nil || options.Authorizer != nil,
-		responseSanitizer:     responseSanitizer,
+		responseSanitizer:    responseSanitizer,
 		correlationSanitizer: correlationSanitizer,
-		correlator:            correlator,
+		correlator:           correlator,
 	}
 
 	mux := http.NewServeMux()
