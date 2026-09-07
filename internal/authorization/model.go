@@ -11,21 +11,23 @@ import (
 const (
 	GlobalCluster = "*"
 
-	CapabilityClustersList    Capability = "clusters:list"
-	CapabilityNamespacesList  Capability = "namespaces:list"
-	CapabilityFindingsList    Capability = "findings:list"
-	CapabilityFindingsSummary Capability = "findings:summary"
-	CapabilityFindingsRead    Capability = "findings:read"
-	CapabilityResourcesRead   Capability = "resources:read"
+	CapabilityClustersList     Capability = "clusters:list"
+	CapabilityNamespacesList   Capability = "namespaces:list"
+	CapabilityFindingsList     Capability = "findings:list"
+	CapabilityFindingsSummary  Capability = "findings:summary"
+	CapabilityFindingsRead     Capability = "findings:read"
+	CapabilityResourcesRead    Capability = "resources:read"
+	CapabilityCorrelationsRead Capability = "correlations:read"
 )
 
 var knownCapabilities = map[Capability]struct{}{
-	CapabilityClustersList:    {},
-	CapabilityNamespacesList:  {},
-	CapabilityFindingsList:    {},
-	CapabilityFindingsSummary: {},
-	CapabilityFindingsRead:    {},
-	CapabilityResourcesRead:   {},
+	CapabilityClustersList:     {},
+	CapabilityNamespacesList:   {},
+	CapabilityFindingsList:     {},
+	CapabilityFindingsSummary:  {},
+	CapabilityFindingsRead:     {},
+	CapabilityResourcesRead:    {},
+	CapabilityCorrelationsRead: {},
 }
 
 type Capability string

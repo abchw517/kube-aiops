@@ -51,6 +51,11 @@ func protectedRoutes() []protectedRoute {
 			capability:    authorization.CapabilityFindingsRead,
 			deferredScope: true,
 		},
+		{
+			pattern:       "GET /api/v1/findings/{id}/correlation",
+			capability:    authorization.CapabilityCorrelationsRead,
+			deferredScope: true,
+		},
 	}
 }
 
@@ -78,7 +83,6 @@ func (s *Server) protectRoute(pattern string, next http.HandlerFunc) http.Handle
 		return next
 	}
 	if route.deferredScope {
-		s.findingDetailCapability = route.capability
 		return s.authorizationPrerequisiteMiddleware(s.authorizer, route.capability, next).ServeHTTP
 	}
 	return s.authorizationMiddleware(s.authorizer, route.capability, route.resolveScope, next).ServeHTTP

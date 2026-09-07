@@ -7,6 +7,7 @@ import (
 
 	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
 	"github.com/abchw517/kube-aiops/internal/authorization"
+	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/identity"
 	"github.com/abchw517/kube-aiops/internal/sanitizer"
 )
@@ -26,6 +27,13 @@ type HandlerOptions struct {
 	// deterministic tests. A nil value never disables sanitization; NewHandlerWithOptions installs
 	// the immutable default policy instead.
 	Sanitizer sanitizer.Sanitizer
+	// CorrelationSanitizer optionally replaces the Phase 2 typed correlation sanitizer for tests.
+	// A nil value falls back to the configured sanitizer when it implements the Phase 2 extension,
+	// otherwise to the immutable default correlation sanitizer.
+	CorrelationSanitizer sanitizer.CorrelationSanitizer
+	// Correlator is the bounded Phase 2 read-only correlation core. A nil value means all four
+	// observability sources are explicitly disabled; it never enables a raw upstream proxy.
+	Correlator correlation.Correlator
 }
 
 func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, next http.Handler) http.Handler {

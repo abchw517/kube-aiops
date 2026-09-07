@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/authorization"
+	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 	"github.com/abchw517/kube-aiops/internal/sanitizer"
@@ -29,13 +30,14 @@ type Backend interface {
 }
 
 type Server struct {
-	logger                  *slog.Logger
-	backend                 Backend
-	readyTimeout            time.Duration
-	authorizer              authorization.Authorizer
-	authorizationEnabled    bool
-	findingDetailCapability authorization.Capability
-	responseSanitizer       sanitizer.Sanitizer
+	logger               *slog.Logger
+	backend              Backend
+	readyTimeout         time.Duration
+	authorizer           authorization.Authorizer
+	authorizationEnabled bool
+	responseSanitizer     sanitizer.Sanitizer
+	correlationSanitizer sanitizer.CorrelationSanitizer
+	correlator            correlation.Correlator
 }
 
 // NewHandler preserves the existing provider-neutral runtime until concrete trusted AuthN/AuthZ
@@ -53,13 +55,27 @@ func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout ti
 	if responseSanitizer == nil {
 		responseSanitizer = sanitizer.Default()
 	}
+	correlationSanitizer := options.CorrelationSanitizer
+	if correlationSanitizer == nil {
+		if extension, ok := responseSanitizer.(sanitizer.CorrelationSanitizer); ok {
+			correlationSanitizer = extension
+		} else {
+			correlationSanitizer = sanitizer.DefaultCorrelation()
+		}
+	}
+	correlator := options.Correlator
+	if correlator == nil {
+		correlator = correlation.Disabled()
+	}
 	server := &Server{
 		logger:               logger,
 		backend:              backend,
 		readyTimeout:         readyTimeout,
 		authorizer:           options.Authorizer,
 		authorizationEnabled: options.Authenticator != nil || options.Authorizer != nil,
-		responseSanitizer:    responseSanitizer,
+		responseSanitizer:     responseSanitizer,
+		correlationSanitizer: correlationSanitizer,
+		correlator:            correlator,
 	}
 
 	mux := http.NewServeMux()
@@ -71,6 +87,7 @@ func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout ti
 	mux.HandleFunc("GET /api/v1/findings", server.protectRoute("GET /api/v1/findings", server.findings))
 	mux.HandleFunc("GET /api/v1/findings/summary", server.protectRoute("GET /api/v1/findings/summary", server.findingSummary))
 	mux.HandleFunc("GET /api/v1/findings/{id}", server.protectRoute("GET /api/v1/findings/{id}", server.findingDetail))
+	mux.HandleFunc("GET /api/v1/findings/{id}/correlation", server.protectRoute("GET /api/v1/findings/{id}/correlation", server.findingCorrelation))
 
 	var handler http.Handler = mux
 	if options.Authenticator != nil {
@@ -202,26 +219,19 @@ func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
-	item, err := s.backend.GetFinding(r.Context(), r.PathValue("id"))
-	if err != nil {
-		var apiErr *kubernetes.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			writeError(w, http.StatusNotFound, "FINDING_NOT_FOUND", "finding not found")
-			return
-		}
-		s.logger.Warn("get finding failed", "error", err)
-		writeError(w, http.StatusBadGateway, "FINDING_READ_FAILED", "unable to read finding")
+	item, ok := s.resolveFinding(w, r)
+	if !ok {
 		return
 	}
 
-	if s.authorizationEnabled {
-		scope := authorization.ClusterScope(item.Cluster)
-		if strings.TrimSpace(item.Namespace) != "" {
-			scope = authorization.NamespaceScope(item.Cluster, item.Namespace)
-		}
-		if !s.authorizeRequest(w, r, s.authorizer, s.findingDetailCapability, scope) {
-			return
-		}
+	if s.authorizationEnabled && !s.authorizeRequest(
+		w,
+		r,
+		s.authorizer,
+		authorization.CapabilityFindingsRead,
+		findingAuthorizationScope(item),
+	) {
+		return
 	}
 	safeItem, err := s.responseSanitizer.Finding(item)
 	if err != nil {
@@ -229,6 +239,92 @@ func (s *Server) findingDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, safeItem)
+}
+
+func (s *Server) findingCorrelation(w http.ResponseWriter, r *http.Request) {
+	item, ok := s.resolveFinding(w, r)
+	if !ok {
+		return
+	}
+
+	scope := findingAuthorizationScope(item)
+	if s.authorizationEnabled && !s.authorizeRequest(
+		w,
+		r,
+		s.authorizer,
+		authorization.CapabilityCorrelationsRead,
+		scope,
+	) {
+		return
+	}
+
+	bundle, err := s.correlator.Correlate(r.Context(), correlation.Request{
+		FindingID: item.ID,
+		Scope: correlation.CorrelationScope{
+			Cluster:   item.Cluster,
+			Namespace: item.Namespace,
+			Resource:  item.Resource,
+		},
+		AnchorTime: item.CreatedAt,
+	})
+	if err != nil {
+		s.writeCorrelationError(w, r, err)
+		return
+	}
+
+	safeBundle, err := s.correlationSanitizer.CorrelationBundle(bundle)
+	if err != nil {
+		s.writeSanitizationFailure(w, r, authorization.CapabilityCorrelationsRead)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, safeBundle)
+}
+
+func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) (finding.Finding, bool) {
+	item, err := s.backend.GetFinding(r.Context(), r.PathValue("id"))
+	if err != nil {
+		var apiErr *kubernetes.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			writeError(w, http.StatusNotFound, "FINDING_NOT_FOUND", "finding not found")
+			return finding.Finding{}, false
+		}
+		s.logger.Warn("get finding failed", "error", err)
+		writeError(w, http.StatusBadGateway, "FINDING_READ_FAILED", "unable to read finding")
+		return finding.Finding{}, false
+	}
+	return item, true
+}
+
+func findingAuthorizationScope(item finding.Finding) authorization.Scope {
+	scope := authorization.ClusterScope(item.Cluster)
+	if strings.TrimSpace(item.Namespace) != "" {
+		scope = authorization.NamespaceScope(item.Cluster, item.Namespace)
+	}
+	return scope
+}
+
+func (s *Server) writeCorrelationError(w http.ResponseWriter, r *http.Request, err error) {
+	metadata := requestMetadataFromContext(r.Context())
+	w.Header().Set("Cache-Control", "no-store")
+	if errors.Is(err, correlation.ErrUnavailable) {
+		s.logger.Warn(
+			"correlation unavailable",
+			"reason", "all_configured_sources_unavailable",
+			"request_id", metadata.RequestID,
+			"correlation_id", metadata.CorrelationID,
+		)
+		writeError(w, http.StatusServiceUnavailable, "CORRELATION_UNAVAILABLE", "correlation sources are unavailable")
+		return
+	}
+
+	s.logger.Warn(
+		"correlation request failed",
+		"reason", "correlation_service_error",
+		"request_id", metadata.RequestID,
+		"correlation_id", metadata.CorrelationID,
+	)
+	writeError(w, http.StatusBadGateway, "CORRELATION_READ_FAILED", "unable to correlate finding")
 }
 
 func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter, bool) {
