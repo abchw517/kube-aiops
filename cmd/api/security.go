@@ -7,6 +7,7 @@ import (
 	"time"
 
 	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
+	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/httpapi"
 	"github.com/abchw517/kube-aiops/internal/sanitizer"
 	"github.com/abchw517/kube-aiops/internal/security"
@@ -19,9 +20,26 @@ func buildHandler(
 	mode security.Mode,
 	bundle security.Bundle,
 ) (http.Handler, error) {
+	return buildHandlerWithCorrelator(logger, backend, readyTimeout, mode, bundle, correlation.Disabled())
+}
+
+func buildHandlerWithCorrelator(
+	logger *slog.Logger,
+	backend httpapi.Backend,
+	readyTimeout time.Duration,
+	mode security.Mode,
+	bundle security.Bundle,
+	correlator correlation.Correlator,
+) (http.Handler, error) {
+	if correlator == nil {
+		correlator = correlation.Disabled()
+	}
+
 	switch mode {
 	case security.ModeDevelopment:
-		return httpapi.NewHandler(logger, backend, readyTimeout), nil
+		return httpapi.NewHandlerWithOptions(logger, backend, readyTimeout, httpapi.HandlerOptions{
+			Correlator: correlator,
+		}), nil
 	case security.ModeProduction:
 		if err := bundle.ValidateForProduction(); err != nil {
 			return nil, err
@@ -31,6 +49,7 @@ func buildHandler(
 			Authorizer:    bundle.Authorizer,
 			AuditSink:     bundle.AuditSink,
 			Sanitizer:     bundle.Sanitizer,
+			Correlator:    correlator,
 		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported security mode %q", mode)
