@@ -27,7 +27,7 @@ func TestServiceCorrelationOutcomes(t *testing.T) {
 			wantState: map[CorrelationSource]SourceState{
 				SourceKubernetesEvents: SourceDisabled,
 				SourcePrometheus:       SourceDisabled,
-				SourceLoki:             SourceDisabled,
+				SourceVictoriaLogs:     SourceDisabled,
 				SourceAlertmanager:     SourceDisabled,
 			},
 		},
@@ -44,7 +44,7 @@ func TestServiceCorrelationOutcomes(t *testing.T) {
 			wantState: map[CorrelationSource]SourceState{
 				SourceKubernetesEvents: SourcePartial,
 				SourcePrometheus:       SourceAvailable,
-				SourceLoki:             SourceDisabled,
+				SourceVictoriaLogs:     SourceDisabled,
 				SourceAlertmanager:     SourceDisabled,
 			},
 			wantCount: 2,
@@ -143,7 +143,7 @@ func TestServiceSourceTimeout(t *testing.T) {
 func TestServiceTruncatesAdapterOutputWithinBudget(t *testing.T) {
 	service, err := NewService(ServiceOptions{
 		MaxSignals: 2,
-		Loki: LogSignalSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
+		VictoriaLogs: LogSignalSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
 			return []CorrelationSignal{{ID: "log-1"}, {ID: "log-2"}, {ID: "log-3"}}, nil
 		}),
 	})
@@ -158,8 +158,8 @@ func TestServiceTruncatesAdapterOutputWithinBudget(t *testing.T) {
 		t.Fatalf("signal count = %d, want 2", len(bundle.Signals))
 	}
 	for _, status := range bundle.Sources {
-		if status.Source == SourceLoki && status.State != SourcePartial {
-			t.Fatalf("Loki state = %q, want partial", status.State)
+		if status.Source == SourceVictoriaLogs && status.State != SourcePartial {
+			t.Fatalf("VictoriaLogs state = %q, want partial", status.State)
 		}
 	}
 }

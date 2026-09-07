@@ -1,8 +1,8 @@
-# Phase 2 Correlation Design — Events / Prometheus / Loki / Alertmanager
+# Phase 2 Correlation Design — Events / Prometheus / VictoriaLogs / Alertmanager
 
 ## Purpose
 
-Phase 2 introduces a deterministic, read-only observability correlation layer that enriches an already-authorized Finding with bounded evidence from Kubernetes Events, Prometheus, Loki and Alertmanager.
+Phase 2 introduces a deterministic, read-only observability correlation layer that enriches an already-authorized Finding with bounded evidence from Kubernetes Events, Prometheus, VictoriaLogs and Alertmanager.
 
 It must preserve the Phase 1.4 security model and must not expose raw observability backends as browser-accessible query proxies.
 
@@ -22,7 +22,7 @@ Authorize real cluster/namespace scope
 Correlation Engine
     ├── Kubernetes EventSource
     ├── Prometheus MetricSource
-    ├── Loki LogSignalSource
+    ├── VictoriaLogs LogSignalSource
     └── Alertmanager AlertSource
     ↓
 Normalize / Bound / Correlate
@@ -34,7 +34,7 @@ Sanitizer
 JSON / Audit
 ```
 
-The frontend supplies neither Kubernetes credentials nor raw PromQL/LogQL.
+The frontend supplies neither Kubernetes credentials nor raw PromQL/LogsQL.
 
 ## Initial Protected Route
 
@@ -69,7 +69,7 @@ Finding ID is never itself a security scope.
 
 ## Core Domain Model
 
-The exact Go/OpenAPI names may evolve, but the contract should remain typed and narrow.
+The contract remains typed and narrow. VictoriaLogs replaces the originally reserved Loki source; `loki` is not retained as an alias.
 
 Conceptual model:
 
@@ -79,7 +79,7 @@ type Source string
 const (
     SourceKubernetesEvents Source = "kubernetes-events"
     SourcePrometheus       Source = "prometheus"
-    SourceLoki             Source = "loki"
+    SourceVictoriaLogs     Source = "victorialogs"
     SourceAlertmanager     Source = "alertmanager"
 )
 
@@ -109,18 +109,18 @@ type SourceStatus struct {
 }
 
 type Signal struct {
-    ID         string              `json:"id"`
-    Source     Source              `json:"source"`
-    Type       string              `json:"type"`
-    Severity   string              `json:"severity,omitempty"`
-    Resource   finding.ResourceRef `json:"resource,omitempty"`
-    FirstSeen  string              `json:"firstSeen,omitempty"`
-    LastSeen   string              `json:"lastSeen,omitempty"`
-    Count      int                 `json:"count,omitempty"`
-    Name       string              `json:"name,omitempty"`
-    Value      *float64            `json:"value,omitempty"`
-    Unit       string              `json:"unit,omitempty"`
-    Fingerprint string             `json:"fingerprint,omitempty"`
+    ID          string              `json:"id"`
+    Source      Source              `json:"source"`
+    Type        string              `json:"type"`
+    Severity    string              `json:"severity,omitempty"`
+    Resource    finding.ResourceRef `json:"resource,omitempty"`
+    FirstSeen   string              `json:"firstSeen,omitempty"`
+    LastSeen    string              `json:"lastSeen,omitempty"`
+    Count       int                 `json:"count,omitempty"`
+    Name        string              `json:"name,omitempty"`
+    Value       *float64            `json:"value,omitempty"`
+    Unit        string              `json:"unit,omitempty"`
+    Fingerprint string              `json:"fingerprint,omitempty"`
 }
 
 type CorrelationBundle struct {
@@ -132,7 +132,7 @@ type CorrelationBundle struct {
 }
 ```
 
-The actual public DTO should not contain backend query strings, raw labels, raw upstream response bodies or provider credentials.
+The actual public DTO must not contain backend query strings, raw labels/fields, raw upstream response bodies or provider credentials.
 
 ## Source Adapter Interfaces
 
@@ -164,29 +164,29 @@ type AlertSource interface {
 }
 ```
 
-Handlers must never know PromQL, LogQL or backend authentication details.
+`LogSignalSource` deliberately stays vendor-neutral. VictoriaLogs is the concrete Phase 2 log backend, but handlers and the correlation engine must not know LogsQL, VictoriaLogs authentication details or upstream URLs.
 
 ## Query Budgets
 
 Every adapter must enforce a server-owned budget independent of frontend input.
 
-Recommended first bounds:
+Current/initial bounds:
 
 ```text
 Default window:       30m
 Maximum window:       2h
-Per-source timeout:   3-5s
-Maximum total signals per source: bounded
-Maximum series:       bounded
-Maximum samples:      bounded
+Default source timeout: 4s
+Maximum source timeout: 10s
+Default signals/source: 50
+Maximum signals/source: 100
+Maximum total signals: 400
 Maximum Event objects scanned: bounded
+Maximum metric series/samples: bounded
+Maximum VictoriaLogs result entries scanned: bounded before aggregation
 Maximum alert objects scanned: bounded
-Maximum Loki result entries scanned: bounded before aggregation
 ```
 
-Concrete values should be configuration constants with tests and may be tuned after measured production load.
-
-No adapter may issue an unbounded query because a user supplied a broad time or label selector.
+No adapter may issue an unbounded query because a user supplied a broad time, selector or expression.
 
 ## Kubernetes Events Adapter
 
@@ -204,7 +204,7 @@ kind
 name
 ```
 
-Allow a small explicit related-object strategy only where it can be derived safely, for example a Deployment and its selected Pods. Do not introduce an arbitrary GVR graph crawler in Phase 2.
+Allow a small explicit related-object strategy only where it can be derived safely. Do not introduce an arbitrary GVR graph crawler in Phase 2.
 
 ### Output
 
@@ -215,13 +215,13 @@ Normalize only bounded fields such as:
 - involved resource reference
 - first/last timestamp
 - count
-- source component if allowlisted
+- safe summary
 
 Do not return the entire Event object.
 
 ### RBAC
 
-If needed, extend only the Portal Backend ServiceAccount with core Event `get/list/watch`. Keep explicit tests proving Secrets, `pods/log` and write verbs remain denied.
+Portal Backend may use only core Event `get/list/watch`. Explicit tests must keep Secrets, `pods/log` and write verbs denied.
 
 ## Prometheus Adapter
 
@@ -266,27 +266,29 @@ Possible safe fields:
 
 Do not expose Prometheus credentials, backend URLs, complete label sets or raw query strings.
 
-## Loki Adapter
+## VictoriaLogs Adapter
 
 ### Security Boundary
 
 Phase 2 does not expose raw Pod logs.
 
-The backend may query Loki with fixed LogQL templates but initially emits only normalized log signals:
+The backend may query VictoriaLogs only with fixed, versioned LogsQL templates and initially emits normalized log signals such as:
 
 ```text
 fingerprint / class
 count
 firstSeen
 lastSeen
+severity/category where safely derived
 allowlisted resource identity
+safe bounded summary where permitted
 ```
 
-Raw message text is not part of the initial API contract.
+Raw log lines, complete VictoriaLogs response objects/stream fields, backend URLs and credentials are not part of the public correlation contract.
 
 ### Query Catalog
 
-Examples of server-owned patterns may classify:
+Server-owned patterns may classify:
 
 - panic / fatal
 - OOM-related application messages
@@ -295,7 +297,17 @@ Examples of server-owned patterns may classify:
 - JVM OOM / GC pressure signatures
 - application restart signatures
 
-Any pattern must be versioned and tested for query cost. The browser cannot submit regex or LogQL expressions.
+Each LogsQL template/pattern must be versioned and tested for cost, time range, scan volume and cardinality. The browser cannot submit LogsQL, regexes, arbitrary `_stream` filters or upstream URLs.
+
+### Contract Decision
+
+The Phase 2.1 `LogSignalSource` abstraction remains unchanged, while the concrete source identity is:
+
+```text
+victorialogs
+```
+
+The former `loki` source is removed, is not a compatibility alias, and must be rejected by sanitizer/contract tests.
 
 ## Alertmanager Adapter
 
@@ -334,7 +346,7 @@ Initial matching dimensions:
 3. **Source semantics**
    - Event reasons known to relate to the resource/problem class
    - metric threshold/breach produced by a fixed catalog rule
-   - log fingerprint class
+   - VictoriaLogs fingerprint/class produced by a fixed catalog rule
    - alert identity/severity
 
 4. **Deduplication**
@@ -347,32 +359,30 @@ A future `score` may be added only if its calculation is deterministic, document
 
 Adapters execute with independent contexts/timeouts and can run concurrently within a global request budget.
 
-Recommended semantics:
+Example:
 
 ```text
 Prometheus succeeds
 Events succeeds
-Loki times out
+VictoriaLogs times out
 Alertmanager disabled
         ↓
 HTTP 200
 sources:
-  events       available
-  prometheus   available
-  loki         unavailable
-  alertmanager disabled
+  kubernetes-events available
+  prometheus        available
+  victorialogs      unavailable
+  alertmanager      disabled
 signals: successful bounded evidence only
 ```
 
-If every configured source is unavailable and no safe evidence can be produced, return a stable `503` such as:
+If every configured source is unavailable and no safe evidence can be produced, return:
 
 ```text
-CORRELATION_UNAVAILABLE
+503 CORRELATION_UNAVAILABLE
 ```
 
-Never convert source failures into a fake empty-success state.
-
-Raw source errors must remain server-side and must be logged/audited only through stable safe reason codes.
+Never convert source failures into a fake empty-success state. Raw source errors remain server-side and are represented externally only through stable safe reason codes.
 
 ## Sanitizer Boundary
 
@@ -380,18 +390,20 @@ All public correlation DTOs pass a typed sanitizer before JSON emission.
 
 Sanitizer responsibilities include:
 
-- enum/status validation
+- source enum/status validation
+- reject legacy `loki`
 - resource identifier bounds
 - signal count bounds
 - string length/control-character validation
 - allowlist validation for source/type/unit
 - no unexpected arbitrary maps
+- credential/active-content redaction for permitted summaries
 
 Sanitization does not justify ingesting or returning forbidden raw data.
 
 ## Audit Boundary
 
-Audit should record the correlation request as a protected operation with:
+Audit records correlation as a protected operation with:
 
 - canonical route
 - `correlations:read`
@@ -402,11 +414,11 @@ Audit should record the correlation request as a protected operation with:
 Audit must not record:
 
 - PromQL
-- LogQL
+- LogsQL
 - source credentials
 - raw log lines
 - raw Event objects
-- raw Prometheus/Loki/Alertmanager payloads
+- raw Prometheus/VictoriaLogs/Alertmanager payloads
 - Finding diagnostic text
 
 ## OpenAPI / Client Boundary
@@ -434,9 +446,9 @@ Finding Detail may add a read-only correlation section grouped by source:
 ```text
 Finding Detail
     ├── Kubernetes Events
-    ├── Metric Signals
-    ├── Log Signals
-    └── Alerts
+    ├── Prometheus Metric Signals
+    ├── VictoriaLogs Log Signals
+    └── Alertmanager Alerts
 ```
 
 The UI must distinguish:
@@ -457,7 +469,8 @@ Phase 2 must preserve and extend the existing governance checks.
 Required static/unit gates:
 
 - source query catalog validation
-- no raw PromQL/LogQL request parameter in OpenAPI
+- no raw PromQL/LogsQL request parameter in OpenAPI
+- old `loki` source rejected
 - no arbitrary upstream URL parameter
 - route → capability/scope/audit/sanitizer coverage
 - adapter timeout/budget tests
@@ -474,7 +487,7 @@ Kind / integration gates should prove where practical:
 - correlation route enforces AuthN/AuthZ before source work
 - source failure returns stable safe status
 
-External Prometheus/Loki/Alertmanager provider E2E may use deterministic local fixtures in CI, but test adapters must never become production defaults.
+External Prometheus/VictoriaLogs/Alertmanager provider E2E may use deterministic local fixtures in CI, but test adapters must never become production defaults.
 
 ## Phase 3 Contract
 
@@ -489,4 +502,4 @@ CorrelationBundle
 Phase 3 RCA Agent
 ```
 
-Phase 3 should not require browser-side direct access to Prometheus/Loki/Alertmanager and should not require reopening the raw-data boundaries closed by Phase 2.
+Phase 3 should not require browser-side direct access to Prometheus/VictoriaLogs/Alertmanager and should not require reopening the raw-data boundaries closed by Phase 2.

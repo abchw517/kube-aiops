@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 18441811 8e753522 654a1655 d3553035 4228cf42 2d98cfb1 d5aebdf3 2aea6593
+// Contract source SHA-256 groups: d36f2a5a 4d325c63 9bce53dc 418289c1 68e6ecb0 09f9be72 15d83de6 4b759702
 
 export interface StatusResponse {
   "status": string;
@@ -84,7 +84,7 @@ export interface FindingSummary {
   "byNamespace": Record<string, number>;
 }
 
-export type CorrelationSource = "kubernetes-events" | "prometheus" | "loki" | "alertmanager";
+export type CorrelationSource = "kubernetes-events" | "prometheus" | "victorialogs" | "alertmanager";
 
 export type SourceState = "available" | "unavailable" | "disabled" | "partial";
 
