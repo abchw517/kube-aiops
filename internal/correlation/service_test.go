@@ -119,17 +119,24 @@ func TestServiceCorrelationOutcomes(t *testing.T) {
 func TestServiceSourceTimeout(t *testing.T) {
 	service, err := NewService(ServiceOptions{
 		Timeout: 10 * time.Millisecond,
-		Events: EventSourceFunc(func(ctx context.Context, _ Query) ([]CorrelationSignal, error) {
-			<-ctx.Done()
-			return nil, ctx.Err()
+		Events: EventSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
+			// Deliberately ignore the supplied context to prove that the service-owned budget,
+			// rather than adapter cooperation, bounds request latency.
+			time.Sleep(250 * time.Millisecond)
+			return nil, nil
 		}),
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
+	started := time.Now()
 	_, err = service.Correlate(context.Background(), Request{FindingID: "finding-1", Scope: CorrelationScope{Cluster: "local"}})
+	elapsed := time.Since(started)
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Correlate() error = %v, want ErrUnavailable", err)
+	}
+	if elapsed >= 150*time.Millisecond {
+		t.Fatalf("Correlate() exceeded hard source timeout: elapsed=%s", elapsed)
 	}
 }
 
