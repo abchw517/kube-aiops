@@ -73,13 +73,13 @@ The Web Portal:
 - consumes only `clients/typescript/generated.ts`
 - does not use Kubernetes credentials
 - does not call Kubernetes API directly
-- does not call Prometheus/Loki/Alertmanager directly
+- does not call Prometheus/VictoriaLogs/Alertmanager directly
 - does not expose Secret data
 - does not expose raw Kubernetes objects
 - does not expose raw K8sGPT Result CRs
 - has no write, mutation, remediation, scale, patch or delete UI
 - has no arbitrary resource/GVR URL construction
-- has no arbitrary PromQL or LogQL query editor in Phase 2
+- has no arbitrary PromQL or LogsQL query editor in Phase 2
 
 Visible read-only UI state is never treated as authorization enforcement. Enforcement remains server-side and policy/RBAC-backed.
 
@@ -102,7 +102,7 @@ Structured Audit is limited to safe allowlisted metadata such as:
 - normalized cluster/namespace scope
 - outcome/status/latency
 
-Audit must not record Authorization/Cookie/token material, request/response bodies, raw Kubernetes objects, raw Result CR payloads, raw log lines, PromQL/LogQL strings or observability-provider credentials.
+Audit must not record Authorization/Cookie/token material, request/response bodies, raw Kubernetes objects, raw Result CR payloads, raw log lines, PromQL/LogsQL strings or observability-provider credentials.
 
 ## Phase 2 Observability Source Boundary
 
@@ -110,7 +110,7 @@ Phase 2 adds read-only observability correlation while preserving the security l
 
 ### Kubernetes Events
 
-If Events permission is not already present, only the minimal core `events` read surface may be added:
+Only the minimal core `events` read surface is permitted:
 
 ```text
 get
@@ -126,9 +126,11 @@ The backend owns fixed, versioned PromQL templates and bounded query budgets. Th
 
 Only normalized metric evidence crosses the API boundary; raw Prometheus response payloads and complete label sets do not.
 
-### Loki
+### VictoriaLogs
 
-The backend owns fixed, versioned LogQL templates and bounded query budgets.
+VictoriaLogs is the concrete Phase 2 log backend while the core keeps the vendor-neutral `LogSignalSource` interface.
+
+The backend may use only fixed, versioned LogsQL templates with bounded time, scan volume and result budgets. The browser cannot submit arbitrary LogsQL, regexes, stream filters, backend URLs or credentials.
 
 Phase 2 initially exposes normalized log signals only:
 
@@ -136,10 +138,12 @@ Phase 2 initially exposes normalized log signals only:
 fingerprint/class
 count
 firstSeen/lastSeen
+severity/category where safely derived
 allowlisted resource identity
+safe bounded summary where permitted
 ```
 
-Raw Pod log lines are not part of the Phase 2 external contract.
+Raw Pod log lines, complete VictoriaLogs responses/stream fields and provider credentials are not part of the Phase 2 external contract. The removed `loki` correlation source is not accepted as an alias.
 
 ### Alertmanager
 
@@ -153,7 +157,7 @@ A source timeout/error must not be silently converted into empty evidence. Corre
 
 ## Forbidden Capabilities
 
-The following remain forbidden at Phase 2 entry:
+The following remain forbidden:
 
 ```text
 create
@@ -166,7 +170,7 @@ secrets
 raw Kubernetes object passthrough
 raw Result CR passthrough
 arbitrary PromQL proxy
-arbitrary LogQL proxy
+arbitrary LogsQL proxy
 arbitrary Alertmanager mutation/proxy
 Mutation
 RCA-triggered action
@@ -183,6 +187,7 @@ Required regressions continue to include:
 - protected-route capability/scope coverage
 - Audit leakage tests
 - Sanitizer leakage/XSS tests
+- legacy `loki` source rejection
 - API Contract Gate and generated client drift
 - Secret Scan/Gitleaks
 - production Docker fail-closed startup
