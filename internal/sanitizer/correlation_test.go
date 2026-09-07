@@ -57,9 +57,9 @@ func TestCorrelationBundleRejectsSourceTypeSpoofing(t *testing.T) {
 func validCorrelationBundle() correlation.CorrelationBundle {
 	return correlation.CorrelationBundle{
 		FindingID: "finding-1",
-		Scope: correlation.CorrelationScope{Cluster: "local", Namespace: "prod", Resource: finding.ResourceRef{APIVersion: "v1", Kind: "Pod", Namespace: "prod", Name: "demo"}},
-		Window: correlation.TimeWindow{Start: "2026-09-07T01:30:00Z", End: "2026-09-07T02:00:00Z"},
-		Budget: correlation.CorrelationBudget{WindowSeconds: 1800, PerSourceTimeoutMillis: 4000, MaxSignalsPerSource: 50},
+		Scope:     correlation.CorrelationScope{Cluster: "local", Namespace: "prod", Resource: finding.ResourceRef{APIVersion: "v1", Kind: "Pod", Namespace: "prod", Name: "demo"}},
+		Window:    correlation.TimeWindow{Start: "2026-09-07T01:30:00Z", End: "2026-09-07T02:00:00Z"},
+		Budget:    correlation.CorrelationBudget{WindowSeconds: 1800, PerSourceTimeoutMillis: 4000, MaxSignalsPerSource: 50},
 		Sources: []correlation.SourceStatus{
 			{Source: correlation.SourceKubernetesEvents, State: correlation.SourceDisabled},
 			{Source: correlation.SourcePrometheus, State: correlation.SourceDisabled},
