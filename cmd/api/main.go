@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
+	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 	"github.com/abchw517/kube-aiops/internal/security"
 )
@@ -31,13 +32,19 @@ func main() {
 		K8sGPTNS:   cfg.K8sGPTNamespace,
 		K8sGPTName: cfg.K8sGPTName,
 	})
+	correlator, err := correlation.NewService(correlation.ServiceOptions{Events: backend})
+	if err != nil {
+		logger.Error("build correlation service failed", "reason", "correlation_service_invalid")
+		os.Exit(1)
+	}
 
-	handler, err := buildHandler(
+	handler, err := buildHandlerWithCorrelator(
 		logger,
 		backend,
 		cfg.ReadyTimeout,
 		cfg.SecurityMode,
 		defaultProductionBundle(logger),
+		correlator,
 	)
 	if err != nil {
 		component := "composition"
