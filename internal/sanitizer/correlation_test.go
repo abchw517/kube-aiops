@@ -54,6 +54,14 @@ func TestCorrelationBundleRejectsSourceTypeSpoofing(t *testing.T) {
 	}
 }
 
+func TestCorrelationBundleRejectsLegacyLokiSource(t *testing.T) {
+	bundle := validCorrelationBundle()
+	bundle.Sources[2].Source = correlation.CorrelationSource("loki")
+	if _, err := DefaultCorrelation().CorrelationBundle(bundle); err == nil {
+		t.Fatal("CorrelationBundle() accepted the removed Loki source")
+	}
+}
+
 func validCorrelationBundle() correlation.CorrelationBundle {
 	return correlation.CorrelationBundle{
 		FindingID: "finding-1",
