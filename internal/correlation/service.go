@@ -119,6 +119,11 @@ type sourceCall struct {
 	call       func(context.Context, Query) ([]CorrelationSignal, error)
 }
 
+type adapterCallResult struct {
+	signals []CorrelationSignal
+	err     error
+}
+
 func (s *Service) Correlate(ctx context.Context, request Request) (CorrelationBundle, error) {
 	end := s.correlationEnd(request.AnchorTime)
 	window := TimeWindow{
@@ -234,7 +239,25 @@ func (s *Service) collectSource(
 	ctx, cancel := context.WithTimeout(parent, s.timeout)
 	defer cancel()
 
-	signals, err := current.call(ctx, query)
+	// Enforce the service-owned timeout independently of adapter cooperation. Adapters still receive
+	// the bounded context and are expected to honor it, but a non-cooperative adapter cannot hold the
+	// correlation response open past the configured per-source budget.
+	callResults := make(chan adapterCallResult, 1)
+	go func() {
+		signals, err := current.call(ctx, query)
+		callResults <- adapterCallResult{signals: signals, err: err}
+	}()
+
+	var signals []CorrelationSignal
+	var err error
+	select {
+	case result := <-callResults:
+		signals = result.signals
+		err = result.err
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+
 	state := SourceAvailable
 	if len(signals) > s.maxSignals {
 		signals = signals[:s.maxSignals]
