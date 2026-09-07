@@ -120,7 +120,7 @@ func TestFindingCorrelationAllowedScopeAndRequestIDs(t *testing.T) {
 	item := finding.Finding{
 		ID: "finding-allowed", Cluster: "local", Namespace: "dev", Severity: finding.SeverityWarning,
 		Resource: finding.ResourceRef{APIVersion: "v1", Kind: "Pod", Namespace: "dev", Name: "demo"},
-		Source: "k8sgpt", CreatedAt: "2026-09-07T02:00:00Z",
+		Source:   "k8sgpt", CreatedAt: "2026-09-07T02:00:00Z",
 	}
 	spy := &correlationSpy{}
 	authorizer := authorization.AuthorizerFunc(func(_ context.Context, request authorization.DecisionRequest) (authorization.Decision, error) {
