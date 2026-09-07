@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 7035d267 2ec8c7d6 6a2dd072 ebac173a 4e4ad657 5360d55f 1443e83d fec2902e
+// Contract source SHA-256 groups: 18441811 8e753522 654a1655 d3553035 4228cf42 2d98cfb1 d5aebdf3 2aea6593
 
 export interface StatusResponse {
   "status": string;
@@ -84,6 +84,67 @@ export interface FindingSummary {
   "byNamespace": Record<string, number>;
 }
 
+export type CorrelationSource = "kubernetes-events" | "prometheus" | "loki" | "alertmanager";
+
+export type SourceState = "available" | "unavailable" | "disabled" | "partial";
+
+export type SignalType = "event" | "metric" | "log" | "alert";
+
+export type SignalUnit = "count" | "bytes" | "seconds" | "milliseconds" | "percent" | "ratio" | "cores" | "bytes_per_second" | "requests_per_second";
+
+export interface TimeWindow {
+  "start": string;
+  "end": string;
+}
+
+export interface CorrelationScope {
+  "cluster": "local";
+  "namespace"?: string;
+  "resource": ResourceRef;
+}
+
+export interface EvidenceRef {
+  "source": CorrelationSource;
+  "id": string;
+}
+
+export interface CorrelationBudget {
+  "windowSeconds": number;
+  "perSourceTimeoutMillis": number;
+  "maxSignalsPerSource": number;
+}
+
+export interface SourceStatus {
+  "source": CorrelationSource;
+  "state": SourceState;
+}
+
+export interface CorrelationSignal {
+  "id": string;
+  "source": CorrelationSource;
+  "type": SignalType;
+  "severity"?: Severity;
+  "resource"?: ResourceRef;
+  "firstSeen"?: string;
+  "lastSeen"?: string;
+  "count"?: number;
+  "name"?: string;
+  "value"?: number;
+  "unit"?: SignalUnit;
+  "fingerprint"?: string;
+  "summary"?: string;
+  "evidence"?: Array<EvidenceRef>;
+}
+
+export interface CorrelationBundle {
+  "findingId": string;
+  "scope": CorrelationScope;
+  "window": TimeWindow;
+  "budget": CorrelationBudget;
+  "sources": Array<SourceStatus>;
+  "signals": Array<CorrelationSignal>;
+}
+
 export interface ErrorDetail {
   "code": string;
   "message": string;
@@ -123,6 +184,10 @@ export interface SummarizeFindingsParams {
 }
 
 export interface GetFindingParams {
+  "id": string;
+}
+
+export interface GetFindingCorrelationParams {
   "id": string;
 }
 
@@ -213,6 +278,11 @@ export class KubeAIOpsApiClient {
   async getFinding(params: GetFindingParams): Promise<Finding> {
     let path = `/api/v1/findings/${encodeURIComponent(String(params["id"]))}`;
     return this.request<Finding>(path);
+  }
+
+  async getFindingCorrelation(params: GetFindingCorrelationParams): Promise<CorrelationBundle> {
+    let path = `/api/v1/findings/${encodeURIComponent(String(params["id"]))}/correlation`;
+    return this.request<CorrelationBundle>(path);
   }
 
 }

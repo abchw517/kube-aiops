@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: kube-aiops Portal Backend API
-  version: 1.4.1
+  version: 2.1.0
   description: >-
-    Read-only Portal Backend contract with the Phase 1.4.1 provider-neutral identity boundary.
-    Authentication enforcement is adapter-driven; health endpoints remain public and no provider-specific
-    credential mechanism is embedded in this contract.
+    Read-only Portal Backend contract with provider-neutral identity, authorization, audit,
+    sanitization, and bounded Phase 2 observability correlation. Correlation never exposes raw
+    PromQL, LogQL, upstream URLs, raw logs, raw Kubernetes objects, or mutation capabilities.
 servers:
   - url: http://localhost:8080
 security: []
@@ -13,6 +13,7 @@ tags:
   - name: Health
   - name: Kubernetes
   - name: Findings
+  - name: Correlation
 paths:
   /healthz:
     get:
@@ -209,12 +210,7 @@ paths:
       operationId: getFinding
       summary: Read one normalized K8sGPT finding
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            minLength: 1
+        - $ref: '#/components/parameters/FindingIDPath'
       responses:
         '200':
           description: Finding detail.
@@ -222,6 +218,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Finding'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/findings/{id}/correlation:
+    get:
+      tags: [Correlation]
+      operationId: getFindingCorrelation
+      summary: Read bounded sanitized observability evidence correlated to one resolved Finding
+      description: >-
+        Resolves the Finding first, derives its real cluster/namespace/resource scope, authorizes
+        correlations:read on that scope, and executes only fixed backend-owned adapters. The client
+        cannot supply PromQL, LogQL, upstream URLs, arbitrary Kubernetes queries, or raw log requests.
+      parameters:
+        - $ref: '#/components/parameters/FindingIDPath'
+      responses:
+        '200':
+          description: Safe correlation bundle. Individual disabled or unavailable sources are explicit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrelationBundle'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -241,6 +265,14 @@ components:
       schema:
         type: string
         enum: [local]
+    FindingIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 253
     ClusterQuery:
       name: cluster
       in: query
@@ -323,13 +355,15 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     BadGateway:
-      description: A safe upstream Kubernetes API failure response.
+      description: A safe upstream or correlation service failure response.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     ServiceUnavailable:
-      description: The backend or authentication provider is temporarily unavailable, or the safe scan limit was exceeded.
+      description: >-
+        The backend, authentication/authorization provider, or all configured correlation sources
+        are temporarily unavailable, or a safe scan limit was exceeded.
       content:
         application/json:
           schema:
@@ -521,6 +555,157 @@ components:
           additionalProperties:
             type: integer
             minimum: 0
+    CorrelationSource:
+      type: string
+      enum: [kubernetes-events, prometheus, loki, alertmanager]
+    SourceState:
+      type: string
+      enum: [available, unavailable, disabled, partial]
+    SignalType:
+      type: string
+      enum: [event, metric, log, alert]
+    SignalUnit:
+      type: string
+      enum:
+        - count
+        - bytes
+        - seconds
+        - milliseconds
+        - percent
+        - ratio
+        - cores
+        - bytes_per_second
+        - requests_per_second
+    TimeWindow:
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+    CorrelationScope:
+      type: object
+      additionalProperties: false
+      required: [cluster, resource]
+      properties:
+        cluster:
+          type: string
+          enum: [local]
+        namespace:
+          type: string
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+    EvidenceRef:
+      type: object
+      additionalProperties: false
+      required: [source, id]
+      properties:
+        source:
+          $ref: '#/components/schemas/CorrelationSource'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 253
+    CorrelationBudget:
+      type: object
+      additionalProperties: false
+      required: [windowSeconds, perSourceTimeoutMillis, maxSignalsPerSource]
+      properties:
+        windowSeconds:
+          type: integer
+          minimum: 1
+          maximum: 7200
+        perSourceTimeoutMillis:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        maxSignalsPerSource:
+          type: integer
+          minimum: 1
+          maximum: 100
+    SourceStatus:
+      type: object
+      additionalProperties: false
+      required: [source, state]
+      properties:
+        source:
+          $ref: '#/components/schemas/CorrelationSource'
+        state:
+          $ref: '#/components/schemas/SourceState'
+    CorrelationSignal:
+      type: object
+      additionalProperties: false
+      required: [id, source, type]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 253
+        source:
+          $ref: '#/components/schemas/CorrelationSource'
+        type:
+          $ref: '#/components/schemas/SignalType'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        count:
+          type: integer
+          minimum: 0
+        name:
+          type: string
+          maxLength: 253
+        value:
+          type: number
+        unit:
+          $ref: '#/components/schemas/SignalUnit'
+        fingerprint:
+          type: string
+          maxLength: 253
+        summary:
+          type: string
+          maxLength: 8192
+        evidence:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+    CorrelationBundle:
+      type: object
+      additionalProperties: false
+      required: [findingId, scope, window, budget, sources, signals]
+      properties:
+        findingId:
+          type: string
+          minLength: 1
+          maxLength: 253
+        scope:
+          $ref: '#/components/schemas/CorrelationScope'
+        window:
+          $ref: '#/components/schemas/TimeWindow'
+        budget:
+          $ref: '#/components/schemas/CorrelationBudget'
+        sources:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/SourceStatus'
+        signals:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/CorrelationSignal'
     ErrorDetail:
       type: object
       additionalProperties: false

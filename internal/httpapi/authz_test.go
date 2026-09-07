@@ -50,6 +50,7 @@ func TestProtectedRouteCapabilityMappingIsExhaustive(t *testing.T) {
 		"GET /api/v1/findings":                                               authorization.CapabilityFindingsList,
 		"GET /api/v1/findings/summary":                                       authorization.CapabilityFindingsSummary,
 		"GET /api/v1/findings/{id}":                                          authorization.CapabilityFindingsRead,
+		"GET /api/v1/findings/{id}/correlation":                              authorization.CapabilityCorrelationsRead,
 	}
 	if len(routes) != len(expected) {
 		t.Fatalf("protected route count=%d, want %d", len(routes), len(expected))
@@ -117,6 +118,19 @@ func TestAuthorizationRouteAllowMatrix(t *testing.T) {
 			name:       "finding detail",
 			path:       "/api/v1/findings/finding-1",
 			capability: authorization.CapabilityFindingsRead,
+			scope:      authorization.NamespaceScope("local", "prod"),
+			backend: fakeBackend{findingItem: finding.Finding{
+				ID:        "finding-1",
+				Cluster:   "local",
+				Namespace: "prod",
+				Severity:  finding.SeverityWarning,
+				Source:    "k8sgpt",
+			}},
+		},
+		{
+			name:       "finding correlation",
+			path:       "/api/v1/findings/finding-1/correlation",
+			capability: authorization.CapabilityCorrelationsRead,
 			scope:      authorization.NamespaceScope("local", "prod"),
 			backend: fakeBackend{findingItem: finding.Finding{
 				ID:        "finding-1",
