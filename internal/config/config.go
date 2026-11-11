@@ -21,14 +21,18 @@ const (
 )
 
 type Config struct {
-	HTTPAddr            string
-	ReadyTimeout        time.Duration
-	K8sGPTNamespace     string
-	K8sGPTName          string
-	KubernetesAPIURL    string
-	KubernetesTokenFile string
-	KubernetesCAFile    string
-	SecurityMode        security.Mode
+	HTTPAddr               string
+	ReadyTimeout           time.Duration
+	K8sGPTNamespace        string
+	K8sGPTName             string
+	KubernetesAPIURL       string
+	KubernetesTokenFile    string
+	KubernetesCAFile       string
+	PrometheusURL          string
+	PrometheusClusterLabel string
+	PrometheusTokenFile    string
+	PrometheusCAFile       string
+	SecurityMode           security.Mode
 }
 
 func Load() (Config, error) {
@@ -38,14 +42,18 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		HTTPAddr:            getenv("HTTP_ADDR", defaultHTTPAddr),
-		K8sGPTNamespace:     getenv("K8SGPT_NAMESPACE", defaultK8sGPTNS),
-		K8sGPTName:          getenv("K8SGPT_NAME", defaultK8sGPTName),
-		KubernetesAPIURL:    strings.TrimRight(os.Getenv("KUBERNETES_API_URL"), "/"),
-		KubernetesTokenFile: getenv("KUBERNETES_BEARER_TOKEN_FILE", defaultSATokenFile),
-		KubernetesCAFile:    getenv("KUBERNETES_CA_FILE", defaultServiceCAFile),
-		ReadyTimeout:        defaultReadyTimeout,
-		SecurityMode:        securityMode,
+		HTTPAddr:               getenv("HTTP_ADDR", defaultHTTPAddr),
+		K8sGPTNamespace:        getenv("K8SGPT_NAMESPACE", defaultK8sGPTNS),
+		K8sGPTName:             getenv("K8SGPT_NAME", defaultK8sGPTName),
+		KubernetesAPIURL:       strings.TrimRight(os.Getenv("KUBERNETES_API_URL"), "/"),
+		KubernetesTokenFile:    getenv("KUBERNETES_BEARER_TOKEN_FILE", defaultSATokenFile),
+		KubernetesCAFile:       getenv("KUBERNETES_CA_FILE", defaultServiceCAFile),
+		PrometheusURL:          getenv("PROMETHEUS_URL", ""),
+		PrometheusClusterLabel: getenv("PROMETHEUS_CLUSTER_LABEL_VALUE", ""),
+		PrometheusTokenFile:    getenv("PROMETHEUS_BEARER_TOKEN_FILE", ""),
+		PrometheusCAFile:       getenv("PROMETHEUS_CA_FILE", ""),
+		ReadyTimeout:           defaultReadyTimeout,
+		SecurityMode:           securityMode,
 	}
 
 	if value := strings.TrimSpace(os.Getenv("READY_TIMEOUT")); value != "" {
