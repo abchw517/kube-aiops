@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
-	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
-	"github.com/abchw517/kube-aiops/internal/prometheus"
 	"github.com/abchw517/kube-aiops/internal/security"
 )
 
@@ -33,19 +31,9 @@ func main() {
 		K8sGPTNS:   cfg.K8sGPTNamespace,
 		K8sGPTName: cfg.K8sGPTName,
 	})
-	metricSource, err := prometheus.New(prometheus.Config{
-		URL:               cfg.PrometheusURL,
-		ClusterLabelValue: cfg.PrometheusClusterLabel,
-		TokenFile:         cfg.PrometheusTokenFile,
-		CAFile:            cfg.PrometheusCAFile,
-	})
+	correlator, err := buildCorrelator(cfg, backend)
 	if err != nil {
-		logger.Error("configure Prometheus source failed", "error", err)
-		os.Exit(1)
-	}
-	correlator, err := correlation.NewService(correlation.ServiceOptions{Events: backend, Prometheus: metricSource})
-	if err != nil {
-		logger.Error("build correlation service failed", "reason", "correlation_service_invalid")
+		logger.Error("build correlation service failed", "reason", "correlation_service_invalid", "error", err)
 		os.Exit(1)
 	}
 
