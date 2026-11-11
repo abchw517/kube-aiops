@@ -29,7 +29,7 @@ work_dir="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-portal-demo.XXXXXXXX")"
 backend_pid=""
 fixture_pid=""
 # Called by the EXIT trap.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   if [[ -n "$backend_pid" ]]; then
     kill "$backend_pid" 2>/dev/null || true

@@ -20,6 +20,10 @@ Phase 2 的交付范围和验收结果见 [Phase 2 结项记录](docs/phase-2-co
 Demo 使用样例数据和真实 Go Portal Backend，覆盖 Finding 过滤、详情及四类证据。
 运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docs/portal-demo.md)。
 
+## 安装与部署
+
+[安装部署指南](docs/install-deployment.md) 覆盖 K8sGPT 安装、Kind 内的 Go API 和 Portal 联调、可观测性配置、生产部署条件、故障排查和清理。
+
 ## 当前支持基线
 
 ```text
