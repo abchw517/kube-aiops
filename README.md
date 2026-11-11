@@ -6,11 +6,13 @@
 
 - **Phase 1.1：K8sGPT Engine — Completed**
 - **Phase 1.2：Portal Backend API — Completed**
-- **Platform Baseline：Kubernetes v1.36 升级与封版校验**
-- **Phase 1.3：Web Portal — 等待 v1.36 平台基线合并后 main 全绿再进入**
+- **Platform Baseline：Kubernetes v1.36.4 — Active**
+- **Phase 1.3：Web Portal — Completed**
+- **Phase 1.4：Portal 安全边界 — Completed**
+- **Phase 2：可观测性证据关联 — Completed**
 
-Phase 1.2 的完成记录见 `docx/phase-1.2-completion.md`。当前平台基线说明见
-`docs/kubernetes-v1.36-baseline.md`。
+Phase 2 的交付范围和验收结果见 [Phase 2 结项记录](docs/phase-2-completion.md)。
+当前平台基线见 [Kubernetes v1.36.4](docs/kubernetes-v1.36-baseline.md)。
 
 ## 当前支持基线
 
@@ -595,10 +597,10 @@ Remediation -> Disabled
 
 - Phase 1.1：K8sGPT Engine — Completed
 - Phase 1.2：Portal Backend API — Completed
-- Platform Baseline：Kubernetes v1.36 — current gate
-- Phase 1.3：Web Portal
-- Phase 1.4：Authentication / Authorization / Audit / Sanitizer
-- Phase 2：Events、Prometheus、VictoriaLogs、Alertmanager 证据关联和 Finding 详情展示
-- Phase 3：RCA Agent + Runbook
+- Platform Baseline：Kubernetes v1.36.4 — Active
+- Phase 1.3：Web Portal — Completed
+- Phase 1.4：Authentication / Authorization / Audit / Sanitizer — Completed
+- Phase 2：Events、Prometheus、VictoriaLogs、Alertmanager 证据关联和 Finding 详情展示 — Completed
+- Phase 3：RCA Agent + Runbook — Planned
 - Phase 4：HITL Remediation
 - Phase 5：Controlled Auto Remediation

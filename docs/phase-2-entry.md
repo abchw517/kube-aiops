@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Development.**
+**Completed.** See the [Phase 2 completion record](phase-2-completion.md) for verification evidence.
 
 Phase 2 builds on the completed Phase 1.4 security boundary and the Kubernetes v1.36.4 platform baseline.
 
@@ -200,7 +200,7 @@ A useful correlation response may be returned when at least one configured sourc
    - generic `LogSignalSource` seam
    - concrete log source contract corrected from Loki to VictoriaLogs before a real log adapter is introduced
 
-2. **Phase 2.2 — Kubernetes Events Adapter — Completed implementation / merged**
+2. **Phase 2.2 — Kubernetes Events Adapter — Completed**
    - minimal read-only Events integration
    - normalization and bounded event evidence
 
@@ -214,7 +214,7 @@ A useful correlation response may be returned when at least one configured sourc
    - normalized read-only alert evidence
    - backend configuration and source scope described in [correlation design](phase-2-correlation-design.md)
 
-5. **Phase 2.5 — Correlation Engine + Portal**
+5. **Phase 2.5 — Correlation Engine + Portal — Completed**
    - deterministic evidence ranking and deduplication
    - partial-failure source state
    - Finding Detail correlation view
@@ -224,7 +224,7 @@ The exact PR decomposition may be smaller or larger, but every merge must preser
 
 ## Completion Conditions
 
-Phase 2 is not complete until:
+Phase 2 was verified against these conditions:
 
 - all four evidence sources have production-safe adapters or are explicitly documented/configured as disabled
 - the correlation API is backend-authorized by real Finding scope
