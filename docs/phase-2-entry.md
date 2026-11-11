@@ -208,14 +208,14 @@ A useful correlation response may be returned when at least one configured sourc
    - fixed query catalog
    - bounded instant/range metric signals
 
-4. **Phase 2.4 — VictoriaLogs + Alertmanager Adapters**
+4. **Phase 2.4 — VictoriaLogs + Alertmanager Adapters — Completed**
    - fixed backend-owned LogsQL catalog
    - log fingerprint/count signals without raw logs
    - normalized read-only alert evidence
    - backend configuration and source scope described in [correlation design](phase-2-correlation-design.md)
 
 5. **Phase 2.5 — Correlation Engine + Portal**
-   - deterministic evidence assembly/scoring
+   - deterministic evidence ranking and deduplication
    - partial-failure source state
    - Finding Detail correlation view
    - browser E2E

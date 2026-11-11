@@ -80,11 +80,69 @@ try {
         `Finding diagnostic text crossed the browser safety boundary: ${JSON.stringify(xssState)}`,
       );
     }
+    await assertText(cdp, (text) =>
+      text.includes("Correlated evidence") && text.includes("ContainerBackOff") &&
+      text.includes("out_of_memory") && text.includes("Partial") &&
+      text.includes("Unavailable") && text.includes("Disabled"),
+    "Finding Detail did not render grouped correlation evidence and source states");
+
+    const evidenceEvaluation = await cdp.send("Runtime.evaluate", {
+      expression: `({
+        probe: Boolean(document.querySelector("#evidence-markup-probe")),
+        text: document.querySelector(".correlation-panel")?.innerText ?? "",
+        events: Array.from(document.querySelectorAll('[aria-label="Kubernetes Events"] .evidence-signal-heading strong'), node => node.textContent)
+      })`,
+      returnByValue: true,
+    });
+    const evidence = evidenceEvaluation.result?.value ?? {};
+    if (evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
+      evidence.events?.join(",") !== "ContainerBackOff,Started") {
+      throw new Error(`Unexpected evidence markup or ranking: ${JSON.stringify(evidence)}`);
+    }
+
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+    });
+    const mobileLayout = await cdp.send("Runtime.evaluate", {
+      expression: `({
+        columns: getComputedStyle(document.querySelector(".correlation-grid")).gridTemplateColumns.trim().split(/\\s+/).length,
+        overflow: document.documentElement.scrollWidth > innerWidth
+      })`,
+      returnByValue: true,
+    });
+    if (mobileLayout.result?.value?.columns !== 1 || mobileLayout.result?.value?.overflow) {
+      throw new Error(`Evidence panel overflows on mobile: ${JSON.stringify(mobileLayout.result?.value)}`);
+    }
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+    await assertPage(
+      cdp, "http://127.0.0.1:4173/#/findings/finding-warning",
+      (text) => text.includes("Unable to load evidence") && text.includes("Available replicas are below desired replicas.") &&
+        text.includes("Retry evidence") && !text.includes("private-provider-detail"),
+      "Failed evidence request did not preserve the finding or show a safe retry",
+    );
+    await cdp.send("Runtime.evaluate", {
+      expression: "document.querySelector('[data-action=retry-correlation]').click()",
+    });
+    await assertText(cdp, (text) =>
+      text.includes("No evidence in this window.") && text.includes("Available replicas are below desired replicas.") &&
+      !text.includes("Retry evidence"), "Evidence retry did not render the empty result");
+
+    for (const [id, message] of [
+      ["finding-auth", "Authentication required for evidence"],
+      ["finding-forbidden", "Evidence access denied"],
+    ]) {
+      await assertPage(
+        cdp, `http://127.0.0.1:4173/#/findings/${id}`,
+        (text) => text.includes(message) && text.includes("Container restart backoff is increasing."),
+        `Evidence access state missing for ${id}`,
+      );
+    }
   } finally {
     cdp.close();
   }
 
-  console.log("Phase 1.4.4 sanitizer browser E2E: PASS");
+  console.log("Finding Portal and correlation evidence browser E2E: PASS");
 } finally {
   chrome.kill("SIGTERM");
   if (chrome.exitCode === null) await once(chrome, "exit");
@@ -158,6 +216,10 @@ async function createCdpClient(webSocketUrl) {
 
 async function assertPage(cdp, url, predicate, failureMessage) {
   await cdp.send("Page.navigate", { url });
+  await assertText(cdp, predicate, failureMessage);
+}
+
+async function assertText(cdp, predicate, failureMessage) {
   let latestText = "";
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const response = await cdp.send("Runtime.evaluate", {

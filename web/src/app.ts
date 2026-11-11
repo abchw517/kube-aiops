@@ -20,6 +20,12 @@ import {
   toSummaryParams,
   type FindingFilters,
 } from "./domain/filters.ts";
+import {
+  renderCorrelationError,
+  renderCorrelationEvidence,
+  renderCorrelationLoading,
+  renderCorrelationSection,
+} from "./views/correlation.ts";
 import { renderFindingDetail } from "./views/finding-detail.ts";
 import {
   renderFilters,
@@ -88,11 +94,28 @@ export class PortalApp {
     try {
       const finding = await apiClient.getFinding({ id });
       if (generation !== this.renderGeneration) return;
-      this.renderShell(renderFindingDetail(finding));
+      this.renderShell(renderFindingDetail(finding) + renderCorrelationSection(id));
+      const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
+      if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {
       if (generation !== this.renderGeneration) return;
       this.renderShell(this.requestErrorState(error));
     }
+  }
+
+  private async loadCorrelation(id: string, generation: number, region: HTMLElement): Promise<void> {
+    region.setAttribute("aria-busy", "true");
+    region.innerHTML = renderCorrelationLoading();
+    let content: string;
+    try {
+      const bundle = await apiClient.getFindingCorrelation({ id });
+      content = renderCorrelationEvidence(bundle);
+    } catch (error) {
+      content = renderCorrelationError(error);
+    }
+    if (generation !== this.renderGeneration || !region.isConnected) return;
+    region.innerHTML = content;
+    region.removeAttribute("aria-busy");
   }
 
   private async loadClusters(): Promise<Cluster[]> {
@@ -137,9 +160,8 @@ export class PortalApp {
       <main class="page-shell">
         <section class="page-intro">
           <div>
-            <p class="eyebrow">Phase 1.4 · Secured Portal</p>
             <h1>Finding Operations Console</h1>
-            <p>Explore normalized K8sGPT findings without exposing Pod logs, Secrets, raw Kubernetes objects, or mutation controls.</p>
+            <p>Review K8sGPT findings and supporting signals from your cluster.</p>
           </div>
         </section>
         ${content}
@@ -151,6 +173,11 @@ export class PortalApp {
     if (!(target instanceof HTMLElement)) return;
     const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
     if (action === "retry") void this.route();
+    if (action === "retry-correlation") {
+      const region = target.closest<HTMLElement>("[data-correlation-finding]");
+      const id = region?.dataset.correlationFinding;
+      if (region && id) void this.loadCorrelation(id, this.renderGeneration, region);
+    }
     if (action === "clear-filters") window.location.hash = "#/findings?cluster=local";
   }
 

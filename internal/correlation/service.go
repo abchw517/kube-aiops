@@ -216,6 +216,7 @@ func (s *Service) Correlate(ctx context.Context, request Request) (CorrelationBu
 	if configured > 0 && unavailable == configured && len(bundle.Signals) == 0 {
 		return CorrelationBundle{}, ErrUnavailable
 	}
+	rankSignals(bundle.Signals, request.Scope.Resource)
 	return bundle, nil
 }
 
@@ -259,10 +260,6 @@ func (s *Service) collectSource(
 	}
 
 	state := SourceAvailable
-	if len(signals) > s.maxSignals {
-		signals = signals[:s.maxSignals]
-		state = SourcePartial
-	}
 	if err != nil {
 		if errors.Is(err, ErrSourceDisabled) {
 			state = SourceDisabled
@@ -279,6 +276,12 @@ func (s *Service) collectSource(
 	for i := range normalized {
 		normalized[i].Source = current.source
 		normalized[i].Type = current.signalType
+	}
+	rankSignals(normalized, query.Scope.Resource)
+	normalized = deduplicateSignals(normalized)
+	if len(normalized) > s.maxSignals {
+		normalized = normalized[:s.maxSignals]
+		state = SourcePartial
 	}
 
 	results <- sourceResult{
