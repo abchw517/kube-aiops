@@ -17,6 +17,7 @@ FROM scratch
 USER 65532:65532
 
 COPY --from=builder /out/kube-aiops-api /kube-aiops-api
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 EXPOSE 8080
 

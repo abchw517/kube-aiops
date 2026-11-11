@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
+	"github.com/abchw517/kube-aiops/internal/prometheus"
 	"github.com/abchw517/kube-aiops/internal/security"
 )
 
@@ -54,6 +58,48 @@ func TestBuildHandlerInjectsEventsPipeline(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/findings/finding-1/correlation", nil))
 	if recorder.Code != http.StatusOK || calls != 1 {
 		t.Fatalf("status=%d calls=%d body=%s", recorder.Code, calls, recorder.Body.String())
+	}
+}
+
+func TestFindingCorrelationReturnsPrometheusEvidence(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		anchor, err := time.Parse(time.RFC3339, r.URL.Query().Get("end"))
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"matrix","result":[
+			{"metric":{"upstreamLabel":"private-label-value"},"values":[[%d,"2"]]}]}}`, anchor.Unix())
+	}))
+	defer upstream.Close()
+	metricSource, err := prometheus.New(prometheus.Config{URL: upstream.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	correlator, err := correlation.NewService(correlation.ServiceOptions{Prometheus: metricSource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := buildHandler(testLogger(), correlationCompositionBackend{}, time.Second, security.ModeDevelopment, security.Bundle{}, correlator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/findings/finding-1/correlation", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("correlation API returned %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "private-label-value") {
+		t.Fatal("upstream labels crossed the API boundary")
+	}
+	var bundle correlation.CorrelationBundle
+	if err := json.Unmarshal(response.Body.Bytes(), &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Sources) != correlation.SourceCount || bundle.Sources[1].Source != correlation.SourcePrometheus ||
+		bundle.Sources[1].State != correlation.SourceAvailable || len(bundle.Signals) != 5 {
+		t.Fatalf("unexpected Prometheus evidence: %#v", bundle)
 	}
 }
 

@@ -225,6 +225,16 @@ Portal Backend may use only core Event `get/list/watch`. Explicit tests must kee
 
 ## Prometheus Adapter
 
+Configure the Portal Backend through its environment. The correlation endpoint reports
+Prometheus as `disabled` when `PROMETHEUS_URL` is unset.
+
+| Variable | Purpose |
+| --- | --- |
+| `PROMETHEUS_URL` | Base HTTP(S) URL of a Prometheus endpoint. Include the reverse-proxy path prefix if the endpoint uses one. |
+| `PROMETHEUS_CLUSTER_LABEL_VALUE` | Exact value of the `cluster` label for the Portal's local cluster. Set it when the backend contains data from multiple clusters. With the setting empty, use a datasource scoped to this cluster. |
+| `PROMETHEUS_BEARER_TOKEN_FILE` | Optional path to a mounted, read-only bearer credential for HTTPS. The adapter reads the file for each correlation request. |
+| `PROMETHEUS_CA_FILE` | Optional path to a mounted PEM trust bundle for a private HTTPS endpoint. The default is the container's CA bundle. |
+
 ### Query Catalog
 
 PromQL is owned by a versioned backend catalog, for example:
@@ -232,7 +242,7 @@ PromQL is owned by a versioned backend catalog, for example:
 ```text
 pod_cpu_usage
 pod_memory_working_set
-pod_restart_rate
+pod_restarts_5m
 pod_network_receive
 pod_network_transmit
 workload_ready_replicas
@@ -240,6 +250,16 @@ node_pressure_indicator
 ```
 
 The browser sends a semantic request through the correlation route, never raw PromQL.
+
+The Pod catalog queries cAdvisor and kube-state-metrics over the Finding window at a
+60-second step. It returns the peak finite value and the timestamp range and count of
+finite samples. CPU and network use a five-minute rate. Restarts use the estimated
+increase over five minutes. Each Deployment and Node query uses the Finding timestamp
+for an instant reading. Node pressure is `1` when any of MemoryPressure, DiskPressure,
+or PIDPressure is true. The adapter requests one aggregated series per query and
+reads up to 64 KiB per response. When an upstream query fails or returns warnings,
+the response retains the available signals and reports the source as `partial` if it
+has evidence to return.
 
 Each catalog entry defines:
 
