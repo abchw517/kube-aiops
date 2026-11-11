@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: kube-aiops Portal Backend API
-  version: 2.1.0
+  version: 2.1.1
   description: >-
     Read-only Portal Backend contract with provider-neutral identity, authorization, audit,
     sanitization, and bounded Phase 2 observability correlation. Correlation never exposes raw
-    PromQL, LogQL, upstream URLs, raw logs, raw Kubernetes objects, or mutation capabilities.
+    PromQL, LogsQL, upstream URLs, raw logs, raw Kubernetes objects, or mutation capabilities.
 servers:
   - url: http://localhost:8080
 security: []
@@ -236,7 +236,7 @@ paths:
       description: >-
         Resolves the Finding first, derives its real cluster/namespace/resource scope, authorizes
         correlations:read on that scope, and executes only fixed backend-owned adapters. The client
-        cannot supply PromQL, LogQL, upstream URLs, arbitrary Kubernetes queries, or raw log requests.
+        cannot supply PromQL, LogsQL, upstream URLs, arbitrary Kubernetes queries, or raw log requests.
       parameters:
         - $ref: '#/components/parameters/FindingIDPath'
       responses:
@@ -557,7 +557,7 @@ components:
             minimum: 0
     CorrelationSource:
       type: string
-      enum: [kubernetes-events, prometheus, loki, alertmanager]
+      enum: [kubernetes-events, prometheus, victorialogs, alertmanager]
     SourceState:
       type: string
       enum: [available, unavailable, disabled, partial]

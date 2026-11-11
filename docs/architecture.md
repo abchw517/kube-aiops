@@ -7,7 +7,7 @@ Phase 1.1 K8sGPT Engine            — Completed
 Phase 1.2 Portal Backend API       — Completed
 Phase 1.3 Web Portal               — Completed
 Phase 1.4 Security Hardening       — Completed
-Phase 2   Observability Correlation — Entering
+Phase 2   Observability Correlation — In Development
 Phase 3   RCA Agent + Runbook      — Planned
 Phase 4   HITL Remediation         — Planned
 Phase 5   Controlled Auto Remediation — Planned
@@ -31,19 +31,19 @@ Portal Backend API
 Safe Kubernetes        Finding Model          Phase 2 Correlation
 Projection                 ^                         Engine
                            |                          |
-                    Result Adapter        +----------+----------+
-                           ^               |          |          |
-                           |               v          v          v
-                    K8sGPT Result CR   Events     Prometheus    Loki
-                           ^                                      |
-                           |                                      v
-                    K8sGPT Engine                           Alertmanager
+                    Result Adapter        +----------+----------------+
+                           ^               |          |                |
+                           |               v          v                v
+                    K8sGPT Result CR   Events     Prometheus      VictoriaLogs
+                           ^                                        |
+                           |                                        v
+                    K8sGPT Engine                             Alertmanager
                            ^
                            |
                     K8sGPT Operator
 ```
 
-Phase 2 source adapters remain server-side. The browser never talks directly to Kubernetes, Prometheus, Loki or Alertmanager.
+Phase 2 source adapters remain server-side. The browser never talks directly to Kubernetes, Prometheus, VictoriaLogs or Alertmanager.
 
 ## Security Composition
 
@@ -119,7 +119,7 @@ correlations:read authorization
 Correlation Engine
    ├── Kubernetes EventSource
    ├── Prometheus MetricSource
-   ├── Loki LogSignalSource
+   ├── VictoriaLogs LogSignalSource
    └── Alertmanager AlertSource
    ↓
 Normalize / Budget / Correlate
@@ -129,7 +129,7 @@ Typed CorrelationBundle
 Sanitizer / Audit / OpenAPI
 ```
 
-Phase 2 does not expose arbitrary PromQL, LogQL, Alertmanager API calls or Kubernetes API passthrough. Loki initially produces normalized log fingerprints/counts/time ranges rather than raw log lines.
+Phase 2 does not expose arbitrary PromQL, LogsQL, Alertmanager API calls or Kubernetes API passthrough. VictoriaLogs initially produces normalized log fingerprints/counts/time ranges rather than raw log lines.
 
 ## Deployment Model
 
@@ -146,6 +146,8 @@ Currently supported capabilities:
 - cluster / namespace / severity / kind filtering
 - K8sGPT advisory diagnostics
 - Phase 1.4 AuthN/AuthZ/Audit/Sanitizer/Production Gates
+- Phase 2.1 bounded correlation contract/core
+- Phase 2.2 Kubernetes Events correlation
 
 Phase 2 adds only read-only observability correlation.
 
@@ -155,7 +157,7 @@ Not part of Phase 2:
 - Secrets
 - raw Kubernetes objects
 - raw Result CR
-- arbitrary PromQL/LogQL query editors
+- arbitrary PromQL/LogsQL query editors
 - mutation
 - RCA Agent
 - Runbook execution

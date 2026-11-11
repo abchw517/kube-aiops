@@ -185,7 +185,7 @@ func validHTTPBundle(request correlation.Request) correlation.CorrelationBundle 
 		Sources: []correlation.SourceStatus{
 			{Source: correlation.SourceKubernetesEvents, State: correlation.SourceDisabled},
 			{Source: correlation.SourcePrometheus, State: correlation.SourceDisabled},
-			{Source: correlation.SourceLoki, State: correlation.SourceDisabled},
+			{Source: correlation.SourceVictoriaLogs, State: correlation.SourceDisabled},
 			{Source: correlation.SourceAlertmanager, State: correlation.SourceDisabled},
 		},
 		Signals: []correlation.CorrelationSignal{},

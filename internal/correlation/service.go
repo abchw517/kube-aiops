@@ -36,7 +36,7 @@ func (f CorrelatorFunc) Correlate(ctx context.Context, request Request) (Correla
 type ServiceOptions struct {
 	Events       EventSource
 	Prometheus   MetricSource
-	Loki         LogSignalSource
+	VictoriaLogs LogSignalSource
 	Alertmanager AlertSource
 	Window       time.Duration
 	Timeout      time.Duration
@@ -47,7 +47,7 @@ type ServiceOptions struct {
 type Service struct {
 	events       EventSource
 	prometheus   MetricSource
-	loki         LogSignalSource
+	victoriaLogs LogSignalSource
 	alertmanager AlertSource
 	window       time.Duration
 	timeout      time.Duration
@@ -88,7 +88,7 @@ func NewService(options ServiceOptions) (*Service, error) {
 	return &Service{
 		events:       options.Events,
 		prometheus:   options.Prometheus,
-		loki:         options.Loki,
+		victoriaLogs: options.VictoriaLogs,
 		alertmanager: options.Alertmanager,
 		window:       window,
 		timeout:      timeout,
@@ -159,13 +159,13 @@ func (s *Service) Correlate(ctx context.Context, request Request) (CorrelationBu
 			},
 		},
 		{
-			source: SourceLoki, signalType: SignalTypeLog,
-			configured: s.loki != nil,
+			source: SourceVictoriaLogs, signalType: SignalTypeLog,
+			configured: s.victoriaLogs != nil,
 			call: func(callCtx context.Context, q Query) ([]CorrelationSignal, error) {
-				if s.loki == nil {
+				if s.victoriaLogs == nil {
 					return nil, ErrSourceDisabled
 				}
-				return s.loki.LogSignals(callCtx, q)
+				return s.victoriaLogs.LogSignals(callCtx, q)
 			},
 		},
 		{

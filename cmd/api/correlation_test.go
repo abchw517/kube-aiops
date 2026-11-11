@@ -28,7 +28,7 @@ func TestBuildHandlerInjectsEventsPipeline(t *testing.T) {
 			Sources: []correlation.SourceStatus{
 				{Source: correlation.SourceKubernetesEvents, State: correlation.SourceAvailable},
 				{Source: correlation.SourcePrometheus, State: correlation.SourceDisabled},
-				{Source: correlation.SourceLoki, State: correlation.SourceDisabled},
+				{Source: correlation.SourceVictoriaLogs, State: correlation.SourceDisabled},
 				{Source: correlation.SourceAlertmanager, State: correlation.SourceDisabled},
 			},
 			Signals: []correlation.CorrelationSignal{{

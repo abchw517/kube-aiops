@@ -2,21 +2,9 @@
 
 ## Status
 
-**Entering. Runtime implementation has not started.**
+**In Development.**
 
-Phase 2 must start only after this completion/entry transition is merged and the resulting `main` again passes all Required Checks.
-
-Entry evidence from the completed security phase:
-
-- previous phase: Phase 1.4 — Completed
-- Phase 1.4 final implementation PR: `#26 feat: Phase 1.4.5 Production Gates`
-- completed runtime baseline: `main@f3e794784fea1986f731191e4be4aa3153fe292d`
-- post-merge CI: `kube-aiops CI #87` — `completed / success`
-- Required Checks: all green
-  - `Preflight / Lint / RBAC`
-  - `Secret Scan`
-  - `Kubernetes v1.36 Kind E2E`
-- Kubernetes baseline: `v1.36.4`
+Phase 2 builds on the completed Phase 1.4 security boundary and the Kubernetes v1.36.4 platform baseline.
 
 ## Goal
 
@@ -41,7 +29,7 @@ Correlation Request
 │                                               │
 │ Kubernetes Events                            │
 │ Prometheus metrics                           │
-│ Loki log signals                             │
+│ VictoriaLogs log signals                     │
 │ Alertmanager alerts                          │
 └───────────────────────────────────────────────┘
    ↓
@@ -64,7 +52,7 @@ Included:
 
 - Kubernetes Event correlation
 - Prometheus metric correlation
-- Loki-derived log signal correlation
+- VictoriaLogs-derived log signal correlation
 - Alertmanager alert correlation
 - normalized time/resource scope
 - deterministic source status and correlation metadata
@@ -81,7 +69,7 @@ Explicitly not included:
 - Mutation
 - Auto Remediation
 - arbitrary PromQL proxy
-- arbitrary LogQL proxy
+- arbitrary LogsQL proxy
 - arbitrary Alertmanager API proxy
 - arbitrary Kubernetes API proxy
 - raw Kubernetes object passthrough
@@ -92,7 +80,7 @@ Phase 3 may consume the safe Phase 2 Correlation Bundle as evidence for RCA, but
 
 ## Initial User/API Surface
 
-The first protected correlation surface should be anchored to an existing Finding rather than an arbitrary browser-supplied observability query:
+The protected correlation surface is anchored to an existing Finding rather than an arbitrary browser-supplied observability query:
 
 ```text
 GET /api/v1/findings/{id}/correlation
@@ -118,7 +106,7 @@ The opaque Finding ID alone is never an authorization scope.
 
 ## Authorization Extension
 
-Phase 2 should add one application-level capability:
+Phase 2 uses the application-level capability:
 
 ```text
 correlations:read
@@ -126,7 +114,7 @@ correlations:read
 
 It remains an application policy capability, not a Kubernetes RBAC verb.
 
-The existing deny-by-default route coverage gate must be extended so a new correlation route cannot exist without:
+The deny-by-default route coverage gate requires every correlation route to have:
 
 - authentication
 - `correlations:read`
@@ -139,9 +127,7 @@ The existing deny-by-default route coverage gate must be extended so a new corre
 
 ### Kubernetes Events
 
-Use the Kubernetes API only through a dedicated read-only adapter.
-
-If current Portal Backend RBAC does not already permit Events, Phase 2 may add only the minimal explicit read extension required for core `events`:
+Use the Kubernetes API only through a dedicated read-only adapter. Phase 2.2 adds only:
 
 ```text
 get
@@ -149,7 +135,7 @@ list
 watch
 ```
 
-Any such change must be accompanied by live and static negative assertions that still deny:
+for core `events`, with live and static negative assertions that still deny:
 
 - Secrets
 - `pods/log`
@@ -161,11 +147,27 @@ The browser never submits arbitrary PromQL.
 
 The backend owns a versioned query catalog keyed by approved signal names/resource types. Queries have bounded time range, step, series count and response size.
 
-### Loki
+### VictoriaLogs
 
-The browser never submits arbitrary LogQL.
+VictoriaLogs is the Phase 2 log backend. The generic correlation seam remains `LogSignalSource`, so handlers and the correlation engine are not coupled to VictoriaLogs transport details.
 
-Phase 2 initially exposes only normalized log signals such as fingerprint/class/count/firstSeen/lastSeen and allowlisted resource labels. Raw log lines are not part of the Phase 2 contract.
+The browser never submits arbitrary LogsQL. The backend will own fixed, versioned LogsQL templates and bounded query budgets.
+
+Phase 2 initially exposes only normalized log signals such as:
+
+```text
+fingerprint / class
+count
+firstSeen
+lastSeen
+severity/category where safely derived
+allowlisted resource identity
+safe bounded summary when permitted
+```
+
+Raw log lines, raw VictoriaLogs responses, complete stream fields, backend URLs, credentials and arbitrary LogsQL are not part of the Phase 2 contract.
+
+The legacy `loki` CorrelationSource is removed and must be rejected by the typed sanitizer rather than treated as an alias.
 
 ### Alertmanager
 
@@ -175,7 +177,7 @@ Use read-only alert retrieval and normalize only allowlisted labels/state/time i
 
 One source being unavailable must not silently become an empty successful source.
 
-Correlation responses should make source state explicit:
+Correlation responses make source state explicit:
 
 ```text
 available
@@ -190,15 +192,15 @@ A useful correlation response may be returned when at least one configured sourc
 
 ## Implementation Stages
 
-Recommended Phase 2 implementation sequence:
-
-1. **Phase 2.1 — Correlation Contract / Core**
+1. **Phase 2.1 — Correlation Contract / Core — Completed**
    - typed Signal / SourceStatus / CorrelationBundle
    - `correlations:read`
    - route/OpenAPI/generated-client coverage
    - time/scope/budget primitives
+   - generic `LogSignalSource` seam
+   - concrete log source contract corrected from Loki to VictoriaLogs before a real log adapter is introduced
 
-2. **Phase 2.2 — Kubernetes Events Adapter**
+2. **Phase 2.2 — Kubernetes Events Adapter — Completed implementation / merged**
    - minimal read-only Events integration
    - normalization and bounded event evidence
 
@@ -206,7 +208,8 @@ Recommended Phase 2 implementation sequence:
    - fixed query catalog
    - bounded instant/range metric signals
 
-4. **Phase 2.4 — Loki + Alertmanager Adapters**
+4. **Phase 2.4 — VictoriaLogs + Alertmanager Adapters**
+   - fixed backend-owned LogsQL catalog
    - log fingerprint/count signals without raw logs
    - normalized read-only alert evidence
 

@@ -13,7 +13,7 @@ func TestCorrelationBundleSanitizesSummaryAndPreservesBoundedShape(t *testing.T)
 	bundle := validCorrelationBundle()
 	bundle.Signals = []correlation.CorrelationSignal{{
 		ID:          "log-fingerprint-1",
-		Source:      correlation.SourceLoki,
+		Source:      correlation.SourceVictoriaLogs,
 		Type:        correlation.SignalTypeLog,
 		Severity:    finding.SeverityWarning,
 		Fingerprint: "sha256:abc123",
@@ -54,6 +54,14 @@ func TestCorrelationBundleRejectsSourceTypeSpoofing(t *testing.T) {
 	}
 }
 
+func TestCorrelationBundleRejectsLegacyLokiSource(t *testing.T) {
+	bundle := validCorrelationBundle()
+	bundle.Sources[2].Source = correlation.CorrelationSource("loki")
+	if _, err := DefaultCorrelation().CorrelationBundle(bundle); err == nil {
+		t.Fatal("CorrelationBundle() accepted the removed Loki source")
+	}
+}
+
 func validCorrelationBundle() correlation.CorrelationBundle {
 	return correlation.CorrelationBundle{
 		FindingID: "finding-1",
@@ -63,7 +71,7 @@ func validCorrelationBundle() correlation.CorrelationBundle {
 		Sources: []correlation.SourceStatus{
 			{Source: correlation.SourceKubernetesEvents, State: correlation.SourceDisabled},
 			{Source: correlation.SourcePrometheus, State: correlation.SourceDisabled},
-			{Source: correlation.SourceLoki, State: correlation.SourceDisabled},
+			{Source: correlation.SourceVictoriaLogs, State: correlation.SourceDisabled},
 			{Source: correlation.SourceAlertmanager, State: correlation.SourceDisabled},
 		},
 		Signals: []correlation.CorrelationSignal{},

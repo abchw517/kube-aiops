@@ -7,7 +7,7 @@ type CorrelationSource string
 const (
 	SourceKubernetesEvents CorrelationSource = "kubernetes-events"
 	SourcePrometheus       CorrelationSource = "prometheus"
-	SourceLoki             CorrelationSource = "loki"
+	SourceVictoriaLogs     CorrelationSource = "victorialogs"
 	SourceAlertmanager     CorrelationSource = "alertmanager"
 )
 

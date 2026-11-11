@@ -181,14 +181,14 @@ func allCorrelationSources() []correlation.CorrelationSource {
 	return []correlation.CorrelationSource{
 		correlation.SourceKubernetesEvents,
 		correlation.SourcePrometheus,
-		correlation.SourceLoki,
+		correlation.SourceVictoriaLogs,
 		correlation.SourceAlertmanager,
 	}
 }
 
 func validCorrelationSource(source correlation.CorrelationSource) bool {
 	switch source {
-	case correlation.SourceKubernetesEvents, correlation.SourcePrometheus, correlation.SourceLoki, correlation.SourceAlertmanager:
+	case correlation.SourceKubernetesEvents, correlation.SourcePrometheus, correlation.SourceVictoriaLogs, correlation.SourceAlertmanager:
 		return true
 	default:
 		return false
@@ -216,7 +216,7 @@ func validSignalType(signalType correlation.SignalType) bool {
 func sourceMatchesSignalType(source correlation.CorrelationSource, signalType correlation.SignalType) bool {
 	return (source == correlation.SourceKubernetesEvents && signalType == correlation.SignalTypeEvent) ||
 		(source == correlation.SourcePrometheus && signalType == correlation.SignalTypeMetric) ||
-		(source == correlation.SourceLoki && signalType == correlation.SignalTypeLog) ||
+		(source == correlation.SourceVictoriaLogs && signalType == correlation.SignalTypeLog) ||
 		(source == correlation.SourceAlertmanager && signalType == correlation.SignalTypeAlert)
 }
 

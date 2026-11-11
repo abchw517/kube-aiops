@@ -160,7 +160,7 @@ if payload.get("findingId") != "events-finding":
 sources = {item.get("source"): item.get("state") for item in payload.get("sources", [])}
 if sources.get("kubernetes-events") != "available":
     raise SystemExit(f"kubernetes-events source not available: {sources}")
-for source in ("prometheus", "loki", "alertmanager"):
+for source in ("prometheus", "victorialogs", "alertmanager"):
     if sources.get(source) != "disabled":
         raise SystemExit(f"unexpected {source} state: {sources.get(source)}")
 
