@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "npx --yes @biomejs/biome@2.2.2 lint src tests scripts e2e",
+    "lint": "npx --yes @biomejs/biome@2.2.2 lint src tests scripts e2e demo",
     "typecheck": "npx --yes -p typescript@5.9.2 tsc --project tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "build": "node scripts/build.mjs",

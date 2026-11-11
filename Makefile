@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 BUILD_DIR ?= .build
 API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e portal-demo portal-demo-check
 
 help:
 	@echo "kube-aiops"
@@ -42,6 +42,8 @@ help:
 	@echo "  make web-check         执行 lint/typecheck/test/build"
 	@echo "  make web-docker-smoke  构建非 root Web 镜像并执行 smoke test"
 	@echo "  make web-e2e           使用 headless Chrome 执行 Finding Portal E2E"
+	@echo "  make portal-demo       启动本地只读 Web Portal Demo"
+	@echo "  make portal-demo-check 验证 Portal Demo 和四类证据来源"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
@@ -162,3 +164,9 @@ web-docker-smoke:
 
 web-e2e:
 	@cd web && npm run e2e
+
+portal-demo:
+	@bash scripts/portal-demo.sh
+
+portal-demo-check:
+	@bash scripts/portal-demo.sh --check

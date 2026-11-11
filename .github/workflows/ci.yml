@@ -152,6 +152,9 @@ jobs:
           set -Eeuo pipefail
           make web-e2e
 
+      - name: Portal demo smoke
+        run: make portal-demo-check
+
       - name: Run project preflight
         run: |
           bash ./preflight.sh

@@ -33,6 +33,8 @@ import {
   renderSummary,
 } from "./views/finding-list.ts";
 
+const demoMode = document.querySelector('meta[name="kube-aiops-demo"][content="true"]') !== null;
+
 export class PortalApp {
   private readonly root: HTMLElement;
   private clusters: Cluster[] | undefined;
@@ -158,6 +160,7 @@ export class PortalApp {
         <span class="readonly-badge">READ ONLY</span>
       </header>
       <main class="page-shell">
+        ${demoMode ? '<p class="demo-notice"><strong>Demo data</strong> · Local sample findings and evidence</p>' : ""}
         <section class="page-intro">
           <div>
             <h1>Finding Operations Console</h1>
