@@ -204,7 +204,7 @@ A useful correlation response may be returned when at least one configured sourc
    - minimal read-only Events integration
    - normalization and bounded event evidence
 
-3. **Phase 2.3 — Prometheus Adapter**
+3. **Phase 2.3 — Prometheus Adapter — Completed**
    - fixed query catalog
    - bounded instant/range metric signals
 
@@ -212,6 +212,7 @@ A useful correlation response may be returned when at least one configured sourc
    - fixed backend-owned LogsQL catalog
    - log fingerprint/count signals without raw logs
    - normalized read-only alert evidence
+   - backend configuration and source scope described in [correlation design](phase-2-correlation-design.md)
 
 5. **Phase 2.5 — Correlation Engine + Portal**
    - deterministic evidence assembly/scoring

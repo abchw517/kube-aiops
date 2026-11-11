@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abchw517/kube-aiops/internal/observability"
 	"github.com/abchw517/kube-aiops/internal/security"
 )
 
@@ -21,18 +22,17 @@ const (
 )
 
 type Config struct {
-	HTTPAddr               string
-	ReadyTimeout           time.Duration
-	K8sGPTNamespace        string
-	K8sGPTName             string
-	KubernetesAPIURL       string
-	KubernetesTokenFile    string
-	KubernetesCAFile       string
-	PrometheusURL          string
-	PrometheusClusterLabel string
-	PrometheusTokenFile    string
-	PrometheusCAFile       string
-	SecurityMode           security.Mode
+	HTTPAddr            string
+	ReadyTimeout        time.Duration
+	K8sGPTNamespace     string
+	K8sGPTName          string
+	KubernetesAPIURL    string
+	KubernetesTokenFile string
+	KubernetesCAFile    string
+	Prometheus          observability.Config
+	VictoriaLogs        observability.Config
+	Alertmanager        observability.Config
+	SecurityMode        security.Mode
 }
 
 func Load() (Config, error) {
@@ -42,18 +42,17 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		HTTPAddr:               getenv("HTTP_ADDR", defaultHTTPAddr),
-		K8sGPTNamespace:        getenv("K8SGPT_NAMESPACE", defaultK8sGPTNS),
-		K8sGPTName:             getenv("K8SGPT_NAME", defaultK8sGPTName),
-		KubernetesAPIURL:       strings.TrimRight(os.Getenv("KUBERNETES_API_URL"), "/"),
-		KubernetesTokenFile:    getenv("KUBERNETES_BEARER_TOKEN_FILE", defaultSATokenFile),
-		KubernetesCAFile:       getenv("KUBERNETES_CA_FILE", defaultServiceCAFile),
-		PrometheusURL:          getenv("PROMETHEUS_URL", ""),
-		PrometheusClusterLabel: getenv("PROMETHEUS_CLUSTER_LABEL_VALUE", ""),
-		PrometheusTokenFile:    getenv("PROMETHEUS_BEARER_TOKEN_FILE", ""),
-		PrometheusCAFile:       getenv("PROMETHEUS_CA_FILE", ""),
-		ReadyTimeout:           defaultReadyTimeout,
-		SecurityMode:           securityMode,
+		HTTPAddr:            getenv("HTTP_ADDR", defaultHTTPAddr),
+		K8sGPTNamespace:     getenv("K8SGPT_NAMESPACE", defaultK8sGPTNS),
+		K8sGPTName:          getenv("K8SGPT_NAME", defaultK8sGPTName),
+		KubernetesAPIURL:    strings.TrimRight(os.Getenv("KUBERNETES_API_URL"), "/"),
+		KubernetesTokenFile: getenv("KUBERNETES_BEARER_TOKEN_FILE", defaultSATokenFile),
+		KubernetesCAFile:    getenv("KUBERNETES_CA_FILE", defaultServiceCAFile),
+		Prometheus:          observabilityConfig("PROMETHEUS"),
+		VictoriaLogs:        observabilityConfig("VICTORIALOGS"),
+		Alertmanager:        observabilityConfig("ALERTMANAGER"),
+		ReadyTimeout:        defaultReadyTimeout,
+		SecurityMode:        securityMode,
 	}
 
 	if value := strings.TrimSpace(os.Getenv("READY_TIMEOUT")); value != "" {
@@ -82,6 +81,15 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func observabilityConfig(prefix string) observability.Config {
+	return observability.Config{
+		URL:               getenv(prefix+"_URL", ""),
+		ClusterLabelValue: getenv(prefix+"_CLUSTER_LABEL_VALUE", ""),
+		TokenFile:         getenv(prefix+"_BEARER_TOKEN_FILE", ""),
+		CAFile:            getenv(prefix+"_CA_FILE", ""),
+	}
 }
 
 func inClusterAPIURL() string {

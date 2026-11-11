@@ -288,6 +288,12 @@ Do not expose Prometheus credentials, backend URLs, complete label sets or raw q
 
 ## VictoriaLogs Adapter
 
+Set `VICTORIALOGS_URL` on the Portal Backend to enable this source. The optional
+`VICTORIALOGS_BEARER_TOKEN_FILE` and `VICTORIALOGS_CA_FILE` configure HTTPS access.
+Set `VICTORIALOGS_CLUSTER_LABEL_VALUE` to match the exact `cluster` field in a shared
+datasource. With that setting empty, use an endpoint scoped to the local cluster.
+The source uses the endpoint's tenant configuration.
+
 ### Security Boundary
 
 Phase 2 does not expose raw Pod logs.
@@ -308,14 +314,16 @@ Raw log lines, complete VictoriaLogs response objects/stream fields, backend URL
 
 ### Query Catalog
 
-Server-owned patterns may classify:
+The v1 catalog classifies panic or fatal errors, out-of-memory errors, connection
+timeouts, upstream HTTP 5xx, JVM GC pressure, and application restart messages. It
+supports Pod Findings and requires the stream fields `kubernetes.pod_namespace`
+and `kubernetes.pod_name`. The two fields match the resolved Pod exactly.
 
-- panic / fatal
-- OOM-related application messages
-- connection timeout
-- upstream 5xx
-- JVM OOM / GC pressure signatures
-- application restart signatures
+One `/select/logsql/stats_query_range` request aggregates all six classes over the
+Finding time window. Each class emits a count, a catalog fingerprint and the first
+and last occupied one-minute bucket timestamps, clipped to the query window.
+Classes can overlap. The adapter bounds the upstream response to 64 KiB and accepts
+at most six series with up to 121 buckets each.
 
 Each LogsQL template/pattern must be versioned and tested for cost, time range, scan volume and cardinality. The browser cannot submit LogsQL, regexes, arbitrary `_stream` filters or upstream URLs.
 
@@ -331,16 +339,39 @@ The former `loki` source is removed, is not a compatibility alias, and must be r
 
 ## Alertmanager Adapter
 
+Set `ALERTMANAGER_URL` on the Portal Backend to enable this source. The optional
+`ALERTMANAGER_BEARER_TOKEN_FILE` and `ALERTMANAGER_CA_FILE` configure HTTPS access.
+Set `ALERTMANAGER_CLUSTER_LABEL_VALUE` to select the local cluster by its exact
+`cluster` label when Alertmanager receives alerts from several clusters. With
+that setting empty, use an endpoint scoped to the local cluster.
+
 ### Read-only Scope
 
-Normalize active/recent alerts relevant to the target cluster/namespace/resource.
+The adapter reads `GET /api/v2/alerts` using exact resource and namespace label
+matchers, plus the configured cluster label where applicable. It verifies the
+labels again in the response and keeps alerts whose lifetime overlaps the Finding
+window. It considers up to 200 candidate alerts in a response of up to 256 KiB.
+The Alertmanager endpoint provides its current alert set and status. Historical
+evidence is limited to alerts that Alertmanager still returns.
+
+| Finding kind | Alert label |
+| --- | --- |
+| Pod | `pod` |
+| Deployment | `deployment` |
+| StatefulSet | `statefulset` |
+| DaemonSet | `daemonset` |
+| ReplicaSet | `replicaset` |
+| Job | `job_name` |
+| CronJob | `cronjob` |
+| PersistentVolumeClaim | `persistentvolumeclaim` |
+| Node | `node` |
 
 Output only allowlisted data such as:
 
 - alert name
 - state
 - severity if present
-- startsAt / endsAt
+- `startsAt` and `endsAt` clipped to the Finding window
 - selected resource identity labels
 - stable fingerprint
 

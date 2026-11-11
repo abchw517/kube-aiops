@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abchw517/kube-aiops/internal/config"
 	"github.com/abchw517/kube-aiops/internal/correlation"
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
@@ -100,6 +101,67 @@ func TestFindingCorrelationReturnsPrometheusEvidence(t *testing.T) {
 	if len(bundle.Sources) != correlation.SourceCount || bundle.Sources[1].Source != correlation.SourcePrometheus ||
 		bundle.Sources[1].State != correlation.SourceAvailable || len(bundle.Signals) != 5 {
 		t.Fatalf("unexpected Prometheus evidence: %#v", bundle)
+	}
+}
+
+func TestFindingCorrelationUsesConfiguredLogAndAlertSources(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/logs/select/logsql/stats_query_range":
+			if !strings.Contains(r.URL.Query().Get("query"), `cluster:="local-fixture"`) {
+				t.Error("VictoriaLogs cluster scope missing")
+			}
+			bucket := time.Date(2026, 9, 7, 1, 59, 0, 0, time.UTC)
+			fmt.Fprintf(w, `{"status":"success","data":{"resultType":"matrix","result":[
+				{"metric":{"__name__":"panic_fatal","raw":"fixture-private-log"},"values":[[%d,"2"]]}]}}`, bucket.Unix())
+		case "/am/api/v2/alerts":
+			if len(r.URL.Query()["filter"]) != 3 {
+				t.Error("Alertmanager resource scope missing")
+			}
+			fmt.Fprint(w, `[{"labels":{"alertname":"PodFixture","namespace":"prod","pod":"demo","cluster":"local-fixture"},
+				"fingerprint":"0123456789abcdef","startsAt":"2026-09-07T01:59:00Z","endsAt":"2026-09-07T02:01:00Z",
+				"status":{"state":"active"},"annotations":{"summary":"fixture-private-alert"}}]`)
+		default:
+			t.Errorf("unexpected upstream route %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	for _, prefix := range []string{"PROMETHEUS", "VICTORIALOGS", "ALERTMANAGER"} {
+		t.Setenv(prefix+"_BEARER_TOKEN_FILE", "")
+		t.Setenv(prefix+"_CA_FILE", "")
+	}
+	t.Setenv("VICTORIALOGS_URL", server.URL+"/logs")
+	t.Setenv("VICTORIALOGS_CLUSTER_LABEL_VALUE", "local-fixture")
+	t.Setenv("ALERTMANAGER_URL", server.URL+"/am")
+	t.Setenv("ALERTMANAGER_CLUSTER_LABEL_VALUE", "local-fixture")
+	t.Setenv("PROMETHEUS_URL", "")
+	t.Setenv("PROMETHEUS_CLUSTER_LABEL_VALUE", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	correlator, err := buildCorrelator(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := buildHandler(testLogger(), correlationCompositionBackend{}, time.Second, security.ModeDevelopment, security.Bundle{}, correlator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/findings/finding-1/correlation", nil))
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "fixture-private-") {
+		t.Fatalf("unexpected correlation response %d: %s", response.Code, response.Body.String())
+	}
+	var bundle correlation.CorrelationBundle
+	if err := json.Unmarshal(response.Body.Bytes(), &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Signals) != 2 || bundle.Signals[0].Source != correlation.SourceVictoriaLogs ||
+		bundle.Signals[0].Count != 2 || bundle.Signals[1].Source != correlation.SourceAlertmanager ||
+		bundle.Signals[1].Name != "PodFixture" {
+		t.Fatalf("unexpected evidence: %#v", bundle)
 	}
 }
 
