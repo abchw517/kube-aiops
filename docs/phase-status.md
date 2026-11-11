@@ -6,12 +6,14 @@
 - Phase 1.2: Portal Backend API — **Completed**
 - Platform Baseline: Kubernetes v1.36.4 — **Active / Green**
 - Phase 1.3: Web Portal — **Completed**
-- Phase 1.4: Authentication / Authorization / Audit / Sanitizer — **Active**
+- Phase 1.4: Authentication / Authorization / Audit / Sanitizer / Production Gates — **Completed**
   - Phase 1.4.1: Identity Contract — **Completed**
   - Phase 1.4.2: Authorization — **Completed**
   - Phase 1.4.3: Audit — **Completed**
-  - Phase 1.4.4: Sanitizer — **Entering**
-  - Phase 1.4.5: Production Gates — **Planned**
+  - Phase 1.4.4: Sanitizer — **Completed**
+  - Phase 1.4.5: Production Gates — **Completed**
+- Phase 2: Observability Correlation — **Completed**
+- Phase 3: RCA Agent + Runbook — **Planned**
 
 ## Phase 1.3 Completion Evidence
 
@@ -64,10 +66,17 @@ Detailed record: `docs/phase-1.4.2-authorization.md`.
 
 Detailed completion/design record: `docs/phase-1.4.3-audit.md`.
 
-## Phase 1.4.4 Entry
+## Historical Phase 1.4.4 Entry
 
 Phase 1.4.4 adds a reusable, allowlist-oriented Sanitizer before response data leaves the backend trust boundary. It is defense in depth: it must not replace safe DTO/OpenAPI projections and must never justify adding Secret reads, Pod Logs, raw Kubernetes objects, raw K8sGPT Result CR payloads or broader Kubernetes permissions.
 
 Detailed design and acceptance boundary: `docs/phase-1.4.4-sanitizer.md`.
 
-Phase 1.4 continues to preserve the read-only boundary and must not introduce Pod Logs, Secret reads, raw Kubernetes/Result payload exposure, Mutation, Auto Remediation, arbitrary Kubernetes API proxying or Phase 2 observability correlation.
+See the [Phase 1.4 completion record](phase-1.4-completion.md) for the delivered read-only security boundary.
+
+## Phase 2 Completion Evidence
+
+- Final implementation PR [#33](https://github.com/abchw517/kube-aiops/pull/33).
+- Verified runtime baseline `main@a5a8843e41c25ff2896095437e0684cf24a5cb4d`.
+- Required checks passed on the implementation PR and [post-merge CI #115](https://github.com/abchw517/kube-aiops/actions/runs/42994549711).
+- See the [Phase 2 completion record](phase-2-completion.md) for the five delivered stages and acceptance coverage.

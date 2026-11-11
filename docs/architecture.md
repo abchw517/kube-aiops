@@ -7,11 +7,13 @@ Phase 1.1 K8sGPT Engine            — Completed
 Phase 1.2 Portal Backend API       — Completed
 Phase 1.3 Web Portal               — Completed
 Phase 1.4 Security Hardening       — Completed
-Phase 2   Observability Correlation — In Development
+Phase 2   Observability Correlation — Completed
 Phase 3   RCA Agent + Runbook      — Planned
 Phase 4   HITL Remediation         — Planned
 Phase 5   Controlled Auto Remediation — Planned
 ```
+
+See the [Phase 2 completion record](phase-2-completion.md) for the verified runtime baseline and acceptance coverage.
 
 ## End-to-End Architecture
 
