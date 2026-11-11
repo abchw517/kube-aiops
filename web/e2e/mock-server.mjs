@@ -30,6 +30,8 @@ const findings = [
   }
 ];
 
+let warningEvidenceRequests = 0;
+
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: [{ id: "local", name: "local", status: "ready" }] });
@@ -41,9 +43,12 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/findings") {
     return json(response, 200, { items: filterFindings(url), pagination: { limit: 50 } });
   }
+  const correlationPath = url.pathname.match(/^\/api\/v1\/findings\/([^/]+)\/correlation$/);
+  if (correlationPath) return correlationResponse(response, decodeURIComponent(correlationPath[1]));
   if (url.pathname.startsWith("/api/v1/findings/")) {
     const id = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-    const finding = findings.find((item) => item.id === id);
+    const finding = findings.find((item) => item.id === id) ??
+      (["finding-auth", "finding-forbidden"].includes(id) ? { ...findings[0], id } : undefined);
     return finding ? json(response, 200, finding) : json(response, 404, { error: { code: "FINDING_NOT_FOUND", message: "finding not found" } });
   }
 
@@ -59,6 +64,36 @@ createServer(async (request, response) => {
     response.end(body);
   }
 }).listen(port, "127.0.0.1", () => console.log(`mock server listening on ${port}`));
+
+function correlationResponse(response, id) {
+  if (id === "finding-auth") return json(response, 401, { error: { code: "UNAUTHORIZED" } });
+  if (id === "finding-forbidden") return json(response, 403, { error: { code: "FORBIDDEN" } });
+  const finding = findings.find((item) => item.id === id);
+  if (!finding) return json(response, 404, { error: { code: "FINDING_NOT_FOUND" } });
+  if (id === "finding-warning" && ++warningEvidenceRequests === 1) {
+    return json(response, 503, { error: { code: "CORRELATION_UNAVAILABLE", message: "private-provider-detail" } });
+  }
+  const signals = id === "finding-critical" ? [
+    { id: "event-critical", source: "kubernetes-events", type: "event", severity: "critical",
+      resource: finding.resource, name: "ContainerBackOff", count: 4, lastSeen: "2026-09-02T02:59:00Z",
+      summary: '<em id="evidence-markup-probe">Rendered as text</em>' },
+    { id: "event-info", source: "kubernetes-events", type: "event", severity: "info", name: "Started" },
+    { id: "log-oom", source: "victorialogs", type: "log", name: "out_of_memory", count: 2 },
+  ] : [];
+  return json(response, 200, {
+    findingId: id,
+    scope: { cluster: finding.cluster, namespace: finding.namespace, resource: finding.resource },
+    window: { start: new Date(Date.parse(finding.createdAt) - 1800_000).toISOString(), end: finding.createdAt },
+    budget: { windowSeconds: 1800, perSourceTimeoutMillis: 4000, maxSignalsPerSource: 50 },
+    sources: [
+      { source: "kubernetes-events", state: id === "finding-critical" ? "partial" : "available" },
+      { source: "prometheus", state: "unavailable" },
+      { source: "victorialogs", state: "available" },
+      { source: "alertmanager", state: "disabled" },
+    ],
+    signals,
+  });
+}
 
 function filterFindings(url) {
   return findings.filter((item) => {

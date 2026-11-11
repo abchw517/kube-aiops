@@ -150,6 +150,7 @@ Currently supported capabilities:
 - Phase 2.2 Kubernetes Events correlation
 - Phase 2.3 Prometheus metric correlation
 - Phase 2.4 VictoriaLogs log classification and Alertmanager evidence
+- Phase 2.5 evidence ranking and read-only Finding Detail view
 
 Phase 2 adds only read-only observability correlation.
 

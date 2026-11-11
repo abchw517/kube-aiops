@@ -404,7 +404,14 @@ Initial matching dimensions:
    - stable source-specific fingerprint
    - aggregate repeated signals rather than emitting unbounded items
 
-A future `score` may be added only if its calculation is deterministic, documented and tested. Phase 2 must not present correlation as causal proof.
+The API orders evidence by exact resource identity (kind, namespace and name),
+severity (`critical`, `warning`, `info`, unspecified), and recency. Recency uses
+`lastSeen`, falling back to `firstSeen` when needed. Source and ID break ties, with
+the higher count preferred for otherwise equal entries. Within each source and
+resource, a fingerprint identifies duplicates. The ID is used when a fingerprint
+is absent. The engine keeps the highest-ranked representation and retains its
+count. The per-source budget applies to unique evidence. The Portal preserves this
+order within each source group. Evidence ordering expresses triage priority.
 
 ## Partial Failure Model
 
@@ -492,7 +499,8 @@ The Web Portal must not define a second hand-written CorrelationBundle contract.
 
 ## Portal UX
 
-Finding Detail may add a read-only correlation section grouped by source:
+Finding Detail loads correlation independently through the generated client and
+groups read-only evidence by source:
 
 ```text
 Finding Detail
@@ -511,7 +519,9 @@ The UI must distinguish:
 - authorization denied
 - authentication required
 
-It must not render source text as HTML and must not offer arbitrary query editors in Phase 2.
+The section retains the Finding details when correlation fails. Transient errors
+and authentication failures provide a section-level retry. The Portal renders
+evidence fields as escaped text.
 
 ## CI / E2E Gates
 

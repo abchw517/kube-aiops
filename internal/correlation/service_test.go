@@ -3,8 +3,11 @@ package correlation
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/abchw517/kube-aiops/internal/finding"
 )
 
 func TestServiceCorrelationOutcomes(t *testing.T) {
@@ -178,5 +181,55 @@ func TestNewServiceRejectsUnboundedConfiguration(t *testing.T) {
 				t.Fatal("NewService() unexpectedly accepted unbounded configuration")
 			}
 		})
+	}
+}
+
+func TestServiceRanksAndDeduplicatesEvidenceBeforeBudget(t *testing.T) {
+	target := finding.ResourceRef{Kind: "Pod", Namespace: "prod", Name: "checkout"}
+	related := finding.ResourceRef{Kind: "Pod", Namespace: "prod", Name: "worker"}
+	older := "2026-09-07T01:58:00Z"
+	newer := "2026-09-07T01:59:00Z"
+	events := []CorrelationSignal{
+		{ID: "related-critical", Resource: &related, Severity: finding.SeverityCritical, LastSeen: newer},
+		{ID: "duplicate-old", Resource: &target, Severity: finding.SeverityWarning, LastSeen: older, Fingerprint: "same", Count: 4},
+		{ID: "exact-info", Resource: &target, Severity: finding.SeverityInfo, LastSeen: newer},
+		{ID: "duplicate-new", Resource: &target, Severity: finding.SeverityWarning, LastSeen: newer, Fingerprint: "same", Count: 6},
+	}
+	service, err := NewService(ServiceOptions{
+		MaxSignals: 2,
+		Events: EventSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
+			return events, nil
+		}),
+		VictoriaLogs: LogSignalSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
+			return []CorrelationSignal{{ID: "exact-log", Resource: &target, Severity: finding.SeverityCritical, LastSeen: older, Fingerprint: "same"}}, nil
+		}),
+		Alertmanager: AlertSourceFunc(func(context.Context, Query) ([]CorrelationSignal, error) {
+			return []CorrelationSignal{{ID: "exact-alert", Resource: &target, Severity: finding.SeverityWarning, FirstSeen: older}}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := Request{
+		FindingID: "checkout-finding", AnchorTime: "2026-09-07T02:00:00Z",
+		Scope: CorrelationScope{Cluster: "local", Namespace: "prod", Resource: target},
+	}
+	for range 2 {
+		bundle, err := service.Correlate(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := make([]string, 0, len(bundle.Signals))
+		for _, signal := range bundle.Signals {
+			got = append(got, signal.ID)
+		}
+		want := []string{"exact-log", "duplicate-new", "exact-alert", "exact-info"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("evidence order = %v, want %v", got, want)
+		}
+		if bundle.Signals[1].Count != 6 || bundle.Sources[0].State != SourcePartial {
+			t.Fatalf("duplicate counts or source state changed: %#v", bundle)
+		}
+		slices.Reverse(events)
 	}
 }

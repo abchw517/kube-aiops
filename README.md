@@ -598,7 +598,7 @@ Remediation -> Disabled
 - Platform Baseline：Kubernetes v1.36 — current gate
 - Phase 1.3：Web Portal
 - Phase 1.4：Authentication / Authorization / Audit / Sanitizer
-- Phase 2：Events + Prometheus + Loki + Alertmanager 关联分析
+- Phase 2：Events、Prometheus、VictoriaLogs、Alertmanager 证据关联和 Finding 详情展示
 - Phase 3：RCA Agent + Runbook
 - Phase 4：HITL Remediation
 - Phase 5：Controlled Auto Remediation
