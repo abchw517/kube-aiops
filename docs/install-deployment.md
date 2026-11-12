@@ -6,7 +6,7 @@
 | 验证 Kubernetes 组件及只读权限 | [Kind 验收命令](#3-在隔离-kind-中联调-api-和-portal) |
 | 安装 K8sGPT Engine 并生成实际 Finding | [安装 K8sGPT](#2-安装-k8sgpt) |
 | 在隔离 Kind 中联调 API 和 Portal | [Kind 联调](#3-在隔离-kind-中联调-api-和-portal) |
-| 准备生产镜像和同源路由 | [生产部署条件](#5-生产部署条件) |
+| 生产发布、验收和回滚 | [生产部署](#生产部署) |
 
 在仓库根目录执行以下命令。版本基线以 [platform-versions.env](../config/platform-versions.env) 为准。
 
@@ -294,22 +294,341 @@ Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。以下三个后端在 
 curl -fsS 'http://127.0.0.1:4173/api/v1/findings/<finding-id>/correlation'
 ```
 
-## 5. 生产部署条件
+## 生产部署
 
-API 的默认 Deployment 使用 `SECURITY_MODE=production`。当前默认 API 入口装配了审计和响应脱敏，生产部署前还需在安全组合中接入可信 Authenticator 和 Authorizer。缺少这些组件时，进程会在启动阶段终止。接入后验证受保护路由的 401、403、资源范围授权和审计记录，相关约束见 [Phase 1.4 安全验收](phase-1.4-completion.md)。
+### 1. 预检目标集群和发布输入
 
-安全组合接入后，构建和发布 API、Web 镜像。将 `registry` 替换为已登录的镜像仓库。
+先在预发集群完成整套流程，再将同一组已验证的镜像 digest 和清单模板推广到生产，使用生产环境对应的域名、身份策略和 Secret 引用。安装端需要 Bash、kubectl、Helm 3、Python 3 和 PyYAML。构建端需要 Docker Buildx 和仓库推送权限，命令行验收需要 curl 和 jq。依赖准备见 [依赖和预检](#1-依赖和预检)。
+
+| 输入 | 发布前确认 |
+| --- | --- |
+| Kubernetes | 目标 context、待部署节点架构，以及安装身份的 Namespace、RBAC、Lease、Secret 和工作负载管理权限 |
+| 镜像仓库 | 节点能够拉取 K8sGPT、API、Web 镜像。需要认证时，确认各命名空间的拉取凭据 |
+| K8sGPT | 已批准的 AI Provider、模型和 Secret。默认 CR 使用 OpenAI，Engine 的出站访问和凭据需对应实际 Provider |
+| Portal API | 已接入企业认证与授权的 API 源码和预发验收结果 |
+| HTTPS 入口 | 已有 Envoy Gateway、已配置 TLS 证书的 HTTPS listener、DNS 和允许挂载的命名空间 |
+| 回滚材料 | 上一版清单、API/Web 镜像 digest、身份策略版本、K8sGPT 安装参数和 Helm revision |
+
+在同一个 Bash 会话中设置变量。预发和生产分别使用各自的 context、入口和域名。
 
 ```bash
-registry=registry.example.com/kube-aiops
+set -euo pipefail
+make cluster-deps
+export PATH="$PATH:${KUBE_AIOPS_TOOLS_DIR:-$HOME/.local/share/kube-aiops/tools}/bin"
+
+target_context=production
+registry=harbor.example.com/kube-aiops
+mirror=harbor.example.com/public
+portal_host=kube-aiops.example.com
+gateway_namespace=envoy-gateway-system
+gateway_name=production-gateway
+gateway_listener=https
+platforms=linux/amd64
 revision="$(git rev-parse --short=12 HEAD)"
-docker build -t "$registry/api:$revision" .
-docker build -f web/Dockerfile -t "$registry/web:$revision" .
-docker push "$registry/api:$revision"
-docker push "$registry/web:$revision"
+release_dir="$PWD/.build/production/$target_context/$revision"
+
+test "$(kubectl config current-context)" = "$target_context"
+kubectl version
+kubectl get nodes -L kubernetes.io/arch
+make platform-check
 ```
 
-Deployment 以镜像仓库返回的 digest 固定版本。TLS 入口将同一域名下的 `/api/v1/` 转发给 API Service，其余 Portal 路径转发给 Web 服务。生产 API 使用项目定义的只读 ServiceAccount 和 RBAC。在预发环境验证路由、身份、Result 读取和四类证据状态后发布。
+混合架构集群可将 `platforms` 设置为 `linux/amd64,linux/arm64`，并确认构建器支持对应平台。
+
+### 2. 接入 Portal API 的生产身份
+
+仓库默认的 `cmd/api/security.go` 只在生产组合中装配审计和脱敏。缺少可信 `Authenticator` 或 `Authorizer` 时，`SECURITY_MODE=production` 会在监听端口前退出，日志中的 `reason` 为 `security_bundle_invalid`。**企业身份接入是发布 Portal 的前置条件。** K8sGPT Operator 和 Engine 可先独立安装。
+
+在生产构建使用的源码中，将企业身份适配器和授权策略接入 `cmd/api` 传入的 `security.Bundle`，并保留审计与脱敏。认证应校验受信任的会话或令牌。采用身份代理时，后端需验证代理身份或签名，并限制可访问 API 的网络路径。授权策略按集群、命名空间和能力分配，Portal 列表、详情和证据关联分别使用相应的读权限。浏览器会话应能通过同源 `/api/v1` 请求完成身份传递。接入与测试边界见 [身份契约](phase-1.4.1-identity-contract.md)、[授权模型](phase-1.4.2-authorization.md) 和 [生产启动门禁](phase-1.4.5-production-gates.md)。
+
+```bash
+go test ./cmd/api ./internal/security ./internal/httpapi
+make api-contract-check
+```
+
+将真实身份接入的成功、拒绝和依赖异常用例加入发布测试。身份配置、审计接收方和证书由平台管理，运行配置保持 `SECURITY_MODE=production`。
+
+### 3. 发布 API 和 Web 镜像
+
+在已提交身份集成的源码版本构建。Buildx 将实际发布的 digest 写入元数据，后续 Deployment 使用该 digest。以下目录保存本次发布材料，预发验收后应归档到发布系统。生产推广时检出同一源码版本，将两个 Buildx 元数据文件恢复到当前环境的 `release_dir`，直接执行下一段 digest 读取命令。
+
+```bash
+mkdir -p "$release_dir"
+docker login "${registry%%/*}"
+
+docker buildx build --platform "$platforms" --push \
+  --metadata-file "$release_dir/api-build.json" -t "$registry/api:$revision" .
+docker buildx build --platform "$platforms" --push -f web/Dockerfile \
+  --metadata-file "$release_dir/web-build.json" -t "$registry/web:$revision" .
+```
+
+```bash
+api_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$release_dir/api-build.json")"
+web_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$release_dir/web-build.json")"
+api_image="$registry/api@$api_digest"
+web_image="$registry/web@$web_digest"
+printf '%s\n' "$api_image" "$web_image"
+```
+
+### 4. 安装并验收 K8sGPT
+
+按 [使用内网镜像仓库](#使用内网镜像仓库) 同步 Operator、RBAC Proxy 和 Engine 的版本标签。下例使用内网仓库，`1Gi` 为 Operator `manager` 内存上限的示例，生产值按实际负载确定。升级继续传入已批准的镜像和资源参数，详见 [调整 Operator 资源](#调整-operator-资源)。
+
+```bash
+test "$(kubectl config current-context)" = "$target_context"
+make bootstrap
+
+provider_secret="$(kubectl -n k8sgpt-operator-system get secret k8sgpt-openai-secret --ignore-not-found -o name)"
+if [[ -z "$provider_secret" ]]; then
+  read -rsp 'OpenAI token: ' OPENAI_TOKEN
+  printf '\n'
+  (export OPENAI_TOKEN; make bootstrap-secret)
+  unset OPENAI_TOKEN
+fi
+
+K8SGPT_IMAGE_REGISTRY="$mirror" K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi make install
+make verify
+make status
+make results
+```
+
+使用 `make results` 核对已有诊断结果，或在预发用既有测试样例完成结果验收。
+
+### 5. 部署只读 API 与 Web Portal
+
+应用仓库提供的 API Namespace、ServiceAccount、只读 RBAC 和 ClusterIP Service。通过本地渲染将 API Deployment 的镜像替换为已验收的 digest。
+
+```bash
+test "$(kubectl config current-context)" = "$target_context"
+kubectl apply -f deploy/api/namespace.yaml
+kubectl apply -f deploy/api/serviceaccount.yaml -f deploy/api/clusterrole.yaml \
+  -f deploy/api/clusterrolebinding.yaml -f deploy/api/service.yaml
+kubectl set image --local -f deploy/api/deployment.yaml "api=$api_image" -o yaml \
+  > "$release_dir/api.yaml"
+
+cat > "$release_dir/web.yaml" <<YAML
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-aiops-web
+  namespace: kube-aiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-aiops-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-aiops-web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: $web_image
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /portal-healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /portal-healthz
+              port: http
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-aiops-web
+  namespace: kube-aiops-system
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kube-aiops-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+YAML
+```
+
+私有镜像仓库使用 `kube-aiops-system` 中预建的 `kubernetes.io/dockerconfigjson` Secret。在相应 Deployment 的 `spec.template.spec` 下合并以下字段，使用实际 Secret 名称。
+
+```yaml
+imagePullSecrets:
+  - name: harbor-pull
+```
+
+将身份适配器所需的配置和 Secret 引用写入 `api.yaml`。按需接入 [Prometheus、VictoriaLogs 和 Alertmanager](#4-配置可观测性来源)。例如使用预建 Secret `kube-aiops-prometheus` 中的 `token` 和 `ca.crt`，可向 API Pod 模板合并以下字段，并将 URL 替换为实际 HTTPS 地址。
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: PROMETHEUS_URL
+              value: https://prometheus.monitoring.svc:9090
+            - name: PROMETHEUS_BEARER_TOKEN_FILE
+              value: /var/run/secrets/kube-aiops/prometheus/token
+            - name: PROMETHEUS_CA_FILE
+              value: /var/run/secrets/kube-aiops/prometheus/ca.crt
+          volumeMounts:
+            - name: prometheus-credentials
+              mountPath: /var/run/secrets/kube-aiops/prometheus
+              readOnly: true
+      volumes:
+        - name: prometheus-credentials
+          secret:
+            secretName: kube-aiops-prometheus
+```
+
+对开启网络隔离的集群，允许入口访问两个后端，并按实际配置允许 API Pod 访问 DNS、Kubernetes API、身份端点和已启用的数据源。
+
+在应用前检查清单。Web 示例的副本和资源按实际容量调整。
+
+```bash
+kubectl apply --dry-run=server -f "$release_dir/api.yaml" -f "$release_dir/web.yaml"
+kubectl apply -f "$release_dir/api.yaml" -f "$release_dir/web.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+kubectl -n kube-aiops-system get pods,svc
+```
+
+### 6. 挂载 HTTPS 入口
+
+由平台在目标 Gateway 的命名空间准备签发给 `portal_host` 的 TLS Secret。以下是可合并到目标 Gateway 的 `spec.listeners` 中的监听器示例。使用实际证书 Secret 名称，已有共享 listener 可沿用平台的证书和命名空间授权配置。配置方式见 [Gateway API TLS](https://gateway-api.sigs.k8s.io/guides/user-guides/tls/) 和 [跨命名空间挂载](https://gateway-api.sigs.k8s.io/guides/user-guides/multiple-ns/)。
+
+```yaml
+- name: https
+  hostname: kube-aiops.example.com
+  protocol: HTTPS
+  port: 443
+  tls:
+    mode: Terminate
+    certificateRefs:
+      - kind: Secret
+        name: kube-aiops-tls
+  allowedRoutes:
+    namespaces:
+      from: Selector
+      selector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-aiops-system
+```
+
+按环境将 `portal_host` 解析到 Gateway 地址。下面的 `HTTPRoute` 保留原始路径，将 `/api/v1` 路由到 API，其余请求路由到 Web。
+
+```bash
+kubectl -n "$gateway_namespace" wait --for=condition=Programmed "gateway/$gateway_name" --timeout=120s
+kubectl -n "$gateway_namespace" get gateway "$gateway_name" -o jsonpath='{.status.addresses[*].value}{"\n"}'
+cat > "$release_dir/route.yaml" <<YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kube-aiops
+  namespace: kube-aiops-system
+spec:
+  parentRefs:
+    - name: $gateway_name
+      namespace: $gateway_namespace
+      sectionName: $gateway_listener
+  hostnames:
+    - $portal_host
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1
+      backendRefs:
+        - name: kube-aiops-api
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: kube-aiops-web
+          port: 8080
+YAML
+
+kubectl apply --dry-run=server -f "$release_dir/route.yaml"
+kubectl apply -f "$release_dir/route.yaml"
+kubectl -n kube-aiops-system get httproute kube-aiops -o yaml
+```
+
+核对目标父级下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若使用预发域名验证，在完成下节后再切生产 DNS 或流量。
+
+### 7. 验收、发布与回滚
+
+先验证 TLS、页面和 API 访问控制。对于将未认证请求转交给 API 的入口，下面的请求应返回 `401`；若入口统一跳转登录，在预发通过受控测试路径复验应用层 `401`。
+
+```bash
+portal_url="https://$portal_host"
+curl -fsS --max-time 10 "$portal_url/portal-healthz"
+curl -fsS --max-time 10 -o /dev/null "$portal_url/"
+test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+  "$portal_url/api/v1/findings")" = 401
+```
+
+使用已获准的登录会话在浏览器完成列表、详情和证据验收。自动验收时，可将认证 Header 或 Cookie 交由受控的 curl 配置文件提供。`allowed_curl_config` 和 `denied_curl_config` 分别对应允许和缺少 `findings:list` 权限的已认证账号。
+
+```bash
+curl --config "$allowed_curl_config" -fsS --max-time 10 "$portal_url/api/v1/findings" |
+  jq -e '.items | type == "array"' >/dev/null
+test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+  "$portal_url/api/v1/findings")" = 403
+```
+
+| 检查 | 放行标准 |
+| --- | --- |
+| 认证和授权 | 具备目标能力的账号读取列表、详情和关联证据成功；无权账号对同一受保护资源收到 `403`；跨命名空间请求无法读取范围外的数据 |
+| K8sGPT 和证据 | `make verify` 通过；用实际 Result 对照 Finding 详情，验证已启用数据源及其状态 |
+| 审计 | API 审计记录能关联到同一次请求，日志中无明文凭据 |
+| 稳定性 | API 和 Web rollout 完成，探针稳定；Operator 无新增 OOM 重启，主要请求的错误率和延迟符合本次发布标准 |
+
+生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`route.yaml`、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。
+
+```bash
+test "$(kubectl config current-context)" = "$target_context"
+previous=/path/to/previous-approved-release
+kubectl apply --dry-run=server -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/route.yaml"
+kubectl apply -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/route.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+make verify
+```
+
+首次发布且尚无上一版时，撤销本次新增的流量入口并保留工作负载供排查。K8sGPT 安装过程中的失败由安装器按 Lease 和快照处理回滚。若安装已成功但需回退配置，使用上一版获批的源码和参数重新执行 `make install`，然后运行 `make verify`。安装器报告回滚失败时，先按日志给出的快照和恢复报告检查 Helm、RBAC 与 K8sGPT CR 状态。
 
 ## 6. 排查与清理
 

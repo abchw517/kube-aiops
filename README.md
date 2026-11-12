@@ -82,7 +82,7 @@ flowchart TD
     Backend -->|按需查询告警| Alertmanager["Alertmanager"]
 ```
 
-Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docs/architecture.md) 和 [生产部署条件](docs/install-deployment.md#5-生产部署条件)。
+Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docs/architecture.md) 和 [生产部署](docs/install-deployment.md#生产部署)。
 
 ## 目录结构
 
