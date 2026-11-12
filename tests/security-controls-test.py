@@ -295,13 +295,24 @@ def test_install_image_overrides_preserve_the_deployment_baseline() -> None:
 
         subprocess.run(command, env={
             **env,
+            "K8SGPT_ENGINE_IMAGE_REPOSITORY": "other.example.com/team/custom-engine",
+        }, capture_output=True, check=True)
+        expected[1]["spec"]["repository"] = "other.example.com/team/custom-engine"
+        expected[1]["spec"]["version"] = "v0.4.37"
+        assert read_inputs(directory) == expected
+
+        subprocess.run(command, env={
+            **env,
             "K8SGPT_IMAGE_REGISTRY": "harbor.example.com:8443/public/",
             "K8SGPT_ENGINE_IMAGE_REPOSITORY": "other.example.com/team/custom-engine",
         }, capture_output=True, check=True)
         manager = expected[0]["controllerManager"]
-        manager["manager"]["image"]["repository"] = "harbor.example.com:8443/public/k8sgpt-operator"
-        manager["kubeRbacProxy"]["image"]["repository"] = "harbor.example.com:8443/public/kube-rbac-proxy"
-        expected[1]["spec"]["repository"] = "other.example.com/team/custom-engine"
+        manager["manager"]["image"] = {
+            "repository": "harbor.example.com:8443/public/k8sgpt-operator", "tag": "v0.2.29",
+        }
+        manager["kubeRbacProxy"]["image"] = {
+            "repository": "harbor.example.com:8443/public/kube-rbac-proxy", "tag": "v0.19.1",
+        }
         assert read_inputs(directory) == expected
 
         result = subprocess.run(command, env={

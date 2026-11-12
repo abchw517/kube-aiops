@@ -204,7 +204,7 @@ make install
 K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
 ```
 
-该前缀适用于 Operator、RBAC Proxy 和 Engine，安装器使用基线版本与 digest。同步命令与单镜像变量见 [使用内网镜像仓库](docs/install-deployment.md#使用内网镜像仓库)。
+该前缀适用于 Operator、RBAC Proxy 和 Engine，安装器以 `仓库/镜像:基线版本` 拉取。同步命令与单镜像变量见 [使用内网镜像仓库](docs/install-deployment.md#使用内网镜像仓库)。
 
 安装链路：
 

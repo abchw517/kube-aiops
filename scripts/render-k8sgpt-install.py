@@ -42,10 +42,14 @@ def render(output_dir: Path) -> None:
         ("Engine", "K8SGPT_ENGINE_IMAGE_REPOSITORY", engine["spec"], "version"),
     )
     for name, variable, image, version_key in images:
-        if repository := os.environ.get(variable):
-            image["repository"] = validate_repository(repository, variable, IMAGE_REPOSITORY)
+        repository = os.environ.get(variable)
+        if repository:
+            repository = validate_repository(repository, variable, IMAGE_REPOSITORY)
         elif prefix:
-            image["repository"] = f"{prefix}/{image['repository'].rsplit('/', 1)[-1]}"
+            repository = f"{prefix}/{image['repository'].rsplit('/', 1)[-1]}"
+        if repository:
+            image["repository"] = repository
+            image[version_key] = image[version_key].partition("@")[0]
         print(f"{name} 镜像 {image['repository']}:{image[version_key]}")
 
     for name, content in ((values_file, values), (engine_file, engine)):
