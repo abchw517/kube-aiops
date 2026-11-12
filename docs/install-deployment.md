@@ -102,6 +102,32 @@ make verify
 
 单镜像变量接收 `仓库地址/项目/镜像名`，优先于统一前缀。安装器为覆盖的镜像追加基线版本标签，默认上游镜像继续按基线 digest 拉取。升级或重跑时继续传入相同变量。安装日志会显示三张镜像的完整引用。需要认证的 Harbor 项目应提前配置集群的镜像拉取凭据。Chart 仍由安装主机从 `charts.k8sgpt.ai` 下载并校验。
 
+### 调整 Operator 资源
+
+以下变量适用于首次安装和已有 Release 的升级，作用于 Operator Deployment 的 `manager` 容器。安装器会打印生效值，并校验每项 request 不超过对应 limit。
+
+| 变量 | 作用 | 默认值 |
+| --- | --- | --- |
+| `K8SGPT_OPERATOR_CPU_REQUEST` | CPU request | `50m` |
+| `K8SGPT_OPERATOR_MEMORY_REQUEST` | 内存 request | `128Mi` |
+| `K8SGPT_OPERATOR_CPU_LIMIT` | CPU limit | `500m` |
+| `K8SGPT_OPERATOR_MEMORY_LIMIT` | 内存 limit | `256Mi` |
+
+仅提高内存上限时，可在使用内网仓库的安装命令中增加 `K8SGPT_OPERATOR_MEMORY_LIMIT`。这里的 `1Gi` 是配置示例，实际值按容器峰值和节点余量确定。
+
+```bash
+K8SGPT_IMAGE_REGISTRY=harbor.example.com/public \
+K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi \
+make install
+```
+
+同时指定 CPU 和内存时，将需要的变量一并传给安装命令。重跑或升级时复用相同变量。RBAC Proxy 和 Engine 的资源由各自的配置管理。
+
+```bash
+kubectl -n k8sgpt-operator-system get deployment -l app.kubernetes.io/name=k8sgpt-operator \
+  -o jsonpath='{range .items[*].spec.template.spec.containers[?(@.name=="manager")]}{.resources}{"\n"}{end}'
+```
+
 ### 验证部署
 
 ```bash

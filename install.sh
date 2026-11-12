@@ -250,10 +250,10 @@ esac
 for file in namespace.yaml serviceaccount.yaml clusterrole.yaml clusterrolebinding.yaml networkpolicy.yaml values-production.yaml k8sgpt.yaml; do
   require_file "${DEPLOY_DIR}/${file}"
 done
-INSTALL_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-images.XXXXXX")"
-IMAGE_CONFIG="$(python3 "${ROOT_DIR}/scripts/render-k8sgpt-install.py" "$INSTALL_CONFIG_DIR")" ||
-  fatal "生成 K8sGPT 镜像配置失败"
-while IFS= read -r image; do log "$image"; done <<<"$IMAGE_CONFIG"
+INSTALL_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-config.XXXXXX")"
+INSTALL_CONFIG="$(python3 "${ROOT_DIR}/scripts/render-k8sgpt-install.py" "$INSTALL_CONFIG_DIR")" ||
+  fatal "生成 K8sGPT 安装配置失败"
+while IFS= read -r line; do log "$line"; done <<<"$INSTALL_CONFIG"
 host_deps_ensure cluster || fatal "安装主机依赖失败"
 
 CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
