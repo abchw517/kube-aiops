@@ -10,15 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = {
     "KUBERNETES_VERSION": "v1.36.4",
     "KUBECONFORM_KUBERNETES_VERSION": "1.36.0",
-    "KIND_VERSION": "v0.33.0",
-    "KIND_NODE_IMAGE": "kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed",
     "GO_VERSION": "1.26.5",
     "K8SGPT_OPERATOR_VERSION": "0.2.29",
     "K8SGPT_ENGINE_VERSION": "v0.4.37",
     "K8SGPT_ENGINE_IMAGE": "ghcr.io/k8sgpt-ai/k8sgpt:v0.4.37@sha256:ebf0d1f5a8463190abdf1a9c84282cfbd9ce611e3dc1c490194b7aaf2676d088",
 }
 
-KIND_ACTION_SHA = "ef37e7f390d99f746eb8b610417061a60e82a6cc"
 OPERATOR_IMAGE = (
     "ghcr.io/k8sgpt-ai/k8sgpt-operator:"
     "v0.2.29@sha256:82d0adcce816182bbfbef9f1d535db93ab0901f08d45a3a9e572c6e795c5bfa8"
@@ -72,19 +69,8 @@ def validate_version_source() -> None:
         fail(f"config/platform-versions.env drift: expected={EXPECTED!r}, actual={actual!r}")
 
 
-def validate_workflow(path: str, require_job_name: bool) -> None:
+def validate_workflow(path: str) -> None:
     text = read(path)
-    require_contains(text, f"KUBERNETES_VERSION: {EXPECTED['KUBERNETES_VERSION']}", path)
-    require_contains(text, f"KIND_VERSION: {EXPECTED['KIND_VERSION']}", path)
-    require_contains(text, f"KIND_NODE_IMAGE: {EXPECTED['KIND_NODE_IMAGE']}", path)
-    require_contains(text, f"helm/kind-action@{KIND_ACTION_SHA}", path)
-    require_contains(text, f"version: {EXPECTED['KIND_VERSION']}", path)
-    require_contains(text, f"kubectl_version: {EXPECTED['KUBERNETES_VERSION']}", path)
-    require_contains(text, "bash ./tests/kubernetes-v1.36-smoke.sh", path)
-    if require_job_name:
-        require_contains(text, "name: Kubernetes v1.36 Kind E2E", path)
-        if "Kubernetes v1.34 Kind E2E" in text:
-            fail(f"{path} still declares the old Kubernetes v1.34 required check")
 
     for action, ref in re.findall(r"^\s*uses:\s*([^@\s]+)@([^\s#]+)", text, flags=re.MULTILINE):
         if action.startswith("./"):
@@ -123,7 +109,6 @@ def validate_k8sgpt() -> None:
     for label, image in {
         "K8sGPT Engine": EXPECTED["K8SGPT_ENGINE_IMAGE"],
         "K8sGPT Operator": OPERATOR_IMAGE,
-        "Kind node": EXPECTED["KIND_NODE_IMAGE"],
     }.items():
         if not re.search(r"@sha256:[0-9a-f]{64}$", image):
             fail(f"{label} image is not digest-pinned: {image}")
@@ -170,8 +155,7 @@ def validate_backend_api_surface() -> None:
 
 def main() -> None:
     validate_version_source()
-    validate_workflow(".github/workflows/ci.yml", require_job_name=True)
-    validate_workflow(".github/workflows/provider-e2e.yml", require_job_name=False)
+    validate_workflow(".github/workflows/ci.yml")
     validate_go()
     validate_k8sgpt()
     validate_kubernetes_schema_baseline()

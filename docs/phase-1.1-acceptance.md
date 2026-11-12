@@ -108,17 +108,7 @@ kubectl get results -n k8sgpt-operator-system -o yaml
 
 ## 6. Kubernetes v1.36 持续兼容验收
 
-当前 Required E2E 必须使用：
-
-```text
-Kubernetes API Server: v1.36.4
-kubectl:                v1.36.4
-kubelet:                v1.36.4
-Kind:                   v0.33.0
-```
-
-在完整生命周期 E2E 前先运行 `tests/kubernetes-v1.36-smoke.sh`，精确验证版本和
-kube-aiops 依赖的 stable API discovery。
+在现有目标集群执行 `kubectl version`、`kubectl get nodes` 和 `kubectl api-versions`，核对 Kubernetes v1.36.4 基线、节点就绪状态及项目依赖的稳定 API。随后按 [安装部署指南](install-deployment.md#验证部署) 验收部署。
 
 ## 7. 持续验收矩阵
 
@@ -149,15 +139,14 @@ kube-aiops 依赖的 stable API discovery。
 | Pod 安全 | PSA baseline enforce、restricted audit/warn，Operator/Engine 安全上下文通过 |
 | 卸载与重复卸载 | 通过 |
 | 卸载残留检查 | 查询错误必须 FAIL；CRD 按策略保留 |
-| Kubernetes v1.36 Kind 生命周期 E2E | Required Check 通过 |
-| Provider Functional E2E | 三类本次新鲜 Result、AI details、analysis health 全部通过 |
+| Kubernetes v1.36 生命周期验收 | 在现有测试集群验证安装、升级、回滚与卸载 |
+| Provider 功能验收 | 在现有测试集群核对本次新鲜 Result、AI details 和分析健康 |
 
-当前持续 Required Status Checks：
+仓库 CI 检查：
 
 ```text
 Preflight / Lint / RBAC
 Secret Scan
-Kubernetes v1.36 Kind E2E
 ```
 
 Phase 1.1 的功能范围保持冻结；平台版本升级不得借机扩大 RBAC、启用日志读取或

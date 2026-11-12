@@ -539,7 +539,7 @@ Required static/unit gates:
 - sanitizer leakage tests
 - generated TypeScript drift check
 
-Kind / integration gates should prove where practical:
+Integration validation in an existing test cluster should cover:
 
 - Kubernetes Events can be read with only the intended permission
 - Secret read remains denied

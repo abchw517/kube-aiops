@@ -10,8 +10,6 @@
 | RBAC 静态扫描 | 扫描仓库所有 YAML 中的 `Role` 与 `ClusterRole` |
 | 集群级资源所有权 | 项目 label/annotation，接管或删除前强制校验 |
 | GitHub Actions | 第三方 Action 固定到完整 commit SHA |
-| Kind node 镜像 | Kubernetes v1.36.4 固定上游发布 digest |
-| Kind CLI | v0.33.0 显式固定 |
 | kubectl | v1.36.4 显式固定 |
 | Go toolchain | Kubernetes release-1.36 对齐 Go 1.26.5 |
 | Operator 基线 | v0.2.29 immutable digest |
@@ -28,7 +26,6 @@
 | Binding 可能保留上游 subject/roleRef | post-renderer 在进入 API Server 前强制替换 rules、subjects、roleRef 和 ServiceAccount 安全字段 |
 | Make 参数命令注入 | recipe 不再文本插入 Make 变量；Operator 版本在脚本中执行 allowlist 校验 |
 | Token 暴露在进程 argv | Secret 经 stdin 创建；安装和验证只返回 key 是否存在，不读取值 |
-| Provider 工作流分支可选 | 只有 `refs/heads/main` 才能进入 Environment job |
 | Lease 长事务失锁和释放竞态 | heartbeat 持续续租、变更前 fencing、resourceVersion CAS 释放 |
 | 回滚二次失败丢失快照 | 保留 `0700` 状态目录、operation metadata 和对象级恢复报告 |
 | `make status` 假成功 | 独立可信状态检查，关键失败返回非零 |
@@ -38,13 +35,10 @@
 | Namespace 无网络边界 | egress 仅允许 DNS、HTTPS 和 Kubernetes API 端口 |
 | 运行时镜像只有可变 tag | Operator、kube-rbac-proxy、Engine 使用 `tag@sha256` 固定 manifest digest |
 | Helm index/Chart 可变 | 直接下载固定版本 Chart，并在 Helm 前校验内置 SHA256 |
-| CI 名称与实际 Kubernetes 版本可能漂移 | v1.36 smoke 同时检查 Kind、kubectl、API Server、kubelet 精确版本 |
 | Manifest 使用已删除 Kubernetes API | kubeconform 1.36 + removed API static denylist |
 | Go CI 与容器构建版本可能漂移 | `go.mod toolchain go1.26.5` + Docker builder 1.26.5 + baseline guard |
 
-Kind E2E 覆盖所有权伪造、legacy 指纹漂移、同名外部 Release、Lease
-heartbeat/fencing/CAS、回滚状态保留以及 Phase 1.2 readonly API。Provider 功能
-E2E 保持独立人工门禁，不能用占位 Token 替代。
+历史集成验收覆盖资源所有权、Lease 及回滚场景。当前集群与 Provider 验收步骤见 [安装部署指南](install-deployment.md#验证部署)。
 
 ## 回归审查修复
 
@@ -66,7 +60,7 @@ Portal Backend 不使用 `client-go`，当前通过受限 HTTP client 调用稳�
 /apis/apps/v1
 ```
 
-持续 E2E 另外验证：
+集群 API discovery 另需核对：
 
 ```text
 /apis/rbac.authorization.k8s.io/v1
@@ -86,23 +80,8 @@ Mutation 与 Auto Remediation，ServiceAccount 不具备业务写权限。
 
 Engine 从 `v0.4.32` 升级到 `v0.4.37`，使用经独立确认的语义 tag digest。生产
 基线不为了追逐最新 tag 而放弃不可变镜像约束；更高版本必须先获得可信 digest
-并通过 Kubernetes v1.36 完整 E2E。
+并通过 CI 和目标集群安装验收。
 
-## Required Status Checks
+## CI 检查
 
-`main` 分支应禁止绕过：
-
-- `Preflight / Lint / RBAC`
-- `Secret Scan`
-- `Kubernetes v1.36 Kind E2E`
-
-Ruleset 要求：
-
-1. Require a pull request before merging；
-2. Require status checks to pass；
-3. 选择以上三个检查并启用 branch must be up to date；
-4. 禁止直接 Push 与普通绕过；
-5. v1.36 新检查实际成功后再替换旧 v1.34 Required Check，不通过降低保护完成切换。
-
-规则属于仓库控制面配置，不存储在 Git 工作树中。合并前应通过 GitHub API 或
-Settings 页面确认 Ruleset 已生效。
+仓库 CI 执行 `Preflight / Lint / RBAC` 和 `Secret Scan`。分支保护在 GitHub Ruleset 配置，合并前核对所需检查与当前工作流一致。

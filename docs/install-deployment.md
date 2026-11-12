@@ -9,7 +9,7 @@
 
 ## 1. 依赖和预检
 
-安装端准备 Bash、kubectl、Helm 3、Python 3、PyYAML、curl、tar、sha256sum 和可访问目标集群的 kubeconfig。构建镜像需要 Docker Buildx、jq 和仓库推送权限。节点需能拉取所用镜像，Engine Pod 需能访问 AI Provider。版本基线见 [platform-versions.env](../config/platform-versions.env)。
+安装端准备 Git、Make、Bash、Python 3、PyYAML、curl、tar、sha256sum 和可访问目标集群的 kubeconfig。`make cluster-deps` 检查并安装缺少的 kubectl 和 Helm 3。构建镜像需要 Docker Buildx、jq 和仓库推送权限。节点需能拉取所用镜像，Engine Pod 需能访问 AI Provider。版本基线见 [platform-versions.env](../config/platform-versions.env)。
 
 首次获取源码时执行：
 
@@ -35,6 +35,7 @@ portal_access=port-forward
 test "$(kubectl config current-context)" = "$target_context"
 kubectl version
 kubectl get nodes -L kubernetes.io/arch
+kubectl api-versions
 python3 -c 'import yaml'
 make platform-check
 
