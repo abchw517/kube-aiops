@@ -1,29 +1,28 @@
 import type { Finding } from "../../../clients/typescript/generated.ts";
-import { escapeHtml, formatTimestamp } from "../components/html.ts";
+import { escapeHtml, formatSeverity, formatTimestamp } from "../components/html.ts";
 
 export function renderFindingDetail(finding: Finding): string {
   return `
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
-        <a class="back-link" href="#/findings">← Back to findings</a>
+        <a class="back-link" href="#/findings">← 返回诊断列表</a>
         <div class="detail-title">
-          <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(finding.severity)}</span>
+          <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>
           <h1>${escapeHtml(finding.problem)}</h1>
         </div>
         <dl class="detail-list">
-          ${detailRow("Finding ID", finding.id)}
-          ${detailRow("Cluster", finding.cluster)}
-          ${detailRow("Namespace", finding.namespace ?? finding.resource.namespace ?? "—")}
-          ${detailRow("Kind", finding.resource.kind ?? "—")}
-          ${detailRow("Resource", finding.resource.name ?? "—")}
-          ${detailRow("Source", finding.source)}
-          ${detailRow("Created", formatTimestamp(finding.createdAt), true)}
+          ${detailRow("诊断编号", finding.id)}
+          ${detailRow("集群", finding.cluster)}
+          ${detailRow("命名空间", finding.namespace ?? finding.resource.namespace ?? "—")}
+          ${detailRow("资源类型", finding.resource.kind ?? "—")}
+          ${detailRow("资源名称", finding.resource.name ?? "—")}
+          ${detailRow("来源", finding.source)}
+          ${detailRow("发现时间", formatTimestamp(finding.createdAt), true)}
         </dl>
       </section>
       <section class="panel detail-copy">
-        <p class="eyebrow">AI diagnostic detail</p>
-        <h2>Explanation</h2>
-        <p>${escapeHtml(finding.details ?? "No additional diagnostic details were provided.")}</p>
+        <h2>诊断说明</h2>
+        <p>${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
       </section>
     </article>`;
 }

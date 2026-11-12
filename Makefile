@@ -169,7 +169,7 @@ web-docker-smoke:
 			sleep 1; \
 		done; \
 		grep -qx 'ok' /tmp/portal-healthz.txt; \
-		curl --fail --silent --show-error http://127.0.0.1:18081/ | grep -q 'kube-aiops Portal'
+		curl --fail --silent --show-error http://127.0.0.1:18081/ | grep -q 'kube-aiops 诊断控制台'
 
 web-e2e:
 	@cd web && npm run e2e

@@ -67,7 +67,7 @@ export class PortalApp {
 
   private async renderList(generation: number): Promise<void> {
     const filters = parseFindingFilters(window.location.hash);
-    this.renderShell(loadingState("Loading filter options and findings."));
+    this.renderShell(loadingState("正在加载筛选选项和诊断结果。"));
 
     try {
       const [clusters, namespaces] = await Promise.all([
@@ -92,7 +92,7 @@ export class PortalApp {
   }
 
   private async renderDetail(id: string, generation: number): Promise<void> {
-    this.renderShell(loadingState("Loading finding detail."));
+    this.renderShell(loadingState("正在加载诊断详情。"));
     try {
       const finding = await apiClient.getFinding({ id });
       if (generation !== this.renderGeneration) return;
@@ -153,18 +153,18 @@ export class PortalApp {
   private renderShell(content: string): void {
     this.root.innerHTML = `
       <header class="topbar">
-        <a class="brand" href="#/findings" aria-label="kube-aiops findings home">
+        <a class="brand" href="#/findings" aria-label="kube-aiops 诊断首页">
           <span class="brand-mark" aria-hidden="true">K</span>
-          <span><strong>kube-aiops</strong><small>Read-only Finding Portal</small></span>
+          <span><strong>kube-aiops</strong><small>Kubernetes 诊断</small></span>
         </a>
-        <span class="readonly-badge">READ ONLY</span>
+        <span class="readonly-badge">只读</span>
       </header>
       <main class="page-shell">
-        ${demoMode ? '<p class="demo-notice"><strong>Demo data</strong> · Local sample findings and evidence</p>' : ""}
+        ${demoMode ? '<p class="demo-notice"><strong>演示数据</strong> · 当前展示本地模拟的诊断结果和证据</p>' : ""}
         <section class="page-intro">
           <div>
-            <h1>Finding Operations Console</h1>
-            <p>Review K8sGPT findings and supporting signals from your cluster.</p>
+            <h1>诊断控制台</h1>
+            <p>查看集群的 K8sGPT 诊断结果和关联证据。</p>
           </div>
         </section>
         ${content}
@@ -216,11 +216,6 @@ export class PortalApp {
       if (error.status === 401) return authenticationRequiredState();
       if (error.status === 403) return authorizationDeniedState();
     }
-    return errorState(this.safeErrorMessage(error));
-  }
-
-  private safeErrorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return "The Portal Backend request failed.";
+    return errorState("无法获取诊断数据，请稍后重试。");
   }
 }

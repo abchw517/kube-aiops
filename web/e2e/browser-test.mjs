@@ -36,17 +36,31 @@ try {
       cdp,
       "http://127.0.0.1:4173/#/findings",
       (text) =>
-        text.includes("2 findings") &&
+        text.includes("诊断控制台") &&
+        text.includes("清除筛选") &&
+        text.includes("共 2 条诊断结果") &&
         text.includes("CrashLoopBackOff detected") &&
         text.includes("Replica availability degraded"),
       "Finding List did not render both normalized findings",
     );
 
+    const localeEvaluation = await cdp.send("Runtime.evaluate", {
+      expression: `({
+        language: document.documentElement.lang,
+        severity: document.querySelector('select[name="severity"] option[value="critical"]')?.textContent
+      })`,
+      returnByValue: true,
+    });
+    const locale = localeEvaluation.result?.value;
+    if (locale?.language !== "zh-CN" || locale?.severity !== "严重") {
+      throw new Error(`Chinese locale or severity label missing: ${JSON.stringify(locale)}`);
+    }
+
     await assertPage(
       cdp,
       "http://127.0.0.1:4173/#/findings?cluster=local&severity=critical",
       (text) =>
-        text.includes("1 finding") &&
+        text.includes("共 1 条诊断结果") &&
         text.includes("CrashLoopBackOff detected") &&
         !text.includes("Replica availability degraded"),
       "Severity filter did not reduce the Finding set to critical only",
@@ -56,7 +70,7 @@ try {
       cdp,
       "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) =>
-        text.includes("Finding ID") &&
+        text.includes("诊断编号") &&
         text.includes("Container restart backoff is increasing.") &&
         text.includes("sanitizer-xss-probe"),
       "Finding Detail did not render the selected Finding as safe text",
@@ -81,16 +95,16 @@ try {
       );
     }
     await assertText(cdp, (text) =>
-      text.includes("Correlated evidence") && text.includes("ContainerBackOff") &&
-      text.includes("out_of_memory") && text.includes("Partial") &&
-      text.includes("Unavailable") && text.includes("Disabled"),
+      text.includes("关联证据") && text.includes("ContainerBackOff") &&
+      text.includes("out_of_memory") && text.includes("部分可用") &&
+      text.includes("不可用") && text.includes("已禁用"),
     "Finding Detail did not render grouped correlation evidence and source states");
 
     const evidenceEvaluation = await cdp.send("Runtime.evaluate", {
       expression: `({
         probe: Boolean(document.querySelector("#evidence-markup-probe")),
         text: document.querySelector(".correlation-panel")?.innerText ?? "",
-        events: Array.from(document.querySelectorAll('[aria-label="Kubernetes Events"] .evidence-signal-heading strong'), node => node.textContent)
+        events: Array.from(document.querySelectorAll('[aria-label="Kubernetes 事件"] .evidence-signal-heading strong'), node => node.textContent)
       })`,
       returnByValue: true,
     });
@@ -117,20 +131,20 @@ try {
 
     await assertPage(
       cdp, "http://127.0.0.1:4173/#/findings/finding-warning",
-      (text) => text.includes("Unable to load evidence") && text.includes("Available replicas are below desired replicas.") &&
-        text.includes("Retry evidence") && !text.includes("private-provider-detail"),
+      (text) => text.includes("加载关联证据失败") && text.includes("Available replicas are below desired replicas.") &&
+        text.includes("重新加载证据") && !text.includes("private-provider-detail"),
       "Failed evidence request did not preserve the finding or show a safe retry",
     );
     await cdp.send("Runtime.evaluate", {
       expression: "document.querySelector('[data-action=retry-correlation]').click()",
     });
     await assertText(cdp, (text) =>
-      text.includes("No evidence in this window.") && text.includes("Available replicas are below desired replicas.") &&
-      !text.includes("Retry evidence"), "Evidence retry did not render the empty result");
+      text.includes("此时间窗口内暂无证据。") && text.includes("Available replicas are below desired replicas.") &&
+      !text.includes("重新加载证据"), "Evidence retry did not render the empty result");
 
     for (const [id, message] of [
-      ["finding-auth", "Authentication required for evidence"],
-      ["finding-forbidden", "Evidence access denied"],
+      ["finding-auth", "查看证据需要身份认证"],
+      ["finding-forbidden", "无权查看关联证据"],
     ]) {
       await assertPage(
         cdp, `http://127.0.0.1:4173/#/findings/${id}`,
