@@ -138,20 +138,36 @@ kubectl -n k8sgpt-operator-system get deployment -l app.kubernetes.io/name=k8sgp
 | `K8SGPT_AI_BASE_URL` | `spec.ai.baseUrl` | 由 OpenAI backend 选择默认端点 |
 | `K8SGPT_AI_LANGUAGE` | `spec.ai.language` | `english` |
 
-以智谱的 OpenAI 兼容端点为例，使用模型 `glm-5.2` 和中文诊断。Base URL 填 API 根路径。首次安装或切换 Provider 时，用对应 Provider 的 API Key 创建或更新 `k8sgpt-openai-secret`。下面的 `OPENAI_TOKEN` 是安装命令用于读取凭据的变量名。[智谱 OpenAI 兼容文档](https://docs.bigmodel.cn/cn/guide/develop/openai/introduction)
+以下示例将智谱 `glm-5.2`、中文诊断、内网镜像和 Operator 内存上限用于同一次安装或升级。Base URL 填 API 根路径。[智谱 OpenAI 兼容文档](https://docs.bigmodel.cn/cn/guide/develop/openai/introduction)
+
+在仓库根目录更新 `main`，核对输出的 context 对应目标集群。
+
+```bash
+git switch main && git pull --ff-only origin main && kubectl config current-context
+```
+
+首次安装或切换 Provider 时，用目标 Provider 的 API Key 创建或更新 `k8sgpt-openai-secret`。`OPENAI_TOKEN` 是安装命令读取凭据的变量名。已有正确凭据时可直接执行安装。
+
+```bash
+(
+  set -e
+  read -rsp 'Provider API key: ' OPENAI_TOKEN
+  printf '\n'
+  export OPENAI_TOKEN
+  make bootstrap-secret
+)
+```
+
+将示例镜像前缀替换为实际内网仓库和项目路径，并按实际负载设置 Operator `manager` 容器的内存上限。`1Gi` 为示例值。
 
 ```bash
 export K8SGPT_AI_MODEL=glm-5.2
 export K8SGPT_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 export K8SGPT_AI_LANGUAGE=Chinese
 
-read -rsp 'Provider API key: ' OPENAI_TOKEN
-printf '\n'
-(export OPENAI_TOKEN; make bootstrap-secret)
-unset OPENAI_TOKEN
-
-K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
-make verify
+K8SGPT_IMAGE_REGISTRY=harbor.example.com/public \
+K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi \
+make install && make verify
 ```
 
 Engine 继续使用 `openai` backend，需能访问配置的端点。仓库的 Engine 出站策略允许 DNS 以及 TCP 443、6443；使用其他端口时需按实际 Provider 配置出站策略。升级时复用这些变量。`make verify` 会核对当前会话中指定的模型、Base URL 和语言是否已写入 CR，实际调用与结果生成在目标集群中验收。
@@ -159,6 +175,13 @@ Engine 继续使用 `openai` backend，需能访问配置的端点。仓库的 E
 ```bash
 kubectl -n k8sgpt-operator-system get k8sgpt k8sgpt-engine \
   -o jsonpath='{.spec.ai.backend}{"\t"}{.spec.ai.model}{"\t"}{.spec.ai.baseUrl}{"\t"}{.spec.ai.language}{"\n"}'
+```
+
+等待一次分析周期后，检查分析状态与诊断结果。
+
+```bash
+REQUIRE_ANALYSIS_HEALTH=true make verify
+make results
 ```
 
 ### 验证部署
