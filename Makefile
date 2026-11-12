@@ -17,7 +17,7 @@ help:
 	@echo
 	@echo "Phase 1.1 K8sGPT Engine:"
 	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC/Kubernetes Schema 静态检查"
-	@echo "  make cluster-deps 检测并安装缺失的 kubectl 和 Helm"
+	@echo "  make cluster-deps 检测并安装缺失的 kubectl 和 Helm 3"
 	@echo "  make bootstrap     创建固定 Namespace（无其它集群变更）"
 	@echo "  make bootstrap-secret 使用 OPENAI_TOKEN 创建 AI Secret"
 	@echo "  make install       安装/升级 K8sGPT Operator、应用 RBAC Hardening、检查 Secret 并部署 K8sGPT CR"

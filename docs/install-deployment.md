@@ -19,19 +19,20 @@
 | Kind 联调和镜像构建 | 上述 Kubernetes 工具、Kind v0.33.0、Docker |
 | 完整仓库预检 | ShellCheck、kubeconform 和 [OpenAPI 校验依赖](../tools/openapi/requirements.txt) |
 
-Linux x86_64 和 arm64 的自动安装会下载并校验官方二进制，默认存放在 `$HOME/.local/share/kube-aiops/tools`。可用 `KUBE_AIOPS_TOOLS_DIR` 指定其他可写目录。安装器无需 sudo。集群安装复用 `PATH` 上已有的 kubectl 和 Helm，已有集群请使用与 API Server 版本相差不超过一个次版本的 kubectl。
+Linux x86_64 和 arm64 的自动安装会下载并校验官方二进制，默认存放在 `$HOME/.local/share/kube-aiops/tools`。可用 `KUBE_AIOPS_TOOLS_DIR` 指定其他可写目录。安装器无需 sudo。集群安装复用 `PATH` 上已有的 kubectl 和 Helm 3。已有集群请使用与 API Server 版本相差不超过一个次版本的 kubectl。
+
+安装、验收、状态查询和卸载统一使用 Helm 3。检测到 Helm 4 或找不到可用的 Helm 3 时，脚本复用缓存中的 Helm 3，或安装 `helm-v3.21.3/bin/helm` 到工具目录。终端直接运行 `helm` 时仍按系统 `PATH` 选取。这个版本用于保持现有 Release 查询和 RBAC post-renderer 的调用方式。
 
 ```bash
 make cluster-deps
 export PATH="$PATH:${KUBE_AIOPS_TOOLS_DIR:-$HOME/.local/share/kube-aiops/tools}/bin"
 kubectl config current-context
 kubectl version
-helm version --short
 python3 -c 'import yaml'
 make platform-check
 ```
 
-`make cluster-deps` 只准备本机 CLI，不连接集群。上面的 `export` 供当前 Shell 直接运行客户端。`make bootstrap`、`make install`、`make verify` 等项目命令可直接找到项目安装的 CLI。
+`make cluster-deps` 只准备本机 CLI，不连接集群，并打印项目使用的 Helm 路径和版本。上面的 `export` 供当前 Shell 直接运行 kubectl。`make bootstrap`、`make install`、`make verify` 等项目命令可直接找到项目安装的 CLI。
 
 执行安装的 Kubernetes 身份需要管理项目 CRD、Namespace、Secret、Lease 和 RBAC，并可模拟项目 ServiceAccount 执行授权检查。节点需要能够拉取 Operator 和 Engine 镜像。Engine 需要访问配置的 AI Provider。
 
