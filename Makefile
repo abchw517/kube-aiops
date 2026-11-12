@@ -1,8 +1,12 @@
 SHELL := /usr/bin/env bash
 BUILD_DIR ?= .build
 API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
+KUBE_AIOPS_TOOLS_DIR ?= $(HOME)/.local/share/kube-aiops/tools
+export KUBE_AIOPS_TOOLS_DIR
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e portal-demo portal-demo-check
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e portal-deps cluster-deps portal-demo portal-demo-check
+
+verify demo clean-demo status results uninstall: export PATH := $(PATH):$(KUBE_AIOPS_TOOLS_DIR)/bin
 
 help:
 	@echo "kube-aiops"
@@ -13,6 +17,7 @@ help:
 	@echo
 	@echo "Phase 1.1 K8sGPT Engine:"
 	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC/Kubernetes Schema 静态检查"
+	@echo "  make cluster-deps 检测并安装缺失的 kubectl 和 Helm"
 	@echo "  make bootstrap     创建固定 Namespace（无其它集群变更）"
 	@echo "  make bootstrap-secret 使用 OPENAI_TOKEN 创建 AI Secret"
 	@echo "  make install       安装/升级 K8sGPT Operator、应用 RBAC Hardening、检查 Secret 并部署 K8sGPT CR"
@@ -42,8 +47,10 @@ help:
 	@echo "  make web-check         执行 lint/typecheck/test/build"
 	@echo "  make web-docker-smoke  构建非 root Web 镜像并执行 smoke test"
 	@echo "  make web-e2e           使用 headless Chrome 执行 Finding Portal E2E"
+	@echo "  make portal-deps       检测并安装缺失或不兼容的 Go 和 Node.js"
 	@echo "  make portal-demo       启动本地只读 Web Portal Demo"
 	@echo "  make portal-demo-check 验证 Portal Demo 和四类证据来源"
+	@echo "  PORTAL_DEMO_HOST=127.0.0.1 PORTAL_DEMO_PORT=4173  # Portal Demo 默认监听地址和端口"
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
@@ -61,11 +68,13 @@ platform-smoke:
 	@bash ./tests/kubernetes-v1.36-smoke.sh
 
 bootstrap:
-	@kubectl apply -f deploy/k8sgpt/namespace.yaml
+	@set -Eeuo pipefail; source ./scripts/host-deps.sh; host_deps_ensure kubectl; \
+		kubectl apply -f deploy/k8sgpt/namespace.yaml
 
 bootstrap-secret: bootstrap
 	@test -n "$${OPENAI_TOKEN:-}" || { echo "ERROR: OPENAI_TOKEN 未设置" >&2; exit 1; }
-	@set -Eeuo pipefail; printf '%s' "$${OPENAI_TOKEN}" | kubectl create secret generic k8sgpt-openai-secret \
+	@set -Eeuo pipefail; source ./scripts/host-deps.sh; host_deps_ensure kubectl; \
+		printf '%s' "$${OPENAI_TOKEN}" | kubectl create secret generic k8sgpt-openai-secret \
 		-n k8sgpt-operator-system \
 		--from-file=openai-api-key=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
@@ -164,6 +173,12 @@ web-docker-smoke:
 
 web-e2e:
 	@cd web && npm run e2e
+
+portal-deps:
+	@bash scripts/host-deps.sh portal
+
+cluster-deps:
+	@bash scripts/host-deps.sh cluster
 
 portal-demo:
 	@bash scripts/portal-demo.sh

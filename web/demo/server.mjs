@@ -4,9 +4,9 @@ import { createServer as createHTTPSServer } from "node:https";
 import { join } from "node:path";
 import { fixtureResponse } from "./fixtures.mjs";
 
-const [workDir, webPort, apiPort] = process.argv.slice(2);
-const host = "127.0.0.1";
-const apiOrigin = `http://${host}:${apiPort}`;
+const [workDir, webHost, webPort, apiPort] = process.argv.slice(2);
+const loopbackHost = "127.0.0.1";
+const apiOrigin = `http://${loopbackHost}:${apiPort}`;
 const dist = new URL("../dist/", import.meta.url);
 const [certificate, key, token, index, script, styles] = await Promise.all([
   readFile(join(workDir, "ca.pem")),
@@ -42,7 +42,7 @@ function rejectWrite(request, response) {
 
 const upstream = createHTTPSServer({ cert: certificate, key }, (request, response) => {
   if (rejectWrite(request, response)) return;
-  const url = new URL(request.url, `https://${host}`);
+  const url = new URL(request.url, `https://${loopbackHost}`);
   const kubernetesPath = url.pathname.startsWith("/apis/") || url.pathname.startsWith("/api/v1/namespaces");
   if (kubernetesPath && request.headers.authorization !== `Bearer ${token.trim()}`) {
     send(response, 401, '{"error":"unauthorized"}');
@@ -58,7 +58,7 @@ const upstream = createHTTPSServer({ cert: certificate, key }, (request, respons
 
 const portal = createHTTPServer(async (request, response) => {
   if (rejectWrite(request, response)) return;
-  const url = new URL(request.url, `http://${host}`);
+  const url = new URL(request.url, `http://${loopbackHost}`);
   const file = files.get(url.pathname);
   if (file) {
     send(response, 200, file[1], file[0]);
@@ -80,7 +80,7 @@ const portal = createHTTPServer(async (request, response) => {
   }
 });
 
-function listen(server, port) {
+function listen(server, port, host) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
@@ -90,6 +90,6 @@ function listen(server, port) {
   });
 }
 
-await listen(portal, Number(webPort));
-const upstreamPort = await listen(upstream, 0);
-await writeFile(join(workDir, "upstream-url"), `https://${host}:${upstreamPort}`, { mode: 0o600 });
+await listen(portal, Number(webPort), webHost);
+const upstreamPort = await listen(upstream, 0, loopbackHost);
+await writeFile(join(workDir, "upstream-url"), `https://${loopbackHost}:${upstreamPort}`, { mode: 0o600 });

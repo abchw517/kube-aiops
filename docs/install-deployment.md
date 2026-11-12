@@ -14,28 +14,40 @@
 
 | 场景 | 依赖 |
 | --- | --- |
-| 本地 Demo | Go 1.26.5、Node.js 22+、npm、Bash、OpenSSL、curl |
-| Kubernetes 安装 | Kubernetes 和 kubectl v1.36.4、Helm、Python 3 和 PyYAML、curl、sha256sum、awk |
+| 本地 Demo | `make portal-demo` 自动准备 Go 和 Node.js（含 npm/npx）。主机预装 Bash、OpenSSL、curl 和基础命令 |
+| Kubernetes 安装 | `make install` 自动补齐缺失的 kubectl v1.36.4 和 Helm v3.21.3。主机预装 Python 3、PyYAML、curl、sha256sum、tar、awk，并配置 kubeconfig |
 | Kind 联调和镜像构建 | 上述 Kubernetes 工具、Kind v0.33.0、Docker |
 | 完整仓库预检 | ShellCheck、kubeconform 和 [OpenAPI 校验依赖](../tools/openapi/requirements.txt) |
 
+Linux x86_64 和 arm64 的自动安装会下载并校验官方二进制，默认存放在 `$HOME/.local/share/kube-aiops/tools`。可用 `KUBE_AIOPS_TOOLS_DIR` 指定其他可写目录。安装器无需 sudo。集群安装复用 `PATH` 上已有的 kubectl 和 Helm，已有集群请使用与 API Server 版本相差不超过一个次版本的 kubectl。
+
 ```bash
-make platform-check
+make cluster-deps
+export PATH="$PATH:${KUBE_AIOPS_TOOLS_DIR:-$HOME/.local/share/kube-aiops/tools}/bin"
 kubectl config current-context
 kubectl version
 helm version --short
 python3 -c 'import yaml'
+make platform-check
 ```
+
+`make cluster-deps` 只准备本机 CLI，不连接集群。上面的 `export` 供当前 Shell 直接运行客户端。`make bootstrap`、`make install`、`make verify` 等项目命令可直接找到项目安装的 CLI。
 
 执行安装的 Kubernetes 身份需要管理项目 CRD、Namespace、Secret、Lease 和 RBAC，并可模拟项目 ServiceAccount 执行授权检查。节点需要能够拉取 Operator 和 Engine 镜像。Engine 需要访问配置的 AI Provider。
 
-本地只读演示可直接启动。
+本地只读 Demo 启动时会检测 Go、Node.js、npm 和 npx。脚本复用可用的 Go 1.26.0 及以上和 Node.js 22 及以上。工具链缺失或不兼容时，自动安装 Go 1.26.5 或 Node.js 22.19.0。可运行 `make portal-deps` 单独准备工具链。首次构建前端还需要 npm registry 或已有的 esbuild 缓存。
 
 ```bash
 make portal-demo
 ```
 
-打开 <http://127.0.0.1:4173/#/findings>。运行 `make portal-demo-check` 可自动验收并清理。演示数据与操作步骤见 [Portal Demo](portal-demo.md)。
+默认打开 <http://127.0.0.1:4173/#/findings>。在远程测试主机上运行 Demo 时，可通过 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT` 覆盖监听地址和端口。
+
+```bash
+PORTAL_DEMO_HOST=0.0.0.0 PORTAL_DEMO_PORT=4173 make portal-demo
+```
+
+在浏览器访问 `http://<服务器IP>:4173/#/findings`。Go API 和 HTTPS 样例服务监听回环地址，由 Portal 转发请求。运行 `make portal-demo-check` 可自动验收并清理。演示数据与操作步骤见 [Portal Demo](portal-demo.md)。
 
 ## 2. 安装 K8sGPT
 
@@ -240,6 +252,7 @@ Deployment 以镜像仓库返回的 digest 固定版本。TLS 入口将同一域
 
 | 现象 | 核对项 |
 | --- | --- |
+| 下载依赖失败 | 主机能否通过 HTTPS 访问 `go.dev`、`nodejs.org`、`dl.k8s.io`、`get.helm.sh` 及下载重定向地址。也可提前安装工具并加入 `PATH` |
 | 安装提示缺少 Secret | 当前 context、目标 Namespace 以及 `make bootstrap-secret` 的输出 |
 | Engine 已就绪但 Finding 为空 | 分析周期、Provider 凭据、K8sGPT Result 及 Result 的实例标签 |
 | API 的 `/readyz` 返回 503 | Result CRD、K8sGPT Namespace 和 API ServiceAccount 的 Result 读取权限 |

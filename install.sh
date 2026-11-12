@@ -22,6 +22,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="${ROOT_DIR}/deploy/k8sgpt"
 # shellcheck source=scripts/lifecycle-common.sh
 source "${ROOT_DIR}/scripts/lifecycle-common.sh"
+# shellcheck source=scripts/host-deps.sh
+source "${ROOT_DIR}/scripts/host-deps.sh"
 
 NEW_RELEASE=false
 HELM_UPGRADE_SUCCEEDED=false
@@ -229,7 +231,7 @@ on_exit() {
 trap 'on_exit $?' EXIT
 
 log "Phase 1.1 安装开始 operation=${OPERATION_ID}"
-for cmd in kubectl helm python3 curl sha256sum awk; do require_cmd "$cmd"; done
+for cmd in python3 curl sha256sum awk; do require_cmd "$cmd"; done
 python3 -c 'import yaml' >/dev/null 2>&1 || fatal "缺少 Python PyYAML；先执行 python3 -m pip install pyyaml"
 [[ "$LOCK_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fatal "LOCK_WAIT_SECONDS 必须是非负整数"
 [[ "$LEASE_DURATION_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_DURATION_SECONDS 必须是正整数"
@@ -244,6 +246,7 @@ esac
 for file in namespace.yaml serviceaccount.yaml clusterrole.yaml clusterrolebinding.yaml networkpolicy.yaml values-production.yaml k8sgpt.yaml; do
   require_file "${DEPLOY_DIR}/${file}"
 done
+host_deps_ensure cluster || fatal "安装主机依赖失败"
 
 CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
 [[ -n "$CONTEXT" ]] || fatal "未获取到 kubectl current-context"
