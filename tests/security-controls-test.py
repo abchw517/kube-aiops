@@ -273,13 +273,7 @@ def test_runtime_artifacts_are_digest_pinned() -> None:
 
 
 def test_install_image_overrides_preserve_the_deployment_baseline() -> None:
-    variables = {
-        "K8SGPT_IMAGE_REGISTRY",
-        "K8SGPT_OPERATOR_IMAGE_REPOSITORY",
-        "K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY",
-        "K8SGPT_ENGINE_IMAGE_REPOSITORY",
-    }
-    env = {name: value for name, value in os.environ.items() if name not in variables}
+    env = {name: value for name, value in os.environ.items() if not name.startswith("K8SGPT_")}
     renderer = ROOT / "scripts/render-k8sgpt-install.py"
     filenames = ("values-production.yaml", "k8sgpt.yaml")
 
@@ -321,6 +315,41 @@ def test_install_image_overrides_preserve_the_deployment_baseline() -> None:
         }, capture_output=True, text=True, check=False)
         assert result.returncode != 0
         assert "K8SGPT_OPERATOR_IMAGE_REPOSITORY" in result.stderr
+
+
+def test_install_operator_resources_only_override_the_manager() -> None:
+    env = {name: value for name, value in os.environ.items() if not name.startswith("K8SGPT_")}
+    deploy_dir = ROOT / "deploy/k8sgpt"
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = pathlib.Path(temporary)
+        command = [sys.executable, str(ROOT / "scripts/render-k8sgpt-install.py"), temporary]
+        expected = yaml.safe_load((deploy_dir / "values-production.yaml").read_text())
+        resources = expected["controllerManager"]["manager"]["resources"]
+        subprocess.run(command, env={**env, "K8SGPT_OPERATOR_MEMORY_LIMIT": "1Gi"}, check=True, capture_output=True)
+        resources["limits"]["memory"] = "1Gi"
+        assert yaml.safe_load((directory / "values-production.yaml").read_text()) == expected
+
+        subprocess.run(command, env={
+            **env,
+            "K8SGPT_OPERATOR_CPU_REQUEST": "250m",
+            "K8SGPT_OPERATOR_MEMORY_REQUEST": "512Mi",
+            "K8SGPT_OPERATOR_CPU_LIMIT": "1",
+            "K8SGPT_OPERATOR_MEMORY_LIMIT": "1Gi",
+        }, check=True, capture_output=True)
+        resources["requests"] = {"cpu": "250m", "memory": "512Mi"}
+        resources["limits"]["cpu"] = "1"
+        assert yaml.safe_load((directory / "values-production.yaml").read_text()) == expected
+        assert yaml.safe_load((directory / "k8sgpt.yaml").read_text()) == yaml.safe_load(
+            (deploy_dir / "k8sgpt.yaml").read_text()
+        )
+
+        for overrides, error in (
+            ({"K8SGPT_OPERATOR_MEMORY_LIMIT": "1GB"}, "K8SGPT_OPERATOR_MEMORY_LIMIT"),
+            ({"K8SGPT_OPERATOR_MEMORY_REQUEST": "1Gi", "K8SGPT_OPERATOR_MEMORY_LIMIT": "900Mi"}, "不能大于"),
+        ):
+            result = subprocess.run(command, env={**env, **overrides}, text=True, capture_output=True, check=False)
+            assert result.returncode != 0
+            assert error in result.stderr
 
 
 def main() -> int:

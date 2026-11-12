@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Render install inputs with optional image repository overrides."""
+"""Render install inputs with optional image and Operator resource overrides."""
 
 from __future__ import annotations
 
 import os
 import re
 import sys
+from decimal import Decimal, DecimalException
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,9 @@ REGISTRY = rf"{HOST_LABEL}(?:\.{HOST_LABEL})*(?::(?P<port>[0-9]{{1,5}}))?"
 PATH_COMPONENT = r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
 REGISTRY_PREFIX = re.compile(rf"{REGISTRY}(?:/{PATH_COMPONENT})*")
 IMAGE_REPOSITORY = re.compile(rf"{REGISTRY}(?:/{PATH_COMPONENT})+")
+QUANTITY = re.compile(r"(\+?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))([eE][+-]?[0-9]+|[KMGTPE]i|[numkMGTPE])?")
+DECIMAL_EXPONENTS = {"": 0, "n": -9, "u": -6, "m": -3, "k": 3, "M": 6, "G": 9, "T": 12, "P": 15, "E": 18}
+BINARY_FACTORS = {f"{unit}i": 1024**power for power, unit in enumerate("KMGTPE", start=1)}
 
 
 def validate_repository(value: str, variable: str, pattern: re.Pattern[str]) -> str:
@@ -24,6 +28,40 @@ def validate_repository(value: str, variable: str, pattern: re.Pattern[str]) -> 
     if match is None or (match["port"] is not None and not 1 <= int(match["port"]) <= 65535):
         raise ValueError(f"{variable} 必须是镜像仓库路径，例如 harbor.example.com/project/image，不能含协议、标签或 digest")
     return value
+
+
+def positive_quantity(value: str, variable: str) -> Decimal:
+    match = QUANTITY.fullmatch(value)
+    if match:
+        amount = Decimal(match[1])
+        suffix = match[2] or ""
+        try:
+            if suffix in BINARY_FACTORS:
+                quantity = amount * BINARY_FACTORS[suffix]
+            else:
+                exponent = DECIMAL_EXPONENTS[suffix] if suffix in DECIMAL_EXPONENTS else int(suffix[1:])
+                quantity = amount.scaleb(exponent)
+            if quantity.is_finite() and quantity > 0:
+                return quantity
+        except (DecimalException, ValueError):
+            pass
+    raise ValueError(f"{variable} 必须是正数的 Kubernetes 资源量，例如 500m、1、512Mi 或 1Gi")
+
+
+def configure_operator_resources(resources: dict) -> None:
+    for resource in ("cpu", "memory"):
+        request_key = f"K8SGPT_OPERATOR_{resource.upper()}_REQUEST"
+        limit_key = f"K8SGPT_OPERATOR_{resource.upper()}_LIMIT"
+        request = os.environ.get(request_key)
+        limit = os.environ.get(limit_key)
+        if not (request or limit):
+            continue
+        request = request or str(resources["requests"][resource])
+        limit = limit or str(resources["limits"][resource])
+        if positive_quantity(request, request_key) > positive_quantity(limit, limit_key):
+            raise ValueError(f"{request_key} 不能大于 {limit_key}")
+        resources["requests"][resource] = request
+        resources["limits"][resource] = limit
 
 
 def render(output_dir: Path) -> None:
@@ -36,6 +74,10 @@ def render(output_dir: Path) -> None:
     values = yaml.safe_load((DEPLOY_DIR / values_file).read_text(encoding="utf-8"))
     engine = yaml.safe_load((DEPLOY_DIR / engine_file).read_text(encoding="utf-8"))
     manager = values["controllerManager"]
+    resources = manager["manager"]["resources"]
+    configure_operator_resources(resources)
+    print(f"Operator 资源 requests cpu={resources['requests']['cpu']} memory={resources['requests']['memory']} "
+          f"limits cpu={resources['limits']['cpu']} memory={resources['limits']['memory']}")
     images = (
         ("Operator", "K8SGPT_OPERATOR_IMAGE_REPOSITORY", manager["manager"]["image"], "tag"),
         ("RBAC Proxy", "K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY", manager["kubeRbacProxy"]["image"], "tag"),
@@ -60,5 +102,5 @@ if __name__ == "__main__":
     try:
         render(Path(sys.argv[1]))
     except (OSError, ValueError) as error:
-        print(f"镜像配置错误：{error}", file=sys.stderr)
+        print(f"安装配置错误：{error}", file=sys.stderr)
         sys.exit(1)
