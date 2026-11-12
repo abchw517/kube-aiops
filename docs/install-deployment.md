@@ -18,33 +18,33 @@ git clone https://github.com/abchw517/kube-aiops.git
 cd kube-aiops
 ```
 
-在仓库根目录使用同一个 Bash 会话执行以下命令。替换示例 context、仓库和目标平台。已完成企业身份集成、准备配置 HTTPS 入口时，将 `portal_access` 设为 `production`，并先完成 [生产身份接入](#生产身份接入)。
+在仓库根目录使用同一个 Bash 会话执行部署命令。默认以 kubeconfig 的当前 context 为目标，执行安装前确认输出的集群名称。
 
 ```bash
 set -euo pipefail
 make cluster-deps
 export PATH="$PATH:${KUBE_AIOPS_TOOLS_DIR:-$HOME/.local/share/kube-aiops/tools}/bin"
 
-target_context=your-cluster-context
-registry=harbor.example.com/kube-aiops
-mirror=harbor.example.com/public
-platforms=linux/amd64
-portal_access=port-forward
-
-[[ "$portal_access" == port-forward || "$portal_access" == production ]]
-test "$(kubectl config current-context)" = "$target_context"
-kubectl version
-kubectl get nodes -L kubernetes.io/arch
-kubectl api-versions
-python3 -c 'import yaml'
-make platform-check
-
-revision="$(git rev-parse --short=12 HEAD)"
-release_dir="$PWD/.build/deploy/$target_context/$revision"
-mkdir -p "$release_dir"
+target_context="$(kubectl config current-context)"
 ```
 
-`make cluster-deps` 准备本机 CLI。安装和验收使用 Helm 3，工具缓存位置可通过 `KUBE_AIOPS_TOOLS_DIR` 指定。安装身份需要管理项目 CRD、Namespace、Secret、Lease、RBAC 和工作负载，并可模拟 ServiceAccount 进行授权检查。对于混合架构节点，按实际架构调整 `platforms`，例如 `linux/amd64,linux/arm64`。
+如需切换集群，单独赋值并切换 context。
+
+```bash
+target_context=your-cluster-context
+kubectl config use-context "$target_context"
+```
+
+核对目标 context 和依赖。
+
+```bash
+printf '目标 context：%s\n' "$target_context"
+kubectl version
+python3 -c 'import yaml'
+make platform-check
+```
+
+安装和验收使用 Helm 3，工具缓存位置可通过 `KUBE_AIOPS_TOOLS_DIR` 指定。安装身份需要管理项目 CRD、Namespace、Secret、Lease、RBAC 和工作负载，并可模拟 ServiceAccount 进行授权检查。
 
 ## 2. 安装 K8sGPT
 
@@ -62,13 +62,13 @@ if [[ -z "$provider_secret" ]]; then
   unset OPENAI_TOKEN
 fi
 
-K8SGPT_IMAGE_REGISTRY="$mirror" K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi make install
+K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi make install
 make verify
 make status
 make results
 ```
 
-使用默认上游仓库时，可在安装命令中省略 `K8SGPT_IMAGE_REGISTRY`。`1Gi` 是 Operator 内存上限示例。已有部署时，按本次发布参数运行同一条 `make install` 命令进行升级。切换 Provider 时，先用对应 API Key 更新 Secret。
+`1Gi` 是 Operator 内存上限示例。已有部署时，按本次发布参数运行 `make install` 进行升级。使用内网仓库时，按下方对应小节调整安装命令。切换 Provider 时，先用对应 API Key 更新 Secret。
 
 ### 使用内网镜像仓库
 
@@ -200,10 +200,24 @@ STRICT_RESULTS=true make verify
 
 ## 3. 准备 API 和 Web 镜像
 
-已有经过验收的 API 和 Web 镜像时，将完整的 `仓库/镜像@sha256:...` 分别赋给 `api_image` 和 `web_image`，然后进入部署步骤。需要构建时，执行以下命令。对外发布使用已提交身份集成的源码版本。Buildx 将实际发布的 digest 写入元数据，后续 Deployment 使用该 digest。以下目录保存本次发布材料，预发验收后应归档到发布系统。生产推广时检出同一源码版本，将两个 Buildx 元数据文件恢复到当前环境的 `release_dir`，直接执行下一段 digest 读取命令。
+先创建本次发布目录，保存构建元数据和部署清单。
 
 ```bash
+revision="$(git rev-parse --short=12 HEAD)"
+release_dir="$PWD/.build/deploy/$target_context/$revision"
 mkdir -p "$release_dir"
+```
+
+已有经过验收的 API 和 Web 镜像时，将完整的 `仓库/镜像@sha256:...` 分别赋给 `api_image` 和 `web_image`，然后进入部署步骤。构建镜像或读取已归档的 Buildx 元数据时，先填写实际发布仓库。
+
+```bash
+registry=harbor.example.com/kube-aiops
+```
+
+按目标节点架构设置 `platforms`，可用 `kubectl get nodes -L kubernetes.io/arch` 查看。混合架构示例为 `linux/amd64,linux/arm64`。对外发布使用已提交身份集成的源码版本。
+
+```bash
+platforms=linux/amd64
 docker login "${registry%%/*}"
 
 docker buildx build --platform "$platforms" --push \
@@ -211,6 +225,8 @@ docker buildx build --platform "$platforms" --push \
 docker buildx build --platform "$platforms" --push -f web/Dockerfile \
   --metadata-file "$release_dir/web-build.json" -t "$registry/web:$revision" .
 ```
+
+Buildx 将发布的 digest 写入元数据，后续 Deployment 使用该 digest。预发验收后归档元数据和发布清单。生产推广时检出同一源码版本，将两个 Buildx 元数据文件恢复到当前环境的 `release_dir`，读取 digest。
 
 ```bash
 api_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$release_dir/api-build.json")"
@@ -222,9 +238,13 @@ printf '%s\n' "$api_image" "$web_image"
 
 ## 4. 部署 API 与 Web Portal
 
+Portal 默认通过端口转发验收。通过 HTTPS 发布时，先完成 [生产身份接入](#生产身份接入)，并将 `portal_access` 设为 `production`。
+
 应用仓库提供的 API Namespace、ServiceAccount、只读 RBAC 和 ClusterIP Service。通过本地渲染将 API Deployment 的镜像替换为准备好的 digest。
 
 ```bash
+portal_access=port-forward
+[[ "$portal_access" == port-forward || "$portal_access" == production ]]
 test "$(kubectl config current-context)" = "$target_context"
 kubectl apply -f deploy/api/namespace.yaml
 kubectl apply -f deploy/api/serviceaccount.yaml -f deploy/api/clusterrole.yaml \
