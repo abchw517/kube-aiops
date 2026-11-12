@@ -41,7 +41,7 @@ make platform-check
 make portal-demo
 ```
 
-默认打开 <http://127.0.0.1:4173/#/findings>。在远程测试主机上运行 Demo 时，可通过 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT` 覆盖监听地址和端口。
+默认打开 <http://127.0.0.1:4173/#/findings> 查看简体中文诊断控制台。在远程测试主机上运行 Demo 时，可通过 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT` 覆盖监听地址和端口。
 
 ```bash
 PORTAL_DEMO_HOST=0.0.0.0 PORTAL_DEMO_PORT=4173 make portal-demo

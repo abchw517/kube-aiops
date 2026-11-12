@@ -16,7 +16,7 @@ Phase 2 的交付范围和验收结果见 [Phase 2 结项记录](docs/phase-2-co
 
 ## Web Portal Demo
 
-在本地运行 `make portal-demo`，打开 <http://127.0.0.1:4173/#/findings>。
+在本地运行 `make portal-demo` 启动简体中文诊断控制台，打开 <http://127.0.0.1:4173/#/findings>。
 Demo 使用样例数据和真实 Go Portal Backend，覆盖 Finding 过滤、详情及四类证据。
 运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docs/portal-demo.md)。
 

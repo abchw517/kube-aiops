@@ -6,20 +6,20 @@ import {
   type SignalUnit,
   type SourceState,
 } from "../../../clients/typescript/generated.ts";
-import { escapeHtml, formatTimestamp } from "../components/html.ts";
+import { escapeHtml, formatSeverity, formatTimestamp } from "../components/html.ts";
 
 const sourceNames: ReadonlyArray<readonly [CorrelationSource, string]> = [
-  ["kubernetes-events", "Kubernetes Events"],
+  ["kubernetes-events", "Kubernetes 事件"],
   ["prometheus", "Prometheus"],
   ["victorialogs", "VictoriaLogs"],
   ["alertmanager", "Alertmanager"],
 ];
 
 const stateLabels: Record<SourceState, string> = {
-  available: "Available",
-  partial: "Partial",
-  unavailable: "Unavailable",
-  disabled: "Disabled",
+  available: "可用",
+  partial: "部分可用",
+  unavailable: "不可用",
+  disabled: "已禁用",
 };
 
 const unitLabels: Record<SignalUnit, string> = {
@@ -29,17 +29,22 @@ const unitLabels: Record<SignalUnit, string> = {
   milliseconds: "ms",
   percent: "%",
   ratio: "",
-  cores: "cores",
+  cores: "核",
   bytes_per_second: "B/s",
-  requests_per_second: "req/s",
+  requests_per_second: "请求/秒",
 };
 
-const numberFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 6 });
+const numberFormat = new Intl.NumberFormat("zh-CN", { maximumSignificantDigits: 6 });
+const alertSummaries = new Map([
+  ["Alertmanager state active", "告警状态：触发中"],
+  ["Alertmanager state suppressed", "告警状态：已抑制"],
+  ["Alertmanager state unprocessed", "告警状态：待处理"],
+]);
 
 export function renderCorrelationSection(id: string): string {
   return `
     <section class="panel correlation-panel" aria-labelledby="correlation-heading">
-      <h2 id="correlation-heading">Correlated evidence</h2>
+      <h2 id="correlation-heading">关联证据</h2>
       <div data-correlation-finding="${escapeHtml(id)}" aria-live="polite" aria-busy="true">
         ${renderCorrelationLoading()}
       </div>
@@ -47,26 +52,26 @@ export function renderCorrelationSection(id: string): string {
 }
 
 export function renderCorrelationLoading(): string {
-  return '<p class="evidence-notice">Loading correlation evidence…</p>';
+  return '<p class="evidence-notice">正在加载关联证据…</p>';
 }
 
 export function renderCorrelationError(error: unknown): string {
   const status = error instanceof ApiError ? error.status : undefined;
   const title = status === 401
-    ? "Authentication required for evidence"
+    ? "查看证据需要身份认证"
     : status === 403
-      ? "Evidence access denied"
-      : "Unable to load evidence";
+      ? "无权查看关联证据"
+      : "加载关联证据失败";
   return `
     <div class="evidence-notice" role="alert">
       <p><strong>${title}</strong></p>
-      ${status === 403 ? "" : '<button type="button" class="button secondary" data-action="retry-correlation">Retry evidence</button>'}
+      ${status === 403 ? "" : '<button type="button" class="button secondary" data-action="retry-correlation">重新加载证据</button>'}
     </div>`;
 }
 
 export function renderCorrelationEvidence(bundle: CorrelationBundle): string {
   return `
-    <p class="evidence-window">Finding window · ${formatTimestamp(bundle.window.start)} – ${formatTimestamp(bundle.window.end)}</p>
+    <p class="evidence-window">诊断时间窗口：${formatTimestamp(bundle.window.start)} – ${formatTimestamp(bundle.window.end)}</p>
     <div class="correlation-grid">
       ${sourceNames.map(([source, name]) => {
         const state = bundle.sources.find((status) => status.source === source)?.state ?? "unavailable";
@@ -79,7 +84,7 @@ export function renderCorrelationEvidence(bundle: CorrelationBundle): string {
             </div>
             ${signals.length > 0
               ? `<ol class="evidence-signals">${signals.map(renderSignal).join("")}</ol>`
-              : state === "available" ? '<p class="evidence-notice">No evidence in this window.</p>' : ""}
+              : state === "available" ? '<p class="evidence-notice">此时间窗口内暂无证据。</p>' : ""}
           </section>`;
       }).join("")}
     </div>`;
@@ -97,20 +102,22 @@ function renderSignal(signal: CorrelationSignal): string {
     ? ""
     : [numberFormat.format(signal.value), signal.unit ? unitLabels[signal.unit] : ""].filter(Boolean).join(" ");
   const count = signal.count && signal.type !== "alert" ? formatCount(signal.count, signal.type) : "";
+  const summary = signal.source === "alertmanager" && signal.summary
+    ? alertSummaries.get(signal.summary) ?? signal.summary
+    : signal.summary;
 
   return `
     <li class="evidence-signal">
       <div class="evidence-signal-heading">
         <strong>${escapeHtml(signal.name ?? signal.id)}</strong>
-        ${signal.severity ? `<span class="severity severity-${escapeHtml(signal.severity)}">${escapeHtml(signal.severity)}</span>` : ""}
+        ${signal.severity ? `<span class="severity severity-${escapeHtml(signal.severity)}">${escapeHtml(formatSeverity(signal.severity))}</span>` : ""}
       </div>
       ${metadata ? `<p class="evidence-meta">${metadata}</p>` : ""}
       ${value || count ? `<p class="evidence-measurement">${escapeHtml([value, count].filter(Boolean).join(" · "))}</p>` : ""}
-      ${signal.summary ? `<p class="evidence-summary">${escapeHtml(signal.summary)}</p>` : ""}
+      ${summary ? `<p class="evidence-summary">${escapeHtml(summary)}</p>` : ""}
     </li>`;
 }
 
 function formatCount(count: number, type: CorrelationSignal["type"]): string {
-  const units = type === "metric" ? ["sample", "samples"] : ["match", "matches"];
-  return `${numberFormat.format(count)} ${count === 1 ? units[0] : units[1]}`;
+  return `${numberFormat.format(count)} ${type === "metric" ? "个样本" : "次匹配"}`;
 }

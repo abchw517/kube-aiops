@@ -28,13 +28,13 @@ make portal-demo
 make portal-demo PORTAL_DEMO_PORT=4180 PORTAL_DEMO_API_PORT=18083
 ```
 
-页面的 **Demo data** 标识表示当前使用本地样例。浏览器访问真实 Web Portal 和 Go 后端。Kubernetes Result、Events、Prometheus、VictoriaLogs 和 Alertmanager 数据由本地 HTTPS 样例服务提供。运行时无需 kubeconfig、Kubernetes 集群、AI Provider 或监控系统凭据。前端构建沿用仓库现有 npm 工具链。
+页面的 **演示数据** 标识表示当前使用本地样例。界面和样例诊断使用简体中文，资源名、指标名和告警名保留原值。接入真实集群后，诊断说明和证据摘要沿用数据源提供的语言。Kubernetes Result、Events、Prometheus、VictoriaLogs 和 Alertmanager 的演示数据由本地 HTTPS 样例服务提供。运行时无需 kubeconfig、Kubernetes 集群、AI Provider 或监控系统凭据。
 
 ## 演示路径
 
-1. 在列表中查看 2 条 Finding。选择 `payments` 命名空间，确认列表只显示 checkout Pod。
-2. 打开 **CrashLoopBackOff in checkout-api**，查看 Finding 详情和四类证据。Kubernetes Events 有重启退避记录，Prometheus 有内存和重启指标，VictoriaLogs 有 OOM 分类计数，Alertmanager 有对应告警。
-3. 清空过滤条件并打开 **Queue worker replicas below target**。核对 Deployment 目标、就绪副本指标和告警，VictoriaLogs 卡片显示该时间窗没有证据。
+1. 在列表中查看 2 条诊断结果。选择 `payments` 命名空间，确认列表只显示 checkout Pod。
+2. 打开 **checkout-api 容器反复重启（CrashLoopBackOff）**，查看诊断详情和四类证据。Kubernetes Events 有重启退避记录，Prometheus 有内存和重启指标，VictoriaLogs 有 OOM 分类计数，Alertmanager 有对应告警。
+3. 清空过滤条件并打开 **queue-worker 就绪副本数低于目标**。核对 Deployment 目标、就绪副本指标和告警，VictoriaLogs 卡片显示该时间窗没有证据。
 
 ## 自动验收
 
