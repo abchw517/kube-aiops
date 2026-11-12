@@ -32,6 +32,7 @@ PREVIOUS_REVISION=""
 SNAPSHOT_DIR=""
 SNAPSHOT_REPORT=""
 PRESERVE_SNAPSHOT=false
+INSTALL_CONFIG_DIR=""
 OPERATION_ID="install-$(hostname | tr -cd '[:alnum:].-' | cut -c1-32)-$$-$(date +%s)"
 
 log() { lc_log "$@"; }
@@ -223,6 +224,9 @@ on_exit() {
     "$(basename "$SNAPSHOT_DIR")" == kube-aiops-install.* ]]; then
     rm -rf -- "$SNAPSHOT_DIR"
   fi
+  if [[ -n "$INSTALL_CONFIG_DIR" ]]; then
+    rm -rf -- "$INSTALL_CONFIG_DIR"
+  fi
 
   if ((rc == 0)) && [[ "$release_failed" == "true" ]]; then rc=1; fi
   ((rc == 0)) || log "ERROR: 安装未完成 exit=${rc} rollback_failures=${rollback_failures}"
@@ -246,6 +250,10 @@ esac
 for file in namespace.yaml serviceaccount.yaml clusterrole.yaml clusterrolebinding.yaml networkpolicy.yaml values-production.yaml k8sgpt.yaml; do
   require_file "${DEPLOY_DIR}/${file}"
 done
+INSTALL_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-images.XXXXXX")"
+IMAGE_CONFIG="$(python3 "${ROOT_DIR}/scripts/render-k8sgpt-install.py" "$INSTALL_CONFIG_DIR")" ||
+  fatal "生成 K8sGPT 镜像配置失败"
+while IFS= read -r image; do log "$image"; done <<<"$IMAGE_CONFIG"
 host_deps_ensure cluster || fatal "安装主机依赖失败"
 
 CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
@@ -296,7 +304,7 @@ log "安装/升级 K8sGPT Operator version=${OPERATOR_VERSION}"
 lc_assert_lock_held || fatal "执行 Helm 前已失去生命周期 Lease"
 "$HOST_DEPS_HELM" upgrade --install "$RELEASE_NAME" "$OPERATOR_CHART" \
   -n "$NAMESPACE" \
-  -f "${DEPLOY_DIR}/values-production.yaml" \
+  -f "${INSTALL_CONFIG_DIR}/values-production.yaml" \
   --post-renderer "${ROOT_DIR}/scripts/helm-post-renderer.py" \
   --atomic --cleanup-on-fail --wait --timeout "$TIMEOUT"
 HELM_UPGRADE_SUCCEEDED=true
@@ -331,7 +339,7 @@ check_denied list networkpolicies.networking.k8s.io
 check_denied list validatingwebhookconfigurations.admissionregistration.k8s.io --all-namespaces
 
 lc_assert_lock_held || fatal "应用 K8sGPT CR 前已失去生命周期 Lease"
-kubectl apply -f "${DEPLOY_DIR}/k8sgpt.yaml"
+kubectl apply -f "${INSTALL_CONFIG_DIR}/k8sgpt.yaml"
 
 OPERATOR_DEPLOY="$(kubectl get deploy -n "$NAMESPACE" -l app.kubernetes.io/name=k8sgpt-operator \
   -o jsonpath='{.items[0].metadata.name}')"
