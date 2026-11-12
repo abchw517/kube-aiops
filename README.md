@@ -1,28 +1,30 @@
 # kube-aiops
 
-基于 K8sGPT 构建的 Kubernetes AIOps 平台，提供安全只读的 AI 辅助诊断、根因分析、可观测性关联与 Web Portal 能力。
+基于 K8sGPT 的 Kubernetes 只读诊断平台。简体中文 Web Portal 集中展示集群诊断结果，以及同一资源和时间窗口内的事件、指标、日志信号和告警。
 
 ## 当前阶段
 
-- **Phase 1.1：K8sGPT Engine — Completed**
-- **Phase 1.2：Portal Backend API — Completed**
-- **Platform Baseline：Kubernetes v1.36.4 — Active**
-- **Phase 1.3：Web Portal — Completed**
-- **Phase 1.4：Portal 安全边界 — Completed**
-- **Phase 2：可观测性证据关联 — Completed**
+| 阶段 | 进展 | 能力 |
+| --- | --- | --- |
+| Phase 1.1 | 已完成 | K8sGPT Operator 和 Engine、受限 RBAC、安装与回滚 |
+| Phase 1.2–1.3 | 已完成 | Go 只读 API、OpenAPI 契约、简体中文 Web Portal 和本地 Demo |
+| Phase 1.4 | 已完成 | 身份认证与授权、结构化审计、响应脱敏和生产启动门禁 |
+| Phase 2 | 已完成 | Kubernetes Events、Prometheus、VictoriaLogs、Alertmanager 四类证据关联 |
+| Phase 3–5 | 已规划 | RCA Agent 和 Runbook、人工审批修复、受控自动修复 |
 
-Phase 2 的交付范围和验收结果见 [Phase 2 结项记录](docs/phase-2-completion.md)。
-当前平台基线见 [Kubernetes v1.36.4](docs/kubernetes-v1.36-baseline.md)。
+交付与验收记录见 [Phase 1.4](docs/phase-1.4-completion.md) 和 [Phase 2](docs/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docs/kubernetes-v1.36-baseline.md)。
 
 ## Web Portal Demo
 
-在本地运行 `make portal-demo` 启动简体中文诊断控制台，打开 <http://127.0.0.1:4173/#/findings>。
-Demo 使用样例数据和真实 Go Portal Backend，覆盖 Finding 过滤、详情及四类证据。
-运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docs/portal-demo.md)。
+```bash
+make portal-demo
+```
+
+打开 <http://127.0.0.1:4173/#/findings>，查看两条中文样例诊断和四类关联证据。Demo 运行真实 Go API，通过本地 HTTPS 样例服务模拟集群和可观测性数据源，可独立于 Kubernetes 运行。远程访问可设置 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT`。运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docs/portal-demo.md)。
 
 ## 安装与部署
 
-[安装部署指南](docs/install-deployment.md) 覆盖 K8sGPT 安装、Kind 内的 Go API 和 Portal 联调、可观测性配置、生产部署条件、故障排查和清理。
+`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括内网镜像同步、Kind 联调、可观测性配置和生产部署条件。
 
 ## 当前支持基线
 
@@ -61,45 +63,26 @@ Kubernetes、K8sGPT Engine、K8sGPT Operator 等运行时镜像使用 `tag@sha25
 - Result CR 作为 K8sGPT 与 Portal Backend 的结构化边界；
 - Raw Result CR / Raw Kubernetes Object 不通过 Portal API 暴露。
 
-## 架构
+## 架构拓扑
 
-```text
-User / SRE
-    |
-    v
-Phase 1.3 Web Portal
-    |
-    v
-Phase 1.2 Portal Backend API
-    |
-    +-------------------------------+
-    |                               |
-    v                               v
-Kubernetes API                 Finding Model
-    |                               ^
-    |                               |
-    +--> K8sGPT Result CR -----------+
-            ^
-            |
-      K8sGPT Engine
-            ^
-            |
-      K8sGPT Operator
+```mermaid
+flowchart TD
+    User["运维人员 / 浏览器"] --> Portal
+    subgraph Application["kube-aiops-system"]
+        Portal["Web Portal / Nginx"] -->|同源 API 代理| Backend["Go Portal API"]
+    end
+    subgraph Analysis["k8sgpt-operator-system"]
+        Operator["K8sGPT Operator"] -->|管理分析实例| Engine["K8sGPT Engine"]
+    end
+    Engine -->|读取资源并写入 Result| Kubernetes["Kubernetes API"]
+    Engine -->|发送匿名化诊断请求| Provider["AI Provider"]
+    Backend -->|读取 Result、资源和事件| Kubernetes
+    Backend -->|按需查询指标| Prometheus["Prometheus"]
+    Backend -->|按需查询日志信号| VictoriaLogs["VictoriaLogs"]
+    Backend -->|按需查询告警| Alertmanager["Alertmanager"]
 ```
 
-K8sGPT Engine 仍执行：
-
-```text
-Kubernetes Resource
-        ↓
-Analyzer
-        ↓
-Anonymization
-        ↓
-AI Provider
-        ↓
-Result CR
-```
+Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docs/architecture.md) 和 [生产部署条件](docs/install-deployment.md#5-生产部署条件)。
 
 ## 目录结构
 
@@ -120,7 +103,9 @@ Result CR
 ├── uninstall.sh
 ├── Dockerfile
 ├── deploy/
+│   ├── api/
 │   └── k8sgpt/
+├── web/
 ├── tests/
 │   ├── platform-baseline-test.py
 │   ├── kubernetes-v1.36-smoke.sh
@@ -212,6 +197,14 @@ Secret 或 K8sGPT CR 名称，避免身份与 RBAC 基线漂移。
 ```bash
 make install
 ```
+
+节点访问上游镜像仓库超时时，可先将三张镜像同步到内网镜像仓库，再执行：
+
+```bash
+K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
+```
+
+该前缀适用于 Operator、RBAC Proxy 和 Engine，安装器使用基线版本与 digest。同步命令与单镜像变量见 [使用内网镜像仓库](docs/install-deployment.md#使用内网镜像仓库)。
 
 安装链路：
 
@@ -387,7 +380,7 @@ Required E2E 在生命周期测试前先执行精确版本/API smoke，然后继
 - Lease heartbeat / fencing / CAS；
 - Forbidden 查询不得假成功；
 - trusted uninstall；
-- Phase 1.2 readonly API E2E。
+- 只读 API 和 Kubernetes Events 证据关联 E2E。
 
 真实 Provider 功能 E2E 使用同一 Kubernetes v1.36.4 基线，通过手工工作流执行：
 
@@ -411,6 +404,7 @@ GET /api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}
 GET /api/v1/findings
 GET /api/v1/findings/summary
 GET /api/v1/findings/{id}
+GET /api/v1/findings/{id}/correlation
 ```
 
 OpenAPI 3.1 是 Portal 外部契约基线：
@@ -486,7 +480,9 @@ Preflight / Lint / RBAC
 ├── Platform baseline consistency
 ├── OpenAPI Contract Gate
 ├── Go fmt / vet / test / build
-├── Docker backend smoke
+├── Web 静态检查、单测和 Chromium E2E
+├── API / Web 容器冒烟测试
+├── Portal Demo 冒烟测试
 └── project preflight
 
 Secret Scan
@@ -497,7 +493,7 @@ Kubernetes v1.36 Kind E2E
 ├── API Server / kubelet exact v1.36.4 smoke
 ├── stable API discovery
 ├── lifecycle / rollback / concurrency / trusted uninstall
-└── Phase 1.2 readonly API E2E
+└── 只读 API 与 Kubernetes Events 证据关联 E2E
 ```
 
 安全设计：
@@ -575,6 +571,8 @@ make uninstall
 make e2e
 make e2e-provider
 make api-contract-check
+make portal-demo
+make portal-demo-check
 ```
 
 # 安全原则
@@ -603,16 +601,10 @@ Remediation -> Disabled
 - `docs/phase-1.1-hardening.md`
 - `docx/phase-1.2-completion.md`
 
-# Roadmap
+## 路线图
 
-- Phase 1.1：K8sGPT Engine — Completed
-- Phase 1.2：Portal Backend API — Completed
-- Platform Baseline：Kubernetes v1.36.4 — Active
-- Phase 1.3：Web Portal — Completed
-- Phase 1.4：Authentication / Authorization / Audit / Sanitizer — Completed
-- Phase 2：Events、Prometheus、VictoriaLogs、Alertmanager 证据关联和 Finding 详情展示 — Completed
-- Phase 3：RCA Agent + Runbook — Planned
-- Phase 4：HITL Remediation — Planned
-- Phase 5：Controlled Auto Remediation — Planned
+- Phase 3 · RCA Agent 与 Runbook
+- Phase 4 · 人工审批修复
+- Phase 5 · 受控自动修复
 
 阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。

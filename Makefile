@@ -54,6 +54,7 @@ help:
 	@echo
 	@echo "可覆盖变量:"
 	@echo "  OPERATOR_VERSION=$${OPERATOR_VERSION:-0.2.29}"
+	@echo "  K8SGPT_IMAGE_REGISTRY=harbor.example.com/public  # Operator、Proxy、Engine 的镜像仓库前缀"
 	@echo "  STRICT_RESULTS=true  # verify 时要求当前实例的新鲜 Result"
 	@echo "  PURGE_SECRET=true    # uninstall 时同时删除 AI Secret"
 	@echo "  PURGE_NAMESPACE=true # uninstall 时同时删除 Namespace"

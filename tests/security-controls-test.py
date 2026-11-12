@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -269,6 +270,46 @@ def test_runtime_artifacts_are_digest_pinned() -> None:
         r'OPERATOR_CHART_SHA256="[0-9a-f]{64}"', install_source
     )
     assert "sha256sum --check --status" in install_source
+
+
+def test_install_image_overrides_preserve_the_deployment_baseline() -> None:
+    variables = {
+        "K8SGPT_IMAGE_REGISTRY",
+        "K8SGPT_OPERATOR_IMAGE_REPOSITORY",
+        "K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY",
+        "K8SGPT_ENGINE_IMAGE_REPOSITORY",
+    }
+    env = {name: value for name, value in os.environ.items() if name not in variables}
+    renderer = ROOT / "scripts/render-k8sgpt-install.py"
+    filenames = ("values-production.yaml", "k8sgpt.yaml")
+
+    def read_inputs(directory: pathlib.Path) -> list[dict]:
+        return [yaml.safe_load((directory / name).read_text()) for name in filenames]
+
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = pathlib.Path(temporary)
+        command = [sys.executable, str(renderer), str(directory)]
+        expected = read_inputs(ROOT / "deploy/k8sgpt")
+        subprocess.run(command, env=env, capture_output=True, check=True)
+        assert read_inputs(directory) == expected
+
+        subprocess.run(command, env={
+            **env,
+            "K8SGPT_IMAGE_REGISTRY": "harbor.example.com:8443/public/",
+            "K8SGPT_ENGINE_IMAGE_REPOSITORY": "other.example.com/team/custom-engine",
+        }, capture_output=True, check=True)
+        manager = expected[0]["controllerManager"]
+        manager["manager"]["image"]["repository"] = "harbor.example.com:8443/public/k8sgpt-operator"
+        manager["kubeRbacProxy"]["image"]["repository"] = "harbor.example.com:8443/public/kube-rbac-proxy"
+        expected[1]["spec"]["repository"] = "other.example.com/team/custom-engine"
+        assert read_inputs(directory) == expected
+
+        result = subprocess.run(command, env={
+            **env,
+            "K8SGPT_OPERATOR_IMAGE_REPOSITORY": "harbor.example.com/public/k8sgpt-operator:latest",
+        }, capture_output=True, text=True, check=False)
+        assert result.returncode != 0
+        assert "K8SGPT_OPERATOR_IMAGE_REPOSITORY" in result.stderr
 
 
 def main() -> int:
