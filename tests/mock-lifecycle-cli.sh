@@ -2,6 +2,10 @@
 set -Eeuo pipefail
 
 tool="$(basename "$0")"
+if [[ "$tool" == helm && "$*" == 'version --short' ]]; then
+  printf 'v3.21.3\n'
+  exit 0
+fi
 case "${tool}:${MOCK_MODE:-}" in
   kubectl:present)
     printf '%s/%s\n' "${2:-resource}" "${3:-name}"

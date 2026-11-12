@@ -7,6 +7,8 @@ readonly K8SGPT_NAME="k8sgpt-engine"
 readonly RELEASE_NAME="k8sgpt-operator"
 readonly SECRET_NAME="k8sgpt-openai-secret"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/host-deps.sh
+source "${ROOT_DIR}/scripts/host-deps.sh"
 STRICT_RESULTS="${STRICT_RESULTS:-false}"
 RESULT_SINCE="${RESULT_SINCE:-}"
 EXPECTED_RESULT_KINDS="${EXPECTED_RESULT_KINDS:-}"
@@ -175,10 +177,16 @@ for value in "$STRICT_RESULTS" "$REQUIRE_ANALYSIS_HEALTH"; do
 done
 
 check_cmd kubectl
-check_cmd helm
 check_cmd python3
 
-if ! command -v kubectl >/dev/null 2>&1 || ! command -v helm >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+if ! command -v kubectl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+  log "SUMMARY: pass=${PASS} warn=${WARN} fail=${FAIL}"
+  exit 1
+fi
+if host_deps_ensure helm; then
+  pass "命令可用: Helm 3"
+else
+  fail "无法准备 Helm 3"
   log "SUMMARY: pass=${PASS} warn=${WARN} fail=${FAIL}"
   exit 1
 fi
@@ -200,7 +208,7 @@ else
   exit 1
 fi
 
-capture helm status "$RELEASE_NAME" -n "$NAMESPACE" -o json
+capture "$HOST_DEPS_HELM" status "$RELEASE_NAME" -n "$NAMESPACE" -o json
 if ((CAPTURE_RC != 0)); then
   fail "Helm Release 查询失败: $(query_error)"
 elif HELM_STATUS="$(json_value "$CAPTURE_OUTPUT" info.status)" && [[ "$HELM_STATUS" == "deployed" ]]; then
@@ -209,7 +217,7 @@ else
   fail "Helm Release 状态不是 deployed: ${HELM_STATUS:-unknown}"
 fi
 
-capture helm list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
+capture "$HOST_DEPS_HELM" list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
 if ((CAPTURE_RC != 0)); then
   fail "Helm Release 身份查询失败: $(query_error)"
 elif HELM_CHART="$(python3 -c '

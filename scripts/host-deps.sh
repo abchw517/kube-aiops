@@ -107,10 +107,40 @@ host_deps_install() (
   esac
 )
 
+host_deps_select_helm3() {
+  local root="$1" version=v3.21.3 candidate reported managed
+  local -a path_candidates
+  managed="$root/helm-${version}/bin/helm"
+  mapfile -t path_candidates < <(type -aP helm)
+  for candidate in "${path_candidates[@]}" "$root/bin/helm" "$managed"; do
+    [[ -x "$candidate" ]] || continue
+    reported=$("$candidate" version --short 2>/dev/null) || continue
+    if [[ "$reported" =~ ^v3\.[0-9]+\.[0-9]+([+.-]|$) ]]; then
+      HOST_DEPS_HELM="$candidate"
+      host_deps_log "Helm $HOST_DEPS_HELM ($reported)"
+      return 0
+    fi
+  done
+
+  if [[ -e "$managed" || -L "$managed" ]]; then
+    host_deps_error "项目的 Helm 3 缓存不可用：$managed，请移走该文件后重试"
+    return 1
+  fi
+  host_deps_log "未找到可用的 Helm 3，准备安装项目专用版本"
+  host_deps_install helm "$managed" "$version" || return 1
+  reported=$("$managed" version --short) || return 1
+  if [[ ! "$reported" =~ ^v3\.[0-9]+\.[0-9]+([+.-]|$) ]]; then
+    host_deps_error "安装后的 Helm 版本不兼容：$reported"
+    return 1
+  fi
+  HOST_DEPS_HELM="$managed"
+  host_deps_log "Helm $HOST_DEPS_HELM ($reported)"
+}
+
 host_deps_ensure() {
   local profile="$1" root repo cmd minimum go_dir node_dir cluster_bin
   local GO_VERSION KUBERNETES_VERSION
-  local node_version=22.19.0 helm_version=v3.21.3
+  local node_version=22.19.0
   root="${KUBE_AIOPS_TOOLS_DIR:-${HOME:?}/.local/share/kube-aiops/tools}"
   [[ "$root" == /* ]] || root="$PWD/$root"
   repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd) || return 1
@@ -151,13 +181,11 @@ host_deps_ensure() {
         command -v kubectl >/dev/null || { host_deps_error "kubectl 安装目录不可用：$cluster_bin"; return 1; }
       fi
       if [[ "$profile" == cluster ]]; then
-        if ! command -v helm >/dev/null; then
-          host_deps_install helm "$cluster_bin/helm" "$helm_version" || return 1
-          command -v helm >/dev/null || { host_deps_error "Helm 安装目录不可用：$cluster_bin"; return 1; }
-        fi
-        host_deps_log "kubectl $(command -v kubectl)；Helm $(command -v helm)"
+        host_deps_log "kubectl $(command -v kubectl)"
+        host_deps_select_helm3 "$root" || return 1
       fi ;;
-    *) host_deps_error '用法：bash scripts/host-deps.sh {portal|cluster}'; return 1 ;;
+    helm) host_deps_select_helm3 "$root" ;;
+    *) host_deps_error '用法：bash scripts/host-deps.sh {portal|cluster|helm}'; return 1 ;;
   esac
 }
 

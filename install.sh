@@ -172,14 +172,14 @@ rollback_failed_install() {
       failures=$((failures + 1))
       printf 'rollback\thelm/%s\tfailed-query\n' "$RELEASE_NAME" >>"$SNAPSHOT_REPORT"
     elif [[ "$LC_STATE" == "present" ]]; then
-      if ! helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" --wait --timeout "$TIMEOUT"; then
+      if ! "$HOST_DEPS_HELM" uninstall "$RELEASE_NAME" -n "$NAMESPACE" --wait --timeout "$TIMEOUT"; then
         failures=$((failures + 1))
         printf 'rollback\thelm/%s\tfailed-uninstall\n' "$RELEASE_NAME" >>"$SNAPSHOT_REPORT"
       fi
     fi
   else
     log "ERROR: 升级后置步骤失败，回滚至 Helm revision=${PREVIOUS_REVISION}"
-    if ! helm rollback "$RELEASE_NAME" "$PREVIOUS_REVISION" -n "$NAMESPACE" \
+    if ! "$HOST_DEPS_HELM" rollback "$RELEASE_NAME" "$PREVIOUS_REVISION" -n "$NAMESPACE" \
       --wait --cleanup-on-fail --timeout "$TIMEOUT"; then
       failures=$((failures + 1))
       printf 'rollback\thelm/%s\tfailed-revision-%s\n' "$RELEASE_NAME" "$PREVIOUS_REVISION" >>"$SNAPSHOT_REPORT"
@@ -278,7 +278,7 @@ if [[ "$LC_STATE" == "absent" ]]; then
 else
   [[ "$LC_OUTPUT" == "deployed" ]] || fatal "Helm Release 当前状态不是 deployed: ${LC_OUTPUT:-unknown}"
   lc_assert_helm_release_identity "$RELEASE_NAME" "$NAMESPACE" k8sgpt-operator 0.2.29 || fatal "Helm Release 身份校验失败"
-  PREVIOUS_REVISION="$(helm history "$RELEASE_NAME" -n "$NAMESPACE" -o json |
+  PREVIOUS_REVISION="$("$HOST_DEPS_HELM" history "$RELEASE_NAME" -n "$NAMESPACE" -o json |
     python3 -c 'import json,sys; items=json.load(sys.stdin); print(items[-1]["revision"] if items else "")')"
   [[ "$PREVIOUS_REVISION" =~ ^[0-9]+$ ]] || fatal "无法记录升级前 Helm revision"
 fi
@@ -294,7 +294,7 @@ printf '%s  %s\n' "$OPERATOR_CHART_SHA256" "$OPERATOR_CHART" | sha256sum --check
 
 log "安装/升级 K8sGPT Operator version=${OPERATOR_VERSION}"
 lc_assert_lock_held || fatal "执行 Helm 前已失去生命周期 Lease"
-helm upgrade --install "$RELEASE_NAME" "$OPERATOR_CHART" \
+"$HOST_DEPS_HELM" upgrade --install "$RELEASE_NAME" "$OPERATOR_CHART" \
   -n "$NAMESPACE" \
   -f "${DEPLOY_DIR}/values-production.yaml" \
   --post-renderer "${ROOT_DIR}/scripts/helm-post-renderer.py" \

@@ -18,6 +18,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="${ROOT_DIR}/deploy/k8sgpt"
 # shellcheck source=scripts/lifecycle-common.sh
 source "${ROOT_DIR}/scripts/lifecycle-common.sh"
+# shellcheck source=scripts/host-deps.sh
+source "${ROOT_DIR}/scripts/host-deps.sh"
 OPERATION_ID="uninstall-$(hostname | tr -cd '[:alnum:].-' | cut -c1-32)-$$-$(date +%s)"
 
 log() { lc_log "$@"; }
@@ -38,7 +40,7 @@ on_exit() {
 }
 trap 'on_exit $?' EXIT
 
-for cmd in kubectl helm python3; do command -v "$cmd" >/dev/null 2>&1 || fatal "缺少命令: $cmd"; done
+for cmd in kubectl python3; do command -v "$cmd" >/dev/null 2>&1 || fatal "缺少命令: $cmd"; done
 for value in "$PURGE_SECRET" "$PURGE_NAMESPACE" "$PURGE_DEMO"; do
   [[ "$value" == "true" || "$value" == "false" ]] || fatal "PURGE_* 变量只能为 true 或 false"
 done
@@ -46,6 +48,7 @@ done
 [[ "$LEASE_DURATION_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_DURATION_SECONDS 必须是正整数"
 [[ "$LEASE_RENEW_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || fatal "LEASE_RENEW_INTERVAL_SECONDS 必须是正整数"
 ((LEASE_RENEW_INTERVAL_SECONDS < LEASE_DURATION_SECONDS)) || fatal "Lease 续租间隔必须小于租期"
+host_deps_ensure helm || fatal "无法准备 Helm 3"
 
 delete_resource_if_present() {
   local resource="$1"
@@ -113,7 +116,7 @@ fi
 if [[ "$HELM_RELEASE_PRESENT" == "present" ]]; then
   log "卸载 Helm Release"
   lc_assert_lock_held || fatal "卸载 Helm Release 前已失去生命周期 Lease"
-  helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" --wait --timeout "$TIMEOUT"
+  "$HOST_DEPS_HELM" uninstall "$RELEASE_NAME" -n "$NAMESPACE" --wait --timeout "$TIMEOUT"
 fi
 
 [[ "$NAMESPACE_PRESENT" != "present" ]] || lc_assert_lock_held || fatal "删除 RBAC 前已失去生命周期 Lease"

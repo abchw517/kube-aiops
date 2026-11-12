@@ -45,7 +45,7 @@ lc_helm_state() {
   local releases
 
   LC_OUTPUT=""
-  if ! releases="$(helm list -n "$namespace" --all --filter "^${release}$" -o json)"; then
+  if ! releases="$("${HOST_DEPS_HELM:-helm}" list -n "$namespace" --all --filter "^${release}$" -o json)"; then
     LC_STATE="error"
     return 0
   fi
@@ -74,7 +74,7 @@ lc_assert_helm_release_identity() {
   local expected_version="$4"
   local releases chart_name
 
-  if ! releases="$(helm list -n "$namespace" --all --filter "^${release}$" -o json)"; then
+  if ! releases="$("${HOST_DEPS_HELM:-helm}" list -n "$namespace" --all --filter "^${release}$" -o json)"; then
     lc_log "ERROR: 无法读取 Helm Release 身份: ${namespace}/${release}"
     return 1
   fi

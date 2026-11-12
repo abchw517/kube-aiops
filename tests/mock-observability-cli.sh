@@ -5,6 +5,10 @@ tool="$(basename "$0")"
 mode="${MOCK_OBSERVABILITY_MODE:-healthy}"
 
 if [[ "$tool" == "helm" ]]; then
+  if [[ "$*" == "version --short" ]]; then
+    printf 'v3.21.3\n'
+    exit 0
+  fi
   if [[ "${1:-}" == "status" ]]; then
     printf '%s\n' '{"version":3,"info":{"status":"deployed"}}'
     exit 0

@@ -5,6 +5,9 @@ readonly NAMESPACE="k8sgpt-operator-system"
 readonly RELEASE_NAME="k8sgpt-operator"
 readonly K8SGPT_NAME="k8sgpt-engine"
 readonly LOCK_NAME="kube-aiops-lifecycle"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/host-deps.sh
+source "${ROOT_DIR}/scripts/host-deps.sh"
 
 PASS=0
 WARN=0
@@ -31,13 +34,21 @@ capture() {
 
 error_detail() { printf '%s' "${ERROR:-exit=${RC}, no error detail}"; }
 
-for command_name in kubectl helm python3; do
+for command_name in kubectl python3; do
   if command -v "$command_name" >/dev/null 2>&1; then
     pass "命令可用: ${command_name}"
   else
     fail "缺少命令: ${command_name}"
   fi
 done
+
+if ((FAIL == 0)); then
+  if host_deps_ensure helm; then
+    pass "命令可用: Helm 3"
+  else
+    fail "无法准备 Helm 3"
+  fi
+fi
 
 if ((FAIL > 0)); then
   log "SUMMARY: pass=${PASS} warn=${WARN} fail=${FAIL}"
@@ -60,7 +71,7 @@ else
   exit 1
 fi
 
-capture helm status "$RELEASE_NAME" -n "$NAMESPACE" -o json
+capture "$HOST_DEPS_HELM" status "$RELEASE_NAME" -n "$NAMESPACE" -o json
 if ((RC == 0)); then
   HELM_SUMMARY="$(python3 -c '
 import json, sys
@@ -76,7 +87,7 @@ else
   fail "Helm Release 查询失败: $(error_detail)"
 fi
 
-capture helm list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
+capture "$HOST_DEPS_HELM" list -n "$NAMESPACE" --all --filter "^${RELEASE_NAME}$" -o json
 if ((RC != 0)); then
   fail "Helm Release 身份查询失败: $(error_detail)"
 elif HELM_CHART="$(python3 -c '
