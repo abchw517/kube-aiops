@@ -2,13 +2,25 @@
 
 ## 启动
 
-在仓库根目录运行，依赖 Go 1.26.5、Node.js 22+、npm、OpenSSL、curl 和 Bash。
+在仓库根目录运行。脚本优先复用可用的 Go（最低 1.26.0）和 Node.js（22 及以上，含 `npm`、`npx`）。缺失、版本过低或工具链损坏时，Linux x86_64 和 arm64 主机会自动下载并校验 Go 1.26.5 和 Node.js 22.19.0 官方二进制包。主机需预先提供 Bash、OpenSSL、curl 和常用系统命令（如 `awk`、`tar`、`sha256sum`）。
 
 ```bash
 make portal-demo
 ```
 
+可先运行 `make portal-deps` 单独检查和准备工具链。工具默认保存在 `$HOME/.local/share/kube-aiops/tools`，可通过 `KUBE_AIOPS_TOOLS_DIR` 指定其他目录。Demo 使用当前进程的 `PATH`，无需修改系统配置。首次构建前端还需访问 npm registry 以取得 `esbuild`，已有 npm 缓存时可复用。
+
 打开 <http://127.0.0.1:4173/#/findings>。按 Ctrl+C 停止。进程退出时会清理临时证书和后端进程。
+
+Portal 默认监听 `127.0.0.1:4173`。可在 `make` 前指定监听地址和端口。需要从其他机器访问时，可让 Portal 监听所有 IPv4 网卡：
+
+```bash
+PORTAL_DEMO_HOST=0.0.0.0 \
+PORTAL_DEMO_PORT=4173 \
+make portal-demo
+```
+
+从其他机器打开 `http://<服务器IP>:4173/#/findings`。Go API 和 HTTPS 样例服务继续监听回环地址，由 Portal 转发 API 请求。
 
 如果端口被占用，可分别指定页面端口和 Go API 端口。
 
@@ -16,7 +28,7 @@ make portal-demo
 make portal-demo PORTAL_DEMO_PORT=4180 PORTAL_DEMO_API_PORT=18083
 ```
 
-页面的 **Demo data** 标识表示当前使用本地样例。浏览器访问真实 Web Portal 和 Go 后端。Kubernetes Result、Events、Prometheus、VictoriaLogs 和 Alertmanager 数据由本地 HTTPS 样例服务提供。服务监听回环地址，运行时无需 kubeconfig、Kubernetes 集群、AI Provider 或监控系统凭据。前端构建沿用仓库现有 npm 工具链。
+页面的 **Demo data** 标识表示当前使用本地样例。浏览器访问真实 Web Portal 和 Go 后端。Kubernetes Result、Events、Prometheus、VictoriaLogs 和 Alertmanager 数据由本地 HTTPS 样例服务提供。运行时无需 kubeconfig、Kubernetes 集群、AI Provider 或监控系统凭据。前端构建沿用仓库现有 npm 工具链。
 
 ## 演示路径
 

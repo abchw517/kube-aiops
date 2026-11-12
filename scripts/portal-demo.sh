@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT_DIR
+readonly WEB_HOST="${PORTAL_DEMO_HOST:-127.0.0.1}"
 readonly WEB_PORT="${PORTAL_DEMO_PORT:-4173}"
 readonly API_PORT="${PORTAL_DEMO_API_PORT:-18082}"
 readonly CHECK_MODE="${1:-}"
@@ -21,9 +22,9 @@ if [[ "$WEB_PORT" == "$API_PORT" ]]; then
   printf 'Portal and API demo ports must differ.\n' >&2
   exit 2
 fi
-for dependency in go node npm openssl curl; do
-  command -v "$dependency" >/dev/null || { printf 'Missing dependency %s\n' "$dependency" >&2; exit 1; }
-done
+# shellcheck source=scripts/host-deps.sh
+source "$ROOT_DIR/scripts/host-deps.sh"
+host_deps_ensure portal
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-portal-demo.XXXXXXXX")"
 backend_pid=""
@@ -47,14 +48,23 @@ trap 'exit 143' TERM
 
 cd "$ROOT_DIR"
 npm --prefix web run build
-go build -o "$work_dir/backend" ./cmd/api
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$work_dir/backend" ./cmd/api
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
   -addext subjectAltName=IP:127.0.0.1 -keyout "$work_dir/key.pem" -out "$work_dir/ca.pem" \
   >"$work_dir/tls.log" 2>&1 || { cat "$work_dir/tls.log" >&2; exit 1; }
 openssl rand -hex 24 >"$work_dir/token"
 
-export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
-node web/demo/server.mjs "$work_dir" "$WEB_PORT" "$API_PORT" >"$work_dir/fixture.log" 2>&1 &
+# Use a concrete address for HTTP requests when the Portal binds a wildcard.
+probe_host="$WEB_HOST"
+case "$WEB_HOST" in
+  0.0.0.0) probe_host=127.0.0.1 ;;
+  ::) probe_host=::1 ;;
+esac
+url_host="$probe_host"
+[[ "$probe_host" != *:* ]] || url_host="[$probe_host]"
+base_url="http://$url_host:$WEB_PORT"
+export NO_PROXY="127.0.0.1,localhost,$probe_host" no_proxy="127.0.0.1,localhost,$probe_host"
+node web/demo/server.mjs "$work_dir" "$WEB_HOST" "$WEB_PORT" "$API_PORT" >"$work_dir/fixture.log" 2>&1 &
 fixture_pid=$!
 for ((attempt=0; attempt<60; attempt++)); do
   if [[ -s "$work_dir/upstream-url" ]]; then break; fi
@@ -79,7 +89,6 @@ SECURITY_MODE=development HTTP_ADDR="127.0.0.1:$API_PORT" READY_TIMEOUT=3s \
   ALERTMANAGER_CLUSTER_LABEL_VALUE='' ALERTMANAGER_BEARER_TOKEN_FILE='' \
   "$work_dir/backend" >"$work_dir/backend.log" 2>&1 &
 backend_pid=$!
-base_url="http://127.0.0.1:$WEB_PORT"
 for ((attempt=0; attempt<60; attempt++)); do
   if ! kill -0 "$backend_pid" "$fixture_pid" 2>/dev/null; then break; fi
   if curl --fail --silent --max-time 1 "$base_url/readyz" >/dev/null; then
@@ -87,7 +96,8 @@ for ((attempt=0; attempt<60; attempt++)); do
       node web/demo/check.mjs "$base_url"
       exit
     fi
-    printf '\nPortal demo ready at %s/#/findings\nPress Ctrl+C to stop.\n' "$base_url"
+    printf '\nPortal demo listening on %s (port %s)\n' "$WEB_HOST" "$WEB_PORT"
+    printf 'Portal demo ready at %s/#/findings\nPress Ctrl+C to stop.\n' "$base_url"
     while kill -0 "$backend_pid" "$fixture_pid" 2>/dev/null; do sleep 1; done
     cat "$work_dir/fixture.log" "$work_dir/backend.log" >&2
     printf 'A demo process stopped.\n' >&2
