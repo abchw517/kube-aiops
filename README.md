@@ -24,7 +24,7 @@ make portal-demo
 
 ## 安装与部署
 
-`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括内网镜像同步、Kind 联调、可观测性配置和生产部署条件。
+`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。
 
 ## 当前支持基线
 
