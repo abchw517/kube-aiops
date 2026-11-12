@@ -70,25 +70,25 @@ make verify
 
 ### 使用内网镜像仓库
 
-将下面三张镜像同步到节点可访问的镜像仓库，并保留原始 digest。`K8SGPT_IMAGE_REGISTRY` 指定 `仓库地址[:端口][/项目路径]`，安装器会在该前缀下使用原镜像名。
+将下面三张镜像同步到节点可访问的镜像仓库，并保留各自的版本标签。`K8SGPT_IMAGE_REGISTRY` 指定 `仓库地址[:端口][/项目路径]`，安装器以 `仓库/镜像:版本` 拉取。
 
 | 镜像 | 默认仓库 | 使用 `harbor.example.com/public` 时 | 单独覆盖的变量 |
 | --- | --- | --- | --- |
-| Operator | `ghcr.io/k8sgpt-ai/k8sgpt-operator` | `harbor.example.com/public/k8sgpt-operator` | `K8SGPT_OPERATOR_IMAGE_REPOSITORY` |
-| RBAC Proxy | `quay.io/brancz/kube-rbac-proxy` | `harbor.example.com/public/kube-rbac-proxy` | `K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY` |
-| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `harbor.example.com/public/k8sgpt` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
+| Operator | `ghcr.io/k8sgpt-ai/k8sgpt-operator` | `harbor.example.com/public/k8sgpt-operator:v0.2.29` | `K8SGPT_OPERATOR_IMAGE_REPOSITORY` |
+| RBAC Proxy | `quay.io/brancz/kube-rbac-proxy` | `harbor.example.com/public/kube-rbac-proxy:v0.19.1` | `K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY` |
+| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `harbor.example.com/public/k8sgpt:v0.4.37` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
 
-在能访问上游仓库和 Harbor 的机器上同步镜像。使用 Skopeo 复制全部架构并校验 digest 保持一致。
+在能访问上游仓库和 Harbor 的机器上同步镜像。以下命令按项目基线 digest 选择上游镜像，并将所有架构复制到 Harbor 的对应版本标签。
 
 ```bash
 mirror=harbor.example.com/public
-skopeo copy --all --preserve-digests \
+skopeo copy --all \
   docker://ghcr.io/k8sgpt-ai/k8sgpt-operator@sha256:82d0adcce816182bbfbef9f1d535db93ab0901f08d45a3a9e572c6e795c5bfa8 \
   "docker://${mirror}/k8sgpt-operator:v0.2.29"
-skopeo copy --all --preserve-digests \
+skopeo copy --all \
   docker://quay.io/brancz/kube-rbac-proxy@sha256:9f21034731c7c3228611b9d40807f3230ce8ed2b286b913bf2d1e760d8d866fc \
   "docker://${mirror}/kube-rbac-proxy:v0.19.1"
-skopeo copy --all --preserve-digests \
+skopeo copy --all \
   docker://ghcr.io/k8sgpt-ai/k8sgpt@sha256:ebf0d1f5a8463190abdf1a9c84282cfbd9ce611e3dc1c490194b7aaf2676d088 \
   "docker://${mirror}/k8sgpt:v0.4.37"
 ```
@@ -100,7 +100,7 @@ K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
 make verify
 ```
 
-单镜像变量接收完整的 `仓库地址/项目/镜像名`，优先于统一前缀。变量值无需 `https://`、标签或 digest，安装器会追加基线版本和 digest。升级或重跑时继续传入相同变量。安装日志会显示三张镜像的完整引用。需要认证的 Harbor 项目应提前配置集群的镜像拉取凭据。Chart 仍由安装主机从 `charts.k8sgpt.ai` 下载并校验。
+单镜像变量接收 `仓库地址/项目/镜像名`，优先于统一前缀。安装器为覆盖的镜像追加基线版本标签，默认上游镜像继续按基线 digest 拉取。升级或重跑时继续传入相同变量。安装日志会显示三张镜像的完整引用。需要认证的 Harbor 项目应提前配置集群的镜像拉取凭据。Chart 仍由安装主机从 `charts.k8sgpt.ai` 下载并校验。
 
 ### 验证部署
 
