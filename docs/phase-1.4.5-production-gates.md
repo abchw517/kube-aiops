@@ -305,19 +305,18 @@ Includes:
 
 - full repository/PR-range Gitleaks enforcement
 
-### `Kubernetes v1.36 Kind E2E`
+### Existing Kubernetes test cluster
 
 - Kubernetes `v1.36.4` baseline validation
 - lifecycle / rollback / concurrency / trusted uninstall
 - Phase 1.2 readonly API E2E
 
-The Required Check names are governance contracts and must stay exactly:
+The repository CI jobs are:
 
 1. `Preflight / Lint / RBAC`
 2. `Secret Scan`
-3. `Kubernetes v1.36 Kind E2E`
 
-Do not rename them without an explicit GitHub ruleset migration.
+Run live-cluster checks using the [deployment guide](install-deployment.md#验证部署).
 
 ## Production-Gate Test Artifacts
 
@@ -404,11 +403,11 @@ Phase 1.4.5 is complete only when:
 - browser 401/403/XSS regressions are green
 - API Contract / generated-client drift gates are green
 - Secret Scan is green without security-test bypasses
-- Kubernetes v1.36 Kind E2E is green
+- Kubernetes v1.36 live-cluster checks are green
 - no Kubernetes privilege expansion occurs
-- implementation PR passes all three Required Checks
+- implementation PR passes the required CI checks
 - implementation is merged to `main`
-- resulting `main` passes all three Required Checks
+- resulting `main` passes the required CI checks
 
 Only after these conditions are satisfied may **Phase 1.4 as a whole be marked Completed**.
 

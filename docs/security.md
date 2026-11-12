@@ -191,9 +191,9 @@ Required regressions continue to include:
 - API Contract Gate and generated client drift
 - Secret Scan/Gitleaks
 - production Docker fail-closed startup
-- Kubernetes v1.36 Kind baseline
+- Kubernetes v1.36 schema and API baseline
 - Secret and `pods/log` denial
 - create/update/patch/delete/deletecollection denial
-- lifecycle/rollback/concurrency/trusted-uninstall E2E
+- lifecycle, rollback, concurrency and trusted-uninstall checks in an existing test cluster
 
-Phase 2 adds source query-budget, partial-failure, correlation scope and observability-data leakage tests without weakening the existing Required Check identities.
+Phase 2 adds tests for source query budgets, partial failure, correlation scope and observability-data leakage. See the [deployment guide](install-deployment.md#验证部署) for live-cluster checks.

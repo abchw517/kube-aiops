@@ -24,13 +24,12 @@ make portal-demo
 
 ## 安装与部署
 
-`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括内网镜像同步、Kind 联调、可观测性配置和生产部署条件。
+`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。
 
 ## 当前支持基线
 
 ```text
 Kubernetes:       v1.36.4
-Kind:             v0.33.0
 kubectl:          v1.36.4
 Go language:      1.26.0
 Go toolchain:     1.26.5
@@ -44,7 +43,7 @@ K8sGPT Engine:    v0.4.37
 config/platform-versions.env
 ```
 
-Kubernetes、K8sGPT Engine、K8sGPT Operator 等运行时镜像使用 `tag@sha256`
+K8sGPT Engine、Operator 等默认上游运行时镜像使用 `tag@sha256`
 不可变引用；GitHub Actions 使用完整 commit SHA 固定。平台基线一致性由
 `tests/platform-baseline-test.py` 强制校验。
 
@@ -107,17 +106,13 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   └── k8sgpt/
 ├── web/
 ├── tests/
-│   ├── platform-baseline-test.py
-│   ├── kubernetes-v1.36-smoke.sh
-│   ├── e2e-kind.sh
-│   └── e2e-api-kind.sh
+│   └── platform-baseline-test.py
 ├── docs/
 │   ├── kubernetes-v1.36-baseline.md
 │   ├── architecture.md
 │   └── security.md
 └── .github/workflows/
-    ├── ci.yml
-    └── provider-e2e.yml
+    └── ci.yml
 ```
 
 # 快速开始
@@ -148,30 +143,13 @@ Preflight 包括：
 - Kubernetes v1.36 平台版本一致性检查；
 - Secret / Pod Logs / write verbs 等安全控制回归测试。
 
-需要真实验证 Kubernetes v1.36.4 API Server 时：
+在目标集群确认当前 kubeconfig、API Server 版本、节点状态和 API discovery。
 
 ```bash
-make platform-smoke
-```
-
-该命令会创建临时 Kind 集群并精确验证：
-
-```text
-Kind CLI    = v0.33.0
-kubectl     = v1.36.4
-API Server  = v1.36.4
-kubelet     = v1.36.4
-```
-
-同时探测 kube-aiops 依赖的 stable API：
-
-```text
-/api/v1
-/apis/apps/v1
-/apis/rbac.authorization.k8s.io/v1
-/apis/batch/v1
-/apis/networking.k8s.io/v1
-/apis/autoscaling/v2
+kubectl config current-context
+kubectl version
+kubectl get nodes
+kubectl api-versions
 ```
 
 ## 1. 创建 AI Provider Secret
@@ -354,42 +332,9 @@ PURGE_DEMO=true make uninstall
 
 CRD 默认不自动删除，避免误伤其它实例或后续重新安装。
 
-# Kubernetes v1.36 Kind E2E
+# 目标集群验收
 
-```bash
-make e2e
-```
-
-支持命令会从 `config/platform-versions.env` 注入固定基线：
-
-```text
-Kind:       v0.33.0
-kubectl:    v1.36.4
-Node image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
-```
-
-Required E2E 在生命周期测试前先执行精确版本/API smoke，然后继续验证：
-
-- 前置条件失败时零 Helm 变更；
-- 外部/伪造身份同名 RBAC 拒绝接管；
-- legacy 指纹迁移；
-- 同名外部 Helm Release 拒绝操作；
-- 首次安装与重复安装幂等；
-- Helm 后置故障 rollback；
-- rollback 二次失败取证状态保留；
-- Lease heartbeat / fencing / CAS；
-- Forbidden 查询不得假成功；
-- trusted uninstall；
-- 只读 API 和 Kubernetes Events 证据关联 E2E。
-
-真实 Provider 功能 E2E 使用同一 Kubernetes v1.36.4 基线，通过手工工作流执行：
-
-```bash
-export OPENAI_TOKEN='restricted-test-token'
-make e2e-provider
-```
-
-GitHub Environment：`phase-1.1-functional`；Secret：`OPENAI_E2E_TOKEN`。
+按安装部署指南检查 Operator、Engine 和 Result，再验证 Portal 能读取目标集群的诊断。需要验证真实 Provider 时，在现有测试集群检查分析健康及本次新鲜 Result。完整命令见 [安装部署指南](docs/install-deployment.md#验证部署)。
 
 # Phase 1.2 Portal Backend
 
@@ -467,7 +412,6 @@ Required Checks：
 ```text
 Preflight / Lint / RBAC
 Secret Scan
-Kubernetes v1.36 Kind E2E
 ```
 
 其中：
@@ -487,22 +431,14 @@ Preflight / Lint / RBAC
 
 Secret Scan
 └── Gitleaks full history
-
-Kubernetes v1.36 Kind E2E
-├── Kind v0.33.0 / kubectl v1.36.4
-├── API Server / kubelet exact v1.36.4 smoke
-├── stable API discovery
-├── lifecycle / rollback / concurrency / trusted uninstall
-└── 只读 API 与 Kubernetes Events 证据关联 E2E
 ```
 
 安全设计：
 
 - Workflow 默认仅 `contents: read`；
 - 第三方 GitHub Actions 固定到完整 commit SHA；
-- Kind node / K8sGPT runtime 镜像固定 sha256 digest；
+- K8sGPT 默认上游运行时镜像固定 sha256 digest；
 - Checkout 完整历史用于 Gitleaks；
-- Provider E2E 仅 `main` 可请求 Environment Secret；
 - AI Secret 通过 stdin 创建，不进入 `kubectl` argv；
 - RBAC 出现 `*`、Secret、Pod Logs、危险写 verbs、外部 RoleRef 或宽泛 Group 时 CI 失败；
 - 不通过 allow-failure 或放宽 Ruleset 绕过平台升级失败。
@@ -512,7 +448,6 @@ Kubernetes v1.36 Kind E2E
 ```text
 Preflight / Lint / RBAC
 Secret Scan
-Kubernetes v1.36 Kind E2E
 ```
 
 # RBAC Hardening
@@ -558,7 +493,6 @@ app.kubernetes.io/instance=k8sgpt-operator
 ```bash
 make help
 make platform-check
-make platform-smoke
 make preflight
 make bootstrap-secret
 make install
@@ -568,8 +502,6 @@ make clean-demo
 make status
 make results
 make uninstall
-make e2e
-make e2e-provider
 make api-contract-check
 make portal-demo
 make portal-demo-check

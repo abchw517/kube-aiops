@@ -4,16 +4,15 @@ API_BINARY ?= $(BUILD_DIR)/kube-aiops-api
 KUBE_AIOPS_TOOLS_DIR ?= $(HOME)/.local/share/kube-aiops/tools
 export KUBE_AIOPS_TOOLS_DIR
 
-.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall e2e e2e-provider platform-check platform-smoke api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e portal-deps cluster-deps portal-demo portal-demo-check
+.PHONY: help preflight bootstrap bootstrap-secret install verify demo clean-demo status results uninstall platform-check api-fmt-check api-test api-build api-run api-contract-validate api-client-generate api-client-drift-check api-contract-check web-lint web-typecheck web-test web-build web-check web-docker-smoke web-e2e portal-deps cluster-deps portal-demo portal-demo-check
 
 verify demo clean-demo status results uninstall: export PATH := $(PATH):$(KUBE_AIOPS_TOOLS_DIR)/bin
 
 help:
 	@echo "kube-aiops"
 	@echo
-	@echo "Platform baseline: Kubernetes v1.36.4 / Kind v0.33.0 / Go 1.26.5"
-	@echo "  make platform-check  校验 Kubernetes/Kind/Go/K8sGPT/CI 基线一致性"
-	@echo "  make platform-smoke  创建临时 Kind 集群并验证 Kubernetes v1.36 API Server"
+	@echo "Platform baseline: Kubernetes v1.36.4 / Go 1.26.5"
+	@echo "  make platform-check  校验 Kubernetes/Go/K8sGPT/CI 基线一致性"
 	@echo
 	@echo "Phase 1.1 K8sGPT Engine:"
 	@echo "  make preflight     执行 Shell/YAML/Secret/RBAC/Kubernetes Schema 静态检查"
@@ -27,7 +26,6 @@ help:
 	@echo "  make status        查看 Phase 1.1 关键资源状态"
 	@echo "  make results       查看 K8sGPT Result CR"
 	@echo "  make uninstall     卸载 Phase 1.1，默认保留 Secret、Namespace 和 CRD"
-	@echo "  make e2e-provider  使用受限 OPENAI_TOKEN 执行严格 Provider 功能 E2E"
 	@echo
 	@echo "Phase 1.2 Portal Backend:"
 	@echo "  make api-fmt-check          检查 Go 代码格式"
@@ -67,9 +65,6 @@ preflight:
 
 platform-check:
 	@python3 tests/platform-baseline-test.py
-
-platform-smoke:
-	@bash ./tests/kubernetes-v1.36-smoke.sh
 
 bootstrap:
 	@set -Eeuo pipefail; source ./scripts/host-deps.sh; host_deps_ensure kubectl; \
@@ -115,12 +110,6 @@ results:
 
 uninstall:
 	@PURGE_SECRET="$${PURGE_SECRET:-false}" PURGE_NAMESPACE="$${PURGE_NAMESPACE:-false}" PURGE_DEMO="$${PURGE_DEMO:-false}" bash ./uninstall.sh
-
-e2e:
-	@set -a; source ./config/platform-versions.env; set +a; bash ./tests/e2e-kind.sh
-
-e2e-provider:
-	@set -a; source ./config/platform-versions.env; set +a; bash ./tests/e2e-provider-kind.sh
 
 api-fmt-check:
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -d cmd internal; exit 1; }
