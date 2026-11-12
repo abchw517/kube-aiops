@@ -57,6 +57,7 @@ help:
 	@echo "  K8SGPT_IMAGE_REGISTRY=harbor.example.com/public  # Operator、Proxy、Engine 的镜像仓库前缀"
 	@echo "  K8SGPT_OPERATOR_CPU_REQUEST / K8SGPT_OPERATOR_MEMORY_REQUEST   # Operator manager 资源 requests"
 	@echo "  K8SGPT_OPERATOR_CPU_LIMIT / K8SGPT_OPERATOR_MEMORY_LIMIT       # Operator manager 资源 limits"
+	@echo "  K8SGPT_AI_MODEL / K8SGPT_AI_BASE_URL / K8SGPT_AI_LANGUAGE    # Engine 模型、端点和诊断语言"
 	@echo "  STRICT_RESULTS=true  # verify 时要求当前实例的新鲜 Result"
 	@echo "  PURGE_SECRET=true    # uninstall 时同时删除 AI Secret"
 	@echo "  PURGE_NAMESPACE=true # uninstall 时同时删除 Namespace"

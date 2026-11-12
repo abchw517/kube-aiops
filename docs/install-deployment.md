@@ -52,7 +52,7 @@ PORTAL_DEMO_HOST=0.0.0.0 PORTAL_DEMO_PORT=4173 make portal-demo
 
 ## 2. 安装 K8sGPT
 
-以下命令使用当前 kubectl context。先核对目标集群，再创建 Provider Secret。仓库默认的 `K8sGPT` CR 使用 OpenAI、`gpt-4o-mini` 和 5 分钟分析周期。Provider 需要与部署的 CR 匹配。
+以下命令使用当前 kubectl context。先核对目标集群，再创建 Provider Secret。默认使用 OpenAI、`gpt-4o-mini` 和 5 分钟分析周期。使用其他 OpenAI 兼容端点时，先参考 [配置 Engine 模型与语言](#配置-engine-模型与语言)。
 
 ```bash
 kubectl config current-context
@@ -126,6 +126,39 @@ make install
 ```bash
 kubectl -n k8sgpt-operator-system get deployment -l app.kubernetes.io/name=k8sgpt-operator \
   -o jsonpath='{range .items[*].spec.template.spec.containers[?(@.name=="manager")]}{.resources}{"\n"}{end}'
+```
+
+### 配置 Engine 模型与语言
+
+以下参数适用于首次安装和升级，可与内网镜像仓库、Operator 资源参数同时使用。
+
+| 变量 | K8sGPT CR 字段 | 默认值 |
+| --- | --- | --- |
+| `K8SGPT_AI_MODEL` | `spec.ai.model` | `gpt-4o-mini` |
+| `K8SGPT_AI_BASE_URL` | `spec.ai.baseUrl` | 由 OpenAI backend 选择默认端点 |
+| `K8SGPT_AI_LANGUAGE` | `spec.ai.language` | `english` |
+
+以智谱的 OpenAI 兼容端点为例，使用模型 `glm-5.2` 和中文诊断。Base URL 填 API 根路径。首次安装或切换 Provider 时，用对应 Provider 的 API Key 创建或更新 `k8sgpt-openai-secret`。下面的 `OPENAI_TOKEN` 是安装命令用于读取凭据的变量名。[智谱 OpenAI 兼容文档](https://docs.bigmodel.cn/cn/guide/develop/openai/introduction)
+
+```bash
+export K8SGPT_AI_MODEL=glm-5.2
+export K8SGPT_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+export K8SGPT_AI_LANGUAGE=Chinese
+
+read -rsp 'Provider API key: ' OPENAI_TOKEN
+printf '\n'
+(export OPENAI_TOKEN; make bootstrap-secret)
+unset OPENAI_TOKEN
+
+K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
+make verify
+```
+
+Engine 继续使用 `openai` backend，需能访问配置的端点。仓库的 Engine 出站策略允许 DNS 以及 TCP 443、6443；使用其他端口时需按实际 Provider 配置出站策略。升级时复用这些变量。`make verify` 会核对当前会话中指定的模型、Base URL 和语言是否已写入 CR，实际调用与结果生成在目标集群中验收。
+
+```bash
+kubectl -n k8sgpt-operator-system get k8sgpt k8sgpt-engine \
+  -o jsonpath='{.spec.ai.backend}{"\t"}{.spec.ai.model}{"\t"}{.spec.ai.baseUrl}{"\t"}{.spec.ai.language}{"\n"}'
 ```
 
 ### 验证部署
@@ -372,7 +405,7 @@ printf '%s\n' "$api_image" "$web_image"
 
 ### 4. 安装并验收 K8sGPT
 
-按 [使用内网镜像仓库](#使用内网镜像仓库) 同步 Operator、RBAC Proxy 和 Engine 的版本标签。下例使用内网仓库，`1Gi` 为 Operator `manager` 内存上限的示例，生产值按实际负载确定。升级继续传入已批准的镜像和资源参数，详见 [调整 Operator 资源](#调整-operator-资源)。
+按 [使用内网镜像仓库](#使用内网镜像仓库) 同步 Operator、RBAC Proxy 和 Engine 的版本标签。下例使用内网仓库，`1Gi` 为 Operator `manager` 内存上限的示例，生产值按实际负载确定。需要自定义模型或语言时，先设置 [Engine AI 变量](#配置-engine-模型与语言)，并确认 Secret 对应目标 Provider。升级时继续传入已批准的镜像和资源参数，详见 [调整 Operator 资源](#调整-operator-资源)。
 
 ```bash
 test "$(kubectl config current-context)" = "$target_context"

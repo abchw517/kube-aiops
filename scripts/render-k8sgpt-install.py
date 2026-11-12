@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render install inputs with optional image and Operator resource overrides."""
+"""Render install inputs with optional image, Operator resource and Engine AI overrides."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import re
 import sys
 from decimal import Decimal, DecimalException
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -64,6 +65,30 @@ def configure_operator_resources(resources: dict) -> None:
         resources["limits"][resource] = limit
 
 
+def configure_engine_ai(ai: dict) -> None:
+    for variable, field in (
+        ("K8SGPT_AI_MODEL", "model"),
+        ("K8SGPT_AI_BASE_URL", "baseUrl"),
+        ("K8SGPT_AI_LANGUAGE", "language"),
+    ):
+        value = os.environ.get(variable)
+        if not value:
+            continue
+        if value != value.strip() or not value.isprintable():
+            raise ValueError(f"{variable} 必须是有效的单行字符串")
+        if field == "baseUrl":
+            try:
+                url = urlsplit(value)
+                valid = (url.scheme in {"http", "https"} and url.hostname
+                         and url.username is None and url.port != 0
+                         and not any(c.isspace() or c in "?#\\" for c in value))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError(f"{variable} 必须是 HTTP(S) Base URL，凭据请通过 Secret 提供")
+        ai[field] = value
+
+
 def render(output_dir: Path) -> None:
     prefix = os.environ.get("K8SGPT_IMAGE_REGISTRY", "")
     if prefix:
@@ -73,6 +98,7 @@ def render(output_dir: Path) -> None:
     engine_file = "k8sgpt.yaml"
     values = yaml.safe_load((DEPLOY_DIR / values_file).read_text(encoding="utf-8"))
     engine = yaml.safe_load((DEPLOY_DIR / engine_file).read_text(encoding="utf-8"))
+    configure_engine_ai(engine["spec"]["ai"])
     manager = values["controllerManager"]
     resources = manager["manager"]["resources"]
     configure_operator_resources(resources)

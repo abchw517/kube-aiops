@@ -352,6 +352,32 @@ def test_install_operator_resources_only_override_the_manager() -> None:
             assert error in result.stderr
 
 
+def test_install_engine_ai_overrides() -> None:
+    env = {name: value for name, value in os.environ.items() if not name.startswith("K8SGPT_")}
+    source = ROOT / "deploy/k8sgpt/k8sgpt.yaml"
+    with tempfile.TemporaryDirectory() as temporary:
+        command = [sys.executable, str(ROOT / "scripts/render-k8sgpt-install.py"), temporary]
+        output = pathlib.Path(temporary) / "k8sgpt.yaml"
+        expected = yaml.safe_load(source.read_text())
+        subprocess.run(command, env={**env, "K8SGPT_AI_LANGUAGE": "Chinese"}, capture_output=True, check=True)
+        expected["spec"]["ai"]["language"] = "Chinese"
+        assert yaml.safe_load(output.read_text()) == expected
+
+        subprocess.run(command, env={
+            **env,
+            "K8SGPT_AI_MODEL": "glm-5.2",
+            "K8SGPT_AI_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
+            "K8SGPT_AI_LANGUAGE": "Chinese",
+        }, capture_output=True, check=True)
+        expected["spec"]["ai"].update(model="glm-5.2", baseUrl="https://open.bigmodel.cn/api/paas/v4")
+        assert yaml.safe_load(output.read_text()) == expected
+
+        for value in ("file:///tmp/provider", "https://user:private@example.com/v1", "https://example.com/v1?key=private"):
+            result = subprocess.run(command, env={**env, "K8SGPT_AI_BASE_URL": value}, text=True, capture_output=True, check=False)
+            assert result.returncode != 0
+            assert "K8SGPT_AI_BASE_URL" in result.stderr and "private" not in result.stderr
+
+
 def main() -> int:
     tests = [value for name, value in globals().items() if name.startswith("test_")]
     failures = []
