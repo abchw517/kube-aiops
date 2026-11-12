@@ -36,6 +36,18 @@ log_file="$(run_expect 0 healthy verify.sh)"
 [[ "$(<"${TEST_DIR}/verify.sh-healthy.count")" == "1" ]]
 grep -q 'SUMMARY:.*fail=0' "$log_file"
 
+(
+  export K8SGPT_AI_MODEL=glm-5.2 K8SGPT_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4 K8SGPT_AI_LANGUAGE=Chinese
+  log_file="$(run_expect 0 engine_ai verify.sh)"
+  grep -q 'AI model 与 K8SGPT_AI_MODEL 一致' "$log_file"
+  grep -q 'AI baseUrl 与 K8SGPT_AI_BASE_URL 一致' "$log_file"
+  grep -q 'AI language 与 K8SGPT_AI_LANGUAGE 一致' "$log_file"
+
+  export K8SGPT_AI_LANGUAGE=English
+  log_file="$(run_expect 1 engine_ai_drift verify.sh)"
+  grep -q 'AI language 与 K8SGPT_AI_LANGUAGE 不一致' "$log_file"
+)
+
 log_file="$(run_expect 1 operator_partial verify.sh)"
 grep -q 'Operator Deployment 未完全 Ready:.*ready=1/2' "$log_file"
 

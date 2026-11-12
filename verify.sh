@@ -326,6 +326,17 @@ if [[ "$QUERY_STATE" == "present" ]]; then
   if [[ "$AI_ENABLED" == "true" ]]; then pass "AI enabled=true"; else fail "AI enabled 非预期: ${AI_ENABLED:-unset}"; fi
   if [[ "$ANONYMIZED" == "true" ]]; then pass "AI anonymized=true"; else fail "AI anonymized 未开启，当前值: ${ANONYMIZED:-unset}"; fi
   if [[ "$BACKEND" == "openai" ]]; then pass "AI backend=openai"; else fail "AI backend 非预期: ${BACKEND:-unset}"; fi
+  for binding in K8SGPT_AI_MODEL:model K8SGPT_AI_BASE_URL:baseUrl K8SGPT_AI_LANGUAGE:language; do
+    variable="${binding%%:*}"
+    expected="${!variable:-}"
+    [[ -n "$expected" ]] || continue
+    field="${binding#*:}"
+    if actual_ai_value="$(json_value "$K8SGPT_JSON" "spec.ai.$field")" && [[ "$actual_ai_value" == "$expected" ]]; then
+      pass "AI ${field} 与 ${variable} 一致"
+    else
+      fail "AI ${field} 与 ${variable} 不一致"
+    fi
+  done
   if [[ "$INTERVAL" == "$EXPECTED_ANALYSIS_INTERVAL" ]]; then pass "Analysis interval=${EXPECTED_ANALYSIS_INTERVAL}"; else fail "Analysis interval 非预期: ${INTERVAL:-unset}，期望 ${EXPECTED_ANALYSIS_INTERVAL}"; fi
   if [[ "${SECRET_NAME_ACTUAL}/${SECRET_KEY_ACTUAL}" == "${SECRET_NAME}/openai-api-key" ]]; then pass "AI Secret 引用正确"; else fail "AI Secret 引用非预期: ${SECRET_NAME_ACTUAL:-unset}/${SECRET_KEY_ACTUAL:-unset}"; fi
   if [[ " ${FILTERS} " == *" Log "* ]]; then fail "Log Analyzer 意外启用"; else pass "Log Analyzer 未启用"; fi

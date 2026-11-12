@@ -154,7 +154,11 @@ if [[ "$resource" == "k8sgpt" ]]; then
       exit 88
     fi
   fi
-  printf '%s\n' '{"apiVersion":"core.k8sgpt.ai/v1alpha1","kind":"K8sGPT","metadata":{"name":"k8sgpt-engine"},"spec":{"ai":{"enabled":true,"anonymized":true,"backend":"openai","secret":{"name":"k8sgpt-openai-secret","key":"openai-api-key"},"autoRemediation":{"enabled":false}},"analysis":{"interval":"5m"},"filters":["Pod","Deployment","PersistentVolumeClaim"]},"status":{"lastAnalysisError":""}}'
+  ai_fields=""
+  if [[ "$mode" == engine_ai* ]]; then
+    ai_fields='"model":"glm-5.2","baseUrl":"https://open.bigmodel.cn/api/paas/v4","language":"Chinese",'
+  fi
+  printf '{"apiVersion":"core.k8sgpt.ai/v1alpha1","kind":"K8sGPT","metadata":{"name":"k8sgpt-engine"},"spec":{"ai":{"enabled":true,"anonymized":true,"backend":"openai",%s"secret":{"name":"k8sgpt-openai-secret","key":"openai-api-key"},"autoRemediation":{"enabled":false}},"analysis":{"interval":"5m"},"filters":["Pod","Deployment","PersistentVolumeClaim"]},"status":{"lastAnalysisError":""}}\n' "$ai_fields"
   exit 0
 fi
 if [[ "$resource" == "deployment" && " $* " == *" -l app.kubernetes.io/name=k8sgpt-operator "* ]]; then
