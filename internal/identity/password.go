@@ -82,30 +82,11 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 	if cfg.Validate() != nil {
 		return Principal{}, ErrAuthenticationUnavailable
 	}
-	endpoint, _ := url.Parse(cfg.URL)
-	port := endpoint.Port()
-	if port == "" {
-		port = "636"
-	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	if cfg.TLSConfig != nil {
-		tlsConfig = cfg.TLSConfig.Clone()
-		tlsConfig.MinVersion = max(tlsConfig.MinVersion, tls.VersionTLS12)
-	}
-	tlsConfig.ServerName = endpoint.Hostname()
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	dialer := tls.Dialer{Config: tlsConfig}
-	socket, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(endpoint.Hostname(), port))
+	conn, closeConnection, err := dialLDAP(ctx, cfg)
 	if err != nil {
 		return Principal{}, ErrAuthenticationUnavailable
 	}
-	stop := context.AfterFunc(ctx, func() { _ = socket.Close() })
-	defer stop()
-	conn := ldap.NewConn(socket, true)
-	conn.Start()
-	defer conn.Close()
-	conn.SetTimeout(5 * time.Second)
+	defer closeConnection()
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
 		return Principal{}, ErrAuthenticationUnavailable
 	}
@@ -203,4 +184,54 @@ func ldapGroups(conn *ldap.Conn, entry *ldap.Entry, attr string) ([]string, erro
 		}
 		entry = result.Entries[0]
 	}
+}
+
+func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
+	endpoint, _ := url.Parse(cfg.URL)
+	port := endpoint.Port()
+	if port == "" {
+		port = "636"
+	}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if cfg.TLSConfig != nil {
+		tlsConfig = cfg.TLSConfig.Clone()
+		tlsConfig.MinVersion = max(tlsConfig.MinVersion, tls.VersionTLS12)
+	}
+	tlsConfig.ServerName = endpoint.Hostname()
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+
+	dialer := tls.Dialer{Config: tlsConfig}
+	socket, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(endpoint.Hostname(), port))
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = socket.Close() })
+
+	conn := ldap.NewConn(socket, true)
+	conn.Start()
+
+	conn.SetTimeout(5 * time.Second)
+	return conn, func() { stop(); conn.Close(); cancel() }, nil
+}
+
+// TestLDAP checks TLS, service-account bind and base DN search without writing settings.
+func TestLDAP(ctx context.Context, cfg LDAPConfig) string {
+	if cfg.Validate() != nil {
+		return "configuration"
+	}
+	conn, closeConnection, err := dialLDAP(ctx, cfg)
+	if err != nil {
+		return "connection"
+	}
+	defer closeConnection()
+	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
+		return "bind"
+	}
+	result, err := conn.Search(ldap.NewSearchRequest(cfg.BaseDN, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
+		1, 5, false, "(objectClass=*)", []string{"1.1"}, nil))
+	if err != nil || len(result.Entries) != 1 {
+		return "search"
+	}
+	return ""
 }
