@@ -11,12 +11,26 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
+	"github.com/abchw517/kube-aiops/internal/identitystore"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 	"github.com/abchw517/kube-aiops/internal/security"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "identity-import" {
+			logger.Error("usage: kube-aiops-api [identity-import]")
+			os.Exit(2)
+		}
+		if err := importIdentity(); err != nil {
+			logger.Error("identity import failed", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("identity import complete")
+		return
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -40,7 +54,16 @@ func main() {
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
 	if cfg.SecurityMode == security.ModeProduction {
-		sessions, err := configureIdentity(&bundle)
+		var store *identitystore.Store
+		if path := os.Getenv("AUTH_SQLITE_PATH"); path != "" {
+			store, err = identitystore.Open(path)
+			if err != nil {
+				logger.Error("cannot open identity database", "reason", "identity_database_unavailable")
+				os.Exit(1)
+			}
+			defer store.Close()
+		}
+		sessions, err := configureIdentity(&bundle, store)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)

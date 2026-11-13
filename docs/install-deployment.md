@@ -505,7 +505,18 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-identity \
   --from-file=policy.json=/secure/policy.json
 ```
 
-4. 将以下配置合并到 API Deployment。按环境修改域名。密码或策略变更后重启 API。
+4. 创建 SQLite PVC，用同一版本的 API 镜像运行一次导入 Job。示例采用集群默认 StorageClass。私有仓库在 Job 和 Deployment 的 Pod 清单中配置对应的 `imagePullSecrets`。
+
+```bash
+kubectl apply -f deploy/examples/identity/pvc.yaml
+kubectl set image --local -f deploy/examples/identity/import-job.yaml \
+  "import=$api_image" -o yaml > "$release_dir/identity-import.yaml"
+kubectl apply -f "$release_dir/identity-import.yaml"
+kubectl -n kube-aiops-system wait --for=condition=complete job/kube-aiops-identity-import --timeout=180s
+kubectl -n kube-aiops-system logs job/kube-aiops-identity-import
+```
+
+将以下配置合并到 API Deployment 的 `spec`。按环境修改域名。导入用的 JSON Secret 只挂到 Job。
 
 ```yaml
 spec:
@@ -514,24 +525,29 @@ spec:
     type: Recreate
   template:
     spec:
+      securityContext:
+        fsGroup: 65532
       containers:
         - name: api
           env:
             - name: AUTH_ORIGIN
               value: https://kube-aiops.example.com
-            - name: AUTH_LOCAL_ACCOUNTS_FILE
-              value: /etc/kube-aiops/identity/accounts.json
-            - name: AUTH_POLICY_FILE
-              value: /etc/kube-aiops/identity/policy.json
+            - name: AUTH_SQLITE_PATH
+              value: /var/lib/kube-aiops/identity.db
           volumeMounts:
-            - name: identity
-              mountPath: /etc/kube-aiops/identity
-              readOnly: true
+            - name: identity-db
+              mountPath: /var/lib/kube-aiops
       volumes:
-        - name: identity
-          secret:
-            secretName: kube-aiops-identity
+        - name: identity-db
+          persistentVolumeClaim:
+            claimName: kube-aiops-identity
 ```
+
+SQLite 保存本地账号的 bcrypt 散列、授权策略，以及 LDAP 验证成功后的用户 DN、登录名、组和最近登录时间。LDAP 登录继续实时校验域控，服务账号密码继续通过 Secret 提供。会话仍保存在进程内。
+
+更新账号或策略时，先备份 PVC，再更新导入用 Secret，删除上一次导入 Job 并重新应用导入清单。使用 `ReadWriteOnce` 卷时，可先将 API 缩容到 0，导入成功后恢复 1 副本。导入事务整体更新策略和指定的账号列表。省略 `AUTH_LOCAL_ACCOUNTS_FILE` 时保留已有本地账号，提供空数组 `[]` 时清空本地账号。API 启动时从 SQLite 加载策略，修改后需重启 API。
+
+现有部署可继续使用 JSON 挂载，直到完成导入并设置 `AUTH_SQLITE_PATH`。启用该路径后，API 从数据库读取本地账号和策略。也可在集群外通过 `AUTH_SQLITE_PATH=/secure/identity.db AUTH_LOCAL_ACCOUNTS_FILE=/secure/accounts.json AUTH_POLICY_FILE=/secure/policy.json ./kube-aiops-api identity-import` 导入。
 
 5. 使用 AD 时，准备只读查询账号密码和签发域控证书的 CA。确认 API NetworkPolicy 放行域控 636 端口，并将 CA 对应的域名用于 LDAPS 地址。
 
@@ -575,7 +591,7 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
     secretName: kube-aiops-ldap
 ```
 
-只启用 LDAP 时，创建身份 Secret 时仅加入 `policy.json`，并省略 `AUTH_LOCAL_ACCOUNTS_FILE`。未配置认证或策略时，生产 API 会拒绝启动。
+首次部署且只启用 LDAP 时，身份 Secret 只需加入 `policy.json`，并从导入 Job 删除 `AUTH_LOCAL_ACCOUNTS_FILE`。未配置认证或策略时，生产 API 会拒绝启动。
 
 部署后访问 HTTPS Portal，分别用本地账号和 AD 测试账号登录。检查授权账号可以查看对应命名空间的诊断和证据，未授权账号登录后看到无访问权限，退出后刷新页面仍需重新登录。用 AD 测试账号验证直接组映射和域控证书。
 
