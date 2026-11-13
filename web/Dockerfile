@@ -1,4 +1,4 @@
-FROM node:22.19.0-alpine3.22 AS builder
+FROM mharbor-cs.cloud.kemai.cn/public/node:22.19.0-alpine3.22 AS builder
 
 WORKDIR /src
 COPY web/package.json web/package.json
@@ -11,7 +11,7 @@ COPY clients/typescript/generated.ts clients/typescript/generated.ts
 WORKDIR /src/web
 RUN npm run build
 
-FROM nginx:1.29.1-alpine3.22
+FROM mharbor-cs.cloud.kemai.cn/public/nginx:1.29.1-alpine3.22
 
 COPY web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder --chown=101:101 /src/web/dist /usr/share/nginx/html
