@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -51,21 +52,64 @@ type LDAPConfig struct {
 	BindDN       string
 	BindPassword string
 	UserFilter   string // Exactly one %s placeholder, escaped as an LDAP filter value.
+	UserUID      string
+	SearchScope  string
 	GroupAttr    string
 	TLSConfig    *tls.Config
 }
 
+var ldapAttribute = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+
+func (cfg LDAPConfig) filterTemplate() string {
+	filter := strings.TrimSpace(cfg.UserFilter)
+	if cfg.UserUID != "" {
+		uid := "(" + cfg.UserUID + "=%s)"
+		if filter == "" {
+			return uid
+		}
+		if !strings.HasPrefix(filter, "(") {
+			filter = "(" + filter + ")"
+		}
+		return "(&" + uid + filter + ")"
+	}
+	if ldapAttribute.MatchString(filter) {
+		return "(" + filter + "=%s)"
+	}
+	return filter
+}
+
 func (cfg LDAPConfig) Validate() error {
 	endpoint, err := url.Parse(cfg.URL)
-	if err != nil || endpoint.Scheme != "ldaps" || endpoint.Hostname() == "" ||
-		endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" ||
-		cfg.BaseDN == "" || cfg.BindDN == "" || cfg.BindPassword == "" ||
-		strings.Count(cfg.UserFilter, "%s") != 1 || strings.Count(cfg.UserFilter, "%") != 1 ||
-		(cfg.TLSConfig != nil && cfg.TLSConfig.InsecureSkipVerify) {
-		return errors.New("invalid LDAPS identity configuration")
+	if err != nil || (endpoint.Scheme != "ldaps" && endpoint.Scheme != "ldap") || endpoint.Hostname() == "" ||
+		endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return errors.New("LDAP URL 请使用 ldaps://域控域名:636 或 ldap://域控域名:389（StartTLS），且不能包含路径或凭据")
 	}
-	if _, err := ldap.CompileFilter(fmt.Sprintf(cfg.UserFilter, "validation")); err != nil {
-		return errors.New("invalid LDAP user filter")
+	if _, err := ldap.ParseDN(cfg.BaseDN); err != nil || strings.TrimSpace(cfg.BaseDN) == "" {
+		return errors.New("LDAP 基础 DN 无效")
+	}
+	if _, err := ldap.ParseDN(cfg.BindDN); err != nil || strings.TrimSpace(cfg.BindDN) == "" {
+		return errors.New("LDAP 搜索 DN 无效")
+	}
+	if cfg.BindPassword == "" {
+		return errors.New("请填写 LDAP 搜索密码")
+	}
+	if cfg.TLSConfig != nil && cfg.TLSConfig.InsecureSkipVerify {
+		return errors.New("LDAP 必须验证 TLS 证书")
+	}
+	if cfg.UserUID != "" && !ldapAttribute.MatchString(cfg.UserUID) {
+		return errors.New("LDAP 用户 UID 必须是有效的属性名，例如 sAMAccountName")
+	}
+	switch cfg.SearchScope {
+	case "", "subtree", "onelevel", "base":
+	default:
+		return errors.New("LDAP 搜索范围无效")
+	}
+	filter := cfg.filterTemplate()
+	if strings.Count(filter, "%s") != 1 || strings.Count(filter, "%") != 1 {
+		return errors.New("LDAP 用户过滤器应填写属性名（如 sAMAccountName），或包含一个 %s 的完整过滤器")
+	}
+	if _, err := ldap.CompileFilter(fmt.Sprintf(filter, "validation")); err != nil {
+		return errors.New("LDAP 用户过滤器格式无效，例如 (sAMAccountName=%s)")
 	}
 	return nil
 }
@@ -94,8 +138,8 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 	if cfg.GroupAttr != "" {
 		attributes = append(attributes, cfg.GroupAttr)
 	}
-	search := ldap.NewSearchRequest(cfg.BaseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
-		2, 5, false, fmt.Sprintf(cfg.UserFilter, ldap.EscapeFilter(username)), attributes, nil)
+	search := ldap.NewSearchRequest(cfg.BaseDN, cfg.searchScope(), ldap.NeverDerefAliases,
+		2, 5, false, fmt.Sprintf(cfg.filterTemplate(), ldap.EscapeFilter(username)), attributes, nil)
 	result, err := conn.Search(search)
 	if err != nil {
 		return Principal{}, ErrAuthenticationUnavailable
@@ -186,11 +230,25 @@ func ldapGroups(conn *ldap.Conn, entry *ldap.Entry, attr string) ([]string, erro
 	}
 }
 
+func (cfg LDAPConfig) searchScope() int {
+	switch cfg.SearchScope {
+	case "base":
+		return ldap.ScopeBaseObject
+	case "onelevel":
+		return ldap.ScopeSingleLevel
+	default:
+		return ldap.ScopeWholeSubtree
+	}
+}
+
 func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
 	endpoint, _ := url.Parse(cfg.URL)
 	port := endpoint.Port()
 	if port == "" {
 		port = "636"
+		if endpoint.Scheme == "ldap" {
+			port = "389"
+		}
 	}
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if cfg.TLSConfig != nil {
@@ -200,18 +258,31 @@ func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
 	tlsConfig.ServerName = endpoint.Hostname()
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 
-	dialer := tls.Dialer{Config: tlsConfig}
-	socket, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(endpoint.Hostname(), port))
+	address := net.JoinHostPort(endpoint.Hostname(), port)
+	var socket net.Conn
+	var err error
+	if endpoint.Scheme == "ldap" {
+		socket, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	} else {
+		socket, err = (&tls.Dialer{Config: tlsConfig}).DialContext(ctx, "tcp", address)
+	}
 	if err != nil {
 		cancel()
 		return nil, nil, err
 	}
 	stop := context.AfterFunc(ctx, func() { _ = socket.Close() })
-
-	conn := ldap.NewConn(socket, true)
-	conn.Start()
-
+	conn := ldap.NewConn(socket, endpoint.Scheme == "ldaps")
 	conn.SetTimeout(5 * time.Second)
+	conn.Start()
+	if endpoint.Scheme == "ldap" {
+		if err := conn.StartTLS(tlsConfig); err != nil {
+			stop()
+			_ = socket.Close()
+			conn.Close()
+			cancel()
+			return nil, nil, err
+		}
+	}
 	return conn, func() { stop(); conn.Close(); cancel() }, nil
 }
 
