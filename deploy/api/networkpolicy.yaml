@@ -18,6 +18,9 @@ spec:
             matchLabels:
               gateway.envoyproxy.io/owning-gateway-name: production-gateway
               gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kube-aiops-web
       ports:
         - protocol: TCP
           port: 8080
