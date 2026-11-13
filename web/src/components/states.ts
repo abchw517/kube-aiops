@@ -21,7 +21,18 @@ export function authenticationRequiredState(): string {
   return `
     <section class="state-card error" role="alert" data-testid="authentication-required-state">
       <h2>需要身份认证</h2>
-      <p>请登录或恢复受信任的会话后重试。</p>
+      <form class="login-form" data-login>
+        <label>登录方式
+          <select name="provider">
+            <option value="local">本地账号</option>
+            <option value="ldap">LDAP / Active Directory</option>
+          </select>
+        </label>
+        <label>用户名<input name="username" autocomplete="username" required maxlength="256"></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+        <p role="status" data-login-status></p>
+        <button class="button" type="submit">登录</button>
+      </form>
       <button class="button" type="button" data-action="retry">重试</button>
     </section>`;
 }

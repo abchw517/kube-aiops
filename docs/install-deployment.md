@@ -255,7 +255,7 @@ printf '%s\n' "$api_image" "$web_image"
 
 ## 4. 部署 API 与 Web Portal
 
-先完成 [生产身份接入](#生产身份接入)，准备已集成认证和授权的 API 镜像。
+先完成 [生产身份接入](#生产身份接入)，准备账号和授权配置。
 
 | 清单 | 用途 |
 | --- | --- |
@@ -470,20 +470,117 @@ curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
 
 ## 生产部署
 
-完成企业身份接入后，从同一源码构建并发布生产镜像，再按前面的现有集群步骤部署。使用已验证的镜像 digest、发布清单和权限策略，按目标环境配置域名、证书和 Secret 引用。
+配置本地账号或 LDAP 后，从同一源码构建并发布生产镜像，再按前面的现有集群步骤部署。使用已验证的镜像 digest、发布清单和权限策略，按目标环境配置域名、证书和 Secret 引用。
 
 ### 生产身份接入
 
-仓库默认的 `cmd/api/security.go` 只在生产组合中装配审计和脱敏。缺少可信 `Authenticator` 或 `Authorizer` 时，`SECURITY_MODE=production` 会在监听端口前退出，日志中的 `reason` 为 `security_bundle_invalid`。**企业身份接入是发布 Portal 的前置条件。** K8sGPT Operator 和 Engine 可先独立安装。
+API 支持本地账号和 LDAPS，使用授权策略控制访问。Portal 和 API 必须通过同一个 HTTPS 域名访问。会话保存在 API 进程内，有效期 30 分钟，重启后需要重新登录。当前配置使用单副本，滚动更新期间也应避免同时运行多个副本。
 
-在生产构建使用的源码中，将企业身份适配器和授权策略接入 `cmd/api` 传入的 `security.Bundle`，并保留审计与脱敏。认证应校验受信任的会话或令牌。采用身份代理时，后端需验证代理身份或签名，并限制可访问 API 的网络路径。授权策略按集群、命名空间和能力分配，Portal 列表、详情和证据关联分别使用相应的读权限。浏览器会话应能通过同源 `/api/v1` 请求完成身份传递。接入与测试边界见 [身份契约](phase-1.4.1-identity-contract.md)、[授权模型](phase-1.4.2-authorization.md) 和 [生产启动门禁](phase-1.4.5-production-gates.md)。
+1. 创建本地账户文件。使用 `htpasswd -nBC 12 portal-admin` 交互生成 bcrypt 密码散列，将冒号后面的完整散列填入 `/secure/accounts.json`。
 
-```bash
-go test ./cmd/api ./internal/security ./internal/httpapi
-make api-contract-check
+```json
+[{"username":"portal-admin","passwordHash":"替换为bcrypt散列","groups":["operators"]}]
 ```
 
-将真实身份接入的成功、拒绝和依赖异常用例加入发布测试。身份配置、审计接收方和证书由平台管理，运行配置保持 `SECURITY_MODE=production`。
+2. 创建 `/secure/policy.json`，按实际集群和命名空间修改授权。LDAP 组使用小写完整 DN，`memberOf` 返回直接组。
+
+```json
+{
+  "version": "v1",
+  "rules": [{
+    "effect": "allow",
+    "subjects": ["local:portal-admin"],
+    "groups": ["ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"],
+    "capabilities": ["clusters:list", "namespaces:list", "findings:list", "findings:summary", "findings:read", "resources:read", "correlations:read"],
+    "scopes": [{"cluster": "*"}]
+  }]
+}
+```
+
+3. 创建 Secret。文件包含凭据，应限制文件和 Kubernetes Secret 的读取权限。
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-identity \
+  --from-file=accounts.json=/secure/accounts.json \
+  --from-file=policy.json=/secure/policy.json
+```
+
+4. 将以下配置合并到 API Deployment。按环境修改域名。密码或策略变更后重启 API。
+
+```yaml
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: AUTH_ORIGIN
+              value: https://kube-aiops.example.com
+            - name: AUTH_LOCAL_ACCOUNTS_FILE
+              value: /etc/kube-aiops/identity/accounts.json
+            - name: AUTH_POLICY_FILE
+              value: /etc/kube-aiops/identity/policy.json
+          volumeMounts:
+            - name: identity
+              mountPath: /etc/kube-aiops/identity
+              readOnly: true
+      volumes:
+        - name: identity
+          secret:
+            secretName: kube-aiops-identity
+```
+
+5. 使用 AD 时，准备只读查询账号密码和签发域控证书的 CA。确认 API NetworkPolicy 放行域控 636 端口，并将 CA 对应的域名用于 LDAPS 地址。
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
+  --from-file=bind-password=/secure/ldap-bind-password \
+  --from-file=ca.crt=/secure/ad-ca.crt
+```
+
+在上述容器 `env`、`volumeMounts` 和 Pod `volumes` 中分别追加以下条目。
+
+```yaml
+# env
+- name: AUTH_LDAP_URL
+  value: ldaps://ad.example.com:636
+- name: AUTH_LDAP_BASE_DN
+  value: dc=example,dc=com
+- name: AUTH_LDAP_BIND_DN
+  value: cn=kube-aiops-reader,ou=service,dc=example,dc=com
+- name: AUTH_LDAP_USER_FILTER
+  value: '(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))'
+- name: AUTH_LDAP_GROUP_ATTRIBUTE
+  value: memberOf
+- name: AUTH_LDAP_BIND_PASSWORD_FILE
+  value: /etc/kube-aiops/ldap/bind-password
+- name: AUTH_LDAP_CA_FILE
+  value: /etc/kube-aiops/ldap/ca.crt
+```
+
+```yaml
+# volumeMounts
+- name: ldap
+  mountPath: /etc/kube-aiops/ldap
+  readOnly: true
+```
+
+```yaml
+# volumes
+- name: ldap
+  secret:
+    secretName: kube-aiops-ldap
+```
+
+部署后访问 HTTPS Portal，选择本地账号或 LDAP 登录。未配置认证或策略时，生产 API 会拒绝启动。LDAP 和 AD 的目录结构、证书及组映射需要在目标环境验证。
+
+```bash
+go test ./cmd/api ./internal/identity ./internal/authorization ./internal/security ./internal/httpapi
+make api-contract-check
+```
 
 ### 挂载 HTTPS 入口
 
