@@ -34,7 +34,7 @@ kubectl:          v1.36.4
 Go language:      1.26.0
 Go toolchain:     1.26.5
 K8sGPT Operator:  v0.2.29
-K8sGPT Engine:    v0.4.37
+K8sGPT Engine:    v0.4.41
 ```
 
 统一版本源：
@@ -215,7 +215,7 @@ K8sGPT CR 快照。Lease 覆盖安装/卸载全生命周期，heartbeat 续租�
 
 ```text
 K8sGPT Operator: v0.2.29
-K8sGPT Engine:   v0.4.37
+K8sGPT Engine:   v0.4.41
 ```
 
 Operator 镜像：
@@ -227,12 +227,11 @@ ghcr.io/k8sgpt-ai/k8sgpt-operator:v0.2.29@sha256:82d0adcce816182bbfbef9f1d535db9
 Engine 镜像：
 
 ```text
-ghcr.io/k8sgpt-ai/k8sgpt:v0.4.37@sha256:ebf0d1f5a8463190abdf1a9c84282cfbd9ce611e3dc1c490194b7aaf2676d088
+ghcr.io/k8sgpt-ai/k8sgpt:v0.4.41@sha256:1bc581442ac9c3a9e2f9a2f818c2bd84ba476b445d46fcb168073799caa58640
 ```
 
-本基线没有直接使用仅能确认源码 release、但无法独立确认语义 tag digest 的
-更新 Engine tag。运行时镜像版本提升必须同时具备可信 digest 并通过完整
-Kubernetes v1.36 E2E。
+Engine `v0.4.41` 在诊断提示词中明确要求使用配置的语言。中文诊断通过
+`K8SGPT_AI_LANGUAGE=Chinese` 启用，操作步骤见 [部署文档](docs/install-deployment.md#配置-engine-模型与语言)。
 
 Operator 版本门禁：
 

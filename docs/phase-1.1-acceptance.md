@@ -74,7 +74,7 @@ kubectl get k8sgpt k8sgpt-engine -n k8sgpt-operator-system -o yaml
 
 ```text
 K8sGPT Operator: v0.2.29
-K8sGPT Engine:   v0.4.37
+K8sGPT Engine:   v0.4.41
 ```
 
 ## 4. Demo 故障

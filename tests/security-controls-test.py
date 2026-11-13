@@ -289,10 +289,20 @@ def test_install_image_overrides_preserve_the_deployment_baseline() -> None:
 
         subprocess.run(command, env={
             **env,
+            "K8SGPT_IMAGE_REGISTRY": "harbor.example.com/public",
+            "K8SGPT_AI_LANGUAGE": "Chinese",
+        }, capture_output=True, check=True)
+        engine = read_inputs(directory)[1]["spec"]
+        assert engine["repository"] == "harbor.example.com/public/k8sgpt"
+        assert engine["version"] == "v0.4.41"
+        assert engine["ai"]["language"] == "Chinese"
+
+        subprocess.run(command, env={
+            **env,
             "K8SGPT_ENGINE_IMAGE_REPOSITORY": "other.example.com/team/custom-engine",
         }, capture_output=True, check=True)
         expected[1]["spec"]["repository"] = "other.example.com/team/custom-engine"
-        expected[1]["spec"]["version"] = "v0.4.37"
+        expected[1]["spec"]["version"] = "v0.4.41"
         assert read_inputs(directory) == expected
 
         subprocess.run(command, env={

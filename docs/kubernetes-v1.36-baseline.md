@@ -11,12 +11,12 @@ Kubernetes v1.36.4 是 kube-aiops 的部署验证基线。版本配置位于 `co
 | Go language baseline | 1.24 | **1.26.0** | `go.mod` language version |
 | Go toolchain | 1.24.x | **1.26.5** | 与 Kubernetes release-1.36 `.go-version` 对齐 |
 | K8sGPT Operator | v0.2.29 | **v0.2.29** | 当前稳定版本保持不变，镜像 digest 固定 |
-| K8sGPT Engine | v0.4.32 | **v0.4.37** | 升级到已独立确认语义 tag digest 的稳定镜像 |
+| K8sGPT Engine | v0.4.37 | **v0.4.41** | 固定 GHCR 多架构镜像 digest |
 
 K8sGPT Engine：
 
 ```text
-ghcr.io/k8sgpt-ai/k8sgpt:v0.4.37@sha256:ebf0d1f5a8463190abdf1a9c84282cfbd9ce611e3dc1c490194b7aaf2676d088
+ghcr.io/k8sgpt-ai/k8sgpt:v0.4.41@sha256:1bc581442ac9c3a9e2f9a2f818c2bd84ba476b445d46fcb168073799caa58640
 ```
 
 K8sGPT Operator：
@@ -24,12 +24,6 @@ K8sGPT Operator：
 ```text
 ghcr.io/k8sgpt-ai/k8sgpt-operator:v0.2.29@sha256:82d0adcce816182bbfbef9f1d535db93ab0901f08d45a3a9e572c6e795c5bfa8
 ```
-
-### 为什么 Engine 不直接使用 v0.4.38
-
-升级时上游最新源码 release 已为 v0.4.38，但本项目的生产约束要求运行时镜像必须使用不可变 `tag@sha256`。在本次基线形成时，能够从独立语义 tag 元数据确认的最新稳定镜像为 v0.4.37，因此选择 v0.4.37，而不是退化为仅使用可变 tag。
-
-后续只有在 v0.4.38 或更高版本的语义 tag digest 可独立验证、并通过 CI 和目标集群安装验收后，才允许提升该版本。
 
 ## Kubernetes v1.36 API 支持边界
 
