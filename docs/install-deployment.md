@@ -10,7 +10,13 @@
 PORTAL_DEMO_HOST=0.0.0.0 PORTAL_DEMO_PORT=4173 make portal-demo
 ```
 
-从可访问部署主机的浏览器打开 `http://<服务器IP>:4173/#/findings`，查看样例诊断和关联证据。仅本机查看时执行 `make portal-demo`，打开 <http://127.0.0.1:4173/#/findings>。验证完成后按 Ctrl+C 停止。[Portal Demo](portal-demo.md)
+从可访问部署主机的浏览器打开 `http://<服务器IP>:4173/#/findings`，查看样例诊断和关联证据。仅本机查看时执行 `make portal-demo`，打开 <http://127.0.0.1:4173/#/findings>。自动检查 Demo 和四类证据来源时，先停止正在运行的 Demo，再执行：
+
+```bash
+make portal-demo-check
+```
+
+检查结束后脚本自动退出并清理本次运行的临时文件。手动启动的 Demo 在启动终端按 Ctrl+C 停止，脚本会结束 Demo 进程并清理本次临时文件。[Portal Demo](portal-demo.md)
 
 ## 1. 依赖和预检
 
@@ -81,16 +87,16 @@ make results
 
 将下面三张镜像同步到节点可访问的镜像仓库，并保留各自的版本标签。`K8SGPT_IMAGE_REGISTRY` 指定 `仓库地址[:端口][/项目路径]`，安装器以 `仓库/镜像:版本` 拉取。
 
-| 镜像 | 默认仓库 | 使用 `harbor.example.com/public` 时 | 单独覆盖的变量 |
+| 镜像 | 默认仓库 | 使用 `mharbor-cs.cloud.kemai.cn/public` 时 | 单独覆盖的变量 |
 | --- | --- | --- | --- |
-| Operator | `ghcr.io/k8sgpt-ai/k8sgpt-operator` | `harbor.example.com/public/k8sgpt-operator:v0.2.29` | `K8SGPT_OPERATOR_IMAGE_REPOSITORY` |
-| RBAC Proxy | `quay.io/brancz/kube-rbac-proxy` | `harbor.example.com/public/kube-rbac-proxy:v0.19.1` | `K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY` |
-| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `harbor.example.com/public/k8sgpt:v0.4.41` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
+| Operator | `ghcr.io/k8sgpt-ai/k8sgpt-operator` | `mharbor-cs.cloud.kemai.cn/public/k8sgpt-operator:v0.2.29` | `K8SGPT_OPERATOR_IMAGE_REPOSITORY` |
+| RBAC Proxy | `quay.io/brancz/kube-rbac-proxy` | `mharbor-cs.cloud.kemai.cn/public/kube-rbac-proxy:v0.19.1` | `K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY` |
+| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `mharbor-cs.cloud.kemai.cn/public/k8sgpt:v0.4.41` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
 
 在能访问上游仓库和 Harbor 的机器上同步镜像。以下命令按项目基线 digest 选择上游镜像，并将所有架构复制到 Harbor 的对应版本标签。
 
 ```bash
-mirror=harbor.example.com/public
+mirror=mharbor-cs.cloud.kemai.cn/public
 skopeo copy --all \
   docker://ghcr.io/k8sgpt-ai/k8sgpt-operator@sha256:82d0adcce816182bbfbef9f1d535db93ab0901f08d45a3a9e572c6e795c5bfa8 \
   "docker://${mirror}/k8sgpt-operator:v0.2.29"
@@ -105,7 +111,7 @@ skopeo copy --all \
 仅配置镜像仓库时，可以在第 2 节安装步骤中使用以下命令：
 
 ```bash
-K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
+K8SGPT_IMAGE_REGISTRY=mharbor-cs.cloud.kemai.cn/public make install
 make verify
 ```
 
@@ -125,7 +131,7 @@ make verify
 仅提高内存上限时，可在使用内网仓库的安装命令中增加 `K8SGPT_OPERATOR_MEMORY_LIMIT`。这里的 `1Gi` 是配置示例，实际值按容器峰值和节点余量确定。
 
 ```bash
-K8SGPT_IMAGE_REGISTRY=harbor.example.com/public \
+K8SGPT_IMAGE_REGISTRY=mharbor-cs.cloud.kemai.cn/public \
 K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi \
 make install
 ```
@@ -169,7 +175,7 @@ export K8SGPT_AI_MODEL=glm-5.2
 export K8SGPT_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 export K8SGPT_AI_LANGUAGE=Chinese
 
-K8SGPT_IMAGE_REGISTRY=harbor.example.com/public \
+K8SGPT_IMAGE_REGISTRY=mharbor-cs.cloud.kemai.cn/public \
 K8SGPT_OPERATOR_MEMORY_LIMIT=1Gi \
 make install && make verify
 ```
@@ -224,7 +230,7 @@ mkdir -p "$release_dir"
 已有经过验收的 API 和 Web 镜像时，将完整的 `仓库/镜像@sha256:...` 分别赋给 `api_image` 和 `web_image`，然后进入部署步骤。构建镜像或读取已归档的 Buildx 元数据时，先填写实际发布仓库。
 
 ```bash
-registry=harbor.example.com/kube-aiops
+registry=mharbor-cs.cloud.kemai.cn/kube-aiops
 ```
 
 按目标节点架构设置 `platforms`，可用 `kubectl get nodes -L kubernetes.io/arch` 查看。混合架构示例为 `linux/amd64,linux/arm64`。对外发布使用已提交身份集成的源码版本。
