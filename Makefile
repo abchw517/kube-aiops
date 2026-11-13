@@ -154,7 +154,7 @@ web-docker-smoke:
 	@set -Eeuo pipefail; \
 		image="kube-aiops-web:ci"; \
 		container="kube-aiops-web-ci"; \
-		docker build --pull -f web/Dockerfile --tag "$${image}" .; \
+		docker build --pull --build-arg NODE_BUILDER_IMAGE --build-arg NGINX_RUNTIME_IMAGE -f web/Dockerfile --tag "$${image}" .; \
 		docker run --detach --name "$${container}" --publish 127.0.0.1:18081:8080 "$${image}"; \
 		trap 'docker rm --force "'$${container}'" >/dev/null 2>&1 || true' EXIT; \
 		for _ in $$(seq 1 20); do \

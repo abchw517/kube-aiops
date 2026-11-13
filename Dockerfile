@@ -1,16 +1,30 @@
-FROM golang:1.26.5-alpine3.23 AS builder
+ARG GO_BUILDER_IMAGE=mharbor-cs.cloud.kemai.cn/public/golang:1.26.5-alpine3.23
+FROM ${GO_BUILDER_IMAGE} AS builder
 
 WORKDIR /src
 
+ARG GOPROXY=https://goproxy.cn
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB=sum.golang.org \
+    CGO_ENABLED=0 \
+    GOOS=linux
+
 COPY go.mod go.sum ./
+# 下载依赖，并持久化 Go Modules 缓存
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go mod download
+
 COPY cmd ./cmd
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -trimpath \
-    -ldflags='-s -w' \
-    -o /out/kube-aiops-api \
-    ./cmd/api
+# 缓存模块和 Go 编译产物
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    go build \
+      -trimpath \
+      -ldflags='-s -w' \
+      -o /out/kube-aiops-api \
+      ./cmd/api
 
 FROM scratch
 
