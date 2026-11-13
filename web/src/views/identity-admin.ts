@@ -32,7 +32,9 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
   }
   const selected = resource === "users" || resource === "policy" ? resource : "ldap";
   const response = await fetch(`/api/v1/admin/${selected}`);
-  if (!response.ok) throw new Error("identity configuration unavailable");
+  if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
+    throw new Error("identity configuration unavailable");
+  }
   const data = await response.json();
   if (selected === "users") {
     const rows = (data as { username: string; groups: string[] | null }[]).map((user) =>
@@ -84,7 +86,16 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (resource === "ldap" && (response.status === 404 || response.status === 405 ||
+        (response.ok && response.status !== 204 && !response.headers.get("Content-Type")?.includes("application/json")))) {
+      status.textContent = "LDAP 管理接口不可用，请检查 API 镜像版本和 /api/v1 路由。";
+      return;
+    }
     if (!response.ok) {
+      if (resource === "ldap" && response.status === 400 && (await response.text()).trim() === "password_required") {
+        status.textContent = "更换 LDAP 地址或搜索 DN 后，请重新填写搜索密码。";
+        return;
+      }
       status.textContent = response.status === 409 ? "账号已存在或配置已更新。" :
         response.status === 400 ? "输入无效，请核对配置或密码。" : "操作失败，请重试。";
       return;
@@ -98,6 +109,10 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
         search: "搜索失败，请检查基础 DN 和账号读取权限。",
       };
       status.textContent = messages[stage] ?? "测试失败，请检查 LDAP 配置。";
+      return;
+    }
+    if (resource === "ldap" && response.status !== 204) {
+      status.textContent = "API 未确认保存，请检查 API 镜像版本和 /api/v1 路由。";
       return;
     }
     status.textContent = "已保存";
