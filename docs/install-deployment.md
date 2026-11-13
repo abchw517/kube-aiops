@@ -309,6 +309,23 @@ Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。其余三个来源通�
 | VictoriaLogs | `VICTORIALOGS_URL` | `/select/logsql/stats_query_range` |
 | Alertmanager | `ALERTMANAGER_URL` | `/api/v2/alerts` |
 
+### 完整 Deployment 示例
+
+仓库提供完整的 [API Deployment](../deploy/examples/observability/api-deployment.yaml) 和 [Web Deployment](../deploy/examples/observability/web-deployment.yaml) 示例。API 示例配置了三个数据源的集群内 HTTP 地址和集群标签，Web 通过项目 API 获取关联证据。部署前修改镜像、数据源地址和集群标签，并按生产身份接入章节完成 API 认证授权。
+
+```bash
+cp deploy/examples/observability/api-deployment.yaml "$release_dir/api-observability-example.yaml"
+cp deploy/examples/observability/web-deployment.yaml "$release_dir/web-observability-example.yaml"
+
+# 修改镜像、数据源地址与集群标签后检查并应用
+kubectl apply --dry-run=server -f "$release_dir/api-observability-example.yaml" -f "$release_dir/web-observability-example.yaml"
+kubectl apply -f "$release_dir/api-observability-example.yaml" -f "$release_dir/web-observability-example.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+```
+
+当前项目尚未实现 OpenTelemetry SDK 或 OTLP 导出接口。上述清单启用现有的三个数据源查询适配器，OpenTelemetry 接入需要代码实现后再配置。
+
 ### 设置数据源地址和集群标签
 
 在 [API Deployment](../deploy/api/deployment.yaml) 的 `spec.template.spec.containers` 中找到 `name: api`，将下列变量添加到已有的 `env` 列表。地址和集群标签值按实际环境填写，只保留需要启用的来源。渲染镜像后，同样可以直接编辑 `$release_dir/api.yaml`。

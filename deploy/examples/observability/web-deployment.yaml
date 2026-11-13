@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-aiops-web
+  namespace: kube-aiops-system
+  labels:
+    app.kubernetes.io/name: kube-aiops-web
+    app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: portal-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-aiops-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-aiops-web
+        app.kubernetes.io/part-of: kube-aiops
+        app.kubernetes.io/component: portal-frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: kube-aiops-web:dev
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /portal-healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /portal-healthz
+              port: http
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
