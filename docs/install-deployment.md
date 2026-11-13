@@ -476,6 +476,21 @@ curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
 
 API 支持本地账号和 LDAPS，使用授权策略控制访问。Portal 和 API 必须通过同一个 HTTPS 域名访问。会话保存在 API 进程内，有效期 30 分钟，重启后需要重新登录。当前配置使用单副本，滚动更新期间也应避免同时运行多个副本。
 
+#### 新部署使用 Portal 管理账号
+
+先创建下方示例中的 SQLite PVC，在 API Deployment 配置 `AUTH_SQLITE_PATH` 和 `AUTH_ORIGIN`，首次初始化时追加以下环境变量。全新数据库由 API 创建，可跳过 JSON 导入 Job。首次启动请使用受限的 HTTPS 入口。
+
+```yaml
+- name: AUTH_BOOTSTRAP_ADMIN
+  value: "true"
+```
+
+使用本地账号 `admin`、初始密码 `admin123` 登录，按页面提示设置至少 12 字节的新密码并重新登录。完成后从 Deployment 删除 `AUTH_BOOTSTRAP_ADMIN`。数据库已有管理员时，重启或再次设置该变量不会重置密码。管理员账号保存在独立表中，导入本地账号不会覆盖它。
+
+进入 **系统管理** 后，在 **认证配置** 保存 LDAPS URL、搜索 DN、基础 DN、用户过滤器和组属性。在部署中提前挂载 LDAP 搜索密码和 CA，并设置 `AUTH_LDAP_BIND_PASSWORD_FILE` 和 `AUTH_LDAP_CA_FILE`。如域控使用系统受信任的证书链，可省略 CA 文件。在 **用户管理** 创建本地账号及所属组，在 **权限配置** 编辑并保存授权策略。页面保存的 LDAP 配置和权限策略立即生效，并写入 SQLite。
+
+#### 导入已有账号和策略
+
 1. 创建本地账户文件。使用 `htpasswd -nBC 12 portal-admin` 交互生成 bcrypt 密码散列，将冒号后面的完整散列填入 `/secure/accounts.json`。
 
 ```json

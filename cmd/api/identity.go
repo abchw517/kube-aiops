@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -17,21 +16,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func configureIdentity(bundle *security.Bundle, store *identitystore.Store) (*identity.Sessions, error) {
+func configureIdentity(bundle *security.Bundle) (*identity.Sessions, error) {
 	providers := make(map[string]identity.PasswordVerifier)
-	ctx := context.Background()
-	if store != nil {
-		providers["local"] = func(ctx context.Context, username, password string) (identity.Principal, error) {
-			account, err := store.LocalAccount(ctx, username)
-			if errors.Is(err, sql.ErrNoRows) {
-				return identity.Principal{}, identity.ErrUnauthenticated
-			}
-			if err != nil {
-				return identity.Principal{}, identity.ErrAuthenticationUnavailable
-			}
-			return authenticateLocal([]identity.LocalAccount{account}, username, password)
-		}
-	} else if path := os.Getenv("AUTH_LOCAL_ACCOUNTS_FILE"); path != "" {
+	if path := os.Getenv("AUTH_LOCAL_ACCOUNTS_FILE"); path != "" {
 		accounts, err := loadLocalAccounts(path)
 		if err != nil {
 			return nil, err
@@ -45,26 +32,17 @@ func configureIdentity(bundle *security.Bundle, store *identitystore.Store) (*id
 		if err != nil {
 			return nil, err
 		}
+		if err := cfg.Validate(); err != nil {
+			return nil, err
+		}
 		providers["ldap"] = func(ctx context.Context, username, password string) (identity.Principal, error) {
-			principal, err := identity.AuthenticateLDAPContext(ctx, cfg, username, password)
-			if err == nil && store != nil {
-				if err := store.RecordLDAPLogin(ctx, username, principal); err != nil {
-					return identity.Principal{}, identity.ErrAuthenticationUnavailable
-				}
-			}
-			return principal, err
+			return identity.AuthenticateLDAPContext(ctx, cfg, username, password)
 		}
 	}
 	if len(providers) == 0 {
 		return nil, nil
 	}
-	var policy []byte
-	var err error
-	if store != nil {
-		policy, err = store.Policy(ctx)
-	} else {
-		policy, err = os.ReadFile(os.Getenv("AUTH_POLICY_FILE"))
-	}
+	policy, err := os.ReadFile(os.Getenv("AUTH_POLICY_FILE"))
 	if err != nil {
 		return nil, errors.New("cannot load authorization policy")
 	}
@@ -165,5 +143,5 @@ func ldapConfiguration(endpoint string) (identity.LDAPConfig, error) {
 		}
 		cfg.TLSConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
-	return cfg, cfg.Validate()
+	return cfg, nil
 }

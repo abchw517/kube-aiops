@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
+	"github.com/abchw517/kube-aiops/internal/identity"
 	"github.com/abchw517/kube-aiops/internal/identitystore"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
 	"github.com/abchw517/kube-aiops/internal/security"
@@ -63,13 +64,10 @@ func main() {
 			}
 			defer store.Close()
 		}
-		sessions, err := configureIdentity(&bundle, store)
+		wrap, err = configureIdentityHandler(&bundle, store)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
-		}
-		if sessions != nil {
-			wrap = sessions.Wrap
 		}
 	}
 	handler, err := buildHandler(
@@ -134,4 +132,24 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("kube-aiops-api stopped")
+}
+
+func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store) (func(http.Handler) http.Handler, error) {
+	if store == nil {
+		sessions, err := configureIdentity(bundle)
+		if sessions == nil {
+			return nil, err
+		}
+		return sessions.Wrap, err
+	}
+	admin, err := newIdentityAdmin(context.Background(), store)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := identity.NewSessions(os.Getenv("AUTH_ORIGIN"), map[string]identity.PasswordVerifier{"local": admin.local, "ldap": admin.directory})
+	if err != nil {
+		return nil, err
+	}
+	bundle.Authenticator, bundle.Authorizer = sessions, admin
+	return func(next http.Handler) http.Handler { return sessions.Wrap(admin.wrap(sessions, next)) }, nil
 }

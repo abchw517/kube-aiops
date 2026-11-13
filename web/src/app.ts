@@ -5,6 +5,7 @@ import {
   type FindingSummary,
   type Namespace,
 } from "../../clients/typescript/generated.ts";
+import { renderIdentityAdmin, submitIdentityAdmin } from "./views/identity-admin.ts";
 import { apiClient } from "./api/client.ts";
 import {
   authenticationRequiredState,
@@ -41,6 +42,8 @@ export class PortalApp {
   private namespaces = new Map<string, Namespace[]>();
   private knownKinds = new Set<string>();
   private renderGeneration = 0;
+  private identityAdmin = false;
+  private mustChangePassword = false;
   private showLogout = !demoMode;
 
   constructor(root: HTMLElement) {
@@ -50,7 +53,20 @@ export class PortalApp {
   start(): void {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => this.handleClick(event));
-    this.root.addEventListener("submit", (event) => void this.login(event));
+    this.root.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (form instanceof HTMLFormElement && form.dataset.identityResource) {
+        event.preventDefault();
+        void submitIdentityAdmin(form, () => {
+          this.identityAdmin = false;
+          this.mustChangePassword = false;
+          window.location.hash = "#/findings";
+          void this.route();
+        });
+        return;
+      }
+      void this.login(event);
+    });
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
     if (!window.location.hash) window.location.hash = "#/findings";
     void this.route();
@@ -58,6 +74,24 @@ export class PortalApp {
 
   private async route(): Promise<void> {
     const generation = ++this.renderGeneration;
+    if (!demoMode) {
+      try {
+        const response = await fetch("/api/v1/admin/status");
+        const status = response.ok ? await response.json() : {};
+        if (generation !== this.renderGeneration) return;
+        this.identityAdmin = status.admin === true;
+        this.mustChangePassword = status.mustChangePassword === true;
+      } catch {
+        if (generation !== this.renderGeneration) return;
+      }
+      const adminRoute = window.location.hash.startsWith("#/admin");
+      if (this.mustChangePassword || (this.identityAdmin && adminRoute)) {
+        const resource = this.mustChangePassword ? "password" : window.location.hash.split("/")[2] ?? "ldap";
+        const body = await renderIdentityAdmin(resource, this.mustChangePassword);
+        if (generation === this.renderGeneration) this.renderShell(body);
+        return;
+      }
+    }
     const detailMatch = window.location.hash.match(/^#\/findings\/([^?]+)/);
     const detailId = detailMatch?.[1];
     if (detailId) {
@@ -173,6 +207,7 @@ export class PortalApp {
         </a>
         <div class="portal-actions">
           <span class="readonly-badge">只读</span>
+          ${this.identityAdmin ? '<a class="button" href="#/admin/ldap">系统管理</a>' : ""}
           ${this.showLogout ? '<button class="button" type="button" data-action="logout">退出登录</button>' : ""}
         </div>
       </header>
@@ -192,6 +227,18 @@ export class PortalApp {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
+    if (action === "login-provider") {
+      const form = this.root.querySelector<HTMLFormElement>("[data-login]");
+      const provider = form?.querySelector<HTMLInputElement>('[name="provider"]');
+      const password = form?.querySelector<HTMLInputElement>('[name="password"]');
+      const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (provider && password && submit) {
+        provider.value = provider.value === "local" ? "ldap" : "local";
+        password.value = "";
+        submit.textContent = provider.value === "ldap" ? "LDAP 登录" : "登录";
+        target.textContent = provider.value === "ldap" ? "返回本地账号登录" : "LDAP / Active Directory 登录";
+      }
+    }
     if (action === "logout") void this.logout(target.closest<HTMLButtonElement>("button"));
     if (action === "retry") void this.route();
     if (action === "retry-correlation") {
@@ -283,6 +330,8 @@ export class PortalApp {
       this.namespaces.clear();
       this.knownKinds.clear();
       this.showLogout = false;
+      this.identityAdmin = false;
+      this.mustChangePassword = false;
       ++this.renderGeneration;
       this.renderShell(authenticationRequiredState());
     } catch {

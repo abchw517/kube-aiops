@@ -231,3 +231,14 @@ func auditSession(action string, handler http.HandlerFunc) http.HandlerFunc {
 			"http_status", audit.status, "subject", audit.subject, "provider", audit.provider, "latency_ms", time.Since(start).Milliseconds())
 	}
 }
+
+// RevokeSubject expires all sessions for a subject after a credential change.
+func (s *Sessions) RevokeSubject(subject string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, session := range s.active {
+		if session.principal.Subject == subject {
+			delete(s.active, key)
+		}
+	}
+}

@@ -160,3 +160,8 @@ td { font-size: 14px; }
   padding: 0.55rem;
   font: inherit;
 }
+
+.identity-panel { padding: 1.5rem; }
+.identity-nav { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.identity-form { max-width: 48rem; }
+.identity-form textarea { width: 100%; font: inherit; padding: 0.6rem; }

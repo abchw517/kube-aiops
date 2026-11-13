@@ -33,6 +33,8 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS managed_admin (id INTEGER PRIMARY KEY CHECK (id = 1), password_hash TEXT NOT NULL, initial INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS ldap_settings (id INTEGER PRIMARY KEY CHECK (id = 1), document TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS local_accounts (
 			username TEXT PRIMARY KEY NOT NULL,
 			password_hash TEXT NOT NULL,
@@ -109,4 +111,23 @@ func (s *Store) RecordLDAPLogin(ctx context.Context, username string, principal 
 		ON CONFLICT(subject) DO UPDATE SET username=excluded.username, groups_json=excluded.groups_json, last_login=excluded.last_login`,
 		principal.Subject, username, string(groups))
 	return err
+}
+
+func (s *Store) Admin(ctx context.Context) (hash string, initial bool, err error) {
+	err = s.QueryRowContext(ctx, "SELECT password_hash, initial FROM managed_admin WHERE id=1").Scan(&hash, &initial)
+	return
+}
+
+func (s *Store) BootstrapAdmin(ctx context.Context, hash string) error {
+	_, err := s.ExecContext(ctx, "INSERT OR IGNORE INTO managed_admin VALUES (1, ?, 1)", hash)
+	return err
+}
+
+func (s *Store) ChangeAdmin(ctx context.Context, previous, next string) (bool, error) {
+	result, err := s.ExecContext(ctx, "UPDATE managed_admin SET password_hash=?, initial=0 WHERE id=1 AND password_hash=?", next, previous)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
 }
