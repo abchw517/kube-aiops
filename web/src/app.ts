@@ -41,6 +41,7 @@ export class PortalApp {
   private namespaces = new Map<string, Namespace[]>();
   private knownKinds = new Set<string>();
   private renderGeneration = 0;
+  private showLogout = !demoMode;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -49,6 +50,7 @@ export class PortalApp {
   start(): void {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => this.handleClick(event));
+    this.root.addEventListener("submit", (event) => void this.login(event));
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
     if (!window.location.hash) window.location.hash = "#/findings";
     void this.route();
@@ -157,7 +159,10 @@ export class PortalApp {
           <span class="brand-mark" aria-hidden="true">K</span>
           <span><strong>kube-aiops</strong><small>Kubernetes 诊断</small></span>
         </a>
-        <span class="readonly-badge">只读</span>
+        <div class="portal-actions">
+          <span class="readonly-badge">只读</span>
+          ${this.showLogout ? '<button class="button" type="button" data-action="logout">退出登录</button>' : ""}
+        </div>
       </header>
       <main class="page-shell">
         ${demoMode ? '<p class="demo-notice"><strong>演示数据</strong> · 当前展示本地模拟的诊断结果和证据</p>' : ""}
@@ -175,6 +180,7 @@ export class PortalApp {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
+    if (action === "logout") void this.logout(target.closest<HTMLButtonElement>("button"));
     if (action === "retry") void this.route();
     if (action === "retry-correlation") {
       const region = target.closest<HTMLElement>("[data-correlation-finding]");
@@ -211,9 +217,74 @@ export class PortalApp {
     window.location.hash = `#/findings?${serializeFindingFilters(filters)}`;
   }
 
+  private async login(event: Event): Promise<void> {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-login")) return;
+    event.preventDefault();
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const status = form.querySelector<HTMLElement>("[data-login-status]");
+    if (!button || !status || button.disabled) return;
+    const fields = new FormData(form);
+    button.disabled = true;
+    status.textContent = "";
+    try {
+      const response = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: fields.get("provider"),
+          username: fields.get("username"),
+          password: fields.get("password"),
+        }),
+        credentials: "same-origin",
+      });
+      if (response.status === 204) {
+        form.reset();
+        this.showLogout = true;
+        await this.route();
+      } else if (response.status === 401) {
+        status.textContent = "登录失败，请核对登录方式和账号密码。";
+      } else if (response.status === 429) {
+        status.textContent = "登录请求过多，请稍后重试。";
+      } else {
+        status.textContent = "登录服务暂不可用，请稍后重试。";
+      }
+    } catch {
+      status.textContent = "登录服务暂不可用，请稍后重试。";
+    } finally {
+      const password = form.elements.namedItem("password");
+      if (password instanceof HTMLInputElement) password.value = "";
+      button.disabled = false;
+    }
+  }
+
+  private async logout(button: HTMLButtonElement | null): Promise<void> {
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (response.status !== 204) throw new Error("logout failed");
+      this.clusters = undefined;
+      this.namespaces.clear();
+      this.knownKinds.clear();
+      this.showLogout = false;
+      ++this.renderGeneration;
+      this.renderShell(authenticationRequiredState());
+    } catch {
+      button.textContent = "退出失败，请重试";
+      button.disabled = false;
+    }
+  }
+
   private requestErrorState(error: unknown): string {
     if (error instanceof ApiError) {
-      if (error.status === 401) return authenticationRequiredState();
+      if (error.status === 401) {
+        this.showLogout = false;
+        return authenticationRequiredState();
+      }
       if (error.status === 403) return authorizationDeniedState();
     }
     return errorState("无法获取诊断数据，请稍后重试。");

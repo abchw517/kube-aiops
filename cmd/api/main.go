@@ -37,12 +37,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	bundle := defaultProductionBundle(logger)
+	var wrap func(http.Handler) http.Handler
+	if cfg.SecurityMode == security.ModeProduction {
+		sessions, err := configureIdentity(&bundle)
+		if err != nil {
+			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
+			os.Exit(1)
+		}
+		if sessions != nil {
+			wrap = sessions.Wrap
+		}
+	}
 	handler, err := buildHandler(
 		logger,
 		backend,
 		cfg.ReadyTimeout,
 		cfg.SecurityMode,
-		defaultProductionBundle(logger),
+		bundle,
 		correlator,
 	)
 	if err != nil {
@@ -58,6 +70,10 @@ func main() {
 			"mode", cfg.SecurityMode,
 		)
 		os.Exit(1)
+	}
+
+	if wrap != nil {
+		handler = wrap(handler)
 	}
 
 	server := &http.Server{

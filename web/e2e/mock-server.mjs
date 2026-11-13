@@ -31,9 +31,37 @@ const findings = [
 ];
 
 let warningEvidenceRequests = 0;
+let authenticationRequired = false;
+let authenticated = false;
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (url.pathname === "/test/require-auth") {
+    authenticationRequired = true;
+    authenticated = false;
+    response.writeHead(204).end();
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const credentials = JSON.parse(Buffer.concat(chunks).toString());
+    if (credentials.provider !== "local" || credentials.username !== "portal-test" ||
+        credentials.password !== "fixture-password") {
+      return json(response, 401, { error: { code: "UNAUTHORIZED" } });
+    }
+    authenticated = true;
+    response.writeHead(204).end();
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
+    authenticated = false;
+    response.writeHead(204).end();
+    return;
+  }
+  if (authenticationRequired && !authenticated && url.pathname.startsWith("/api/v1/")) {
+    return json(response, 401, { error: { code: "UNAUTHORIZED" } });
+  }
   if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: [{ id: "local", name: "local", status: "ready" }] });
   if (url.pathname === "/api/v1/clusters/local/namespaces") return json(response, 200, { items: [{ name: "default" }, { name: "payments" }] });
   if (url.pathname === "/api/v1/findings/summary") {
