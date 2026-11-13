@@ -427,16 +427,25 @@ kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
 
-HTTPS 入口就绪后，使用同时拥有 Finding 列表和证据读取权限的账号查询已有 Finding。curl 配置文件包含认证 Header 或 Cookie。API Pod 需要能够访问 DNS、Kubernetes API、身份服务和数据源端口。
+HTTPS 入口就绪后，使用同时拥有 Finding 列表和证据读取权限的账号查询已有 Finding。以下命令中的域名替换为实际域名，`/secure/portal-allowed.curl` 替换为平台提供的 curl 配置文件路径。文件中按身份平台的要求配置认证 Header 或 Cookie。API Pod 需要能够访问 DNS、Kubernetes API、身份服务和数据源端口。
+
+先查看 Finding 列表及 ID：
 
 ```bash
-portal_url=https://kube-aiops.example.com
-allowed_curl_config=/secure/portal-allowed.curl
-finding_id="$(curl --config "$allowed_curl_config" -fsS --max-time 10 \
-  "$portal_url/api/v1/findings" | jq -er '.items[0].id')"
-finding_id_url="$(jq -rn --arg id "$finding_id" '$id | @uri')"
-curl --config "$allowed_curl_config" -fsS --max-time 15 \
-  "$portal_url/api/v1/findings/$finding_id_url/correlation" |
+curl --config /secure/portal-allowed.curl -fsS --max-time 10 \
+  'https://kube-aiops.example.com/api/v1/findings' |
+  jq '.items[] | {id, namespace, resource, title}'
+```
+
+将列表中选定的 ID 替换到下面的 URL。ID 如包含 URL 特殊字符，先执行下方编码命令，将结果替换到 URL 中。
+
+```bash
+jq -rn --arg id '替换为Finding ID' '$id | @uri'
+```
+
+```bash
+curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
+  'https://kube-aiops.example.com/api/v1/findings/替换为编码后的Finding ID/correlation' |
   jq '{sources, signalCount: (.signals | length)}'
 ```
 
