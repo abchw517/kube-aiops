@@ -172,6 +172,8 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsList)
+
 	limit := 0
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		value, err := strconv.Atoi(raw)
@@ -205,6 +207,7 @@ func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsSummary)
 	summary, err := s.backend.SummarizeFindings(r.Context(), filter)
 	if err != nil {
 		s.writeFindingBackendError(w, err, "FINDING_SUMMARY_FAILED", "unable to summarize findings")
@@ -349,6 +352,8 @@ func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter,
 
 func (s *Server) writeFindingBackendError(w http.ResponseWriter, err error, code, message string) {
 	switch {
+	case errors.Is(err, errFindingAuthorization):
+		writeAuthorizationUnavailable(w)
 	case errors.Is(err, finding.ErrInvalidLimit):
 		writeError(w, http.StatusBadRequest, "INVALID_LIMIT", "limit must be between 1 and 200")
 	case errors.Is(err, finding.ErrInvalidCursor):

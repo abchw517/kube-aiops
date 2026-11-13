@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	internalaudit "github.com/abchw517/kube-aiops/internal/audit"
 	"github.com/abchw517/kube-aiops/internal/authorization"
+	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/identity"
 )
 
@@ -210,4 +212,31 @@ func findingQueryScope(r *http.Request) authorization.Scope {
 func writeAuthorizationUnavailable(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	writeError(w, http.StatusServiceUnavailable, "AUTHORIZATION_UNAVAILABLE", "authorization service unavailable")
+}
+
+var errFindingAuthorization = errors.New("finding scope authorization unavailable")
+
+// The route authorizes the query. Each result must also be visible before
+// pagination or aggregation can expose it.
+func (s *Server) scopeFindingResults(r *http.Request, filter *finding.Filter, capability authorization.Capability) {
+	if !s.authorizationEnabled || filter.Namespace != "" {
+		return
+	}
+	principal, _ := identity.PrincipalFromContext(r.Context())
+	decisions := make(map[authorization.Scope]bool)
+	filter.Visible = func(item finding.Finding) (bool, error) {
+		scope := findingAuthorizationScope(item)
+		if allowed, ok := decisions[scope]; ok {
+			return allowed, nil
+		}
+		decision, err := s.authorizer.Authorize(r.Context(), authorization.DecisionRequest{
+			Principal: principal, Capability: capability, Scope: scope,
+		})
+		if err != nil {
+			setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
+			return false, errFindingAuthorization
+		}
+		decisions[scope] = decision.Allowed
+		return decision.Allowed, nil
+	}
 }

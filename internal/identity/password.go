@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,7 +135,16 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 	}
 	p := Principal{Subject: "ldap:" + strings.ToLower(entry.DN), Provider: "ldap"}
 	if cfg.GroupAttr != "" {
-		for _, group := range entry.GetEqualFoldAttributeValues(cfg.GroupAttr) {
+		if hasRangedGroups(entry, cfg.GroupAttr) {
+			if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
+				return Principal{}, ErrAuthenticationUnavailable
+			}
+		}
+		groups, err := ldapGroups(conn, entry, cfg.GroupAttr)
+		if err != nil {
+			return Principal{}, ErrAuthenticationUnavailable
+		}
+		for _, group := range groups {
 			p.Groups = append(p.Groups, "ldap:"+strings.ToLower(group))
 		}
 	}
@@ -142,4 +152,55 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 		return Principal{}, ErrAuthenticationUnavailable
 	}
 	return p, nil
+}
+
+func hasRangedGroups(entry *ldap.Entry, attr string) bool {
+	prefix := strings.ToLower(attr) + ";range="
+	for _, value := range entry.Attributes {
+		if strings.HasPrefix(strings.ToLower(value.Name), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func ldapGroups(conn *ldap.Conn, entry *ldap.Entry, attr string) ([]string, error) {
+	if !hasRangedGroups(entry, attr) {
+		return entry.GetEqualFoldAttributeValues(attr), nil
+	}
+	prefix := strings.ToLower(attr) + ";range="
+	dn := entry.DN
+	var groups []string
+	for {
+		rangePrefix := prefix + strconv.Itoa(len(groups)) + "-"
+		var selected *ldap.EntryAttribute
+		for _, candidate := range entry.Attributes {
+			if strings.HasPrefix(strings.ToLower(candidate.Name), rangePrefix) {
+				selected = candidate
+				break
+			}
+		}
+		if selected == nil || len(groups)+len(selected.Values) > maxGroups {
+			return nil, ErrAuthenticationUnavailable
+		}
+		end := strings.TrimPrefix(strings.ToLower(selected.Name), rangePrefix)
+		if end == "*" {
+			return append(groups, selected.Values...), nil
+		}
+		last, err := strconv.Atoi(end)
+		if err != nil || len(selected.Values) == 0 || last != len(groups)+len(selected.Values)-1 {
+			return nil, ErrAuthenticationUnavailable
+		}
+		groups = append(groups, selected.Values...)
+		if len(groups) >= maxGroups {
+			return nil, ErrAuthenticationUnavailable
+		}
+		next := fmt.Sprintf("%s;range=%d-*", attr, len(groups))
+		result, err := conn.Search(ldap.NewSearchRequest(dn, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
+			1, 5, false, "(objectClass=*)", []string{next}, nil))
+		if err != nil || len(result.Entries) != 1 {
+			return nil, ErrAuthenticationUnavailable
+		}
+		entry = result.Entries[0]
+	}
 }

@@ -113,9 +113,19 @@ func (c *Client) filteredFindings(ctx context.Context, filter finding.Filter) ([
 	items := make([]finding.Finding, 0, len(results))
 	for _, result := range results {
 		item := finding.FromResult(result)
-		if finding.Matches(item, filter) {
-			items = append(items, item)
+		if !finding.Matches(item, filter) {
+			continue
 		}
+		if filter.Visible != nil {
+			visible, err := filter.Visible(item)
+			if err != nil {
+				return nil, err
+			}
+			if !visible {
+				continue
+			}
+		}
+		items = append(items, item)
 	}
 
 	sort.Slice(items, func(i, j int) bool {

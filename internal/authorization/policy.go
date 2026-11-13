@@ -118,7 +118,11 @@ func validateSelector(name, value string) error {
 	if value == "" || strings.TrimSpace(value) != value {
 		return fmt.Errorf("%s selector must be non-empty and trimmed", name)
 	}
-	if len(value) > 256 {
+	limit := 256
+	if name == "group" {
+		limit = 1024
+	}
+	if len(value) > limit {
 		return fmt.Errorf("%s selector exceeds maximum length", name)
 	}
 	for _, r := range value {

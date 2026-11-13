@@ -12,8 +12,8 @@ const (
 	maxSubjectLength     = 256
 	maxProviderLength    = 64
 	maxDisplayNameLength = 256
-	maxGroupLength       = 128
-	maxGroups            = 64
+	maxGroupLength       = 1024
+	maxGroups            = 2048
 )
 
 var (

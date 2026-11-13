@@ -45,12 +45,12 @@ export function renderSummary(summary: FindingSummary): string {
     </section>`;
 }
 
-export function renderFindingTable(findings: Finding[]): string {
+export function renderFindingTable(findings: Finding[], total = findings.length): string {
   return `
     <section class="panel table-panel" data-testid="finding-list">
       <div class="section-heading">
         <div>
-          <h2>共 ${findings.length} 条诊断结果</h2>
+          <h2>共 ${total} 条诊断结果${findings.length !== total ? `，本页 ${findings.length} 条` : ""}</h2>
         </div>
       </div>
       <div class="table-wrap">

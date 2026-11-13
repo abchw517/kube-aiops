@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -31,9 +32,14 @@ type Sessions struct {
 	providers map[string]PasswordVerifier
 	mu        sync.Mutex
 	active    map[[32]byte]browserSession
-	attempts  float64
-	refillAt  time.Time
-	workers   chan struct{}
+	limits    map[string]*loginLimit
+}
+
+type loginLimit struct {
+	mu       sync.Mutex
+	attempts float64
+	refillAt time.Time
+	workers  chan struct{}
 }
 
 func NewSessions(origin string, providers map[string]PasswordVerifier) (*Sessions, error) {
@@ -41,9 +47,13 @@ func NewSessions(origin string, providers map[string]PasswordVerifier) (*Session
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || origin != "https://"+u.Host || len(providers) == 0 {
 		return nil, errors.New("HTTPS AUTH_ORIGIN and at least one login provider are required")
 	}
+	limits := make(map[string]*loginLimit, len(providers))
+	for name := range providers {
+		limits[name] = &loginLimit{attempts: 20, refillAt: time.Now(), workers: make(chan struct{}, 2)}
+	}
 	return &Sessions{
 		origin: origin, providers: providers, active: make(map[[32]byte]browserSession),
-		attempts: 20, refillAt: time.Now(), workers: make(chan struct{}, 4),
+		limits: limits,
 	}, nil
 }
 
@@ -70,7 +80,7 @@ func sessionKey(r *http.Request) ([32]byte, bool) {
 	return sha256.Sum256([]byte(cookie.Value)), true
 }
 
-func (s *Sessions) allowAttempt() bool {
+func (s *loginLimit) allowAttempt() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
@@ -87,8 +97,8 @@ func (s *Sessions) allowAttempt() bool {
 // the existing production authentication, authorization and audit handlers.
 func (s *Sessions) Wrap(next http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/auth/login", s.login)
-	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/v1/auth/login", auditSession("login", s.login))
+	mux.HandleFunc("POST /api/v1/auth/logout", auditSession("logout", s.logout))
 	mux.Handle("/", next)
 	return mux
 }
@@ -121,14 +131,15 @@ func (s *Sessions) login(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	limit := s.limits[credentials.Provider]
 	select {
-	case s.workers <- struct{}{}:
-		defer func() { <-s.workers }()
+	case limit.workers <- struct{}{}:
+		defer func() { <-limit.workers }()
 	default:
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
-	if !s.allowAttempt() {
+	if !limit.allowAttempt() {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
@@ -163,6 +174,7 @@ func (s *Sessions) login(w http.ResponseWriter, r *http.Request) {
 	expires := now.Add(sessionLifetime)
 	s.active[sha256.Sum256([]byte(token))] = browserSession{principal, expires}
 	writeSessionCookie(w, token, int(sessionLifetime.Seconds()))
+	recordSessionPrincipal(w, principal)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -174,6 +186,9 @@ func (s *Sessions) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if key, ok := sessionKey(r); ok {
 		s.mu.Lock()
+		if session, exists := s.active[key]; exists && time.Now().Before(session.expires) {
+			recordSessionPrincipal(w, session.principal)
+		}
 		delete(s.active, key)
 		s.mu.Unlock()
 	}
@@ -186,4 +201,33 @@ func writeSessionCookie(w http.ResponseWriter, value string, maxAge int) {
 		Name: sessionCookie, Value: value, Path: "/", MaxAge: maxAge,
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
 	})
+}
+
+type sessionAuditWriter struct {
+	http.ResponseWriter
+	status   int
+	subject  string
+	provider string
+}
+
+func recordSessionPrincipal(w http.ResponseWriter, principal Principal) {
+	if audit, ok := w.(*sessionAuditWriter); ok {
+		audit.subject = principal.Subject
+		audit.provider = principal.Provider
+	}
+}
+
+func (w *sessionAuditWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func auditSession(action string, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		audit := &sessionAuditWriter{ResponseWriter: w}
+		handler(audit, r)
+		slog.InfoContext(r.Context(), "portal session audit", "action", action,
+			"http_status", audit.status, "subject", audit.subject, "provider", audit.provider, "latency_ms", time.Since(start).Milliseconds())
+	}
 }

@@ -79,7 +79,7 @@ export class PortalApp {
       if (generation !== this.renderGeneration) return;
 
       const [page, summary] = await Promise.all([
-        apiClient.listFindings(toListParams(filters)),
+        apiClient.listFindings({ ...toListParams(filters), continue: this.pageCursor() }),
         apiClient.summarizeFindings(toSummaryParams(filters)),
       ]);
       if (generation !== this.renderGeneration) return;
@@ -91,6 +91,10 @@ export class PortalApp {
       if (generation !== this.renderGeneration) return;
       this.renderShell(this.requestErrorState(error));
     }
+  }
+
+  private pageCursor(): string | undefined {
+    return new URLSearchParams(window.location.hash.split("?")[1]).get("continue") ?? undefined;
   }
 
   private async renderDetail(id: string, generation: number): Promise<void> {
@@ -147,9 +151,17 @@ export class PortalApp {
     const body = `
       ${renderFilters(clusters, namespaces, [...this.knownKinds], filters)}
       ${renderSummary(summary)}
-      ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items)}
+      ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, summary.total)}
     `;
-    this.renderShell(body);
+    const params = new URLSearchParams(serializeFindingFilters(filters));
+    if (page.pagination.continue) params.set("continue", page.pagination.continue);
+    const next = page.pagination.continue
+      ? `<a class="button" href="#/findings?${params.toString().replaceAll("&", "&amp;")}">下一页</a>`
+      : "";
+    const first = this.pageCursor()
+      ? `<a class="button" href="#/findings?${serializeFindingFilters(filters).replaceAll("&", "&amp;")}">返回首页</a>`
+      : "";
+    this.renderShell(body + first + next);
   }
 
   private renderShell(content: string): void {
