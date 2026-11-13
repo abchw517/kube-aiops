@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kube-aiops-identity-import
+  namespace: kube-aiops-system
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: import
+          image: kube-aiops-api:dev
+          args: [identity-import]
+          env:
+            - name: AUTH_SQLITE_PATH
+              value: /var/lib/kube-aiops/identity.db
+            - name: AUTH_LOCAL_ACCOUNTS_FILE
+              value: /etc/kube-aiops/import/accounts.json
+            - name: AUTH_POLICY_FILE
+              value: /etc/kube-aiops/import/policy.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: database
+              mountPath: /var/lib/kube-aiops
+            - name: import
+              mountPath: /etc/kube-aiops/import
+              readOnly: true
+      volumes:
+        - name: database
+          persistentVolumeClaim:
+            claimName: kube-aiops-identity
+        - name: import
+          secret:
+            secretName: kube-aiops-identity

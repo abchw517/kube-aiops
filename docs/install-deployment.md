@@ -285,7 +285,7 @@ imagePullSecrets:
   - name: harbor-pull
 ```
 
-在 `api.yaml` 中配置身份适配器所需的变量和 Secret 引用。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
+应用清单前，按 [生产身份接入](#生产身份接入) 完成 SQLite PVC 和 `api.yaml` 配置。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
 
 ### 应用清单并等待就绪
 
@@ -474,38 +474,24 @@ curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
 
 ### 生产身份接入
 
-API 支持本地账号和 LDAPS，使用授权策略控制访问。Portal 和 API 必须通过同一个 HTTPS 域名访问。会话保存在 API 进程内，有效期 30 分钟，重启后需要重新登录。当前配置使用单副本，滚动更新期间也应避免同时运行多个副本。
+以下步骤适用于全新部署。SQLite 在首次启动时初始化，账号、权限和 LDAP 配置通过 Portal 创建。按顺序完成存储和清单配置、首次改密、本地账号授权，再按需启用 LDAP。
 
-1. 创建本地账户文件。使用 `htpasswd -nBC 12 portal-admin` 交互生成 bcrypt 密码散列，将冒号后面的完整散列填入 `/secure/accounts.json`。
+#### 1. 创建 SQLite PVC
 
-```json
-[{"username":"portal-admin","passwordHash":"替换为bcrypt散列","groups":["operators"]}]
-```
-
-2. 创建 `/secure/policy.json`，按实际集群和命名空间修改授权。LDAP 组使用小写完整 DN，`memberOf` 返回直接组。当前支持最多 2048 个组，每个组标识最多 1024 字节。API 会读取域控返回的分段组属性。超过限制或分段读取失败时，登录返回 503。
-
-```json
-{
-  "version": "v1",
-  "rules": [{
-    "effect": "allow",
-    "subjects": ["local:portal-admin"],
-    "groups": ["ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"],
-    "capabilities": ["clusters:list", "namespaces:list", "findings:list", "findings:summary", "findings:read", "resources:read", "correlations:read"],
-    "scopes": [{"cluster": "*"}, {"cluster": "local", "namespace": "*"}]
-  }]
-}
-```
-
-3. 创建 Secret。文件包含凭据，应限制文件和 Kubernetes Secret 的读取权限。
+API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API 与 Web Portal](#4-部署-api-与-web-portal) 中的镜像渲染，准备本次发布的 `api.yaml`、`web.yaml` 和 `web-service.yaml`，暂缓应用 Deployment。
 
 ```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-identity \
-  --from-file=accounts.json=/secure/accounts.json \
-  --from-file=policy.json=/secure/policy.json
+kubectl apply -f deploy/api/namespace.yaml
+kubectl get storageclass
+kubectl apply -f deploy/examples/identity/pvc.yaml
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
 ```
 
-4. 将以下配置合并到 API Deployment。按环境修改域名。密码或策略变更后重启 API。
+示例使用默认 StorageClass，申请 1 GiB 的 `ReadWriteOnce` 卷。没有默认 StorageClass 时，在 PVC 的 `spec.storageClassName` 指定实际名称。若存储类采用 `WaitForFirstConsumer`，PVC 会在 API Pod 调度时绑定。
+
+#### 2. 配置 API 并发布 HTTPS 入口
+
+把以下片段合并到本次发布的 `api.yaml`。保留原有 Deployment 字段、容器镜像、探针和环境变量。将 `AUTH_ORIGIN` 改为浏览器实际访问的 HTTPS 来源，只填写协议、主机和非默认端口。Portal 和 API 使用同一个来源。
 
 ```yaml
 spec:
@@ -514,26 +500,83 @@ spec:
     type: Recreate
   template:
     spec:
+      securityContext:
+        fsGroup: 65532
       containers:
         - name: api
           env:
             - name: AUTH_ORIGIN
               value: https://kube-aiops.example.com
-            - name: AUTH_LOCAL_ACCOUNTS_FILE
-              value: /etc/kube-aiops/identity/accounts.json
-            - name: AUTH_POLICY_FILE
-              value: /etc/kube-aiops/identity/policy.json
+            - name: AUTH_SQLITE_PATH
+              value: /var/lib/kube-aiops/identity.db
+            - name: AUTH_BOOTSTRAP_ADMIN
+              value: "true"
           volumeMounts:
-            - name: identity
-              mountPath: /etc/kube-aiops/identity
-              readOnly: true
+            - name: identity-db
+              mountPath: /var/lib/kube-aiops
       volumes:
-        - name: identity
-          secret:
-            secretName: kube-aiops-identity
+        - name: identity-db
+          persistentVolumeClaim:
+            claimName: kube-aiops-identity
 ```
 
-5. 使用 AD 时，准备只读查询账号密码和签发域控证书的 CA。确认 API NetworkPolicy 放行域控 636 端口，并将 CA 对应的域名用于 LDAPS 地址。
+API 以 UID/GID 65532 运行，PVC 挂载目录需要可写。单副本配合 `Recreate` 使用同一个 SQLite 卷。会话有效期为 30 分钟，API 重启后需重新登录。
+
+执行 [应用清单并等待就绪](#应用清单并等待就绪)，然后按 [挂载 HTTPS 入口](#挂载-https-入口) 应用两条 HTTPRoute。初始化期间将 HTTPS 入口限制在部署人员可访问的范围内。用实际域名检查入口。
+
+```bash
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+curl -fsS https://kube-aiops.example.com/portal-healthz
+curl -sS -o /dev/null -w '%{http_code}\n' https://kube-aiops.example.com/api/v1/findings
+```
+
+PVC 应为 `Bound`，匿名诊断请求应返回 `401`。
+
+#### 3. 初始化管理员并关闭引导
+
+1. 打开 `https://kube-aiops.example.com`，使用默认的本地账号入口，以 `admin` 和初始密码 `admin123` 登录。
+2. 在首次改密页面输入当前密码和至少 12 字节的新密码。保存后会话立即失效，用新密码重新登录，确认页面出现 **系统管理**。
+3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`，并同步更新运行中的 Deployment。
+
+```bash
+kubectl -n kube-aiops-system set env deployment/kube-aiops-api AUTH_BOOTSTRAP_ADMIN-
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。
+
+#### 4. 创建本地用户并配置权限
+
+1. 进入 **系统管理 → 用户管理**，创建 `portal-operator`，设置至少 12 字节的密码，并填写所属组 `operators`。
+2. 进入 **系统管理 → 权限配置**，保存下列策略。将 `dev` 替换成账号实际负责的命名空间。第一条允许发现集群和命名空间以及加载列表和汇总入口，第二条将实际诊断结果、详情和证据限定在 `local/dev`。
+
+```json
+{
+  "version": "v1",
+  "rules": [
+    {
+      "effect": "allow",
+      "groups": ["local:operators"],
+      "capabilities": ["clusters:list", "namespaces:list", "findings:list", "findings:summary"],
+      "scopes": [{"cluster": "*"}]
+    },
+    {
+      "effect": "allow",
+      "groups": ["local:operators"],
+      "capabilities": ["findings:list", "findings:summary", "findings:read", "resources:read", "correlations:read"],
+      "scopes": [{"cluster": "local", "namespace": "dev"}]
+    }
+  ]
+}
+```
+
+3. 在独立浏览器会话用 `portal-operator` 登录。确认列表、汇总、详情和证据只返回授权命名空间的数据。尝试切换到其他命名空间，确认请求被拒绝。另用未分配权限的测试账号验证诊断请求返回 `403`，退出后刷新页面应重新要求登录。
+
+#### 5. 按需接入 LDAP / Active Directory
+
+准备域控的 LDAPS 域名、只读搜索账号及密码文件。使用私有 CA 时，准备签发域控证书的 CA 链。确认 API Pod 能解析域控域名，并可访问 TCP 636。
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
@@ -541,48 +584,57 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
   --from-file=ca.crt=/secure/ad-ca.crt
 ```
 
-在上述容器 `env`、`volumeMounts` 和 Pod `volumes` 中分别追加以下条目。
+向 `api.yaml` 追加以下配置，保留 SQLite 挂载。若域控证书使用系统受信任的 CA，创建 Secret 时可省略 `ca.crt`，同时省略 `AUTH_LDAP_CA_FILE`。
 
 ```yaml
-# env
-- name: AUTH_LDAP_URL
-  value: ldaps://ad.example.com:636
-- name: AUTH_LDAP_BASE_DN
-  value: dc=example,dc=com
-- name: AUTH_LDAP_BIND_DN
-  value: cn=kube-aiops-reader,ou=service,dc=example,dc=com
-- name: AUTH_LDAP_USER_FILTER
-  value: '(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))'
-- name: AUTH_LDAP_GROUP_ATTRIBUTE
-  value: memberOf
-- name: AUTH_LDAP_BIND_PASSWORD_FILE
-  value: /etc/kube-aiops/ldap/bind-password
-- name: AUTH_LDAP_CA_FILE
-  value: /etc/kube-aiops/ldap/ca.crt
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: AUTH_LDAP_BIND_PASSWORD_FILE
+              value: /etc/kube-aiops/ldap/bind-password
+            - name: AUTH_LDAP_CA_FILE
+              value: /etc/kube-aiops/ldap/ca.crt
+          volumeMounts:
+            - name: ldap
+              mountPath: /etc/kube-aiops/ldap
+              readOnly: true
+      volumes:
+        - name: ldap
+          secret:
+            secretName: kube-aiops-ldap
 ```
-
-```yaml
-# volumeMounts
-- name: ldap
-  mountPath: /etc/kube-aiops/ldap
-  readOnly: true
-```
-
-```yaml
-# volumes
-- name: ldap
-  secret:
-    secretName: kube-aiops-ldap
-```
-
-只启用 LDAP 时，创建身份 Secret 时仅加入 `policy.json`，并省略 `AUTH_LOCAL_ACCOUNTS_FILE`。未配置认证或策略时，生产 API 会拒绝启动。
-
-部署后访问 HTTPS Portal，分别用本地账号和 AD 测试账号登录。检查授权账号可以查看对应命名空间的诊断和证据，未授权账号登录后看到无访问权限，退出后刷新页面仍需重新登录。用 AD 测试账号验证直接组映射和域控证书。
 
 ```bash
-go test ./cmd/api ./internal/identity ./internal/authorization ./internal/security ./internal/httpapi
-make api-contract-check
+kubectl apply -f "$release_dir/api.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
+
+管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写并保存。
+
+| 字段 | AD 示例 |
+| --- | --- |
+| LDAP URL | `ldaps://ad.example.com:636` |
+| LDAP 搜索 DN | `cn=kube-aiops-reader,ou=service,dc=example,dc=com` |
+| LDAP 基础 DN | `dc=example,dc=com` |
+| LDAP 用户过滤器 | `(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))` |
+| LDAP 组属性 | `memberOf` |
+
+在上一步策略中，将 `"ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"` 追加到需要授予同样权限的两条规则的 `groups` 数组，保留原有本地组。LDAP 组使用小写完整 DN，`memberOf` 对应用户的直接组。
+
+在独立浏览器会话选择登录框下方的 **LDAP / Active Directory 登录**，用属于目标组的测试账号验证登录与授权。再用可认证但不属于授权组的账号验证诊断访问返回 `403`。LDAP 密码由域控验证，SQLite 保存 LDAP 用户 DN、登录名、组和最近登录时间。
+
+#### 6. 核对部署结果
+
+```bash
+kubectl -n kube-aiops-system get deployment kube-aiops-api kube-aiops-web
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
+kubectl -n kube-aiops-system logs deployment/kube-aiops-api --tail=100
+```
+
+API 和 Web 应各自就绪，PVC 为 `Bound`。若 API 在启动时退出，核对 `AUTH_ORIGIN`、PVC 写权限和引导配置。若 LDAP 登录返回服务不可用，核对域控连通性、证书链、搜索账号凭据和过滤器。完成验收后按发布流程开放入口，并将 PVC 纳入备份。
 
 ### 挂载 HTTPS 入口
 
