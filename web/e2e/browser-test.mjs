@@ -152,6 +152,34 @@ try {
         `Evidence access state missing for ${id}`,
       );
     }
+    await fetch("http://127.0.0.1:4173/test/require-auth");
+    await assertPage(
+      cdp, "http://127.0.0.1:4173/#/findings",
+      (text) => text.includes("需要身份认证") && text.includes("LDAP / Active Directory"),
+      "Anonymous session did not show the login form",
+    );
+    for (const [password, expected] of [
+      ["incorrect", "登录失败，请核对登录方式和账号密码。"],
+      ["fixture-password", "共 2 条诊断结果"],
+    ]) {
+      await cdp.send("Runtime.evaluate", {
+        expression: `(() => {
+          const form = document.querySelector("[data-login]");
+          form.elements.username.value = "portal-test";
+          form.elements.password.value = ${JSON.stringify(password)};
+          form.requestSubmit();
+        })()`,
+      });
+      await assertText(cdp, (text) => text.includes(expected), `Login did not show ${expected}`);
+    }
+    await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-action=logout]").click()',
+    });
+    await assertText(cdp, (text) =>
+      text.includes("需要身份认证") && !text.includes("CrashLoopBackOff detected"),
+    "Logout did not clear the findings and restore the login form");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
+      (text) => text.includes("需要身份认证"), "Logged out user still had access to a finding");
   } finally {
     cdp.close();
   }

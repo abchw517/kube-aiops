@@ -24,7 +24,7 @@ type LocalAccount struct {
 
 // AuthenticateLocal validates an account without accepting an empty password.
 func AuthenticateLocal(accounts []LocalAccount, username, password string) (Principal, error) {
-	if username == "" || password == "" {
+	if username == "" || password == "" || len(password) > 72 {
 		return Principal{}, ErrUnauthenticated
 	}
 	for _, account := range accounts {
@@ -122,6 +122,9 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 		return Principal{}, ErrUnauthenticated
 	}
 	entry := result.Entries[0]
+	if strings.TrimSpace(entry.DN) == "" {
+		return Principal{}, ErrAuthenticationUnavailable
+	}
 	if err := conn.Bind(entry.DN, password); err != nil {
 		var ldapErr *ldap.Error
 		if errors.As(err, &ldapErr) && ldapErr.ResultCode == ldap.LDAPResultInvalidCredentials {

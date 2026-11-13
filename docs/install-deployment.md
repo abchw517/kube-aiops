@@ -255,7 +255,7 @@ printf '%s\n' "$api_image" "$web_image"
 
 ## 4. 部署 API 与 Web Portal
 
-先完成 [生产身份接入](#生产身份接入)，准备账号和授权配置。
+创建 Namespace 后，按 [生产身份接入](#生产身份接入) 准备账号和授权配置。
 
 | 清单 | 用途 |
 | --- | --- |
@@ -492,7 +492,7 @@ API 支持本地账号和 LDAPS，使用授权策略控制访问。Portal 和 AP
     "subjects": ["local:portal-admin"],
     "groups": ["ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"],
     "capabilities": ["clusters:list", "namespaces:list", "findings:list", "findings:summary", "findings:read", "resources:read", "correlations:read"],
-    "scopes": [{"cluster": "*"}]
+    "scopes": [{"cluster": "*"}, {"cluster": "local", "namespace": "*"}]
   }]
 }
 ```
@@ -575,7 +575,9 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
     secretName: kube-aiops-ldap
 ```
 
-部署后访问 HTTPS Portal，选择本地账号或 LDAP 登录。未配置认证或策略时，生产 API 会拒绝启动。LDAP 和 AD 的目录结构、证书及组映射需要在目标环境验证。
+只启用 LDAP 时，创建身份 Secret 时仅加入 `policy.json`，并省略 `AUTH_LOCAL_ACCOUNTS_FILE`。未配置认证或策略时，生产 API 会拒绝启动。
+
+部署后访问 HTTPS Portal，分别用本地账号和 AD 测试账号登录。检查授权账号可以查看对应命名空间的诊断和证据，未授权账号登录后看到无访问权限，退出后刷新页面仍需重新登录。用 AD 测试账号验证直接组映射和域控证书。
 
 ```bash
 go test ./cmd/api ./internal/identity ./internal/authorization ./internal/security ./internal/httpapi
