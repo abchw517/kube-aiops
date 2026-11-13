@@ -2,14 +2,19 @@
 
 在已有 Kubernetes 集群中按顺序完成 [预检](#1-依赖和预检) → [安装 K8sGPT](#2-安装-k8sgpt) → [准备镜像](#3-准备-api-和-web-镜像) → [部署 API 与 Web Portal](#4-部署-api-与-web-portal)。已有 K8sGPT 部署时，先核对其 Namespace、实例名和 Result。API 清单默认读取 `k8sgpt-operator-system/k8sgpt-engine`，使用其他实例时，按实际配置调整 API 清单中的 `K8SGPT_NAMESPACE` 和 `K8SGPT_NAME`，并核对 ServiceAccount 的读取权限。
 
-| 访问方式 | 使用场景 | 后续步骤 |
-| --- | --- | --- |
-| `port-forward` | 在现有集群中验证真实数据和 Portal，访问限于有转发权限的运维人员 | [受限访问配置](#仅端口转发模式配置受限访问) |
-| `production` | 通过 HTTPS 向已授权用户提供 Portal | [生产部署](#生产部署) |
+## 0. 验证 Portal Demo
+
+在仓库根目录启动 Demo。尚未获取源码时，先执行第 1 节的克隆命令。Demo 使用简体中文样例数据，可在没有 kubeconfig、Kubernetes 集群和监控凭据的环境中运行。
+
+```bash
+PORTAL_DEMO_HOST=0.0.0.0 PORTAL_DEMO_PORT=4173 make portal-demo
+```
+
+从可访问部署主机的浏览器打开 `http://<服务器IP>:4173/#/findings`，查看样例诊断和关联证据。仅本机查看时执行 `make portal-demo`，打开 <http://127.0.0.1:4173/#/findings>。验证完成后按 Ctrl+C 停止。[Portal Demo](portal-demo.md)
 
 ## 1. 依赖和预检
 
-安装端准备 Git、Make、Bash、Python 3、PyYAML、curl、tar、sha256sum 和可访问目标集群的 kubeconfig。`make cluster-deps` 检查并安装缺少的 kubectl 和 Helm 3。构建镜像需要 Docker Buildx、jq 和仓库推送权限。节点需能拉取所用镜像，Engine Pod 需能访问 AI Provider。版本基线见 [platform-versions.env](../config/platform-versions.env)。
+安装端准备 Git、Make、Bash、Python 3、PyYAML、curl、tar、sha256sum 和可访问目标集群的 kubeconfig。`make cluster-deps` 检查并安装缺少的 kubectl 和 Helm 3。构建镜像需要 Docker Buildx 和仓库推送权限。读取构建元数据和命令行验收需要 jq。节点需能拉取所用镜像，Engine Pod 需能访问 AI Provider。版本基线见 [platform-versions.env](../config/platform-versions.env)。
 
 首次获取源码时执行：
 
@@ -246,13 +251,18 @@ printf '%s\n' "$api_image" "$web_image"
 
 ## 4. 部署 API 与 Web Portal
 
-Portal 默认通过端口转发验收。通过 HTTPS 发布时，先完成 [生产身份接入](#生产身份接入)，并将 `portal_access` 设为 `production`。按步骤应用指定清单，两个目录中的 HTTPRoute 和生产入站策略在配置 HTTPS 入口时应用。
+先完成 [生产身份接入](#生产身份接入)，准备已集成认证和授权的 API 镜像。
 
-应用仓库提供的 Namespace、ServiceAccount、只读 RBAC 和 API ClusterIP Service。以仓库中的 API、Web Deployment 为模板，将镜像替换为准备好的 digest。
+| 清单 | 用途 |
+| --- | --- |
+| [API Deployment](../deploy/api/deployment.yaml)、[Service](../deploy/api/service.yaml) | API 工作负载和 TCP 8080 ClusterIP Service |
+| [API HTTPRoute](../deploy/api/httproute.yaml)、[NetworkPolicy](../deploy/api/networkpolicy.yaml) | `/api/v1` 路由。API 入站允许指定 Gateway 代理和同命名空间 Web Pod |
+| [Web Deployment](../deploy/web/deployment.yaml)、[Service](../deploy/web/service.yaml) | Web 工作负载和 TCP 8080 ClusterIP Service |
+| [Web HTTPRoute](../deploy/web/httproute.yaml)、[NetworkPolicy](../deploy/web/networkpolicy.yaml) | `/` 路由。Web 入站允许指定 Gateway 代理，出站允许 API TCP 8080 和集群 DNS |
+
+创建 Namespace、API ServiceAccount、只读 RBAC 和 API Service，再按实际镜像渲染两个 Deployment。HTTPRoute 和 NetworkPolicy 在配置 HTTPS 入口时应用。
 
 ```bash
-portal_access=port-forward
-[[ "$portal_access" == port-forward || "$portal_access" == production ]]
 test "$(kubectl config current-context)" = "$target_context"
 kubectl apply -f deploy/api/namespace.yaml
 kubectl apply -f deploy/api/serviceaccount.yaml -f deploy/api/clusterrole.yaml \
@@ -272,112 +282,7 @@ imagePullSecrets:
   - name: harbor-pull
 ```
 
-在生产模式下，将身份适配器所需的配置和 Secret 引用写入 `api.yaml`。按需接入 [Prometheus、VictoriaLogs 和 Alertmanager](#配置可观测性来源)。例如使用预建 Secret `kube-aiops-prometheus` 中的 `token` 和 `ca.crt`，可向 API Pod 模板合并以下字段，并将 URL 替换为实际 HTTPS 地址。
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          env:
-            - name: PROMETHEUS_URL
-              value: https://prometheus.monitoring.svc:9090
-            - name: PROMETHEUS_BEARER_TOKEN_FILE
-              value: /var/run/secrets/kube-aiops/prometheus/token
-            - name: PROMETHEUS_CA_FILE
-              value: /var/run/secrets/kube-aiops/prometheus/ca.crt
-          volumeMounts:
-            - name: prometheus-credentials
-              mountPath: /var/run/secrets/kube-aiops/prometheus
-              readOnly: true
-      volumes:
-        - name: prometheus-credentials
-          secret:
-            secretName: kube-aiops-prometheus
-```
-
-对开启网络隔离的集群，允许入口访问两个后端，并按实际配置允许 API Pod 访问 DNS、Kubernetes API、身份端点和已启用的数据源。
-
-### 仅端口转发模式配置受限访问
-
-该模式用于在现有集群验收未接入企业身份的 API 镜像。使用支持 NetworkPolicy 的 CNI，限制专用命名空间的 Pod 创建权限和 `pods/portforward` 权限。先确认两个 Service 均未被已有 Ingress、HTTPRoute、NodePort 或其他入口公开，且没有额外允许 API 或 Web 入站的策略。若此前应用了生产模式的两份入站策略，先撤下生产路由和这两份策略。该模式下 API 使用 `SECURITY_MODE=development`，对外发布走 [生产部署](#生产部署)。
-
-下列配置让 Web 代理同源 `/api/v1/`，拒绝常规 Pod 流量直接访问 Web，并允许同命名空间中的 Web Pod 访问 API。运维访问使用绑定本机回环地址的 Kubernetes 端口转发。
-
-```bash
-test "$portal_access" = port-forward
-
-cat > "$release_dir/restricted-ingress.yaml" <<'YAML'
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: kube-aiops-web-restricted
-  namespace: kube-aiops-system
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: kube-aiops-web
-  policyTypes: [Ingress]
-  ingress: []
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: kube-aiops-api-from-web
-  namespace: kube-aiops-system
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: kube-aiops-api
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: kube-aiops-web
-      ports:
-        - protocol: TCP
-          port: 8080
-YAML
-kubectl apply --dry-run=server -f "$release_dir/restricted-ingress.yaml"
-kubectl apply -f "$release_dir/restricted-ingress.yaml"
-
-awk '
-  $0 == "    location / {" {
-    print "    location /api/v1/ {"
-    print "      proxy_pass http://kube-aiops-api:8080;"
-    print "    }"
-  }
-  { print }
-' web/nginx.conf > "$release_dir/nginx.conf"
-kubectl -n kube-aiops-system create configmap kube-aiops-web-restricted \
-  --from-file=nginx.conf="$release_dir/nginx.conf" --dry-run=client -o yaml |
-  kubectl apply -f -
-
-kubectl set env --local -f "$release_dir/api.yaml" SECURITY_MODE=development -o yaml \
-  > "$release_dir/api-restricted.yaml"
-mv "$release_dir/api-restricted.yaml" "$release_dir/api.yaml"
-cat > "$release_dir/web-proxy-patch.yaml" <<'YAML'
-spec:
-  template:
-    spec:
-      containers:
-        - name: web
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
-              readOnly: true
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: kube-aiops-web-restricted
-YAML
-kubectl patch --local -f "$release_dir/web.yaml" --type=strategic \
-  --patch-file "$release_dir/web-proxy-patch.yaml" -o yaml > "$release_dir/web-restricted.yaml"
-mv "$release_dir/web-restricted.yaml" "$release_dir/web.yaml"
-```
+在 `api.yaml` 中配置身份适配器所需的变量和 Secret 引用。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
 
 ### 应用清单并等待就绪
 
@@ -392,41 +297,127 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=
 kubectl -n kube-aiops-system get pods,svc
 ```
 
-### 通过本机端口转发访问
-
-`port-forward` 模式下，在有目标集群访问权限的终端运行：
-
-```bash
-kubectl -n kube-aiops-system port-forward --address 127.0.0.1 svc/kube-aiops-web 4173:8080
-```
-
-保持该终端运行，打开 <http://127.0.0.1:4173/#/findings>。在另一终端验证页面和真实集群数据：
-
-```bash
-curl -fsS http://127.0.0.1:4173/portal-healthz
-curl -fsS http://127.0.0.1:4173/api/v1/findings
-curl -fsS http://127.0.0.1:4173/api/v1/findings/summary
-```
-
-若在远程安装主机运行 kubectl，可在浏览器所在机器建立 SSH 隧道：`ssh -N -L 4173:127.0.0.1:4173 user@install-host`。`production` 模式继续配置 [HTTPS 入口](#挂载-https-入口)。
-
 ## 配置可观测性来源
 
-Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。以下三个后端在 API Deployment 中按需配置。
+Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。其余三个来源通过 API Deployment 的环境变量按需启用。填写 Base URL，保留反向代理路径前缀，API 会追加查询路径。
 
-| 来源 | 启用变量 | 选填变量 |
+| 来源 | 启用变量 | API 查询路径 |
 | --- | --- | --- |
-| Prometheus | `PROMETHEUS_URL` | `PROMETHEUS_CLUSTER_LABEL_VALUE`、`PROMETHEUS_BEARER_TOKEN_FILE`、`PROMETHEUS_CA_FILE` |
-| VictoriaLogs | `VICTORIALOGS_URL` | `VICTORIALOGS_CLUSTER_LABEL_VALUE`、`VICTORIALOGS_BEARER_TOKEN_FILE`、`VICTORIALOGS_CA_FILE` |
-| Alertmanager | `ALERTMANAGER_URL` | `ALERTMANAGER_CLUSTER_LABEL_VALUE`、`ALERTMANAGER_BEARER_TOKEN_FILE`、`ALERTMANAGER_CA_FILE` |
+| Prometheus | `PROMETHEUS_URL` | `/api/v1/query`、`/api/v1/query_range` |
+| VictoriaLogs | `VICTORIALOGS_URL` | `/select/logsql/stats_query_range` |
+| Alertmanager | `ALERTMANAGER_URL` | `/api/v2/alerts` |
 
-共享数据源通过 `*_CLUSTER_LABEL_VALUE` 对齐本集群的 `cluster` 标签。Bearer token 通过挂载的 Secret 文件提供，携带 token 的地址使用 HTTPS。自定义 CA 指向 Pod 内可读的 PEM 文件。查询范围和需要的资源标签见 [关联设计](phase-2-correlation-design.md)。
+### 设置数据源地址和集群标签
 
-部署配置更新后，打开一个有 Result 的 Finding，检查各来源状态和证据。需要从命令行核对时，使用列表返回的 `id` 替换下面的占位符。
+在[部署 API 与 Web Portal](#4-部署-api-与-web-portal)生成 `api.yaml` 后执行。以下为无需认证的集群内 Service 示例，替换为实际地址，只设置需要启用的来源。共享数据源时，为每个来源设置实际的 `*_CLUSTER_LABEL_VALUE`。留空时应使用仅提供本集群数据的端点。VictoriaLogs 多租户场景使用已配置目标租户的入口。[证据关联设计](phase-2-correlation-design.md)
 
 ```bash
-curl -fsS 'http://127.0.0.1:4173/api/v1/findings/<finding-id>/correlation'
+prometheus_url=http://prometheus.monitoring.svc:9090
+victorialogs_url=http://victorialogs.monitoring.svc:9428
+alertmanager_url=http://alertmanager.monitoring.svc:9093
+cluster_label='' # 共享数据源时填写 cluster 标签值，各来源可分别设置
+
+kubectl set env --local -f "$release_dir/api.yaml" -c api \
+  "PROMETHEUS_URL=$prometheus_url" "PROMETHEUS_CLUSTER_LABEL_VALUE=$cluster_label" \
+  "VICTORIALOGS_URL=$victorialogs_url" "VICTORIALOGS_CLUSTER_LABEL_VALUE=$cluster_label" \
+  "ALERTMANAGER_URL=$alertmanager_url" "ALERTMANAGER_CLUSTER_LABEL_VALUE=$cluster_label" \
+  -o yaml > "$release_dir/api-observability.yaml"
+mv "$release_dir/api-observability.yaml" "$release_dir/api.yaml"
 ```
+
+### 挂载 HTTPS 凭据
+
+上游使用 Bearer token 或私有 CA 时，填写 HTTPS Base URL，并用下面的命令创建 Secret 和挂载文件。最后两个参数分别为 token 文件和 PEM CA 文件的路径，缺少其中一项时传空字符串。使用系统信任的证书且无需 token 时，在上一节填写 HTTPS 地址即可。
+
+```bash
+test "$(kubectl config current-context)" = "$target_context"
+
+configure_source_tls() {
+  local source="$1" prefix="$2" url="$3" token_file="$4" ca_file="$5"
+  local secret="kube-aiops-$source" mount="/var/run/secrets/kube-aiops/$source"
+  local token_path='' ca_path=''
+  local -a files=()
+
+  [[ "$url" == https://* ]] || { printf '数据源 URL 必须使用 HTTPS\n' >&2; return 1; }
+  if [[ -n "$token_file" ]]; then
+    files+=("--from-file=token=$token_file")
+    token_path="$mount/token"
+  fi
+  if [[ -n "$ca_file" ]]; then
+    files+=("--from-file=ca.crt=$ca_file")
+    ca_path="$mount/ca.crt"
+  fi
+  (( ${#files[@]} > 0 )) || { printf '请提供 token 或 CA 文件\n' >&2; return 1; }
+
+  kubectl -n kube-aiops-system create secret generic "$secret" \
+    "${files[@]}" --dry-run=client -o yaml |
+    kubectl apply --server-side --field-manager=kube-aiops-observability -f - || return
+
+  cat > "$release_dir/api-$source-tls-patch.yaml" <<YAML
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: ${prefix}_URL
+              value: "$url"
+            - name: ${prefix}_BEARER_TOKEN_FILE
+              value: "$token_path"
+            - name: ${prefix}_CA_FILE
+              value: "$ca_path"
+          volumeMounts:
+            - name: $secret
+              mountPath: $mount
+              readOnly: true
+      volumes:
+        - name: $secret
+          secret:
+            secretName: $secret
+YAML
+  kubectl patch --local -f "$release_dir/api.yaml" --type=strategic \
+    --patch-file "$release_dir/api-$source-tls-patch.yaml" -o yaml \
+    > "$release_dir/api-observability.yaml" || return
+  mv "$release_dir/api-observability.yaml" "$release_dir/api.yaml"
+}
+```
+
+选择需要配置的来源，替换地址和文件路径。凭据文件由平台保管，发布清单只引用 Secret。
+
+```bash
+configure_source_tls prometheus PROMETHEUS https://prometheus.example.com \
+  /secure/prometheus.token /secure/prometheus-ca.pem
+configure_source_tls victorialogs VICTORIALOGS https://victorialogs.example.com \
+  /secure/victorialogs.token /secure/victorialogs-ca.pem
+configure_source_tls alertmanager ALERTMANAGER https://alertmanager.example.com \
+  /secure/alertmanager.token /secure/alertmanager-ca.pem
+```
+
+### 应用并验证数据源
+
+首次部署返回第 4 节应用两套工作负载。已有部署使用包含当前镜像、身份和数据源配置的发布清单更新 API。
+
+```bash
+test "$(kubectl config current-context)" = "$target_context"
+kubectl apply --dry-run=server -f "$release_dir/api.yaml"
+kubectl apply -f "$release_dir/api.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+HTTPS 入口就绪后，使用同时拥有 Finding 列表和证据读取权限的账号查询已有 Finding。curl 配置文件包含认证 Header 或 Cookie。API Pod 需要能够访问 DNS、Kubernetes API、身份服务和数据源端口。
+
+```bash
+portal_url=https://kube-aiops.example.com
+allowed_curl_config=/secure/portal-allowed.curl
+finding_id="$(curl --config "$allowed_curl_config" -fsS --max-time 10 \
+  "$portal_url/api/v1/findings" | jq -er '.items[0].id')"
+finding_id_url="$(jq -rn --arg id "$finding_id" '$id | @uri')"
+curl --config "$allowed_curl_config" -fsS --max-time 15 \
+  "$portal_url/api/v1/findings/$finding_id_url/correlation" |
+  jq '{sources, signalCount: (.signals | length)}'
+```
+
+`available` 表示来源可查询。出现 `partial` 或 `unavailable` 时，检查连通性、TLS 和凭据。未启用的来源显示 `disabled`。查询可用但证据为空时，核对资源标签、集群标签和时间窗口。
 
 ## 生产部署
 
@@ -472,7 +463,6 @@ make api-contract-check
 将 [API](../deploy/api) 和 [Web](../deploy/web) 的 HTTPRoute 与 NetworkPolicy 复制到本次发布目录。
 
 ```bash
-test "$portal_access" = production
 test "$(kubectl config current-context)" = "$target_context"
 cp deploy/api/httproute.yaml "$release_dir/api-route.yaml"
 cp deploy/web/httproute.yaml "$release_dir/web-route.yaml"
@@ -511,8 +501,6 @@ kubectl -n kube-aiops-system get httproute kube-aiops-api kube-aiops-web -o yaml
 ```
 
 核对两条 Route 在目标 listener 下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若此前应用了旧版合并路由 `httproute/kube-aiops`，确认其归属及两条新 Route 均已就绪后，删除旧 Route，再执行下节验收。若使用预发域名，在完成验收后再切生产 DNS 或流量。
-
-从端口转发模式切换到生产访问时，确认生产入口正常后，清理此前由本文档创建的 `kube-aiops-api-from-web` 和 `kube-aiops-web-restricted` 策略。生产策略已包含 Web 到 API 的访问规则。
 
 ### 验收、发布与回滚
 
@@ -575,6 +563,6 @@ make verify
 | 证据来源为 `partial` 或 `unavailable` | Pod 到上游的连通性、TLS、凭据、集群标签和查询窗口 |
 | API 在生产模式退出 | 后端启动日志中的安全组合校验及可信认证、授权接入情况 |
 
-端口转发可用 Ctrl+C 停止。清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
+清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
