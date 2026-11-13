@@ -195,38 +195,47 @@ export class PortalApp {
     const first = this.pageCursor()
       ? `<a class="button" href="#/findings?${serializeFindingFilters(filters).replaceAll("&", "&amp;")}">返回首页</a>`
       : "";
-    this.renderShell(body + first + next);
+    this.renderShell(body + (first || next ? `<nav class="pagination" aria-label="诊断结果分页">${first}${next}</nav>` : ""));
   }
 
   private renderShell(content: string): void {
+    const hash = window.location.hash;
+    const adminPage = this.mustChangePassword || (this.identityAdmin && hash.startsWith("#/admin"));
+    const detailPage = /^#\/findings\/[^?]+/.test(hash);
+    const signedOut = content.includes("data-login");
+    const title = adminPage ? "系统管理" : detailPage ? "诊断详情" : "诊断控制台";
     this.root.innerHTML = `
+      <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
       <header class="topbar">
         <a class="brand" href="#/findings" aria-label="kube-aiops 诊断首页">
           <span class="brand-mark" aria-hidden="true">K</span>
           <span><strong>kube-aiops</strong><small>Kubernetes 诊断</small></span>
         </a>
         <div class="portal-actions">
-          <span class="readonly-badge">只读</span>
-          ${this.identityAdmin ? '<a class="button" href="#/admin/ldap">系统管理</a>' : ""}
-          ${this.showLogout ? '<button class="button" type="button" data-action="logout">退出登录</button>' : ""}
+          ${this.showLogout && !signedOut ? '<button class="button secondary" type="button" data-action="logout">退出登录</button>' : ""}
         </div>
       </header>
-      <main class="page-shell">
-        ${demoMode ? '<p class="demo-notice"><strong>演示数据</strong> · 当前展示本地模拟的诊断结果和证据</p>' : ""}
-        <section class="page-intro">
-          <div>
-            <h1>诊断控制台</h1>
-            <p>查看集群的 K8sGPT 诊断结果和关联证据。</p>
-          </div>
-        </section>
-        ${content}
-      </main>`;
+      <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
+        ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
+          <a href="#/findings"${adminPage ? "" : ' aria-current="page"'}>诊断控制台</a>
+          ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
+        </nav>`}
+        <main id="portal-content" class="page-shell" tabindex="-1">
+          ${demoMode ? '<p class="demo-notice">演示数据</p>' : ""}
+          ${signedOut ? "" : `<header class="page-intro"><h1>${title}</h1></header>`}
+          ${content}
+        </main>
+      </div>`;
   }
 
   private handleClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
+    if (action === "skip-content") {
+      event.preventDefault();
+      this.root.querySelector<HTMLElement>("main")?.focus();
+    }
     if (action === "login-provider") {
       const form = this.root.querySelector<HTMLFormElement>("[data-login]");
       const provider = form?.querySelector<HTMLInputElement>('[name="provider"]');

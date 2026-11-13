@@ -10,10 +10,10 @@ const ldapFields = [
 
 export async function renderIdentityAdmin(resource: string, initial: boolean): Promise<string> {
   const navigation = initial ? "" : `<nav class="identity-nav" aria-label="系统管理">
-    <a href="#/admin/ldap">认证配置</a>
-    <a href="#/admin/users">用户管理</a>
-    <a href="#/admin/policy">权限配置</a>
-    <a href="#/admin/password">修改密码</a>
+    <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
+    <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
+    <a href="#/admin/policy"${resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
+    <a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>
   </nav>`;
   let content: string;
   try {

@@ -8,7 +8,7 @@ export function renderFindingDetail(finding: Finding): string {
         <a class="back-link" href="#/findings">← 返回诊断列表</a>
         <div class="detail-title">
           <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>
-          <h1>${escapeHtml(finding.problem)}</h1>
+          <h2>${escapeHtml(finding.problem)}</h2>
         </div>
         <dl class="detail-list">
           ${detailRow("诊断编号", finding.id)}
