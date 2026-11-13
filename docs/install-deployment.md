@@ -366,7 +366,56 @@ spec:
             secretName: kube-aiops-prometheus
 ```
 
-VictoriaLogs 和 Alertmanager 同样通过各自的 Secret 挂载文件，变量前缀分别为 `VICTORIALOGS` 和 `ALERTMANAGER`。只使用 token 或私有 CA 时，创建对应文件并设置相应的 `*_BEARER_TOKEN_FILE` 或 `*_CA_FILE`。使用系统信任的证书且无需 token 时，只需填写 HTTPS 地址。变更 Secret 后重启 API Pod 以加载证书。
+VictoriaLogs 和 Alertmanager 可以分别创建独立 Secret。按需替换实际文件路径并执行。
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-victorialogs \
+  --from-file=token=/secure/victorialogs.token \
+  --from-file=ca.crt=/secure/victorialogs-ca.pem
+
+kubectl -n kube-aiops-system create secret generic kube-aiops-alertmanager \
+  --from-file=token=/secure/alertmanager.token \
+  --from-file=ca.crt=/secure/alertmanager-ca.pem
+```
+
+将以下字段合并到同一个 API Deployment 的 `spec.template.spec`。三个来源同时启用时，Prometheus、VictoriaLogs 和 Alertmanager 的环境变量及挂载分别放在已有的 `env`、`volumeMounts` 和 `volumes` 列表中。
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: VICTORIALOGS_URL
+              value: "https://victorialogs.example.com"
+            - name: VICTORIALOGS_BEARER_TOKEN_FILE
+              value: "/var/run/secrets/kube-aiops/victorialogs/token"
+            - name: VICTORIALOGS_CA_FILE
+              value: "/var/run/secrets/kube-aiops/victorialogs/ca.crt"
+            - name: ALERTMANAGER_URL
+              value: "https://alertmanager.example.com"
+            - name: ALERTMANAGER_BEARER_TOKEN_FILE
+              value: "/var/run/secrets/kube-aiops/alertmanager/token"
+            - name: ALERTMANAGER_CA_FILE
+              value: "/var/run/secrets/kube-aiops/alertmanager/ca.crt"
+          volumeMounts:
+            - name: victorialogs-credentials
+              mountPath: /var/run/secrets/kube-aiops/victorialogs
+              readOnly: true
+            - name: alertmanager-credentials
+              mountPath: /var/run/secrets/kube-aiops/alertmanager
+              readOnly: true
+      volumes:
+        - name: victorialogs-credentials
+          secret:
+            secretName: kube-aiops-victorialogs
+        - name: alertmanager-credentials
+          secret:
+            secretName: kube-aiops-alertmanager
+```
+
+只使用 token 或私有 CA 时，创建对应文件并设置相应的 `*_BEARER_TOKEN_FILE` 或 `*_CA_FILE`。使用系统信任的证书且无需 token 时，只需填写 HTTPS 地址。变更 Secret 后重启 API Pod 以加载证书。
 
 ### 应用并验证数据源
 
