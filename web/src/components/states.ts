@@ -22,14 +22,12 @@ export function authenticationRequiredState(): string {
     <section class="state-card error" role="alert" data-testid="authentication-required-state">
       <h2>需要身份认证</h2>
       <form class="login-form" data-login>
-        <input type="hidden" name="provider" value="local">
         <label>用户名<input name="username" autocomplete="username" required maxlength="256"></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
         <p role="status" data-login-status></p>
         <button class="button" type="submit">登录</button>
+        <label class="login-provider"><input type="checkbox" name="provider" value="ldap"> LDAP / Active Directory 登录</label>
       </form>
-      <button class="button" type="button" data-action="login-provider">LDAP / Active Directory 登录</button>
-      <button class="button" type="button" data-action="retry">重试</button>
     </section>`;
 }
 

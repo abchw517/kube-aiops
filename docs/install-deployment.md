@@ -755,6 +755,8 @@ make verify
 | Engine 已就绪但 Finding 为空 | 分析周期、Provider 凭据、K8sGPT Result 及 Result 的实例标签 |
 | API 的 `/readyz` 返回 503 | Result CRD、K8sGPT Namespace 和 API ServiceAccount 的 Result 读取权限 |
 | 页面打开但 API 返回 HTML 或 404 | 同源入口的 `/api/v1/` 转发路径和 API Service 端口 |
+| LDAP 搜索密码或测试按钮未出现 | 从包含 PR #61 的同一提交构建并发布 API 和 Web 镜像，使用新的镜像 digest 更新两个 Deployment，等待 rollout 完成后重新加载页面 |
+| LDAP 配置无法保存 | 在浏览器 Network 检查 `PUT /api/v1/admin/ldap`。成功应返回 204，测试请求应返回 JSON。更换 LDAP 地址或搜索 DN 后重新填写密码，并确认 API 使用 SQLite 身份存储 |
 | 证据来源为 `disabled` | 对应 `*_URL` 是否已设置 |
 | 证据来源为 `partial` 或 `unavailable` | Pod 到上游的连通性、TLS、凭据、集群标签和查询窗口 |
 | API 在生产模式退出 | 后端启动日志中的安全组合校验及可信认证、授权接入情况 |

@@ -19,11 +19,12 @@ test("error state always exposes a retry control", () => {
   assert.match(rendered, /data-action="retry"/);
 });
 
-test("authentication required state is explicit and retryable", () => {
+test("authentication starts with local login and offers an unchecked LDAP option", () => {
   const rendered = authenticationRequiredState();
   assert.match(rendered, /data-testid="authentication-required-state"/);
   assert.match(rendered, /需要身份认证/);
-  assert.match(rendered, /data-action="retry"/);
+  assert.doesNotMatch(rendered, /data-action="retry"/);
+  assert.match(rendered, /<input type="checkbox" name="provider" value="ldap">/);
 });
 
 test("authorization denied state is explicit and does not imply frontend authorization", () => {

@@ -180,6 +180,16 @@ try {
     "Logout did not clear the findings and restore the login form");
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) => text.includes("需要身份认证"), "Logged out user still had access to a finding");
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector("[data-login]");
+        form.elements.provider.click();
+        form.elements.username.value = "ldap-test";
+        form.elements.password.value = "fixture-password";
+        form.requestSubmit();
+      })()`,
+    });
+    await assertText(cdp, (text) => text.includes("诊断编号"), "Checked LDAP option did not log in");
   } finally {
     cdp.close();
   }

@@ -191,7 +191,8 @@ td { overflow-wrap: anywhere; }
 .portal-signed-out .page-shell { max-width: 520px; padding-top: clamp(30px, 8vh, 96px); }
 .portal-signed-out .state-card { display: block; text-align: left; padding: clamp(18px, 5vw, 32px); }
 .portal-signed-out .login-form { max-width: none; margin-bottom: 14px; }
-.portal-signed-out .state-card > .button { background: #eef3fb; color: #28405f; margin-top: 6px; }
+.login-form .login-provider { display: flex; align-items: center; gap: 8px; margin-top: 4px; cursor: pointer; }
+.login-form .login-provider input { width: 18px; height: 18px; margin: 0; accent-color: #1f4fd1; }
 :focus-visible { outline: 3px solid #217a9b; outline-offset: 3px; }
 .workspace-nav a:focus-visible, .topbar a:focus-visible { outline-color: #68dfcf; }
 .skip-link { position: absolute; left: 12px; top: 10px; z-index: 10; padding: 10px 14px; background: #fff; transform: translateY(-200%); }

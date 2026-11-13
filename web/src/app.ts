@@ -236,18 +236,6 @@ export class PortalApp {
       event.preventDefault();
       this.root.querySelector<HTMLElement>("main")?.focus();
     }
-    if (action === "login-provider") {
-      const form = this.root.querySelector<HTMLFormElement>("[data-login]");
-      const provider = form?.querySelector<HTMLInputElement>('[name="provider"]');
-      const password = form?.querySelector<HTMLInputElement>('[name="password"]');
-      const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
-      if (provider && password && submit) {
-        provider.value = provider.value === "local" ? "ldap" : "local";
-        password.value = "";
-        submit.textContent = provider.value === "ldap" ? "LDAP 登录" : "登录";
-        target.textContent = provider.value === "ldap" ? "返回本地账号登录" : "LDAP / Active Directory 登录";
-      }
-    }
     if (action === "logout") void this.logout(target.closest<HTMLButtonElement>("button"));
     if (action === "retry") void this.route();
     if (action === "retry-correlation") {
@@ -300,7 +288,7 @@ export class PortalApp {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: fields.get("provider"),
+          provider: fields.has("provider") ? "ldap" : "local",
           username: fields.get("username"),
           password: fields.get("password"),
         }),

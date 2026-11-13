@@ -46,7 +46,8 @@ createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const credentials = JSON.parse(Buffer.concat(chunks).toString());
-    if (credentials.provider !== "local" || credentials.username !== "portal-test" ||
+    const expectedProvider = credentials.username === "ldap-test" ? "ldap" : "local";
+    if (credentials.provider !== expectedProvider || !["ldap-test", "portal-test"].includes(credentials.username) ||
         credentials.password !== "fixture-password") {
       return json(response, 401, { error: { code: "UNAUTHORIZED" } });
     }
