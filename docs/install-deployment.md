@@ -62,7 +62,6 @@ make platform-check
 使用内网仓库时，先按 [使用内网镜像仓库](#使用内网镜像仓库) 同步 Operator、RBAC Proxy 和 Engine。默认 CR 使用 OpenAI、`gpt-4o-mini` 和 5 分钟分析周期。需要自定义模型、语言或兼容端点时，执行 [配置 Engine 模型与语言](#配置-engine-模型与语言) 中的安装步骤，然后继续 [验证部署](#验证部署)。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 make bootstrap
 
 provider_secret="$(kubectl -n k8sgpt-operator-system get secret k8sgpt-openai-secret --ignore-not-found -o name)"
@@ -158,7 +157,6 @@ kubectl -n k8sgpt-operator-system get deployment -l app.kubernetes.io/name=k8sgp
 首次安装或切换 Provider 时，用目标 Provider 的 API Key 创建或更新 `k8sgpt-openai-secret`。`OPENAI_TOKEN` 是安装命令读取凭据的变量名。已有正确凭据时可直接执行安装。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 (
   set -e
   read -rsp 'Provider API key: ' OPENAI_TOKEN
@@ -269,7 +267,6 @@ printf '%s\n' "$api_image" "$web_image"
 创建 Namespace、API ServiceAccount、只读 RBAC 和 API Service，再按实际镜像渲染两个 Deployment。HTTPRoute 和 NetworkPolicy 在配置 HTTPS 入口时应用。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 kubectl apply -f deploy/api/namespace.yaml
 kubectl apply -f deploy/api/serviceaccount.yaml -f deploy/api/clusterrole.yaml \
   -f deploy/api/clusterrolebinding.yaml -f deploy/api/service.yaml
@@ -295,7 +292,6 @@ imagePullSecrets:
 在应用前检查清单。Web 示例的副本和资源按实际容量调整。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 kubectl apply --dry-run=server -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
 kubectl apply -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
@@ -315,96 +311,68 @@ Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。其余三个来源通�
 
 ### 设置数据源地址和集群标签
 
-在[部署 API 与 Web Portal](#4-部署-api-与-web-portal)生成 `api.yaml` 后执行。以下为无需认证的集群内 Service 示例，替换为实际地址，只设置需要启用的来源。共享数据源时，为每个来源设置实际的 `*_CLUSTER_LABEL_VALUE`。留空时应使用仅提供本集群数据的端点。VictoriaLogs 多租户场景使用已配置目标租户的入口。[证据关联设计](phase-2-correlation-design.md)
+在 [API Deployment](../deploy/api/deployment.yaml) 的 `spec.template.spec.containers` 中找到 `name: api`，将下列变量添加到已有的 `env` 列表。地址和集群标签值按实际环境填写，只保留需要启用的来源。渲染镜像后，同样可以直接编辑 `$release_dir/api.yaml`。
 
-```bash
-prometheus_url=http://prometheus.monitoring.svc:9090
-victorialogs_url=http://victorialogs.monitoring.svc:9428
-alertmanager_url=http://alertmanager.monitoring.svc:9093
-cluster_label='' # 共享数据源时填写 cluster 标签值，各来源可分别设置
-
-kubectl set env --local -f "$release_dir/api.yaml" -c api \
-  "PROMETHEUS_URL=$prometheus_url" "PROMETHEUS_CLUSTER_LABEL_VALUE=$cluster_label" \
-  "VICTORIALOGS_URL=$victorialogs_url" "VICTORIALOGS_CLUSTER_LABEL_VALUE=$cluster_label" \
-  "ALERTMANAGER_URL=$alertmanager_url" "ALERTMANAGER_CLUSTER_LABEL_VALUE=$cluster_label" \
-  -o yaml > "$release_dir/api-observability.yaml"
-mv "$release_dir/api-observability.yaml" "$release_dir/api.yaml"
+```yaml
+# 添加到 api 容器已有的 env 列表
+- name: PROMETHEUS_URL
+  value: "http://prometheus.monitoring.svc:9090"
+- name: PROMETHEUS_CLUSTER_LABEL_VALUE
+  value: "my-k8s-cluster"
+- name: VICTORIALOGS_URL
+  value: "http://victorialogs.monitoring.svc:9428"
+- name: VICTORIALOGS_CLUSTER_LABEL_VALUE
+  value: "my-k8s-cluster"
+- name: ALERTMANAGER_URL
+  value: "http://alertmanager.monitoring.svc:9093"
+- name: ALERTMANAGER_CLUSTER_LABEL_VALUE
+  value: "my-k8s-cluster"
 ```
+
+共享数据源时，分别填写对应数据源中实际的 `cluster` 标签值。单集群专用端点可删除或留空这些标签变量。VictoriaLogs 多租户场景使用已配置目标租户的入口。[证据关联设计](phase-2-correlation-design.md)
 
 ### 挂载 HTTPS 凭据
 
-上游使用 Bearer token 或私有 CA 时，填写 HTTPS Base URL，并用下面的命令创建 Secret 和挂载文件。最后两个参数分别为 token 文件和 PEM CA 文件的路径，缺少其中一项时传空字符串。使用系统信任的证书且无需 token 时，在上一节填写 HTTPS 地址即可。
+上游使用 Bearer token 或私有 CA 时，使用 HTTPS 地址。以下以 Prometheus 为例。先准备 token 和 CA 文件，在目标 Namespace 创建 Secret。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
+kubectl -n kube-aiops-system create secret generic kube-aiops-prometheus \
+  --from-file=token=/secure/prometheus.token \
+  --from-file=ca.crt=/secure/prometheus-ca.pem
+```
 
-configure_source_tls() {
-  local source="$1" prefix="$2" url="$3" token_file="$4" ca_file="$5"
-  local secret="kube-aiops-$source" mount="/var/run/secrets/kube-aiops/$source"
-  local token_path='' ca_path=''
-  local -a files=()
+将以下字段合并到 `api.yaml` 中现有的 `spec.template.spec`。容器 `name: api`、`env` 和 `volumes` 均在原有列表中添加字段。
 
-  [[ "$url" == https://* ]] || { printf '数据源 URL 必须使用 HTTPS\n' >&2; return 1; }
-  if [[ -n "$token_file" ]]; then
-    files+=("--from-file=token=$token_file")
-    token_path="$mount/token"
-  fi
-  if [[ -n "$ca_file" ]]; then
-    files+=("--from-file=ca.crt=$ca_file")
-    ca_path="$mount/ca.crt"
-  fi
-  (( ${#files[@]} > 0 )) || { printf '请提供 token 或 CA 文件\n' >&2; return 1; }
-
-  kubectl -n kube-aiops-system create secret generic "$secret" \
-    "${files[@]}" --dry-run=client -o yaml |
-    kubectl apply --server-side --field-manager=kube-aiops-observability -f - || return
-
-  cat > "$release_dir/api-$source-tls-patch.yaml" <<YAML
+```yaml
 spec:
   template:
     spec:
       containers:
         - name: api
           env:
-            - name: ${prefix}_URL
-              value: "$url"
-            - name: ${prefix}_BEARER_TOKEN_FILE
-              value: "$token_path"
-            - name: ${prefix}_CA_FILE
-              value: "$ca_path"
+            - name: PROMETHEUS_URL
+              value: "https://prometheus.example.com"
+            - name: PROMETHEUS_BEARER_TOKEN_FILE
+              value: "/var/run/secrets/kube-aiops/prometheus/token"
+            - name: PROMETHEUS_CA_FILE
+              value: "/var/run/secrets/kube-aiops/prometheus/ca.crt"
           volumeMounts:
-            - name: $secret
-              mountPath: $mount
+            - name: prometheus-credentials
+              mountPath: /var/run/secrets/kube-aiops/prometheus
               readOnly: true
       volumes:
-        - name: $secret
+        - name: prometheus-credentials
           secret:
-            secretName: $secret
-YAML
-  kubectl patch --local -f "$release_dir/api.yaml" --type=strategic \
-    --patch-file "$release_dir/api-$source-tls-patch.yaml" -o yaml \
-    > "$release_dir/api-observability.yaml" || return
-  mv "$release_dir/api-observability.yaml" "$release_dir/api.yaml"
-}
+            secretName: kube-aiops-prometheus
 ```
 
-选择需要配置的来源，替换地址和文件路径。凭据文件由平台保管，发布清单只引用 Secret。
-
-```bash
-configure_source_tls prometheus PROMETHEUS https://prometheus.example.com \
-  /secure/prometheus.token /secure/prometheus-ca.pem
-configure_source_tls victorialogs VICTORIALOGS https://victorialogs.example.com \
-  /secure/victorialogs.token /secure/victorialogs-ca.pem
-configure_source_tls alertmanager ALERTMANAGER https://alertmanager.example.com \
-  /secure/alertmanager.token /secure/alertmanager-ca.pem
-```
+VictoriaLogs 和 Alertmanager 同样通过各自的 Secret 挂载文件，变量前缀分别为 `VICTORIALOGS` 和 `ALERTMANAGER`。只使用 token 或私有 CA 时，创建对应文件并设置相应的 `*_BEARER_TOKEN_FILE` 或 `*_CA_FILE`。使用系统信任的证书且无需 token 时，只需填写 HTTPS 地址。变更 Secret 后重启 API Pod 以加载证书。
 
 ### 应用并验证数据源
 
 首次部署返回第 4 节应用两套工作负载。已有部署使用包含当前镜像、身份和数据源配置的发布清单更新 API。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 kubectl apply --dry-run=server -f "$release_dir/api.yaml"
 kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
@@ -469,7 +437,6 @@ make api-contract-check
 将 [API](../deploy/api) 和 [Web](../deploy/web) 的 HTTPRoute 与 NetworkPolicy 复制到本次发布目录。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 cp deploy/api/httproute.yaml "$release_dir/api-route.yaml"
 cp deploy/web/httproute.yaml "$release_dir/web-route.yaml"
 cp deploy/api/networkpolicy.yaml "$release_dir/api-networkpolicy.yaml"
@@ -539,7 +506,6 @@ test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%
 生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。若上一版仍使用合并的 `route.yaml`，按实际归档恢复上一版清单和网络策略。确认旧 Route 已被 Gateway 接受后，移除本次新建的两条 Route，复验旧入口。
 
 ```bash
-test "$(kubectl config current-context)" = "$target_context"
 previous=/path/to/previous-approved-release
 manifests=(
   -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml"
