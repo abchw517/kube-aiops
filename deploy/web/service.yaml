@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-aiops-web
+  namespace: kube-aiops-system
+  labels:
+    app.kubernetes.io/name: kube-aiops-web
+    app.kubernetes.io/part-of: kube-aiops
+    app.kubernetes.io/component: portal-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kube-aiops-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

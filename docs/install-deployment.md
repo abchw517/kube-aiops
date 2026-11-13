@@ -246,9 +246,9 @@ printf '%s\n' "$api_image" "$web_image"
 
 ## 4. 部署 API 与 Web Portal
 
-Portal 默认通过端口转发验收。通过 HTTPS 发布时，先完成 [生产身份接入](#生产身份接入)，并将 `portal_access` 设为 `production`。
+Portal 默认通过端口转发验收。通过 HTTPS 发布时，先完成 [生产身份接入](#生产身份接入)，并将 `portal_access` 设为 `production`。按步骤应用指定清单，两个目录中的 HTTPRoute 和生产入站策略在配置 HTTPS 入口时应用。
 
-应用仓库提供的 API Namespace、ServiceAccount、只读 RBAC 和 ClusterIP Service。通过本地渲染将 API Deployment 的镜像替换为准备好的 digest。
+应用仓库提供的 Namespace、ServiceAccount、只读 RBAC 和 API ClusterIP Service。以仓库中的 API、Web Deployment 为模板，将镜像替换为准备好的 digest。
 
 ```bash
 portal_access=port-forward
@@ -260,80 +260,9 @@ kubectl apply -f deploy/api/serviceaccount.yaml -f deploy/api/clusterrole.yaml \
 kubectl set image --local -f deploy/api/deployment.yaml "api=$api_image" -o yaml \
   > "$release_dir/api.yaml"
 
-cat > "$release_dir/web.yaml" <<YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kube-aiops-web
-  namespace: kube-aiops-system
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: kube-aiops-web
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: kube-aiops-web
-    spec:
-      automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: web
-          image: $web_image
-          ports:
-            - name: http
-              containerPort: 8080
-          readinessProbe:
-            httpGet:
-              path: /portal-healthz
-              port: http
-          livenessProbe:
-            httpGet:
-              path: /portal-healthz
-              port: http
-          resources:
-            requests:
-              cpu: 20m
-              memory: 32Mi
-            limits:
-              cpu: 250m
-              memory: 128Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
-YAML
-
-cat > "$release_dir/web-service.yaml" <<'YAML'
-apiVersion: v1
-kind: Service
-metadata:
-  name: kube-aiops-web
-  namespace: kube-aiops-system
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: kube-aiops-web
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http
-YAML
+kubectl set image --local -f deploy/web/deployment.yaml "web=$web_image" -o yaml \
+  > "$release_dir/web.yaml"
+cp deploy/web/service.yaml "$release_dir/web-service.yaml"
 ```
 
 私有镜像仓库使用 `kube-aiops-system` 中预建的 `kubernetes.io/dockerconfigjson` Secret。在相应 Deployment 的 `spec.template.spec` 下合并以下字段，使用实际 Secret 名称。
@@ -372,7 +301,7 @@ spec:
 
 ### 仅端口转发模式配置受限访问
 
-该模式用于在现有集群验收未接入企业身份的 API 镜像。使用支持 NetworkPolicy 的 CNI，限制专用命名空间的 Pod 创建权限和 `pods/portforward` 权限。先确认两个 Service 均未被已有 Ingress、HTTPRoute、NodePort 或其他入口公开，且没有额外允许 API 或 Web 入站的策略。该模式下 API 使用 `SECURITY_MODE=development`，对外发布走 [生产部署](#生产部署)。
+该模式用于在现有集群验收未接入企业身份的 API 镜像。使用支持 NetworkPolicy 的 CNI，限制专用命名空间的 Pod 创建权限和 `pods/portforward` 权限。先确认两个 Service 均未被已有 Ingress、HTTPRoute、NodePort 或其他入口公开，且没有额外允许 API 或 Web 入站的策略。若此前应用了生产模式的两份入站策略，先撤下生产路由和这两份策略。该模式下 API 使用 `SECURITY_MODE=development`，对外发布走 [生产部署](#生产部署)。
 
 下列配置让 Web 代理同源 `/api/v1/`，拒绝常规 Pod 流量直接访问 Web，并允许同命名空间中的 Web Pod 访问 API。运维访问使用绑定本机回环地址的 Kubernetes 端口转发。
 
@@ -538,53 +467,44 @@ make api-contract-check
           kubernetes.io/metadata.name: kube-aiops-system
 ```
 
-按环境将 `portal_host` 解析到 Gateway 地址。若从端口转发模式转为生产访问，先确认 API 已用生产模式成功启动，再按平台的 NetworkPolicy 允许 Gateway 访问两个后端。下面的 `HTTPRoute` 保留原始路径，将 `/api/v1` 路由到 API，其余请求路由到 Web。
+按环境将 `portal_host` 解析到 Gateway 地址。两个 HTTPRoute 使用同一个域名和 HTTPS listener。API 路由将 `/api/v1` 转发到 API Service，Web 路由将 `/` 转发到 Web Service。
+
+将 [API](../deploy/api) 和 [Web](../deploy/web) 的 HTTPRoute 与 NetworkPolicy 复制到本次发布目录。
 
 ```bash
 test "$portal_access" = production
+test "$(kubectl config current-context)" = "$target_context"
+cp deploy/api/httproute.yaml "$release_dir/api-route.yaml"
+cp deploy/web/httproute.yaml "$release_dir/web-route.yaml"
+cp deploy/api/networkpolicy.yaml "$release_dir/api-networkpolicy.yaml"
+cp deploy/web/networkpolicy.yaml "$release_dir/web-networkpolicy.yaml"
+```
+
+在两份 Route 中填写实际 Gateway 名称、命名空间、listener 名称和域名。集群需要支持 NetworkPolicy 的 CNI。两份策略允许指定 Envoy 代理 Pod 访问各自后端的 TCP 8080。根据实际代理 Pod 的命名空间和标签调整 `namespaceSelector` 和 `podSelector`。使用其他 Gateway 实现时填写该实现的数据面命名空间和标签。策略仅限制入站，平台已有的出站策略还需允许 DNS、Kubernetes API 和已启用的上游。
+
+应用策略前确认 API 已在 `production` 模式成功启动。用实际值设置以下变量并核对 Gateway 与数据面 Pod。
+
+```bash
 portal_host=kube-aiops.example.com
 gateway_namespace=envoy-gateway-system
 gateway_name=production-gateway
-gateway_listener=https
+proxy_namespace=envoy-gateway-system
 
 kubectl -n "$gateway_namespace" wait --for=condition=Programmed "gateway/$gateway_name" --timeout=120s
 kubectl -n "$gateway_namespace" get gateway "$gateway_name" -o jsonpath='{.status.addresses[*].value}{"\n"}'
-cat > "$release_dir/route.yaml" <<YAML
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: kube-aiops
-  namespace: kube-aiops-system
-spec:
-  parentRefs:
-    - name: $gateway_name
-      namespace: $gateway_namespace
-      sectionName: $gateway_listener
-  hostnames:
-    - $portal_host
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/v1
-      backendRefs:
-        - name: kube-aiops-api
-          port: 8080
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: kube-aiops-web
-          port: 8080
-YAML
+kubectl -n "$proxy_namespace" get pods \
+  -l "gateway.envoyproxy.io/owning-gateway-namespace=$gateway_namespace,gateway.envoyproxy.io/owning-gateway-name=$gateway_name"
 
-kubectl apply --dry-run=server -f "$release_dir/route.yaml"
-kubectl apply -f "$release_dir/route.yaml"
-kubectl -n kube-aiops-system get httproute kube-aiops -o yaml
+kubectl apply --dry-run=server -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml" \
+  -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
+kubectl apply -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml"
+kubectl apply -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
+kubectl -n kube-aiops-system get httproute kube-aiops-api kube-aiops-web -o yaml
 ```
 
-核对目标父级下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若使用预发域名验证，在完成下节后再切生产 DNS 或流量。
+核对两条 Route 在目标 listener 下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若此前应用了旧版合并路由 `httproute/kube-aiops`，确认其归属及两条新 Route 均已就绪后，删除旧 Route，再执行下节验收。若使用预发域名，在完成验收后再切生产 DNS 或流量。
+
+从端口转发模式切换到生产访问时，确认生产入口正常后，清理此前由本文档创建的 `kube-aiops-api-from-web` 和 `kube-aiops-web-restricted` 策略。NetworkPolicy 的允许规则会叠加，保留旧策略会继续允许 Web Pod 直接访问 API。
 
 ### 验收、发布与回滚
 
@@ -614,13 +534,18 @@ test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%
 | 审计 | API 审计记录能关联到同一次请求，日志中无明文凭据 |
 | 稳定性 | API 和 Web rollout 完成，探针稳定；Operator 无新增 OOM 重启，主要请求的错误率和延迟符合本次发布标准 |
 
-生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、`route.yaml`、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。
+生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。若上一版仍使用合并的 `route.yaml`，按实际归档恢复上一版清单和网络策略。确认旧 Route 已被 Gateway 接受后，移除本次新建的两条 Route，复验旧入口。
 
 ```bash
 test "$(kubectl config current-context)" = "$target_context"
 previous=/path/to/previous-approved-release
-kubectl apply --dry-run=server -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml" -f "$previous/route.yaml"
-kubectl apply -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml" -f "$previous/route.yaml"
+manifests=(
+  -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml"
+  -f "$previous/api-networkpolicy.yaml" -f "$previous/web-networkpolicy.yaml"
+  -f "$previous/api-route.yaml" -f "$previous/web-route.yaml"
+)
+kubectl apply --dry-run=server "${manifests[@]}"
+kubectl apply "${manifests[@]}"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
 make verify
@@ -642,6 +567,6 @@ make verify
 | 证据来源为 `partial` 或 `unavailable` | Pod 到上游的连通性、TLS、凭据、集群标签和查询窗口 |
 | API 在生产模式退出 | 后端启动日志中的安全组合校验及可信认证、授权接入情况 |
 
-端口转发可用 Ctrl+C 停止。清理 Portal 时，先下线其专用 HTTPRoute，再删除本次发布的 API、Web Deployment 和 Service。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
+端口转发可用 Ctrl+C 停止。清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
