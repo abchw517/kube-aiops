@@ -43,6 +43,7 @@ func (s *Server) authenticationMiddleware(authenticator identity.Authenticator, 
 			return
 		}
 
+		w.Header().Set("Cache-Control", "no-store")
 		principal, err := authenticator.Authenticate(r.Context(), r)
 		if err != nil {
 			switch {

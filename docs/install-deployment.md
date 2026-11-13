@@ -482,7 +482,7 @@ API 支持本地账号和 LDAPS，使用授权策略控制访问。Portal 和 AP
 [{"username":"portal-admin","passwordHash":"替换为bcrypt散列","groups":["operators"]}]
 ```
 
-2. 创建 `/secure/policy.json`，按实际集群和命名空间修改授权。LDAP 组使用小写完整 DN，`memberOf` 返回直接组。
+2. 创建 `/secure/policy.json`，按实际集群和命名空间修改授权。LDAP 组使用小写完整 DN，`memberOf` 返回直接组。当前支持最多 2048 个组，每个组标识最多 1024 字节。API 会读取域控返回的分段组属性。超过限制或分段读取失败时，登录返回 503。
 
 ```json
 {

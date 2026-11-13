@@ -36,6 +36,7 @@ type Finding struct {
 }
 
 type Filter struct {
+	Visible   func(Finding) (bool, error)
 	Cluster   string
 	Namespace string
 	Kind      string
