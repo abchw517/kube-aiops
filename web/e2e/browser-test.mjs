@@ -178,8 +178,6 @@ try {
     await assertText(cdp, (text) =>
       text.includes("需要身份认证") && !text.includes("CrashLoopBackOff detected"),
     "Logout did not clear the findings and restore the login form");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
-      (text) => text.includes("需要身份认证"), "Logged out user still had access to a finding");
     await cdp.send("Runtime.evaluate", {
       expression: `(() => {
         const form = document.querySelector("[data-login]");
@@ -189,7 +187,13 @@ try {
         form.requestSubmit();
       })()`,
     });
-    await assertText(cdp, (text) => text.includes("诊断编号"), "Checked LDAP option did not log in");
+    await assertText(cdp, (text) => text.includes("共 2 条诊断结果"), "Checked LDAP option did not log in");
+    await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-action=logout]").click()',
+    });
+    await assertText(cdp, (text) => text.includes("需要身份认证"), "LDAP logout did not restore login");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
+      (text) => text.includes("需要身份认证"), "Logged out user still had access to a finding");
   } finally {
     cdp.close();
   }
