@@ -13,7 +13,7 @@
 | kubectl | v1.36.4 显式固定 |
 | Go toolchain | Kubernetes release-1.36 对齐 Go 1.26.5 |
 | Operator 基线 | v0.2.29 immutable digest |
-| Engine 基线 | v0.4.37 immutable digest |
+| Engine 基线 | v0.4.41 immutable digest |
 | E2E 异常路径 | 验证外部同名 RBAC 不被接管或删除 |
 | 平台漂移 | `tests/platform-baseline-test.py` fail closed |
 
@@ -78,9 +78,7 @@ Portal Backend 不使用 `client-go`，当前通过受限 HTTP client 调用稳�
 Operator 保持 `v0.2.29`：其已有策略门控 Auto Remediation，但本项目继续禁用
 Mutation 与 Auto Remediation，ServiceAccount 不具备业务写权限。
 
-Engine 从 `v0.4.32` 升级到 `v0.4.37`，使用经独立确认的语义 tag digest。生产
-基线不为了追逐最新 tag 而放弃不可变镜像约束；更高版本必须先获得可信 digest
-并通过 CI 和目标集群安装验收。
+Engine `v0.4.41` 使用经 GHCR 校验的多架构镜像 digest。升级时通过 CI 和目标集群安装验收。
 
 ## CI 检查
 

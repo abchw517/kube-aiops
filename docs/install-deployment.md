@@ -70,6 +70,8 @@ make results
 
 `1Gi` 是 Operator 内存上限示例。已有部署时，按本次发布参数运行 `make install` 进行升级。使用内网仓库时，按下方对应小节调整安装命令。切换 Provider 时，先用对应 API Key 更新 Secret。
 
+当前 Engine 为 `v0.4.41`。升级时保留现有模型、Base URL 和资源覆盖参数。需要中文诊断时，设置 `K8SGPT_AI_LANGUAGE=Chinese`。使用内网仓库时，先同步新版 Engine 镜像，再执行安装或升级。
+
 ### 使用内网镜像仓库
 
 将下面三张镜像同步到节点可访问的镜像仓库，并保留各自的版本标签。`K8SGPT_IMAGE_REGISTRY` 指定 `仓库地址[:端口][/项目路径]`，安装器以 `仓库/镜像:版本` 拉取。
@@ -78,7 +80,7 @@ make results
 | --- | --- | --- | --- |
 | Operator | `ghcr.io/k8sgpt-ai/k8sgpt-operator` | `harbor.example.com/public/k8sgpt-operator:v0.2.29` | `K8SGPT_OPERATOR_IMAGE_REPOSITORY` |
 | RBAC Proxy | `quay.io/brancz/kube-rbac-proxy` | `harbor.example.com/public/kube-rbac-proxy:v0.19.1` | `K8SGPT_RBAC_PROXY_IMAGE_REPOSITORY` |
-| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `harbor.example.com/public/k8sgpt:v0.4.37` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
+| Engine | `ghcr.io/k8sgpt-ai/k8sgpt` | `harbor.example.com/public/k8sgpt:v0.4.41` | `K8SGPT_ENGINE_IMAGE_REPOSITORY` |
 
 在能访问上游仓库和 Harbor 的机器上同步镜像。以下命令按项目基线 digest 选择上游镜像，并将所有架构复制到 Harbor 的对应版本标签。
 
@@ -91,8 +93,8 @@ skopeo copy --all \
   docker://quay.io/brancz/kube-rbac-proxy@sha256:9f21034731c7c3228611b9d40807f3230ce8ed2b286b913bf2d1e760d8d866fc \
   "docker://${mirror}/kube-rbac-proxy:v0.19.1"
 skopeo copy --all \
-  docker://ghcr.io/k8sgpt-ai/k8sgpt@sha256:ebf0d1f5a8463190abdf1a9c84282cfbd9ce611e3dc1c490194b7aaf2676d088 \
-  "docker://${mirror}/k8sgpt:v0.4.37"
+  docker://ghcr.io/k8sgpt-ai/k8sgpt@sha256:1bc581442ac9c3a9e2f9a2f818c2bd84ba476b445d46fcb168073799caa58640 \
+  "docker://${mirror}/k8sgpt:v0.4.41"
 ```
 
 仅配置镜像仓库时，可以在第 2 节安装步骤中使用以下命令：
@@ -171,14 +173,20 @@ Engine 继续使用 `openai` backend，需能访问配置的端点。仓库的 E
 
 ```bash
 kubectl -n k8sgpt-operator-system get k8sgpt k8sgpt-engine \
-  -o jsonpath='{.spec.ai.backend}{"\t"}{.spec.ai.model}{"\t"}{.spec.ai.baseUrl}{"\t"}{.spec.ai.language}{"\n"}'
+  -o jsonpath='{.spec.version}{"\t"}{.spec.ai.backend}{"\t"}{.spec.ai.model}{"\t"}{.spec.ai.baseUrl}{"\t"}{.spec.ai.language}{"\n"}'
+kubectl -n k8sgpt-operator-system get deployment k8sgpt-engine \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="k8sgpt")].image}{"\n"}'
 ```
 
-等待一次分析周期后，检查分析状态与诊断结果。
+等待一次分析周期后，检查分析状态与诊断结果。验收中文时，查看升级后新产生的 Result 中的 `spec.details`。资源名称、事件原文和分析器的错误字段可能仍为英文。
 
 ```bash
 REQUIRE_ANALYSIS_HEALTH=true make verify
 make results
+kubectl -n k8sgpt-operator-system get results \
+  -l 'k8sgpts.k8sgpt.ai/name=k8sgpt-engine,k8sgpts.k8sgpt.ai/namespace=k8sgpt-operator-system' \
+  --sort-by=.metadata.creationTimestamp \
+  -o custom-columns='CREATED:.metadata.creationTimestamp,NAME:.metadata.name,AI_DETAILS:.spec.details'
 ```
 
 ### 验证部署

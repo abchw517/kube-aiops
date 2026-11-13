@@ -254,6 +254,12 @@ INSTALL_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kube-aiops-config.XXXXXX")"
 INSTALL_CONFIG="$(python3 "${ROOT_DIR}/scripts/render-k8sgpt-install.py" "$INSTALL_CONFIG_DIR")" ||
   fatal "生成 K8sGPT 安装配置失败"
 while IFS= read -r line; do log "$line"; done <<<"$INSTALL_CONFIG"
+ENGINE_IMAGE="$(python3 -c '
+import sys, yaml
+with open(sys.argv[1], encoding="utf-8") as stream:
+    spec = yaml.safe_load(stream)["spec"]
+print("{}:{}".format(spec["repository"], spec["version"]))
+' "${INSTALL_CONFIG_DIR}/k8sgpt.yaml")" || fatal "无法读取目标 K8sGPT Engine 镜像"
 host_deps_ensure cluster || fatal "安装主机依赖失败"
 
 CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
@@ -355,6 +361,9 @@ if not items or any(int(item.get("spec", {}).get("replicas", 1)) < 1 for item in
 '
 
 kubectl wait --for=create deployment/"$K8SGPT_NAME" -n "$NAMESPACE" --timeout="$TIMEOUT"
+# 等待 Operator 将目标镜像写入 Pod 模板，避免 rollout status 提前确认旧版本。
+kubectl wait --for="jsonpath={.spec.template.spec.containers[?(@.name=='k8sgpt')].image}=$ENGINE_IMAGE" \
+  deployment/"$K8SGPT_NAME" -n "$NAMESPACE" --timeout="$TIMEOUT"
 kubectl rollout status deployment/"$K8SGPT_NAME" -n "$NAMESPACE" --timeout="$TIMEOUT"
 ENGINE_REPLICAS="$(kubectl get deployment "$K8SGPT_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')"
 [[ "$ENGINE_REPLICAS" =~ ^[1-9][0-9]*$ ]] || fatal "K8sGPT Engine Deployment replicas 必须至少为 1"
