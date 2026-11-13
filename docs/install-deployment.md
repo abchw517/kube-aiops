@@ -764,3 +764,67 @@ make verify
 清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
+
+## 接入多个 Kubernetes 集群
+
+现有集群继续使用 `local`。中心 API Pod 需要能通过内网访问各目标集群的 kube-apiserver。目标集群独立运行 K8sGPT，并为中心 API 提供单独的只读凭据。每个目标集群的 RBAC 需要覆盖实际使用的 Result、Event、Namespace 和资源详情读取操作。
+
+创建 `clusters.json`，示例中的 API 地址、实例名、CA 和 Token 路径均按现场替换。
+
+```json
+[
+  {
+    "id": "dev-cn-01",
+    "name": "开发集群 01",
+    "environment": "dev",
+    "apiURL": "https://dev-k8s.example.com:6443",
+    "tokenFile": "/etc/kube-aiops/clusters/dev-cn-01/token",
+    "caFile": "/etc/kube-aiops/clusters/dev-cn-01/ca.crt",
+    "k8sGPTNamespace": "k8sgpt-operator-system",
+    "k8sGPTName": "k8sgpt-engine",
+    "prometheus": {
+      "url": "https://prometheus.example.com",
+      "clusterLabelValue": "dev-cn-01"
+    }
+  }
+]
+```
+
+```bash
+kubectl -n kube-aiops-system create configmap kube-aiops-clusters --from-file=clusters.json
+kubectl -n kube-aiops-system create secret generic kube-aiops-dev-cn-01 \
+  --from-file=token=/secure/dev-cn-01/token --from-file=ca.crt=/secure/dev-cn-01/ca.crt
+```
+
+将以下片段合并到 API Deployment。远端 Token 由平台签发及轮换，更新时保留整个 Secret 目录挂载。
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: KUBERNETES_CLUSTERS_FILE
+              value: /etc/kube-aiops/registry/clusters.json
+          volumeMounts:
+            - name: cluster-registry
+              mountPath: /etc/kube-aiops/registry
+              readOnly: true
+            - name: dev-cluster-credentials
+              mountPath: /etc/kube-aiops/clusters/dev-cn-01
+              readOnly: true
+      volumes:
+        - name: cluster-registry
+          configMap:
+            name: kube-aiops-clusters
+        - name: dev-cluster-credentials
+          secret:
+            secretName: kube-aiops-dev-cn-01
+```
+
+每个远端可独立配置 Prometheus、VictoriaLogs 和 Alertmanager。启用任一远端集群后，所有已启用的可观测性来源均需配置集群标签，`local` 使用原有的 `*_CLUSTER_LABEL_VALUE`。共享数据源中的集群标签必须互不相同。保存集群配置后重新部署 API。
+
+在权限策略里保留全局 `clusters:list` 用于访问集群列表接口，再用具体集群规则限制可见性及数据访问。由于通配规则也匹配各集群，可以对受限组为指定集群添加 `clusters:list` 拒绝规则，拒绝优先。接入生产前，检查已有 `cluster: "*"` 读取授权。诊断详情及证据链接可使用 `?cluster=dev-cn-01`，省略该参数仍访问 `local`。
+
+从两个非生产集群分别查看同名 Result、资源及证据，确认来源正确。断开一个远端集群后，另一个集群的查询和中心 API readiness 应继续工作。

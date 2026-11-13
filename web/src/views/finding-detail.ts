@@ -5,7 +5,7 @@ export function renderFindingDetail(finding: Finding): string {
   return `
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
-        <a class="back-link" href="#/findings">← 返回诊断列表</a>
+        <a class="back-link" href="#/findings${finding.cluster === "local" ? "" : `?cluster=${encodeURIComponent(finding.cluster)}`}">← 返回诊断列表</a>
         <div class="detail-title">
           <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>
           <h2>${escapeHtml(finding.problem)}</h2>

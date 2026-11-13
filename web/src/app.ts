@@ -106,10 +106,19 @@ export class PortalApp {
     this.renderShell(loadingState("正在加载筛选选项和诊断结果。"));
 
     try {
-      const [clusters, namespaces] = await Promise.all([
-        this.loadClusters(),
-        this.loadNamespaces(filters.cluster ?? "local"),
-      ]);
+      const clusters = await this.loadClusters();
+      if (generation !== this.renderGeneration) return;
+      if (clusters.length === 0) {
+        this.renderShell(authorizationDeniedState());
+        return;
+      }
+      const hash = window.location.hash;
+      const explicitCluster = new URLSearchParams(hash.split("?")[1]).has("cluster");
+      if (!explicitCluster && !clusters.some((cluster) => cluster.id === filters.cluster)) {
+        window.location.replace(`#/findings?${serializeFindingFilters({ cluster: clusters[0]?.id })}`);
+        return;
+      }
+      const namespaces = await this.loadNamespaces(filters.cluster ?? "local");
       if (generation !== this.renderGeneration) return;
 
       const [page, summary] = await Promise.all([
@@ -134,7 +143,7 @@ export class PortalApp {
   private async renderDetail(id: string, generation: number): Promise<void> {
     this.renderShell(loadingState("正在加载诊断详情。"));
     try {
-      const finding = await apiClient.getFinding({ id });
+      const finding = await apiClient.getFinding({ id, cluster: parseFindingFilters(window.location.hash).cluster });
       if (generation !== this.renderGeneration) return;
       this.renderShell(renderFindingDetail(finding) + renderCorrelationSection(id));
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
@@ -150,7 +159,7 @@ export class PortalApp {
     region.innerHTML = renderCorrelationLoading();
     let content: string;
     try {
-      const bundle = await apiClient.getFindingCorrelation({ id });
+      const bundle = await apiClient.getFindingCorrelation({ id, cluster: parseFindingFilters(window.location.hash).cluster });
       content = renderCorrelationEvidence(bundle);
     } catch (error) {
       content = renderCorrelationError(error);
@@ -167,7 +176,7 @@ export class PortalApp {
     return response.items;
   }
 
-  private async loadNamespaces(cluster: "local"): Promise<Namespace[]> {
+  private async loadNamespaces(cluster: string): Promise<Namespace[]> {
     const cached = this.namespaces.get(cluster);
     if (cached) return cached;
     const response = await apiClient.listNamespaces({ cluster });
@@ -255,7 +264,7 @@ export class PortalApp {
       const id = region?.dataset.correlationFinding;
       if (region && id) void this.loadCorrelation(id, this.renderGeneration, region);
     }
-    if (action === "clear-filters") window.location.hash = "#/findings?cluster=local";
+    if (action === "clear-filters") window.location.hash = `#/findings?${serializeFindingFilters({ cluster: parseFindingFilters(window.location.hash).cluster })}`;
   }
 
   private handleFilterChange(event: Event): void {
@@ -266,8 +275,10 @@ export class PortalApp {
     const value = target.value || undefined;
     switch (target.dataset.filter) {
       case "cluster":
-        filters.cluster = "local";
+        filters.cluster = value;
         filters.namespace = undefined;
+        filters.kind = undefined;
+        this.knownKinds.clear();
         break;
       case "namespace":
         filters.namespace = value;

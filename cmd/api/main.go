@@ -52,6 +52,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	queryBackend, err := loadClusters(os.Getenv("KUBERNETES_CLUSTERS_FILE"), backend, cfg)
+	if err != nil {
+		logger.Error("load cluster configuration failed", "error", err)
+		os.Exit(1)
+	}
+
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
 	if cfg.SecurityMode == security.ModeProduction {
@@ -72,7 +78,7 @@ func main() {
 	}
 	handler, err := buildHandler(
 		logger,
-		backend,
+		queryBackend,
 		cfg.ReadyTimeout,
 		cfg.SecurityMode,
 		bundle,

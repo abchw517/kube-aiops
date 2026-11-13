@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -116,17 +118,22 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-func (s *Server) clusters(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.backend.Clusters()})
+func (s *Server) clusters(w http.ResponseWriter, r *http.Request) {
+	items, ok := s.visibleClusters(w, r)
+	if !ok {
+		return
+	}
+	slices.SortFunc(items, func(a, b kubernetes.Cluster) int { return cmp.Compare(a.ID, b.ID) })
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (s *Server) namespaces(w http.ResponseWriter, r *http.Request) {
-	if r.PathValue("cluster") != localClusterID {
-		writeError(w, http.StatusNotFound, "CLUSTER_NOT_FOUND", "cluster not found")
+	target, ok := s.target(w, r, r.PathValue("cluster"))
+	if !ok {
 		return
 	}
 
-	items, err := s.backend.ListNamespaces(r.Context())
+	items, err := target.Backend.ListNamespaces(r.Context())
 	if err != nil {
 		s.logger.Warn("list namespaces failed", "error", err)
 		writeKubernetesError(w, err, "NAMESPACE_LIST_FAILED", "unable to list namespaces")
@@ -136,8 +143,8 @@ func (s *Server) namespaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
-	if r.PathValue("cluster") != localClusterID {
-		writeError(w, http.StatusNotFound, "CLUSTER_NOT_FOUND", "cluster not found")
+	target, ok := s.target(w, r, r.PathValue("cluster"))
+	if !ok {
 		return
 	}
 
@@ -147,7 +154,7 @@ func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resource, err := s.backend.GetResource(
+	resource, err := target.Backend.GetResource(
 		r.Context(),
 		kind,
 		r.PathValue("namespace"),
@@ -167,11 +174,12 @@ func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
-	filter, ok := parseFindingFilter(w, r)
+	filter := parseFindingFilter(r)
+
+	target, ok := s.target(w, r, filter.Cluster)
 	if !ok {
 		return
 	}
-
 	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsList)
 
 	limit := 0
@@ -184,7 +192,7 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 		limit = value
 	}
 
-	page, err := s.backend.ListFindings(r.Context(), finding.Query{
+	page, err := target.Backend.ListFindings(r.Context(), finding.Query{
 		Filter:   filter,
 		Limit:    limit,
 		Continue: strings.TrimSpace(r.URL.Query().Get("continue")),
@@ -202,13 +210,14 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
-	filter, ok := parseFindingFilter(w, r)
+	filter := parseFindingFilter(r)
+
+	target, ok := s.target(w, r, filter.Cluster)
 	if !ok {
 		return
 	}
-
 	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsSummary)
-	summary, err := s.backend.SummarizeFindings(r.Context(), filter)
+	summary, err := target.Backend.SummarizeFindings(r.Context(), filter)
 	if err != nil {
 		s.writeFindingBackendError(w, err, "FINDING_SUMMARY_FAILED", "unable to summarize findings")
 		return
@@ -261,7 +270,11 @@ func (s *Server) findingCorrelation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bundle, err := s.correlator.Correlate(r.Context(), correlation.Request{
+	target, ok := s.target(w, r, queryCluster(r))
+	if !ok {
+		return
+	}
+	bundle, err := target.Correlator.Correlate(r.Context(), correlation.Request{
 		FindingID: item.ID,
 		Scope: correlation.CorrelationScope{
 			Cluster:   item.Cluster,
@@ -285,7 +298,11 @@ func (s *Server) findingCorrelation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) (finding.Finding, bool) {
-	item, err := s.backend.GetFinding(r.Context(), r.PathValue("id"))
+	target, ok := s.target(w, r, queryCluster(r))
+	if !ok {
+		return finding.Finding{}, false
+	}
+	item, err := target.Backend.GetFinding(r.Context(), r.PathValue("id"))
 	if err != nil {
 		var apiErr *kubernetes.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -330,16 +347,9 @@ func (s *Server) writeCorrelationError(w http.ResponseWriter, r *http.Request, e
 	writeError(w, http.StatusBadGateway, "CORRELATION_READ_FAILED", "unable to correlate finding")
 }
 
-func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter, bool) {
+func parseFindingFilter(r *http.Request) finding.Filter {
 	query := r.URL.Query()
-	cluster := strings.TrimSpace(query.Get("cluster"))
-	if cluster == "" {
-		cluster = localClusterID
-	}
-	if cluster != localClusterID {
-		writeError(w, http.StatusNotFound, "CLUSTER_NOT_FOUND", "cluster not found")
-		return finding.Filter{}, false
-	}
+	cluster := queryCluster(r)
 
 	return finding.Filter{
 		Cluster:   cluster,
@@ -347,7 +357,7 @@ func parseFindingFilter(w http.ResponseWriter, r *http.Request) (finding.Filter,
 		Kind:      strings.TrimSpace(query.Get("kind")),
 		Severity:  strings.TrimSpace(query.Get("severity")),
 		Problem:   strings.TrimSpace(query.Get("problem")),
-	}, true
+	}
 }
 
 func (s *Server) writeFindingBackendError(w http.ResponseWriter, err error, code, message string) {
