@@ -1,4 +1,5 @@
-FROM mharbor-cs.cloud.kemai.cn/public/golang:1.26.5-alpine3.23 AS builder
+ARG GO_BUILDER_IMAGE=mharbor-cs.cloud.kemai.cn/public/golang:1.26.5-alpine3.23
+FROM ${GO_BUILDER_IMAGE} AS builder
 
 WORKDIR /src
 

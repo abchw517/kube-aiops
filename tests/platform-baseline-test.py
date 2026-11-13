@@ -86,8 +86,9 @@ def validate_go() -> None:
 
     dockerfile = read("Dockerfile")
     first = dockerfile.splitlines()[0].strip()
-    if first != f"FROM mharbor-cs.cloud.kemai.cn/public/golang:{EXPECTED['GO_VERSION']}-alpine3.23 AS builder":
+    if first != f"ARG GO_BUILDER_IMAGE=mharbor-cs.cloud.kemai.cn/public/golang:{EXPECTED['GO_VERSION']}-alpine3.23":
         fail(f"Dockerfile Go builder drift: {first!r}")
+    require_contains(dockerfile, "FROM ${GO_BUILDER_IMAGE} AS builder", "Dockerfile")
     require_contains(dockerfile, "FROM scratch", "Dockerfile")
     require_contains(dockerfile, "USER 65532:65532", "Dockerfile")
     require_contains(dockerfile, "CGO_ENABLED=0", "Dockerfile")
