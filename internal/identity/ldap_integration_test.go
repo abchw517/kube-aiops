@@ -60,7 +60,7 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 						writeLDAPResponse(conn, id, ldapResult(ldap.ApplicationBindResponse, code))
 					case ldap.ApplicationSearchRequest:
 						actual, err := ldap.DecompileFilter(request.Children[6])
-						if err != nil || actual != "(&(objectCategory=person)(objectClass=user)(sAMAccountName=alice))" {
+						if err != nil || (actual != "(&(objectCategory=person)(objectClass=user)(sAMAccountName=alice))" && actual != "(objectClass=*)") {
 							writeLDAPResponse(conn, id, ldapResult(ldap.ApplicationSearchResultDone, ldap.LDAPResultSuccess))
 							continue
 						}
@@ -90,6 +90,14 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 		URL: "ldaps://" + listener.Addr().String(), BaseDN: baseDN,
 		BindDN: bindDN, BindPassword: "fixture-bind", UserFilter: filter, GroupAttr: "memberOf",
 		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+	if stage := TestLDAP(t.Context(), cfg); stage != "" {
+		t.Fatalf("LDAP test returned %q", stage)
+	}
+	invalid := cfg
+	invalid.BindPassword = "incorrect"
+	if stage := TestLDAP(t.Context(), invalid); stage != "bind" {
+		t.Fatalf("invalid bind password returned %q", stage)
 	}
 	got, err := AuthenticateLDAP(cfg, "alice", "fixture-user")
 	if err != nil || got.Subject != "ldap:cn=alice,"+baseDN || !slices.Equal(got.Groups, []string{"ldap:cn=readers," + baseDN}) {

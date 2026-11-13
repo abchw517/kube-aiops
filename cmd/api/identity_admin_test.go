@@ -58,4 +58,20 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	request("GET", "/api/v1/clusters", "", alice, 403)
 	request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","groups":["local:ops"],"capabilities":["clusters:list"],"scopes":[{"cluster":"*"}]}]}`, admin, 204)
 	request("GET", "/api/v1/clusters", "", alice, 200)
+	t.Setenv("AUTH_LDAP_BIND_PASSWORD_FILE", "")
+	const ldapPath = "/api/v1/admin/ldap"
+	const settings = `{"url":"ldaps://directory.example.com","baseDN":"dc=example,dc=com","bindDN":"cn=reader,dc=example,dc=com","userFilter":"(uid=%s)","groupAttribute":"memberOf","bindPassword":"test-bind-password"}`
+	request("PUT", ldapPath, settings, alice, 403)
+	request("PUT", ldapPath, settings, admin, 204)
+	request("PUT", ldapPath, strings.Replace(settings, "test-bind-password", "", 1), admin, 204)
+	w := request("GET", ldapPath, "", admin, 200)
+	if strings.Contains(w.Body.String(), "bindPassword") || !strings.Contains(w.Body.String(), `"passwordConfigured":true`) {
+		t.Fatalf("LDAP credential response is not redacted: %s", w.Body.String())
+	}
+	reloaded, err := newIdentityAdmin(t.Context(), store)
+	if err != nil || reloaded.ldap.BindPassword != "test-bind-password" {
+		t.Fatal("LDAP configuration did not persist")
+	}
+	request("POST", "/api/v1/admin/ldap-test", `{}`, admin, 400)
+
 }

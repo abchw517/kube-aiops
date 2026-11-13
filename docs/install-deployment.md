@@ -576,15 +576,14 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 #### 5. 按需接入 LDAP / Active Directory
 
-准备域控的 LDAPS 域名、只读搜索账号及密码文件。使用私有 CA 时，准备签发域控证书的 CA 链。确认 API Pod 能解析域控域名，并可访问 TCP 636。
+准备域控的 LDAPS 域名、只读搜索账号和密码。使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。确认 API Pod 能解析域控域名，并可访问 TCP 636。
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
-  --from-file=bind-password=/secure/ldap-bind-password \
   --from-file=ca.crt=/secure/ad-ca.crt
 ```
 
-向 `api.yaml` 追加以下配置，保留 SQLite 挂载。若域控证书使用系统受信任的 CA，创建 Secret 时可省略 `ca.crt`，同时省略 `AUTH_LDAP_CA_FILE`。
+向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可跳过 Secret、挂载和本节的 API 重启。
 
 ```yaml
 spec:
@@ -593,8 +592,6 @@ spec:
       containers:
         - name: api
           env:
-            - name: AUTH_LDAP_BIND_PASSWORD_FILE
-              value: /etc/kube-aiops/ldap/bind-password
             - name: AUTH_LDAP_CA_FILE
               value: /etc/kube-aiops/ldap/ca.crt
           volumeMounts:
@@ -612,11 +609,12 @@ kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
 
-管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写并保存。
+管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码后可先点 **测试 LDAP 服务器**，验证 TLS、搜索账号绑定和基础 DN 的读取权限。测试不保存配置，通过后再点 **保存配置**。密码写入 SQLite 且不会回显，请限制 PVC 和备份的读取权限。修改 URL 或搜索 DN 时需重新填写密码。
 
 | 字段 | AD 示例 |
 | --- | --- |
 | LDAP URL | `ldaps://ad.example.com:636` |
+| LDAP 搜索密码 | 搜索账号的密码 |
 | LDAP 搜索 DN | `cn=kube-aiops-reader,ou=service,dc=example,dc=com` |
 | LDAP 基础 DN | `dc=example,dc=com` |
 | LDAP 用户过滤器 | `(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))` |

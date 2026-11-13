@@ -25,11 +25,12 @@ const (
 )
 
 type ldapSettings struct {
-	URL        string `json:"url"`
-	BaseDN     string `json:"baseDN"`
-	BindDN     string `json:"bindDN"`
-	UserFilter string `json:"userFilter"`
-	GroupAttr  string `json:"groupAttribute"`
+	URL          string `json:"url"`
+	BaseDN       string `json:"baseDN"`
+	BindDN       string `json:"bindDN"`
+	UserFilter   string `json:"userFilter"`
+	GroupAttr    string `json:"groupAttribute"`
+	BindPassword string `json:"bindPassword,omitempty"`
 }
 
 type identityAdmin struct {
@@ -84,7 +85,7 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 			return nil, err
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
-		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE")}
+		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), ""}
 	} else {
 		return nil, err
 	}
@@ -96,11 +97,11 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 	if s.URL == "" {
 		return nil, nil
 	}
-	cfg, err := ldapConfiguration(s.URL)
-	if err != nil {
+	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr}
+	if err := applyLDAPCredentials(&cfg, s.BindPassword); err != nil {
 		return nil, err
 	}
-	cfg.BaseDN, cfg.BindDN, cfg.UserFilter, cfg.GroupAttr = s.BaseDN, s.BindDN, s.UserFilter, s.GroupAttr
+
 	return &cfg, cfg.Validate()
 }
 
@@ -331,22 +332,49 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 	case resource == "ldap" && r.Method == http.MethodGet:
 		a.mu.RLock()
 		settings := a.settings
+		configured := a.ldap != nil && a.ldap.BindPassword != ""
 		a.mu.RUnlock()
-		writeAdminJSON(w, settings)
+		settings.BindPassword = ""
+		writeAdminJSON(w, struct {
+			ldapSettings
+			PasswordConfigured bool `json:"passwordConfigured"`
+		}{settings, configured})
 		return
-	case resource == "ldap" && r.Method == http.MethodPut:
+	case (resource == "ldap" && r.Method == http.MethodPut) ||
+		(resource == "ldap-test" && r.Method == http.MethodPost):
 		var settings ldapSettings
 		if !decodeAdmin(w, r, &settings) {
 			http.Error(w, "invalid LDAP configuration", 400)
 			return
 		}
+		a.mu.Lock()
+		if settings.URL != "" && settings.BindPassword == "" {
+			if settings.URL != a.settings.URL || settings.BindDN != a.settings.BindDN {
+				a.mu.Unlock()
+				http.Error(w, "password_required", 400)
+				return
+			}
+			settings.BindPassword = a.settings.BindPassword
+		}
 		cfg, configErr := settings.configuration()
-		if configErr != nil {
-			http.Error(w, "invalid LDAP configuration or missing bind secret", 400)
+		if configErr != nil || (resource == "ldap-test" && cfg == nil) {
+			a.mu.Unlock()
+			http.Error(w, "invalid LDAP configuration", 400)
 			return
 		}
+		if resource == "ldap-test" {
+			a.mu.Unlock()
+			if stage := identity.TestLDAP(ctx, *cfg); stage != "" {
+				writeAdminJSON(w, map[string]string{"stage": stage})
+				return
+			}
+			writeAdminJSON(w, map[string]string{"stage": "success"})
+			return
+		}
+		if cfg == nil {
+			settings.BindPassword = ""
+		}
 		document, _ := json.Marshal(settings)
-		a.mu.Lock()
 		_, err = a.store.ExecContext(ctx, "INSERT INTO ldap_settings VALUES (1,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", string(document))
 		if err == nil {
 			a.ldap, a.settings = cfg, settings

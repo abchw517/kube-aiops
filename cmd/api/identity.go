@@ -130,18 +130,28 @@ func ldapConfiguration(endpoint string) (identity.LDAPConfig, error) {
 		BindDN: os.Getenv("AUTH_LDAP_BIND_DN"), UserFilter: os.Getenv("AUTH_LDAP_USER_FILTER"),
 		GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"),
 	}
-	password, err := os.ReadFile(os.Getenv("AUTH_LDAP_BIND_PASSWORD_FILE"))
-	if err != nil {
-		return cfg, errors.New("cannot read LDAP bind password file")
+	err := applyLDAPCredentials(&cfg, "")
+	return cfg, err
+}
+
+func applyLDAPCredentials(cfg *identity.LDAPConfig, password string) error {
+	if password == "" {
+		if path := os.Getenv("AUTH_LDAP_BIND_PASSWORD_FILE"); path != "" {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return errors.New("cannot read LDAP bind password file")
+			}
+			password = strings.TrimSuffix(string(data), "\n")
+		}
 	}
-	cfg.BindPassword = strings.TrimSuffix(string(password), "\n")
+	cfg.BindPassword = password
 	if path := os.Getenv("AUTH_LDAP_CA_FILE"); path != "" {
 		pem, err := os.ReadFile(path)
 		pool := x509.NewCertPool()
 		if err != nil || !pool.AppendCertsFromPEM(pem) {
-			return cfg, errors.New("cannot load LDAP CA certificate")
+			return errors.New("cannot load LDAP CA certificate")
 		}
 		cfg.TLSConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
-	return cfg, nil
+	return nil
 }

@@ -62,7 +62,7 @@ export class PortalApp {
           this.mustChangePassword = false;
           window.location.hash = "#/findings";
           void this.route();
-        });
+        }, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test");
         return;
       }
       void this.login(event);
