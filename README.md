@@ -103,7 +103,8 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 ├── Dockerfile
 ├── deploy/
 │   ├── api/
-│   └── k8sgpt/
+│   ├── k8sgpt/
+│   └── web/
 ├── web/
 ├── tests/
 │   └── platform-baseline-test.py

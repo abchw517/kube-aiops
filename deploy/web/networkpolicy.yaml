@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kube-aiops-web-ingress
+  namespace: kube-aiops-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kube-aiops-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+          podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: production-gateway
+              gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 8080
