@@ -480,7 +480,15 @@ cp deploy/api/networkpolicy.yaml "$release_dir/api-networkpolicy.yaml"
 cp deploy/web/networkpolicy.yaml "$release_dir/web-networkpolicy.yaml"
 ```
 
-在两份 Route 中填写实际 Gateway 名称、命名空间、listener 名称和域名。集群需要支持 NetworkPolicy 的 CNI。两份策略允许指定 Envoy 代理 Pod 访问各自后端的 TCP 8080。根据实际代理 Pod 的命名空间和标签调整 `namespaceSelector` 和 `podSelector`。使用其他 Gateway 实现时填写该实现的数据面命名空间和标签。策略仅限制入站，平台已有的出站策略还需允许 DNS、Kubernetes API 和已启用的上游。
+在两份 Route 中填写实际 Gateway 名称、命名空间、listener 名称和域名。集群需要支持 NetworkPolicy 的 CNI。根据实际 Gateway 数据面 Pod 的命名空间和标签调整两份策略的入站选择器。
+
+| 流量 | 允许范围 |
+| --- | --- |
+| Gateway → Web / API | 指定 Gateway 数据面 Pod → TCP 8080 |
+| Web → API | 同命名空间的 Web Pod → API Pod TCP 8080。Web Pod 内可通过 `http://kube-aiops-api:8080` 访问 API Service |
+| Web → DNS | `kube-system` 中标签为 `k8s-app=kube-dns` 的 DNS Pod，UDP/TCP 53 |
+
+使用 NodeLocal DNSCache 或自定义 DNS 时，应用前根据 Web Pod 的 `/etc/resolv.conf` 和 CNI 的 DNS 策略调整 Web 出站规则。API 的出站由集群现有策略管理，需允许 DNS、Kubernetes API 和已启用的上游。
 
 应用策略前确认 API 已在 `production` 模式成功启动。用实际值设置以下变量并核对 Gateway 与数据面 Pod。
 
@@ -504,7 +512,7 @@ kubectl -n kube-aiops-system get httproute kube-aiops-api kube-aiops-web -o yaml
 
 核对两条 Route 在目标 listener 下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若此前应用了旧版合并路由 `httproute/kube-aiops`，确认其归属及两条新 Route 均已就绪后，删除旧 Route，再执行下节验收。若使用预发域名，在完成验收后再切生产 DNS 或流量。
 
-从端口转发模式切换到生产访问时，确认生产入口正常后，清理此前由本文档创建的 `kube-aiops-api-from-web` 和 `kube-aiops-web-restricted` 策略。NetworkPolicy 的允许规则会叠加，保留旧策略会继续允许 Web Pod 直接访问 API。
+从端口转发模式切换到生产访问时，确认生产入口正常后，清理此前由本文档创建的 `kube-aiops-api-from-web` 和 `kube-aiops-web-restricted` 策略。生产策略已包含 Web 到 API 的访问规则。
 
 ### 验收、发布与回滚
 
