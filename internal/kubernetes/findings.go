@@ -73,7 +73,9 @@ func (c *Client) GetFinding(ctx context.Context, id string) (finding.Finding, er
 	if !c.belongsToCurrentK8sGPT(result.Metadata.Labels) {
 		return finding.Finding{}, &APIError{StatusCode: http.StatusNotFound}
 	}
-	return finding.FromResult(result), nil
+	item := finding.FromResult(result)
+	item.Cluster = c.config.ClusterID
+	return item, nil
 }
 
 func (c *Client) SummarizeFindings(ctx context.Context, filter finding.Filter) (finding.Summary, error) {
@@ -113,6 +115,7 @@ func (c *Client) filteredFindings(ctx context.Context, filter finding.Filter) ([
 	items := make([]finding.Finding, 0, len(results))
 	for _, result := range results {
 		item := finding.FromResult(result)
+		item.Cluster = c.config.ClusterID
 		if !finding.Matches(item, filter) {
 			continue
 		}

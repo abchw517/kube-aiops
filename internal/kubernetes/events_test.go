@@ -131,7 +131,7 @@ func TestEventListRequestRejectsSelectorInjectionAndScopeMismatch(t *testing.T) 
 
 	foreign := base
 	foreign.Scope.Cluster = "foreign"
-	if _, _, _, _, err := eventListRequest(foreign); err == nil {
+	if _, err := NewClient(Config{}).Events(context.Background(), foreign); err == nil {
 		t.Fatal("foreign cluster unexpectedly accepted")
 	}
 }
