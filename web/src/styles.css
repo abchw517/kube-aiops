@@ -81,22 +81,25 @@ td { font-size: 14px; }
 .spinner { width: 34px; height: 34px; border: 3px solid #d7e0ed; border-top-color: #2856d8; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr); gap: 18px; }
-.detail-main, .detail-copy { padding: 24px; }
-.back-link { display: inline-block; margin-bottom: 24px; font-weight: 700; }
-.detail-title { display: grid; gap: 12px; margin-bottom: 24px; }
-.detail-title h2 { margin: 0; font-size: 30px; line-height: 1.2; }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 18px; }
+.detail-main, .detail-copy { min-width: 0; padding: 24px; }
+.back-link { display: inline-block; margin-bottom: 20px; font-weight: 700; }
+.detail-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.detail-heading h2, .detail-copy h2 { margin: 0; font-size: 1.125rem; line-height: 1.35; }
+.detail-copy h2 { margin-bottom: 10px; }
+.detail-text { margin: 0; color: #3f4d63; font-size: 1rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-problem { margin-bottom: 20px; }
 .detail-list { margin: 0; display: grid; }
-.detail-list div { display: grid; grid-template-columns: 140px 1fr; gap: 16px; padding: 11px 0; border-top: 1px solid #edf1f6; }
+.detail-list div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; padding: 11px 0; border-top: 1px solid #edf1f6; }
 .detail-list dt { color: #6b7890; font-size: 12px; font-weight: 700; }
-.detail-list dd { margin: 0; word-break: break-word; }
-.detail-copy h2 { margin: 6px 0 14px; }
-.detail-copy p:last-child { color: #3f4d63; white-space: pre-wrap; line-height: 1.7; }
+.detail-list dd { margin: 0; overflow-wrap: anywhere; }
 
+@media (max-width: 960px) {
+  .detail-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 880px) {
   .filters { grid-template-columns: 1fr 1fr; }
   .summary-grid { grid-template-columns: 1fr 1fr; }
-  .detail-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .page-shell { width: min(100% - 20px, 1180px); padding-top: 26px; }

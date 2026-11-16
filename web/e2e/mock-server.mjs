@@ -5,6 +5,8 @@ import { extname, normalize } from "node:path";
 const port = Number(process.env.PORT ?? "4173");
 const root = new URL("../dist/", import.meta.url);
 
+const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
+
 const findings = [
   {
     id: "finding-critical",
@@ -12,8 +14,10 @@ const findings = [
     namespace: "default",
     severity: "critical",
     resource: { apiVersion: "v1", kind: "Pod", namespace: "default", name: "api-0" },
-    problem: "CrashLoopBackOff detected",
-    details: "Container restart backoff is increasing. <img id=\"sanitizer-xss-probe\" src=x onerror=\"globalThis.__kubeAiopsXss=1\"> javascript:alert(1)",
+    problem: `CrashLoopBackOff detected
+Back-off pulling image "busybox:1.36": 403 Forbidden
+镜像请求地址：${longRegistryURL}`,
+    details: `Container restart backoff is increasing. <img id="sanitizer-xss-probe" src=x onerror="globalThis.__kubeAiopsXss=1"> javascript:alert(1)\n\n镜像地址：${longRegistryURL}`,
     source: "k8sgpt",
     createdAt: "2026-09-02T03:00:00Z"
   },
