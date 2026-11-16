@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, readdir } from "node:fs/promises";
 import { createServer as createHTTPServer } from "node:http";
 import { createServer as createHTTPSServer } from "node:https";
 import { join } from "node:path";
@@ -8,20 +8,23 @@ const [workDir, webHost, webPort, apiPort] = process.argv.slice(2);
 const loopbackHost = "127.0.0.1";
 const apiOrigin = `http://${loopbackHost}:${apiPort}`;
 const dist = new URL("../dist/", import.meta.url);
-const [certificate, key, token, index, script, styles] = await Promise.all([
+const [certificate, key, token, index, assets] = await Promise.all([
   readFile(join(workDir, "ca.pem")),
   readFile(join(workDir, "key.pem")),
   readFile(join(workDir, "token"), "utf8"),
   readFile(new URL("index.html", dist), "utf8"),
-  readFile(new URL("assets/portal.js", dist)),
-  readFile(new URL("assets/portal.css", dist)),
+  readdir(new URL("assets/", dist)),
 ]);
 
 const files = new Map([
   ["/", ["text/html; charset=utf-8", index.replace("</head>", '<meta name="kube-aiops-demo" content="true" /></head>')]],
-  ["/assets/portal.js", ["text/javascript; charset=utf-8", script]],
-  ["/assets/portal.css", ["text/css; charset=utf-8", styles]],
+
 ]);
+
+for (const asset of assets) {
+  const contentType = asset.endsWith(".js") ? "text/javascript" : "text/css";
+  files.set(`/assets/${asset}`, [`${contentType}; charset=utf-8`, await readFile(new URL(`assets/${asset}`, dist))]);
+}
 
 function send(response, status, body, contentType = "application/json", extraHeaders = {}) {
   response.writeHead(status, {

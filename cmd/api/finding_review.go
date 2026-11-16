@@ -23,6 +23,8 @@ import (
 	"github.com/abchw517/kube-aiops/internal/sanitizer"
 )
 
+const findingReviewTimeout = 45 * time.Second
+
 type findingReview struct {
 	httpapi.Backend
 	store    *identitystore.Store
@@ -93,7 +95,8 @@ func (f *findingReview) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(r.Context(), findingReviewTimeout)
+	defer cancel()
 	item, err := f.Backend.GetFinding(ctx, r.URL.Query().Get("id"))
 	if err != nil {
 		var upstream *kubernetes.APIError
@@ -157,7 +160,22 @@ func (f *findingReview) serve(w http.ResponseWriter, r *http.Request) {
 	slices.Reverse(history)
 	conclusion, err := f.analyze(ctx, item.Problem, item.Details, history, evidence.Problem, evidence.Details)
 	if err != nil {
-		http.Error(w, "AI 分析暂不可用，原结论已保留", 502)
+		code := "AI_PROVIDER_UNAVAILABLE"
+		switch {
+		case errors.Is(err, kubernetes.ErrEnginePermission):
+			code = "AI_ENGINE_PERMISSION_DENIED"
+		case errors.Is(err, kubernetes.ErrEngineEndpoint):
+			code = "AI_ENGINE_ENDPOINT_NOT_APPROVED"
+		case errors.Is(err, kubernetes.ErrEngineConfig):
+			code = "AI_ENGINE_CONFIG_INVALID"
+		case errors.Is(err, kubernetes.ErrEngineUnavailable):
+			code = "AI_ENGINE_UNAVAILABLE"
+		case errors.Is(err, kubernetes.ErrEngineSecret):
+			code = "AI_ENGINE_SECRET_UNAVAILABLE"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(502)
+		writeAdminJSON(w, map[string]string{"code": code})
 		return
 	}
 	safe := item
