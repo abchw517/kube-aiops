@@ -46,6 +46,14 @@ func Open(path string) (*Store, error) {
 			groups_json TEXT NOT NULL,
 			last_login TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS managed_clusters (
+			id TEXT PRIMARY KEY,
+			document TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			snapshot TEXT NOT NULL DEFAULT '[]',
+			reported_at INTEGER NOT NULL DEFAULT 0,
+			captured_at INTEGER NOT NULL DEFAULT 0
+		);
 		CREATE TABLE IF NOT EXISTS finding_reviews (
 			finding_key TEXT NOT NULL,
 			revision INTEGER NOT NULL,

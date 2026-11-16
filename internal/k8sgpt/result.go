@@ -22,6 +22,7 @@ type ResultSpec struct {
 }
 
 type Metadata struct {
+	UID               string            `json:"uid,omitempty"`
 	Name              string            `json:"name"`
 	Namespace         string            `json:"namespace"`
 	CreationTimestamp string            `json:"creationTimestamp"`

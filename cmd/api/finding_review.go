@@ -38,7 +38,11 @@ type findingRevision struct {
 }
 
 func newFindingReview(backend httpapi.Backend, store *identitystore.Store) (*findingReview, error) {
-	endpoint := os.Getenv("FINDING_AI_URL")
+	return newReviewWithConfig(backend, store, os.Getenv("FINDING_AI_URL"),
+		strings.TrimSpace(os.Getenv("FINDING_AI_MODEL")), os.Getenv("FINDING_AI_KEY_FILE"))
+}
+
+func newReviewWithConfig(backend httpapi.Backend, store *identitystore.Store, endpoint, model, keyFile string) (*findingReview, error) {
 	if endpoint == "" {
 		if store == nil {
 			return nil, nil
@@ -49,7 +53,6 @@ func newFindingReview(backend httpapi.Backend, store *identitystore.Store) (*fin
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("FINDING_AI_URL must be an HTTPS Chat Completions endpoint")
 	}
-	model, keyFile := strings.TrimSpace(os.Getenv("FINDING_AI_MODEL")), os.Getenv("FINDING_AI_KEY_FILE")
 	if model == "" || keyFile == "" || store == nil {
 		return nil, errors.New("finding AI requires FINDING_AI_MODEL, FINDING_AI_KEY_FILE and AUTH_SQLITE_PATH")
 	}
@@ -58,7 +61,11 @@ func newFindingReview(backend httpapi.Backend, store *identitystore.Store) (*fin
 }
 
 func reviewKey(item finding.Finding) string {
-	metadata, _ := json.Marshal([]any{item.Cluster, item.Namespace, item.ID, item.Resource, item.CreatedAt})
+	parts := []any{item.Cluster, item.Namespace, item.ID, item.Resource, item.CreatedAt}
+	if item.Cluster != "local" && item.ResultUID != "" {
+		parts = []any{item.Cluster, item.ResultUID}
+	}
+	metadata, _ := json.Marshal(parts)
 	return fmt.Sprintf("%x", sha256.Sum256(metadata))
 }
 
@@ -101,10 +108,6 @@ func (f *findingReview) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if cluster := r.URL.Query().Get("cluster"); cluster != "" && cluster != "local" {
-		http.Error(w, "该实例尚未配置 AI 复核", http.StatusBadRequest)
-		return
-	}
 	item, err := f.Backend.GetFinding(ctx, r.URL.Query().Get("id"))
 	if err != nil {
 		var upstream *kubernetes.APIError

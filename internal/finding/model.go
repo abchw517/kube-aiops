@@ -24,6 +24,7 @@ type ResourceRef struct {
 }
 
 type Finding struct {
+	ResultUID string      `json:"resultUid,omitempty"`
 	ID        string      `json:"id"`
 	Cluster   string      `json:"cluster"`
 	Namespace string      `json:"namespace,omitempty"`

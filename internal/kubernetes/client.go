@@ -44,10 +44,14 @@ func (e *APIError) Error() string {
 }
 
 type Cluster struct {
-	Environment string `json:"environment,omitempty"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Status      string `json:"status"`
+	LastReportAt  int64  `json:"lastReportAt,omitempty"`
+	ReviewEnabled bool   `json:"reviewEnabled,omitempty"`
+	Business      string `json:"business,omitempty"`
+	Group         string `json:"group,omitempty"`
+	Environment   string `json:"environment,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Status        string `json:"status"`
 }
 
 type Namespace struct {
@@ -190,7 +194,7 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		return fmt.Errorf("parse Kubernetes CA")
 	}
 
-	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		RootCAs:    roots,
 	}}}

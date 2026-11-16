@@ -1,3 +1,4 @@
+import type { Cluster } from "../../../clients/typescript/generated.ts";
 import { escapeHtml } from "../components/html.ts";
 
 const modules = [
@@ -43,10 +44,17 @@ export async function renderRoles(roleID?: string): Promise<string> {
   const data = await response.json() as { roles: Role[] | null; legacyRules: LegacyRule[] | null };
   const roles = data.roles ?? [];
   const legacyRules = data.legacyRules ?? [];
-  if (roleID === "new") return roleForm();
+  let clusters: Cluster[] = [];
+  if (roleID) {
+    try {
+      const reply = await fetch("/api/v1/clusters");
+      if (reply.ok) clusters = (await reply.json() as { items: Cluster[] }).items;
+    } catch { /* The instance ID field remains available. */ }
+  }
+  if (roleID === "new") return roleForm(undefined, clusters);
   if (roleID) {
     const role = roles.find((entry) => entry.id === roleID);
-    return role ? roleForm(role) : '<h2>角色不存在</h2><a href="#/admin/policy">返回角色列表</a>';
+    return role ? roleForm(role, clusters) : '<h2>角色不存在</h2><a href="#/admin/policy">返回角色列表</a>';
   }
 
   return `<div class="roles-heading"><h2>权限配置</h2><a class="button" href="#/admin/policy/new">添加角色</a></div>
@@ -73,7 +81,26 @@ function memberField(label: string, name: string, members: string[] | undefined,
   return `<label>${label}<textarea name="${name}" rows="2" placeholder="${example}">${escapeHtml(values.join("\n"))}</textarea></label>`;
 }
 
-function roleForm(role?: Role): string {
+function roleForm(role: Role | undefined, clusters: Cluster[]): string {
+  const paths = new Map<string, { label: string; ids: string[] }>();
+  for (const instance of clusters) {
+    const parts = [instance.environment || "未分组", instance.business || "未分组", instance.group || "未分组"];
+    for (let i = 1; i <= parts.length; i++) {
+      const path = parts.slice(0, i);
+      const key = JSON.stringify(path);
+      const entry = paths.get(key) ?? { label: path.join(" / "), ids: [] };
+      entry.ids.push(instance.id);
+      paths.set(key, entry);
+    }
+    paths.set(JSON.stringify([instance.id, ...parts]), {
+      label: [...parts, `${instance.name} (${instance.id})`].join(" / "), ids: [instance.id],
+    });
+  }
+  const directory = paths.size ? `<label>从集群目录选择<select data-role-directory>
+      <option value="">选择环境、业务、集群或实例</option>
+      ${[...paths.values()].map(({ label, ids }) => `<option value="${escapeHtml(ids.join(","))}">${escapeHtml(label)}</option>`).join("")}
+    </select></label>` : "";
+
   return `<div class="roles-heading"><h2>${role ? "编辑角色" : "添加角色"}</h2><a href="#/admin/policy">返回角色列表</a></div>
     <form class="login-form identity-form role-form" data-role-form data-role-id="${escapeHtml(role?.id ?? "")}" data-revision="${role?.revision ?? ""}">
       <label>角色名称<input name="name" value="${escapeHtml(role?.name ?? "")}" maxlength="128" required placeholder="例如 开发环境观察员"></label>
@@ -85,10 +112,11 @@ function roleForm(role?: Role): string {
       </div></fieldset>
       <fieldset><legend>授权范围</legend>
         <div class="role-fields">
-          <label>集群 ID<input name="cluster" value="${escapeHtml(role?.cluster ?? "local")}" maxlength="253" required></label>
+          ${directory}
+          <label>集群实例 ID（逗号分隔）<input name="cluster" value="${escapeHtml(role?.cluster ?? "local")}" maxlength="4096" required></label>
           <label>命名空间<input name="namespaces" value="${escapeHtml(role?.namespaces?.join(", ") ?? "")}" placeholder="例如 dev, staging"></label>
         </div>
-        <small>按逗号分隔命名空间，填写 * 表示所选集群的全部命名空间。诊断、资源和证据权限按指定命名空间授权。</small>
+        <small>目录选择授权给当前匹配的实例。新增实例需重新授权。按逗号分隔命名空间，填写 * 表示所选集群的全部命名空间。诊断、资源和证据权限按指定命名空间授权。</small>
       </fieldset>
       <fieldset><legend>角色成员</legend>
         <p>可稍后分配成员。每行填写一个用户或组，LDAP 请填写完整 DN。</p>

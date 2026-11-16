@@ -405,6 +405,14 @@ components:
       additionalProperties: false
       required: [id, name, status]
       properties:
+        lastReportAt:
+          type: integer
+        reviewEnabled:
+          type: boolean
+        business:
+          type: string
+        group:
+          type: string
         environment:
           type: string
         id:
@@ -491,6 +499,8 @@ components:
       additionalProperties: false
       required: [id, cluster, severity, resource, problem, source]
       properties:
+        resultUid:
+          type: string
         id:
           type: string
         cluster:

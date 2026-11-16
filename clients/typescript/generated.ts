@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: e2b46c3f ae47befd dfdeec3e 11096a96 e3ebfe9c c883e228 3cbb9164 10b3c5c7
+// Contract source SHA-256 groups: bb8a6351 2f5df311 6f1cdeaf ac554f16 d7d73e85 0ca81325 e3349bc6 373fd27a
 
 export interface StatusResponse {
   "status": string;
@@ -13,6 +13,10 @@ export interface Principal {
 }
 
 export interface Cluster {
+  "lastReportAt"?: number;
+  "reviewEnabled"?: boolean;
+  "business"?: string;
+  "group"?: string;
   "environment"?: string;
   "id": string;
   "name": string;
@@ -57,6 +61,7 @@ export interface ResourceRef {
 }
 
 export interface Finding {
+  "resultUid"?: string;
   "id": string;
   "cluster": string;
   "namespace"?: string;

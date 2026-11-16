@@ -150,7 +150,7 @@ func (s *Server) authorizeRequest(
 		Principal:  principal,
 		Capability: capability,
 		Scope:      scope,
-		Collection: capability == authorization.CapabilityFindingsList || capability == authorization.CapabilityFindingsSummary,
+		Collection: (capability == authorization.CapabilityClustersList && scope == authorization.GlobalScope()) || capability == authorization.CapabilityFindingsList || capability == authorization.CapabilityFindingsSummary,
 	})
 	if err != nil {
 		setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)

@@ -859,3 +859,20 @@ spec:
 在权限策略里保留全局 `clusters:list` 用于访问集群列表接口，再用具体集群规则限制可见性及数据访问。由于通配规则也匹配各集群，可以对受限组为指定集群添加 `clusters:list` 拒绝规则，拒绝优先。接入生产前，检查已有 `cluster: "*"` 读取授权。诊断详情及证据链接可使用 `?cluster=dev-cn-01`，省略该参数仍访问 `local`。
 
 从两个非生产集群分别查看同名 Result、资源及证据，确认来源正确。断开一个远端集群后，另一个集群的查询和中心 API readiness 应继续工作。
+
+### Web 管理多环境集群接入
+
+使用生产模式和 SQLite，打开 **系统管理 → 集群接入**。每个实例使用不可变的实例 ID，填写环境、业务、集群名称和实例显示名。例如 `生产 / 云帆 / 云帆应用集群 / 上海`，实例 ID 为 `prod-yunfan-sh01`。诊断台按这四级选择实例，详情及证据链接携带实例 ID。通过文件注册的旧实例继续可用，其 ID 不可被 Web 重复使用。
+
+**手动配置**：先将目标集群的专用只读 token 和 CA 挂载到中心 API 容器的 `/etc/kube-aiops/clusters/<实例 ID>/token` 和 `ca.crt`。在 Web 填写 HTTPS API 地址及实际 Engine 名称、命名空间，先点「测试连接」，成功后启用。中心的出站访问应限制在受管集群和经批准的数据源。手动实例可以配置 Prometheus、VictoriaLogs 和 Alertmanager，集群标签值使用实例 ID；共享数据源的标签需唯一。
+
+**采集上报**：在 Web 预登记实例并启用，保存后会显示一次实例上报凭据。将凭据写入受控文件，在目标集群的 Engine 命名空间创建采集 Secret：
+
+```bash
+kubectl -n k8sgpt-operator-system create secret generic kube-aiops-collector \
+  --from-file=token=/secure/collector-token
+```
+
+拷贝 [采集 CronJob 示例](../deploy/collector/cronjob.yaml)，替换 API 镜像、中心 HTTPS 地址、实例 ID 和 Engine 参数，再应用到目标集群。实例首次提交快照后显示在线，每分钟上报当前有效 Result。完整空快照表示当前无诊断，采集失败保留最后一份快照；超过三分钟未收到快照标记为离线。中心只保存凭据哈希，停用实例可阻止查询和继续上报。采集组件只读取指定 Engine 命名空间的 Results，不上传 Kubernetes 凭据。采集实例的 Kubernetes 资源详情和原生 Event 尚未上报，可配置独立指标、日志、告警证据源。
+
+**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。管理员可选填实例的 AI Chat Completions 地址和模型，将其模型密钥挂载到中心 API 的 `/etc/kube-aiops/clusters/<实例 ID>/ai-key`。中心按所选实例处理复核，既有 `local` 继续使用原有 Engine 复用脚本。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。

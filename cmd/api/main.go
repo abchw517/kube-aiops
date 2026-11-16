@@ -22,15 +22,21 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "identity-import" {
-			logger.Error("usage: kube-aiops-api [identity-import]")
+		var run func() error
+		switch {
+		case len(os.Args) == 2 && os.Args[1] == "identity-import":
+			run = importIdentity
+		case len(os.Args) == 2 && os.Args[1] == "cluster-report":
+			run = clusterReport
+		default:
+			logger.Error("usage: kube-aiops-api [identity-import|cluster-report]")
 			os.Exit(2)
 		}
-		if err := importIdentity(); err != nil {
-			logger.Error("identity import failed", "error", err)
+		if err := run(); err != nil {
+			logger.Error("command failed", "command", os.Args[1], "error", err)
 			os.Exit(1)
 		}
-		logger.Info("identity import complete")
+		logger.Info("command complete", "command", os.Args[1])
 		return
 	}
 
@@ -61,6 +67,7 @@ func main() {
 
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
+	var managed *onboarding
 	writeTimeout := 10 * time.Second
 	if cfg.SecurityMode == security.ModeProduction {
 		var store *identitystore.Store
@@ -87,7 +94,20 @@ func main() {
 				writeTimeout = 35 * time.Second
 			}
 		}
-		wrap, err = configureIdentityHandler(&bundle, store, review)
+		if store != nil {
+			registry, ok := queryBackend.(*httpapi.ClusterBackends)
+			if !ok {
+				registry = &httpapi.ClusterBackends{Backend: queryBackend}
+				queryBackend = registry
+			}
+			writeTimeout = 35 * time.Second
+			managed, err = newOnboarding(store, registry)
+			if err != nil {
+				logger.Error("load managed cluster directory failed", "error", err)
+				os.Exit(1)
+			}
+		}
+		wrap, err = configureIdentityHandler(&bundle, store, review, managed)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
@@ -118,6 +138,9 @@ func main() {
 
 	if wrap != nil {
 		handler = wrap(handler)
+	}
+	if managed != nil {
+		handler = managed.reporting(handler)
 	}
 
 	server := &http.Server{
@@ -157,7 +180,7 @@ func main() {
 	logger.Info("kube-aiops-api stopped")
 }
 
-func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview) (func(http.Handler) http.Handler, error) {
+func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview, managed *onboarding) (func(http.Handler) http.Handler, error) {
 	if store == nil {
 		sessions, err := configureIdentity(bundle)
 		if sessions == nil {
@@ -174,5 +197,7 @@ func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Stor
 		return nil, err
 	}
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
-	return func(next http.Handler) http.Handler { return sessions.Wrap(admin.wrap(sessions, next, review)) }, nil
+	return func(next http.Handler) http.Handler {
+		return sessions.Wrap(admin.wrap(sessions, next, review, managed))
+	}, nil
 }

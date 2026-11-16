@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/correlation"
@@ -19,6 +21,31 @@ type ClusterTarget struct {
 type ClusterBackends struct {
 	Backend
 	Targets map[string]ClusterTarget
+	mu      sync.RWMutex
+	managed map[string]ClusterTarget
+}
+
+func (b *ClusterBackends) SetManaged(id string, target ClusterTarget) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.managed == nil {
+		b.managed = make(map[string]ClusterTarget)
+	}
+	if target.Backend == nil {
+		delete(b.managed, id)
+		return
+	}
+	b.managed[id] = target
+}
+
+func (b *ClusterBackends) Lookup(id string) (ClusterTarget, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if t, ok := b.managed[id]; ok {
+		return t, true
+	}
+	t, ok := b.Targets[id]
+	return t, ok
 }
 
 func queryCluster(r *http.Request) string {
@@ -33,7 +60,7 @@ func (s *Server) target(w http.ResponseWriter, r *http.Request, id string) (Clus
 		return ClusterTarget{s.backend, s.correlator}, true
 	}
 	if registry, ok := s.backend.(*ClusterBackends); ok {
-		if target, ok := registry.Targets[id]; ok {
+		if target, ok := registry.Lookup(id); ok {
 			if s.authorizationEnabled && !s.authorizeRequest(w, r, s.authorizer, authorization.CapabilityClustersList, authorization.ClusterScope(id)) {
 				return ClusterTarget{}, false
 			}
@@ -47,9 +74,14 @@ func (s *Server) target(w http.ResponseWriter, r *http.Request, id string) (Clus
 func (s *Server) visibleClusters(w http.ResponseWriter, r *http.Request) ([]kubernetes.Cluster, bool) {
 	items := append([]kubernetes.Cluster{}, s.backend.Clusters()...)
 	if registry, ok := s.backend.(*ClusterBackends); ok {
-		for _, target := range registry.Targets {
-			items = append(items, target.Backend.Clusters()...)
+		registry.mu.RLock()
+		for _, targets := range []map[string]ClusterTarget{registry.Targets, registry.managed} {
+			for _, target := range targets {
+				items = append(items, target.Backend.Clusters()...)
+			}
 		}
+		registry.mu.RUnlock()
+		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	}
 	if _, multi := s.backend.(*ClusterBackends); !multi || !s.authorizationEnabled {
 		return items, true

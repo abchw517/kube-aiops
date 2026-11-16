@@ -22,15 +22,19 @@ const (
 )
 
 func (c *Client) ListFindings(ctx context.Context, query finding.Query) (finding.Page, error) {
+	items, err := c.filteredFindings(ctx, query.Filter)
+	if err != nil {
+		return finding.Page{}, err
+	}
+	return PageFindings(items, query)
+}
+
+func PageFindings(items []finding.Finding, query finding.Query) (finding.Page, error) {
 	limit, err := finding.NormalizeLimit(query.Limit)
 	if err != nil {
 		return finding.Page{}, err
 	}
 	cursor, err := finding.DecodeCursor(query.Continue)
-	if err != nil {
-		return finding.Page{}, err
-	}
-	items, err := c.filteredFindings(ctx, query.Filter)
 	if err != nil {
 		return finding.Page{}, err
 	}
@@ -87,6 +91,10 @@ func (c *Client) SummarizeFindings(ctx context.Context, filter finding.Filter) (
 		return finding.Summary{}, err
 	}
 
+	return SummarizeFindings(items), nil
+}
+
+func SummarizeFindings(items []finding.Finding) finding.Summary {
 	summary := finding.Summary{
 		Total: len(items),
 		BySeverity: map[string]int{
@@ -106,7 +114,7 @@ func (c *Client) SummarizeFindings(ctx context.Context, filter finding.Filter) (
 			summary.ByNamespace[item.Namespace]++
 		}
 	}
-	return summary, nil
+	return summary
 }
 
 func (c *Client) filteredFindings(ctx context.Context, filter finding.Filter) ([]finding.Finding, error) {
@@ -119,6 +127,14 @@ func (c *Client) filteredFindings(ctx context.Context, filter finding.Filter) ([
 	for _, result := range results {
 		item := finding.FromResult(result)
 		item.Cluster = c.config.ClusterID
+		items = append(items, item)
+	}
+	return FilterFindings(items, filter)
+}
+
+func FilterFindings(source []finding.Finding, filter finding.Filter) ([]finding.Finding, error) {
+	items := make([]finding.Finding, 0, len(source))
+	for _, item := range source {
 		if !finding.Matches(item, filter) {
 			continue
 		}
@@ -202,4 +218,8 @@ func cursorStart(items []finding.Finding, cursor *finding.Cursor) int {
 		}
 	}
 	return len(items)
+}
+
+func (c *Client) SnapshotFindings(ctx context.Context) ([]finding.Finding, error) {
+	return c.filteredFindings(ctx, finding.Filter{})
 }

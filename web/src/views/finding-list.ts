@@ -14,7 +14,12 @@ export function renderFilters(
   knownKinds: string[],
   filters: FindingFilters,
 ): string {
+  const instance = clusters.find((item) => item.id === (filters.cluster ?? "local"));
+  const freshness = instance?.status === "waiting" ? "采集端尚未上报。" :
+    instance?.status === "offline" && instance.lastReportAt ?
+      `采集离线，显示最近一次上报的数据（${new Date(instance.lastReportAt * 1000).toLocaleString()}）。` : "";
   return `
+    ${freshness ? `<p class="evidence-notice" role="status">${escapeHtml(freshness)}</p>` : ""}
     <section class="panel filters" aria-label="诊断结果筛选">
       ${renderClusterSelect(clusters, filters.cluster ?? "local")}
       ${renderSelect("namespace", "命名空间", namespaces.map((item) => item.name), filters.namespace)}
@@ -126,15 +131,19 @@ function renderBreakdown(values: Record<string, number>): string {
 }
 
 function renderClusterSelect(clusters: Cluster[], selected: string): string {
-  const groups = new Map<string, Cluster[]>();
-  for (const cluster of clusters) {
-    const name = cluster.environment || "未分组";
-    const items = groups.get(name) ?? [];
-    items.push(cluster);
-    groups.set(name, items);
-  }
-  return `<label><span>集群</span><select name="cluster" data-filter="cluster">
-    ${[...groups].map(([name, items]) => `<optgroup label="${escapeHtml(name)}">
-      ${items.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === selected ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
-    </optgroup>`).join("")}</select></label>`;
+  const current = clusters.find((cluster) => cluster.id === selected) ?? clusters[0];
+  if (!current) return "";
+  const dimensions = [["environment", "环境"], ["business", "业务"], ["group", "集群名称"]] as const;
+  let available = clusters;
+  const selectors = dimensions.map(([key, label]) => {
+    const value = current[key] || "未分组";
+    const choices = [...new Set(available.map((item) => item[key] || "未分组"))];
+    available = available.filter((item) => (item[key] || "未分组") === value);
+    return `<label><span>${label}</span><select name="${key}" data-filter="${key}">
+      ${choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === value ? " selected" : ""}>${escapeHtml(choice)}</option>`).join("")}
+    </select></label>`;
+  });
+  return `${selectors.join("")}<label><span>集群实例</span><select name="cluster" data-filter="cluster">
+    ${available.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === current.id ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+    </select></label>`;
 }
