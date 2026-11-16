@@ -101,6 +101,10 @@ func (f *findingReview) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	if cluster := r.URL.Query().Get("cluster"); cluster != "" && cluster != "local" {
+		http.Error(w, "该实例尚未配置 AI 复核", http.StatusBadRequest)
+		return
+	}
 	item, err := f.Backend.GetFinding(ctx, r.URL.Query().Get("id"))
 	if err != nil {
 		var upstream *kubernetes.APIError

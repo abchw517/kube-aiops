@@ -211,6 +211,7 @@ paths:
       summary: Read one normalized K8sGPT finding
       parameters:
         - $ref: '#/components/parameters/FindingIDPath'
+        - $ref: '#/components/parameters/ClusterQuery'
       responses:
         '200':
           description: Finding detail.
@@ -239,6 +240,7 @@ paths:
         cannot supply PromQL, LogsQL, upstream URLs, arbitrary Kubernetes queries, or raw log requests.
       parameters:
         - $ref: '#/components/parameters/FindingIDPath'
+        - $ref: '#/components/parameters/ClusterQuery'
       responses:
         '200':
           description: Safe correlation bundle. Individual disabled or unavailable sources are explicit.
@@ -264,7 +266,6 @@ components:
       required: true
       schema:
         type: string
-        enum: [local]
     FindingIDPath:
       name: id
       in: path
@@ -279,7 +280,6 @@ components:
       required: false
       schema:
         type: string
-        enum: [local]
         default: local
     NamespaceQuery:
       name: namespace
@@ -405,6 +405,8 @@ components:
       additionalProperties: false
       required: [id, name, status]
       properties:
+        environment:
+          type: string
         id:
           type: string
         name:
@@ -493,7 +495,6 @@ components:
           type: string
         cluster:
           type: string
-          enum: [local]
         namespace:
           type: string
         severity:
@@ -594,7 +595,6 @@ components:
       properties:
         cluster:
           type: string
-          enum: [local]
         namespace:
           type: string
         resource:
