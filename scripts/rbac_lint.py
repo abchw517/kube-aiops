@@ -20,6 +20,7 @@ FORBIDDEN_VERBS = {
     "update",
 }
 FORBIDDEN_RESOURCES = {"pods/log", "secrets", "serviceaccounts/token"}
+ENGINE_READER = ("Role", "kube-aiops-finding-ai-engine-reader", "k8sgpt-operator-system")
 ROLE_KINDS = {"Role", "ClusterRole"}
 BINDING_KINDS = {"RoleBinding", "ClusterRoleBinding"}
 FORBIDDEN_SUBJECT_GROUPS = {
@@ -83,7 +84,12 @@ def scan(root: pathlib.Path) -> tuple[list[str], int, int]:
                     errors.append(
                         f"{prefix} rule[{rule_index}] 包含禁止 verbs: {sorted(bad_verbs)}"
                     )
-                if bad_resources := resources & FORBIDDEN_RESOURCES:
+                bad_resources = resources & FORBIDDEN_RESOURCES
+                if (resource_key(document) == ENGINE_READER and resources == {"secrets"}
+                        and verbs == {"get"} and api_groups == {""}
+                        and rule.get("resourceNames") == ["k8sgpt-openai-secret"]):
+                    bad_resources.discard("secrets")
+                if bad_resources:
                     errors.append(
                         f"{prefix} rule[{rule_index}] 包含禁止 resources: "
                         f"{sorted(bad_resources)}"
@@ -111,6 +117,9 @@ def scan(root: pathlib.Path) -> tuple[list[str], int, int]:
             errors.append(f"{prefix} roleRef.kind 非法: {ref_kind or '<empty>'}")
 
         subjects = document.get("subjects") or []
+        if ((ref_kind, ref_name, binding_namespace) == ENGINE_READER
+                and subjects != [{"kind": "ServiceAccount", "name": "kube-aiops-api", "namespace": "kube-aiops-system"}]):
+            errors.append(f"{prefix} Engine Secret 只允许授予 kube-aiops-api ServiceAccount")
         if not subjects:
             errors.append(f"{prefix} subjects 不能为空")
         for subject_index, subject in enumerate(subjects, start=1):

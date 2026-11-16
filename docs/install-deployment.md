@@ -289,15 +289,24 @@ imagePullSecrets:
 
 ### 启用诊断详情的 AI 分析
 
-完成 [配置 Engine 模型与语言](#配置-engine-模型与语言) 和 [生产身份接入](#生产身份接入) 后，在应用 API Deployment 前执行：
+完成 [配置 Engine 模型与语言](#配置-engine-模型与语言) 和 [生产身份接入](#生产身份接入) 后，将下列变量合并到 API 容器的 `env` 中：
 
-```bash
-python3 scripts/configure-finding-ai.py "$release_dir/api.yaml" --context "$target_context"
+```yaml
+- name: FINDING_AI_ENGINE_ENABLED
+  value: "true"
 ```
 
-脚本从 API 清单指定的 K8sGPT CR 读取 `spec.ai.model`、`spec.ai.baseUrl` 和 `spec.ai.secret`，自动配置 Chat Completions 地址并挂载 Engine 已有的密钥。同一命名空间直接挂载原 Secret，跨命名空间时仅同步被引用的密钥项。部署操作者需有读取 Engine CR 和源 Secret、在 API 命名空间维护同步 Secret 的权限。API Pod 需能访问模型服务。
+先应用 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml)，再应用本次 API Deployment：
 
-Engine 修改模型、地址或密钥后，重新执行脚本并应用渲染后的 API 清单；跨命名空间的密钥轮换通过这一步重新同步。
+```bash
+kubectl --context "$target_context" apply -f deploy/examples/finding-ai/engine-reader.yaml
+kubectl --context "$target_context" apply -f "$release_dir/api.yaml"
+kubectl --context "$target_context" -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+默认 Role 仅允许 API ServiceAccount 在 `k8sgpt-operator-system` 对 `k8sgpt-engine` 和 `k8sgpt-openai-secret` 执行单对象 `get`。自定义 Engine 名称、命名空间或 Secret 名称时，分别更新 API 的 `K8SGPT_NAMESPACE`、`K8SGPT_NAME` 以及 Role/RoleBinding 的命名空间和 Role 的 `resourceNames`。Kubernetes RBAC 按整个 Secret 授权，Engine 密钥应放在专用 Secret 中。
+
+每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
 
 管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。
 
