@@ -60,6 +60,20 @@ func Open(path string) (*Store, error) {
 			conclusion TEXT NOT NULL,
 			PRIMARY KEY(finding_key, revision)
 		);
+		CREATE TABLE IF NOT EXISTS wiki_sources (
+			id TEXT PRIMARY KEY NOT NULL,
+			url TEXT NOT NULL,
+			cluster TEXT NOT NULL,
+			namespace TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS wiki_source_credentials (
+			source_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			username TEXT NOT NULL,
+			password_ciphertext BLOB NOT NULL,
+			PRIMARY KEY(source_id, provider, subject)
+		);
 		CREATE TABLE IF NOT EXISTS authorization_roles (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			document TEXT NOT NULL

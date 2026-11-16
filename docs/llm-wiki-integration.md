@@ -148,3 +148,9 @@ SQLite 同一事务内检查 `expectedRevision`、保存已确认结论及知识
 - [需求文档](llm-wiki-requirements.md)
 - [任务拆分](llm-wiki-tasks.md)
 - [测试用例](llm-wiki-test-cases.md)
+
+## 凭据模块开发验证
+
+凭据模块使用与现有身份服务相同的 SQLite 文件，启动时自动创建来源、用户凭据表。部署测试时，将由 `openssl rand -base64 32` 生成的独立密钥作为文件挂载到 Portal API，并设置 `WIKI_CREDENTIAL_ENCRYPTION_KEY_FILE` 指向该文件。数据库备份应配套保管对应密钥。
+
+模块阶段可用以下接口验证。管理员使用 `PUT /api/v1/wiki/sources/{id}` 注册 HTTPS 目录 URL、集群及命名空间。来源地址和范围需要调整时使用新来源编号。将「知识库同步」权限授予对应资源范围的测试用户，再通过凭据接口绑定账号并验证重新登录后的状态。当前凭据模块可验证数据库持久化和账号隔离，远端登录及连接测试在接入来源连接器后验收。

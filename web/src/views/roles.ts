@@ -9,6 +9,7 @@ const modules = [
   ["findings:read", "诊断详情", "查看单条诊断及分析结论"],
   ["resources:read", "资源详情", "查看诊断关联的 Kubernetes 资源"],
   ["correlations:read", "关联证据", "查看诊断关联的事件、指标、日志和告警"],
+  ["wiki:sync", "知识库同步", "管理本人远端 Wiki 凭据"],
 ] as const;
 
 interface Role {

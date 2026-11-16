@@ -18,6 +18,7 @@ const (
 	CapabilityFindingsRead     Capability = "findings:read"
 	CapabilityResourcesRead    Capability = "resources:read"
 	CapabilityCorrelationsRead Capability = "correlations:read"
+	CapabilityWikiSync         Capability = "wiki:sync"
 )
 
 var knownCapabilities = map[Capability]struct{}{
@@ -28,6 +29,7 @@ var knownCapabilities = map[Capability]struct{}{
 	CapabilityFindingsRead:     {},
 	CapabilityResourcesRead:    {},
 	CapabilityCorrelationsRead: {},
+	CapabilityWikiSync:         {},
 }
 
 type Capability string
