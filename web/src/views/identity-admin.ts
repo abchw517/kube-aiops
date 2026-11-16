@@ -4,7 +4,8 @@ const ldapFields = [
   ["url", "LDAP URL"],
   ["bindDN", "LDAP 搜索 DN"],
   ["baseDN", "LDAP 基础 DN"],
-  ["userFilter", "LDAP 用户过滤器"],
+  ["userUID", "LDAP 用户 UID"],
+  ["userFilter", "LDAP 附加用户过滤器"],
   ["groupAttribute", "LDAP 组属性"],
 ] as const;
 
@@ -48,10 +49,15 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
       <p>使用 local:用户名、local:组名或 ldap:完整组 DN 设置规则，并指定能力、集群和命名空间。</p>
       ${form("policy", `<label>授权策略 JSON<textarea name="policy" rows="16" required>${escapeHtml(JSON.stringify(data, null, 2))}</textarea></label>`, "保存策略")}`;
   }
-  return `<h2>认证配置</h2><p>本地账号始终可用。填写 LDAPS URL 启用目录登录。搜索密码在此配置。私有 CA 通过部署 Secret 挂载。</p>
+  return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 通过部署 Secret 挂载。</p>
     ${form("ldap", ldapFields.map(([key, label]) =>
       `<label>${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}"></label>`).join("") +
-      `<label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>`, "保存配置")}`;
+      `<label>LDAP 用户搜索范围<select name="searchScope">
+        <option value="subtree">子树</option>
+        <option value="onelevel"${data.searchScope === "onelevel" ? " selected" : ""}>单层</option>
+        <option value="base"${data.searchScope === "base" ? " selected" : ""}>基础对象</option>
+      </select></label>
+      <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>`, "保存配置")}`;
 }
 
 function form(resource: string, fields: string, label: string): string {
@@ -92,8 +98,9 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       return;
     }
     if (!response.ok) {
-      if (resource === "ldap" && response.status === 400 && (await response.text()).trim() === "password_required") {
-        status.textContent = "更换 LDAP 地址或搜索 DN 后，请重新填写搜索密码。";
+      if (resource === "ldap" && response.status === 400 && response.headers.get("Content-Type")?.startsWith("text/plain")) {
+        const message = (await response.text()).trim();
+        status.textContent = message === "password_required" ? "更换 LDAP 地址或搜索 DN 后，请重新填写搜索密码。" : message || "LDAP 配置无效。";
         return;
       }
       status.textContent = response.status === 409 ? "账号已存在或配置已更新。" :

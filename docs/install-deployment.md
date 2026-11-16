@@ -576,7 +576,7 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 #### 5. 按需接入 LDAP / Active Directory
 
-准备域控的 LDAPS 域名、只读搜索账号和密码。使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。确认 API Pod 能解析域控域名，并可访问 TCP 636。
+准备域控的 LDAPS 域名、只读搜索账号和密码。使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（StartTLS）。
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
@@ -613,11 +613,13 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 | 字段 | AD 示例 |
 | --- | --- |
-| LDAP URL | `ldaps://ad.example.com:636` |
+| LDAP URL | `ldaps://ad.example.com:636` 或 `ldap://ad.example.com:389`（连接先升级为 StartTLS，再发送凭据） |
 | LDAP 搜索密码 | 搜索账号的密码 |
 | LDAP 搜索 DN | `cn=kube-aiops-reader,ou=service,dc=example,dc=com` |
 | LDAP 基础 DN | `dc=example,dc=com` |
-| LDAP 用户过滤器 | `(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))` |
+| LDAP 用户 UID | `sAMAccountName` |
+| LDAP 附加用户过滤器 | `(objectClass=user)`，可留空。沿用带 `%s` 的旧模板时请留空 UID |
+| LDAP 用户搜索范围 | 子树（默认），可选单层或基础对象 |
 | LDAP 组属性 | `memberOf` |
 
 在上一步策略中，将 `"ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"` 追加到需要授予同样权限的两条规则的 `groups` 数组，保留原有本地组。LDAP 组使用小写完整 DN，`memberOf` 对应用户的直接组。

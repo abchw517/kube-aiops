@@ -31,6 +31,8 @@ type ldapSettings struct {
 	UserFilter   string `json:"userFilter"`
 	GroupAttr    string `json:"groupAttribute"`
 	BindPassword string `json:"bindPassword,omitempty"`
+	UserUID      string `json:"userUID,omitempty"`
+	SearchScope  string `json:"searchScope,omitempty"`
 }
 
 type identityAdmin struct {
@@ -85,7 +87,7 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 			return nil, err
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
-		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), ""}
+		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), "", "", ""}
 	} else {
 		return nil, err
 	}
@@ -97,7 +99,7 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 	if s.URL == "" {
 		return nil, nil
 	}
-	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr}
+	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr, UserUID: s.UserUID, SearchScope: s.SearchScope}
 	if err := applyLDAPCredentials(&cfg, s.BindPassword); err != nil {
 		return nil, err
 	}
@@ -357,9 +359,14 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 			settings.BindPassword = a.settings.BindPassword
 		}
 		cfg, configErr := settings.configuration()
-		if configErr != nil || (resource == "ldap-test" && cfg == nil) {
+		if configErr != nil {
 			a.mu.Unlock()
-			http.Error(w, "invalid LDAP configuration", 400)
+			http.Error(w, configErr.Error(), 400)
+			return
+		}
+		if resource == "ldap-test" && cfg == nil {
+			a.mu.Unlock()
+			http.Error(w, "请填写 LDAP URL 后再测试", 400)
 			return
 		}
 		if resource == "ldap-test" {
