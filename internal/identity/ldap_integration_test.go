@@ -61,7 +61,11 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 						writeLDAPResponse(conn, id, ldapResult(ldap.ApplicationBindResponse, code))
 					case ldap.ApplicationSearchRequest:
 						actual, err := ldap.DecompileFilter(request.Children[6])
-						if err != nil || (actual != "(&(objectCategory=person)(objectClass=user)(sAMAccountName=alice))" && actual != "(objectClass=*)" && actual != "(sAMAccountName=alice)") {
+						if actual == "(objectClass=denied)" {
+							writeLDAPResponse(conn, id, ldapResult(ldap.ApplicationSearchResultDone, ldap.LDAPResultInsufficientAccessRights))
+							continue
+						}
+						if err != nil || (actual != "(&(objectCategory=person)(objectClass=user)(sAMAccountName=alice))" && actual != "(objectClass=*)" && actual != "(sAMAccountName=alice)" && actual != "(objectClass=group)") {
 							writeLDAPResponse(conn, id, ldapResult(ldap.ApplicationSearchResultDone, ldap.LDAPResultSuccess))
 							continue
 						}
@@ -92,12 +96,29 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 		BindDN: bindDN, BindPassword: "fixture-bind", UserFilter: filter, GroupAttr: "memberOf",
 		TLSConfig: &tls.Config{RootCAs: roots},
 	}
-	if stage := TestLDAP(t.Context(), cfg); stage != "" {
+	if stage, _ := TestLDAP(t.Context(), cfg, ""); stage != "success" {
 		t.Fatalf("LDAP test returned %q", stage)
+	}
+	if stage, groups := TestLDAP(t.Context(), cfg, "alice"); stage != "success_user" || groups != 1 {
+		t.Fatalf("LDAP user probe stage=%q groups=%d", stage, groups)
+	}
+	if stage, _ := TestLDAP(t.Context(), cfg, "unknown"); stage != "user_match" {
+		t.Fatalf("a successful connection must not hide missing LDAP users: stage=%q", stage)
+	}
+	groupFilter := cfg
+	groupFilter.GroupBaseDN = baseDN
+	groupFilter.GroupScope = "onelevel"
+	groupFilter.GroupFilter = "(objectClass=group)"
+	if stage, groups := TestLDAP(t.Context(), groupFilter, "alice"); stage != "success_user" || groups != 1 {
+		t.Fatalf("LDAP group filter probe stage=%q groups=%d", stage, groups)
+	}
+	groupFilter.GroupFilter = "(objectClass=denied)"
+	if stage, _ := TestLDAP(t.Context(), groupFilter, "alice"); stage != "group_query" {
+		t.Fatalf("failed group query reported as %q", stage)
 	}
 	invalid := cfg
 	invalid.BindPassword = "incorrect"
-	if stage := TestLDAP(t.Context(), invalid); stage != "bind" {
+	if stage, _ := TestLDAP(t.Context(), invalid, "alice"); stage != "bind" {
 		t.Fatalf("invalid bind password returned %q", stage)
 	}
 	got, err := AuthenticateLDAP(cfg, "alice", "fixture-user")
@@ -167,7 +188,7 @@ func TestLDAPStartTLSRefusalStopsBeforeBind(t *testing.T) {
 	if got := cfg.filterTemplate(); got != "(&(sAMAccountName=%s)(objectClass=user))" {
 		t.Fatalf("unexpected user filter: %s", got)
 	}
-	if stage := TestLDAP(t.Context(), cfg); stage != "connection" {
+	if stage, _ := TestLDAP(t.Context(), cfg, "alice"); stage != "connection" {
 		t.Fatalf("unexpected test stage: %s", stage)
 	}
 	if !<-finished {

@@ -39,31 +39,19 @@ type ldapSettings struct {
 }
 
 type identityAdmin struct {
-	store    *identitystore.Store
-	origin   string
-	mu       sync.RWMutex
-	policy   *authorization.PolicyAuthorizer
-	ldap     *identity.LDAPConfig
-	settings ldapSettings
+	store     *identitystore.Store
+	origin    string
+	mu        sync.RWMutex
+	policy    *authorization.PolicyAuthorizer
+	ldap      *identity.LDAPConfig
+	settings  ldapSettings
+	ldapIssue string
 }
 
 func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identityAdmin, error) {
 	a := &identityAdmin{store: store, origin: os.Getenv("AUTH_ORIGIN")}
 	if os.Getenv("AUTH_BOOTSTRAP_ADMIN") == "true" {
-		if _, _, err := store.Admin(ctx); errors.Is(err, sql.ErrNoRows) {
-			if _, err := store.LocalAccount(ctx, "admin"); err == nil {
-				return nil, errors.New("local admin already exists; migrate it before enabling administrator bootstrap")
-			} else if !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
-			hash, err := bcrypt.GenerateFromPassword([]byte(initialAdminPassword), 12)
-			if err != nil {
-				return nil, err
-			}
-			if err := store.BootstrapAdmin(ctx, string(hash)); err != nil {
-				return nil, err
-			}
-		} else if err != nil {
+		if err := bootstrapAdministrator(ctx, store); err != nil {
 			return nil, err
 		}
 	}
@@ -85,17 +73,43 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 	}
 	var document []byte
 	err = store.QueryRowContext(ctx, "SELECT document FROM ldap_settings WHERE id=1").Scan(&document)
-	if err == nil {
-		if err = json.Unmarshal(document, &a.settings); err != nil {
-			return nil, err
+	switch {
+	case err == nil:
+		a.settings, err = loadLDAPSettings(ctx, store, document)
+	case errors.Is(err, sql.ErrNoRows):
+		a.settings = ldapSettings{
+			URL: os.Getenv("AUTH_LDAP_URL"), BaseDN: os.Getenv("AUTH_LDAP_BASE_DN"),
+			BindDN: os.Getenv("AUTH_LDAP_BIND_DN"), UserFilter: os.Getenv("AUTH_LDAP_USER_FILTER"),
+			GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"),
 		}
-	} else if errors.Is(err, sql.ErrNoRows) {
-		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), "", "", "", "", "", ""}
-	} else {
+		err = nil
+	default:
 		return nil, err
 	}
-	a.ldap, err = a.settings.configuration()
-	return a, err
+	if err == nil {
+		a.ldap, err = a.settings.configuration()
+	}
+	if err != nil {
+		a.ldapIssue = err.Error()
+		slog.WarnContext(ctx, "LDAP disabled due to configuration error", "reason", a.ldapIssue)
+	}
+	return a, nil
+}
+
+func bootstrapAdministrator(ctx context.Context, store *identitystore.Store) error {
+	if _, _, err := store.Admin(ctx); !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err := store.LocalAccount(ctx, "admin"); err == nil {
+		return errors.New("local admin already exists; migrate it before enabling administrator bootstrap")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(initialAdminPassword), 12)
+	if err != nil {
+		return err
+	}
+	return store.BootstrapAdmin(ctx, string(hash))
 }
 
 func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
@@ -151,8 +165,11 @@ func (a *identityAdmin) local(ctx context.Context, user, pass string) (identity.
 
 func (a *identityAdmin) directory(ctx context.Context, user, pass string) (identity.Principal, error) {
 	a.mu.RLock()
-	cfg := a.ldap
+	cfg, issue := a.ldap, a.ldapIssue
 	a.mu.RUnlock()
+	if issue != "" {
+		return identity.Principal{}, identity.ErrAuthenticationUnavailable
+	}
 	if cfg == nil {
 		return identity.Principal{}, identity.ErrUnauthenticated
 	}
@@ -337,19 +354,30 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 	case resource == "ldap" && r.Method == http.MethodGet:
 		a.mu.RLock()
 		settings := a.settings
-		configured := a.ldap != nil && a.ldap.BindPassword != ""
+		configured := settings.BindPassword != "" || a.ldap != nil && a.ldap.BindPassword != ""
+		issue := a.ldapIssue
 		a.mu.RUnlock()
 		settings.BindPassword = ""
 		writeAdminJSON(w, struct {
 			ldapSettings
-			PasswordConfigured bool `json:"passwordConfigured"`
-		}{settings, configured})
+			PasswordConfigured bool   `json:"passwordConfigured"`
+			Issue              string `json:"issue,omitempty"`
+		}{settings, configured, issue})
 		return
 	case (resource == "ldap" && r.Method == http.MethodPut) ||
 		(resource == "ldap-test" && r.Method == http.MethodPost):
-		var settings ldapSettings
-		if !decodeAdmin(w, r, &settings) {
+		var input struct {
+			ldapSettings
+			TestUsername string `json:"testUsername,omitempty"`
+		}
+		if !decodeAdmin(w, r, &input) {
 			http.Error(w, "invalid LDAP configuration", 400)
+			return
+		}
+		settings := input.ldapSettings
+		username := strings.TrimSpace(input.TestUsername)
+		if resource == "ldap-test" && (len(username) > 250 || strings.ContainsRune(username, 0)) {
+			http.Error(w, "LDAP 测试用户名无效", 400)
 			return
 		}
 		settings.URL = strings.TrimSpace(settings.URL)
@@ -381,20 +409,25 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 		}
 		if resource == "ldap-test" {
 			a.mu.Unlock()
-			if stage := identity.TestLDAP(ctx, *cfg); stage != "" {
-				writeAdminJSON(w, map[string]string{"stage": stage})
-				return
-			}
-			writeAdminJSON(w, map[string]string{"stage": "success"})
+			stage, groups := identity.TestLDAP(ctx, *cfg, username)
+			writeAdminJSON(w, struct {
+				Stage      string `json:"stage"`
+				GroupCount int    `json:"groupCount"`
+			}{stage, groups})
 			return
 		}
 		if cfg == nil {
 			settings.BindPassword = ""
 		}
-		document, _ := json.Marshal(settings)
+		document, encodeErr := encodeLDAPSettings(settings)
+		if encodeErr != nil {
+			a.mu.Unlock()
+			http.Error(w, encodeErr.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		_, err = a.store.ExecContext(ctx, "INSERT INTO ldap_settings VALUES (1,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", string(document))
 		if err == nil {
-			a.ldap, a.settings = cfg, settings
+			a.ldap, a.settings, a.ldapIssue = cfg, settings, ""
 		}
 		a.mu.Unlock()
 	default:

@@ -11,11 +11,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
 	localClusterID             = "local"
 	maxKubernetesResponseBytes = 4 << 20
+	kubernetesRequestTimeout   = 6 * time.Second
 )
 
 type Config struct {
@@ -174,7 +176,7 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		return fmt.Errorf("parse Kubernetes CA")
 	}
 
-	httpClient := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		RootCAs:    roots,
 	}}}
