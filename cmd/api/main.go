@@ -93,6 +93,7 @@ func main() {
 			os.Exit(1)
 		}
 		if review != nil {
+			review.correlator = correlator
 			if registry, ok := queryBackend.(*httpapi.ClusterBackends); ok {
 				registry.Backend = review
 			} else {

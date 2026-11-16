@@ -81,7 +81,18 @@ createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
-    if (input.source === "Pod 事件" && input.observation === "镜像仓库拒绝访问" && input.revision === 0) {
+    const transcript = [
+      { role: "user", text: "Pod 事件显示镜像仓库拒绝访问" },
+      { role: "assistant", text: "请补充镜像仓库返回的状态码。" },
+      { role: "user", text: "仓库返回 403" },
+      { role: "assistant", text: "403 支持访问被拒绝，请核实拉取凭据。" },
+    ];
+    const matches = (length) => JSON.stringify(input.messages) === JSON.stringify(transcript.slice(0, length));
+    if (input.revision === 0 && input.action === "chat") {
+      if (matches(1)) return json(response, 200, { reply: transcript[1].text });
+      if (matches(3)) return json(response, 200, { reply: transcript[3].text });
+    }
+    if (input.revision === 0 && input.action === "finalize" && matches(4)) {
       return json(response, 200, { revision: 1, conclusion: "更新结论：镜像仓库拒绝访问" });
     }
     return json(response, 400, { error: "invalid fixture evidence" });
