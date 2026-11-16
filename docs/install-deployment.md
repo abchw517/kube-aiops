@@ -491,14 +491,6 @@ kubectl -n kube-aiops-system get pvc kube-aiops-identity
 
 #### 2. 配置 API 并发布 HTTPS 入口
 
-首次部署时，生成本次部署专用的随机管理员引导密码。以下命令在已限制访问的 `/secure` 目录中创建密码文件，并将其导入集群 Secret。
-
-```bash
-(umask 077; openssl rand -base64 24 > /secure/kube-aiops-bootstrap-password)
-kubectl -n kube-aiops-system create secret generic kube-aiops-admin-bootstrap \
-  --from-file=password=/secure/kube-aiops-bootstrap-password
-```
-
 把以下片段合并到本次发布的 `api.yaml`。保留原有 Deployment 字段、容器镜像、探针和环境变量。将 `AUTH_ORIGIN` 改为浏览器实际访问的 HTTPS 来源，只填写协议、主机和非默认端口。Portal 和 API 使用同一个来源。
 
 ```yaml
@@ -519,21 +511,13 @@ spec:
               value: /var/lib/kube-aiops/identity.db
             - name: AUTH_BOOTSTRAP_ADMIN
               value: "true"
-            - name: AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE
-              value: /etc/kube-aiops/bootstrap/password
           volumeMounts:
             - name: identity-db
               mountPath: /var/lib/kube-aiops
-            - name: admin-bootstrap
-              mountPath: /etc/kube-aiops/bootstrap
-              readOnly: true
       volumes:
         - name: identity-db
           persistentVolumeClaim:
             claimName: kube-aiops-identity
-        - name: admin-bootstrap
-          secret:
-            secretName: kube-aiops-admin-bootstrap
 ```
 
 API 以 UID/GID 65532 运行，PVC 挂载目录需要可写。单副本配合 `Recreate` 使用同一个 SQLite 卷。会话有效期为 30 分钟，API 重启后需重新登录。
@@ -552,18 +536,16 @@ PVC 应为 `Bound`，匿名诊断请求应返回 `401`。
 
 #### 3. 初始化管理员并关闭引导
 
-1. 打开 `https://kube-aiops.example.com`，使用默认的本地账号入口，以 `admin` 和部署时生成的引导密码登录。
+1. 打开 `https://kube-aiops.example.com`，选择本地账号登录，输入账号 `admin` 和初始密码 `admin123`。Portal 会直接进入改密页面，改密前只能查看登录状态、修改密码或退出。
 2. 在首次改密页面输入当前密码和至少 12 字节的新密码。保存后会话立即失效，用新密码重新登录，确认页面出现 **系统管理**。
-3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`、`AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE` 和 `admin-bootstrap` 卷及挂载。应用清单，等待成功后删除引导 Secret 和本地引导文件。
+3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`，并更新运行中的 Deployment。
 
 ```bash
-kubectl apply -f "$release_dir/api.yaml"
+kubectl -n kube-aiops-system set env deployment/kube-aiops-api AUTH_BOOTSTRAP_ADMIN-
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-kubectl -n kube-aiops-system delete secret kube-aiops-admin-bootstrap
-rm -- /secure/kube-aiops-bootstrap-password
 ```
 
-再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。旧版已完成首次改密的管理员可以沿用原密码。旧版仍处于默认密码引导状态时，按本节生成并挂载引导密码，再完成首次改密。
+再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。SQLite 已存在管理员时会保留该账号和密码。
 
 #### 4. 创建本地用户并配置权限
 

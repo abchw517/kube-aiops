@@ -18,7 +18,6 @@ import (
 
 func TestManagedIdentityBootstrap(t *testing.T) {
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN", "true")
-	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
 	t.Setenv("AUTH_LDAP_CA_FILE", "")
 	writeIdentityTestFile(t, "AUTH_LDAP_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("AUTH_ORIGIN", "https://portal.example.com")
@@ -27,10 +26,6 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err := newIdentityAdmin(t.Context(), store); err == nil {
-		t.Fatal("expected bootstrap to require an explicit password file")
-	}
-	writeIdentityTestFile(t, "AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE", "fixture-initial-admin-password\n")
 	bundle := defaultProductionBundle(testLogger())
 	wrap, err := configureIdentityHandler(&bundle, store)
 	if err != nil {
@@ -57,13 +52,23 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 		return w
 	}
 	const login = "/api/v1/auth/login"
-	initial := request("POST", login, `{"provider":"local","username":"admin","password":"fixture-initial-admin-password"}`, nil, 204).Result().Cookies()[0]
+	initial := request("POST", login, `{"provider":"local","username":"admin","password":"admin123"}`, nil, 204).Result().Cookies()[0]
+	status := request("GET", "/api/v1/admin/status", "", initial, 200)
+	if !strings.Contains(status.Body.String(), `"mustChangePassword":true`) || !strings.Contains(status.Body.String(), `"admin":false`) {
+		t.Fatalf("initial administrator must change password before gaining access: %s", status.Body.String())
+	}
 	request("GET", "/api/v1/clusters", "", initial, 403)
 	request("GET", "/api/v1/admin/users", "", initial, 403)
-	request("POST", "/api/v1/admin/password", `{"current":"fixture-initial-admin-password","password":"fixture-changed-password"}`, initial, 204)
+	request("POST", "/api/v1/admin/password", `{"current":"admin123","password":"admin123"}`, initial, 400)
+	request("GET", "/api/v1/clusters", "", initial, 403)
+	request("POST", "/api/v1/admin/password", `{"current":"admin123","password":"fixture-changed-password"}`, initial, 204)
 	request("GET", "/api/v1/admin/status", "", initial, 401)
 	request("POST", login, `{"provider":"local","username":"admin","password":"admin123"}`, nil, 401)
 	admin := request("POST", login, `{"provider":"local","username":"admin","password":"fixture-changed-password"}`, nil, 204).Result().Cookies()[0]
+	status = request("GET", "/api/v1/admin/status", "", admin, 200)
+	if !strings.Contains(status.Body.String(), `"mustChangePassword":false`) || !strings.Contains(status.Body.String(), `"admin":true`) {
+		t.Fatalf("changed password must grant administrator access: %s", status.Body.String())
+	}
 	request("POST", "/api/v1/admin/users", `{"username":"alice","password":"fixture-alice-password","groups":["ops"]}`, admin, 204)
 	alice := request("POST", login, `{"provider":"local","username":"alice","password":"fixture-alice-password"}`, nil, 204).Result().Cookies()[0]
 	request("GET", "/api/v1/admin/users", "", alice, 403)
@@ -91,8 +96,13 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	if err != nil || reloaded.ldap == nil || reloaded.ldap.BindPassword != "test-bind-password" {
 		t.Fatal("LDAP configuration did not persist")
 	}
+	if _, err := reloaded.local(t.Context(), "admin", initialAdminPassword); !errors.Is(err, identity.ErrUnauthenticated) {
+		t.Fatalf("bootstrap must not reset the administrator password after restart: %v", err)
+	}
+	if p, err := reloaded.local(t.Context(), "admin", "fixture-changed-password"); err != nil || p.Provider != adminProvider {
+		t.Fatalf("administrator password must survive restart: %v", err)
+	}
 	request("POST", "/api/v1/admin/ldap-test", `{}`, admin, 400)
-
 }
 
 func TestLDAPConfigurationFailurePreservesLocalAdminAndMigratesPassword(t *testing.T) {
@@ -150,42 +160,6 @@ func TestLDAPConfigurationFailurePreservesLocalAdminAndMigratesPassword(t *testi
 	replacementKey[0] = 1
 	writeIdentityTestFile(t, "AUTH_LDAP_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(replacementKey))
 	assertLocalRecovery()
-}
-
-func TestLegacyInitialAdministratorRequiresReplacement(t *testing.T) {
-	t.Setenv("AUTH_BOOTSTRAP_ADMIN", "")
-	store, err := identitystore.Open(filepath.Join(t.TempDir(), "identity.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	hash, err := bcrypt.GenerateFromPassword([]byte(legacyInitialAdminPassword), bcrypt.MinCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.BootstrapAdmin(t.Context(), string(hash)); err != nil {
-		t.Fatal(err)
-	}
-	admin, err := newIdentityAdmin(t.Context(), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.local(t.Context(), "admin", legacyInitialAdminPassword); !errors.Is(err, identity.ErrUnauthenticated) {
-		t.Fatalf("legacy initial password unexpectedly accepted: %v", err)
-	}
-	t.Setenv("AUTH_BOOTSTRAP_ADMIN", "true")
-	writeIdentityTestFile(t, "AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE", "fixture-replacement-initial-password")
-	admin, err = newIdentityAdmin(t.Context(), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p, err := admin.local(t.Context(), "admin", "fixture-replacement-initial-password"); err != nil || p.Provider != initialAdminProvider {
-		t.Fatalf("replacement bootstrap did not require first-login password change: %v", err)
-	}
-	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
-	if _, err := newIdentityAdmin(t.Context(), store); err != nil {
-		t.Fatalf("restart should preserve the initialized password hash: %v", err)
-	}
 }
 
 func writeIdentityTestFile(t *testing.T, variable, contents string) {

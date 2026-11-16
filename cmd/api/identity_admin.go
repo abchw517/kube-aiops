@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	legacyInitialAdminPassword = "admin123"
-	adminProvider              = "managed-admin"
-	initialAdminProvider       = "initial-admin"
+	initialAdminPassword = "admin123"
+	adminProvider        = "managed-admin"
+	initialAdminProvider = "initial-admin"
 )
 
 type ldapSettings struct {
@@ -97,43 +97,19 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 }
 
 func bootstrapAdministrator(ctx context.Context, store *identitystore.Store) error {
-	hash, initial, err := store.Admin(ctx)
-	switch {
-	case err == nil:
-		if !initial || bcrypt.CompareHashAndPassword([]byte(hash), []byte(legacyInitialAdminPassword)) != nil {
-			return nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		if _, err := store.LocalAccount(ctx, "admin"); err == nil {
-			return errors.New("local admin already exists; migrate it before enabling administrator bootstrap")
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	default:
+	if _, _, err := store.Admin(ctx); !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-
-	path := os.Getenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE")
-	if path == "" {
-		return errors.New("AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE is required to initialize the administrator")
+	if _, err := store.LocalAccount(ctx, "admin"); err == nil {
+		return errors.New("local admin already exists; migrate it before enabling administrator bootstrap")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return errors.New("cannot read administrator bootstrap password file")
-	}
-	password := strings.TrimSuffix(string(data), "\n")
-	if len(password) < 20 || !validNewPassword(password) {
-		return errors.New("administrator bootstrap password must be 20–72 bytes and contain no NUL")
-	}
-	next, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	hash, err := bcrypt.GenerateFromPassword([]byte(initialAdminPassword), 12)
 	if err != nil {
 		return err
 	}
-	if hash == "" {
-		return store.BootstrapAdmin(ctx, string(next))
-	}
-	_, err = store.ExecContext(ctx, "UPDATE managed_admin SET password_hash=? WHERE id=1 AND initial=1 AND password_hash=?", string(next), hash)
-	return err
+	return store.BootstrapAdmin(ctx, string(hash))
 }
 
 func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
@@ -164,7 +140,7 @@ func (a *identityAdmin) local(ctx context.Context, user, pass string) (identity.
 	if user == "admin" {
 		hash, initial, err := a.store.Admin(ctx)
 		if err == nil {
-			if (initial && pass == legacyInitialAdminPassword) || len(pass) > 72 || bcrypt.CompareHashAndPassword([]byte(hash), []byte(pass)) != nil {
+			if len(pass) > 72 || bcrypt.CompareHashAndPassword([]byte(hash), []byte(pass)) != nil {
 				return identity.Principal{}, identity.ErrUnauthenticated
 			}
 			provider := adminProvider
