@@ -32,6 +32,17 @@ type wikiCredential struct {
 }
 
 func (a *identityAdmin) wikiSourceHandler(s *identity.Sessions, handle func(http.ResponseWriter, *http.Request, identity.Principal, string)) http.HandlerFunc {
+	return a.wikiSessionHandler(s, func(w http.ResponseWriter, r *http.Request, principal identity.Principal) {
+		id := r.PathValue("id")
+		if !wikiSourceID.MatchString(id) {
+			http.Error(w, "无效的 Wiki 来源编号", http.StatusBadRequest)
+			return
+		}
+		handle(w, r, principal, id)
+	})
+}
+
+func (a *identityAdmin) wikiSessionHandler(s *identity.Sessions, handle func(http.ResponseWriter, *http.Request, identity.Principal)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		principal, err := s.Authenticate(r.Context(), r)
@@ -39,17 +50,12 @@ func (a *identityAdmin) wikiSourceHandler(s *identity.Sessions, handle func(http
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
-		id := r.PathValue("id")
 		origins := r.Header.Values("Origin")
 		if principal.Provider == initialAdminProvider || (r.Method != http.MethodGet && (len(origins) != 1 || origins[0] != a.origin)) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		if !wikiSourceID.MatchString(id) {
-			http.Error(w, "无效的 Wiki 来源编号", http.StatusBadRequest)
-			return
-		}
-		handle(w, r, principal, id)
+		handle(w, r, principal)
 	}
 }
 

@@ -1,3 +1,4 @@
+import { bindWiki, renderWiki } from "./views/wiki.ts";
 import { submitOnboarding } from "./views/cluster-onboarding.ts";
 import {
   ApiError,
@@ -107,6 +108,19 @@ export class PortalApp {
         if (generation === this.renderGeneration) this.renderShell(body);
         return;
       }
+    }
+    if (!demoMode && /^#\/wiki(?:[/?]|$)/.test(window.location.hash)) {
+      this.renderShell(loadingState("正在加载知识库。"));
+      try {
+        const body = await renderWiki(window.location.hash);
+        if (generation === this.renderGeneration) {
+          this.renderShell(body);
+          bindWiki(this.root, () => void this.route());
+        }
+      } catch {
+        if (generation === this.renderGeneration) this.renderShell(errorState("无法加载知识库。"));
+      }
+      return;
     }
     const detailMatch = window.location.hash.match(/^#\/findings\/([^?]+)/);
     const detailId = detailMatch?.[1];
@@ -231,7 +245,8 @@ export class PortalApp {
     const adminPage = this.mustChangePassword || (this.identityAdmin && hash.startsWith("#/admin"));
     const detailPage = /^#\/findings\/[^?]+/.test(hash);
     const signedOut = content.includes("data-login");
-    const title = adminPage ? "系统管理" : detailPage ? "诊断详情" : "诊断控制台";
+    const wikiPage = /^#\/wiki(?:[/?]|$)/.test(hash);
+    const title = adminPage ? "系统管理" : wikiPage ? "运维知识库" : detailPage ? "诊断详情" : "诊断控制台";
     this.root.innerHTML = `
       <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
       <header class="topbar">
@@ -245,8 +260,9 @@ export class PortalApp {
       </header>
       <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
         ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
-          <a href="#/findings"${adminPage ? "" : ' aria-current="page"'}>诊断控制台</a>
+          <a href="#/findings"${adminPage || wikiPage ? "" : ' aria-current="page"'}>诊断控制台</a>
           ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
+          ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
         </nav>`}
         <main id="portal-content" class="page-shell" tabindex="-1">
           ${demoMode ? '<p class="demo-notice">演示数据</p>' : ""}

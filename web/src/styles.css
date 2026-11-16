@@ -242,3 +242,24 @@ td { overflow-wrap: anywhere; }
 .finding-review-form textarea { width: 100%; resize: vertical; padding: 8px; font: inherit; border: 1px solid #aebed0; border-radius: 7px; }
 .finding-review-form [data-review-history] { display: grid; gap: 6px; margin-top: 8px; }
 .finding-review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+.wiki-document-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.wiki-import-form, .wiki-import-form label {
+  display: grid;
+  gap: 8px;
+}
+.wiki-import-form {
+  gap: 14px;
+  max-width: 48rem;
+  padding-top: 14px;
+}
+.wiki-import-form :is(input, textarea, select) {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid #aebed0;
+  border-radius: 7px;
+}

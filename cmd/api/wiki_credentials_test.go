@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +16,7 @@ import (
 	"github.com/abchw517/kube-aiops/internal/identitystore"
 )
 
-func TestWikiCredentialsFollowPortalUserAcrossLogins(t *testing.T) {
+func TestWikiWithPortalTestAccounts(t *testing.T) {
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN", "true")
 	t.Setenv("AUTH_ORIGIN", "https://portal.example.com")
 	writeIdentityTestFile(t, "WIKI_CREDENTIAL_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
@@ -97,4 +99,36 @@ func TestWikiCredentialsFollowPortalUserAcrossLogins(t *testing.T) {
 	if err != nil || bytes.Contains(raw, []byte(wikiPassword)) {
 		t.Fatal("database read failed or database contains the cleartext password")
 	}
+	t.Run("publishes sanitized wiki documents and isolates scope", func(t *testing.T) {
+		const knowledge = "/api/v1/wiki/knowledge"
+		const imports = "/api/v1/wiki/imports"
+		request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","subjects":["local:alice"],"capabilities":["wiki:read","wiki:publish"],"scopes":[{"cluster":"local","namespace":"dev"}]}]}`, root, 204)
+		input := `{"document":{"cluster":"local","namespace":"dev","environment":"测试","business":"运维","body":"# 镜像拉取\npassword=fixture-password-value"},"publish":false}`
+		preview := request("POST", imports, input, alice, 200)
+		if strings.Contains(preview.Body.String(), "fixture-password-value") || !strings.Contains(preview.Body.String(), `"title":"镜像拉取"`) {
+			t.Fatalf("invalid preview: %s", preview.Body)
+		}
+		if out := request("GET", knowledge, "", alice, 200); !strings.Contains(out.Body.String(), `"total":0`) {
+			t.Fatal(out.Body.String())
+		}
+		publish := strings.Replace(input, "false", "true", 1)
+		request("POST", imports, strings.Replace(publish, `"dev"`, `"prod"`, 1), alice, 403)
+		request("POST", imports, publish, bob, 403)
+		result := request("POST", imports, publish, alice, 201)
+		var doc wikiDocument
+		if err := json.Unmarshal(result.Body.Bytes(), &doc); err != nil || doc.ID == "" {
+			t.Fatalf("invalid publish response: %v", err)
+		}
+		request("POST", imports, publish, alice, 200)
+		if out := request("GET", knowledge+"?documentType="+url.QueryEscape("排障手册"), "", alice, 200); !strings.Contains(out.Body.String(), `"total":1`) || strings.Contains(out.Body.String(), `"body"`) {
+			t.Fatal(out.Body.String())
+		}
+		path := knowledge + "/" + doc.ID + "/revisions/1"
+		request("GET", path, "", alice, 200)
+		request("GET", path, "", bob, 404)
+		if out := request("GET", knowledge, "", bob, 200); strings.Contains(out.Body.String(), "运维") || !strings.Contains(out.Body.String(), `"total":0`) {
+			t.Fatal(out.Body.String())
+		}
+	})
+
 }

@@ -246,6 +246,9 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 	})
 	mux.HandleFunc("/api/v1/wiki/sources/{id}", a.wikiSourceHandler(s, a.handleWikiSource))
 	mux.HandleFunc("/api/v1/wiki/sources/{id}/credential", a.wikiSourceHandler(s, a.handleWikiCredential))
+	mux.HandleFunc("/api/v1/wiki/knowledge", a.wikiSessionHandler(s, a.handleWikiDocuments))
+	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions/1", a.wikiSessionHandler(s, a.handleWikiDocument))
+	mux.HandleFunc("/api/v1/wiki/imports", a.wikiSessionHandler(s, a.handleWikiImport))
 	mux.Handle("/", next)
 	return mux
 }

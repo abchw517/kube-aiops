@@ -60,6 +60,18 @@ func Open(path string) (*Store, error) {
 			conclusion TEXT NOT NULL,
 			PRIMARY KEY(finding_key, revision)
 		);
+		CREATE TABLE IF NOT EXISTS wiki_documents (
+			id TEXT PRIMARY KEY NOT NULL,
+			cluster TEXT NOT NULL,
+			namespace TEXT NOT NULL,
+			environment TEXT NOT NULL,
+			business TEXT NOT NULL,
+			document_type TEXT NOT NULL,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS wiki_documents_scope ON wiki_documents(cluster, namespace, environment, business, document_type);
 		CREATE TABLE IF NOT EXISTS wiki_sources (
 			id TEXT PRIMARY KEY NOT NULL,
 			url TEXT NOT NULL,
