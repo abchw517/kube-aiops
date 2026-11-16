@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/config"
+	"github.com/abchw517/kube-aiops/internal/httpapi"
 	"github.com/abchw517/kube-aiops/internal/identity"
 	"github.com/abchw517/kube-aiops/internal/identitystore"
 	"github.com/abchw517/kube-aiops/internal/kubernetes"
@@ -54,6 +55,8 @@ func main() {
 
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
+	var detailBackend httpapi.Backend = backend
+	writeTimeout := 10 * time.Second
 	if cfg.SecurityMode == security.ModeProduction {
 		var store *identitystore.Store
 		if path := os.Getenv("AUTH_SQLITE_PATH"); path != "" {
@@ -64,7 +67,18 @@ func main() {
 			}
 			defer store.Close()
 		}
-		wrap, err = configureIdentityHandler(&bundle, store)
+		review, reviewErr := newFindingReview(backend, store)
+		if reviewErr != nil {
+			logger.Error("invalid finding AI configuration", "error", reviewErr)
+			os.Exit(1)
+		}
+		if review != nil {
+			detailBackend = review
+			if review.endpoint != "" {
+				writeTimeout = 35 * time.Second
+			}
+		}
+		wrap, err = configureIdentityHandler(&bundle, store, review)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
@@ -72,7 +86,7 @@ func main() {
 	}
 	handler, err := buildHandler(
 		logger,
-		backend,
+		detailBackend,
 		cfg.ReadyTimeout,
 		cfg.SecurityMode,
 		bundle,
@@ -102,7 +116,7 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       60 * time.Second,
 	}
 
@@ -134,7 +148,7 @@ func main() {
 	logger.Info("kube-aiops-api stopped")
 }
 
-func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store) (func(http.Handler) http.Handler, error) {
+func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview) (func(http.Handler) http.Handler, error) {
 	if store == nil {
 		sessions, err := configureIdentity(bundle)
 		if sessions == nil {
@@ -151,5 +165,5 @@ func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Stor
 		return nil, err
 	}
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
-	return func(next http.Handler) http.Handler { return sessions.Wrap(admin.wrap(sessions, next)) }, nil
+	return func(next http.Handler) http.Handler { return sessions.Wrap(admin.wrap(sessions, next, review)) }, nil
 }

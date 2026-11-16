@@ -31,7 +31,7 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	}
 	defer store.Close()
 	bundle := defaultProductionBundle(testLogger())
-	wrap, err := configureIdentityHandler(&bundle, store)
+	wrap, err := configureIdentityHandler(&bundle, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

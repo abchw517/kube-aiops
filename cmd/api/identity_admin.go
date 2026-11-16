@@ -197,7 +197,7 @@ func (a *identityAdmin) directory(ctx context.Context, user, pass string) (ident
 	return principal, nil
 }
 
-func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler) http.Handler {
+func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *findingReview) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -208,7 +208,7 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler) http.Handl
 		}
 		resource := r.PathValue("resource")
 		if resource == "status" && r.Method == http.MethodGet {
-			writeAdminJSON(w, map[string]bool{"admin": p.Provider == adminProvider, "mustChangePassword": p.Provider == initialAdminProvider})
+			writeAdminJSON(w, map[string]bool{"admin": p.Provider == adminProvider, "findingAI": review != nil && review.endpoint != "" && p.Provider == adminProvider, "mustChangePassword": p.Provider == initialAdminProvider})
 			return
 		}
 		if p.Provider != adminProvider && !(p.Provider == initialAdminProvider && resource == "password") {
@@ -221,6 +221,10 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler) http.Handl
 				http.Error(w, "forbidden", 403)
 				return
 			}
+		}
+		if resource == "finding-analysis" && review != nil && review.endpoint != "" {
+			review.serve(w, r)
+			return
 		}
 		a.handle(w, r, resource, s)
 	})

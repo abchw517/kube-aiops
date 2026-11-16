@@ -232,6 +232,24 @@ try {
     if (JSON.stringify(checked.result?.value) !== '["findings:list","correlations:read"]') {
       throw new Error("Role editor did not restore selected checkboxes");
     }
+    await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
+      (text) => text.includes("诊断说明") && text.includes("AI 分析"), "AI review entry did not render");
+    await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-open-review]").click()',
+    });
+    await assertText(cdp, (text) => text.includes("数据来源") && text.includes("观察结论") && !text.includes("正在加载复核记录"),
+      "AI review dialog did not load");
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector(".finding-review-form");
+        form.elements.source.value = "Pod 事件";
+        form.elements.observation.value = "镜像仓库拒绝访问";
+        form.requestSubmit();
+      })()`,
+    });
+    await assertText(cdp, (text) => text.includes("AI 复核结论") && text.includes("更新结论：镜像仓库拒绝访问"),
+      "AI review did not update the diagnostic explanation");
+
   } finally {
     cdp.close();
   }

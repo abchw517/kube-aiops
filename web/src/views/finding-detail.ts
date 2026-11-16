@@ -1,7 +1,9 @@
 import type { Finding } from "../../../clients/typescript/generated.ts";
 import { escapeHtml, formatSeverity, formatTimestamp } from "../components/html.ts";
 
-export function renderFindingDetail(finding: Finding): string {
+import { findingReviewControls } from "./finding-review.ts";
+
+export function renderFindingDetail(finding: Finding, reviewEnabled = false): string {
   return `
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
@@ -22,8 +24,8 @@ export function renderFindingDetail(finding: Finding): string {
         </dl>
       </section>
       <section class="panel detail-copy">
-        <h2>诊断说明</h2>
-        <p class="detail-text">${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
+        <div class="detail-heading"><h2>诊断说明</h2>${reviewEnabled ? findingReviewControls() : ""}</div>
+        <p class="detail-text" data-finding-explanation aria-live="polite">${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
       </section>
     </article>`;
 }

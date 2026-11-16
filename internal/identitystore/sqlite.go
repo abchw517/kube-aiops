@@ -46,6 +46,12 @@ func Open(path string) (*Store, error) {
 			groups_json TEXT NOT NULL,
 			last_login TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS finding_reviews (
+			finding_key TEXT NOT NULL,
+			revision INTEGER NOT NULL,
+			conclusion TEXT NOT NULL,
+			PRIMARY KEY(finding_key, revision)
+		);
 		CREATE TABLE IF NOT EXISTS authorization_roles (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			document TEXT NOT NULL
