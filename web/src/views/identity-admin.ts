@@ -51,7 +51,8 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
       <p>使用 local:用户名、local:组名或 ldap:完整组 DN 设置规则，并指定能力、集群和命名空间。</p>
       ${form("policy", `<label>授权策略 JSON<textarea name="policy" rows="16" required>${escapeHtml(JSON.stringify(data, null, 2))}</textarea></label>`, "保存策略")}`;
   }
-  return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 通过部署 Secret 挂载。</p>
+  return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p>
+    ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
     ${form("ldap", ldapFields.map(([key, label]) =>
       `<label>${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}"></label>`).join("") +
       `<label>LDAP 用户搜索范围<select name="searchScope">
@@ -65,7 +66,9 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
         <option value="onelevel"${data.groupScope === "onelevel" ? " selected" : ""}>单层</option>
         <option value="base"${data.groupScope === "base" ? " selected" : ""}>基础对象</option>
       </select></label>
-      <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>`, "保存配置")}`;
+      <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>
+      <label>LDAP 测试用户名（可选）<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
+      <p>填写用户名后，测试会验证用户匹配与组查询。留空时仅检查连接、绑定和基础 DN。</p>`, "保存配置")}`;
 }
 
 function form(resource: string, fields: string, label: string): string {
@@ -88,6 +91,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   status.textContent = testingLDAP ? "正在测试 LDAP 服务器…" : "正在保存…";
   const resource = form.dataset.identityResource;
   const data = new FormData(form);
+  if (!testingLDAP) data.delete("testUsername");
   try {
     let payload: unknown = Object.fromEntries(data);
     if (resource === "policy") payload = JSON.parse(String(data.get("policy")));
@@ -106,7 +110,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       return;
     }
     if (!response.ok) {
-      if (resource === "ldap" && response.status === 400 && response.headers.get("Content-Type")?.startsWith("text/plain")) {
+      if (resource === "ldap" && [400, 503].includes(response.status) && response.headers.get("Content-Type")?.startsWith("text/plain")) {
         const message = (await response.text()).trim();
         status.textContent = message === "password_required" ? "更换 LDAP 地址或搜索 DN 后，请重新填写搜索密码。" : message || "LDAP 配置无效。";
         return;
@@ -116,13 +120,20 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       return;
     }
     if (testingLDAP) {
-      const { stage } = await response.json();
+      const { stage, groupCount } = await response.json();
       const messages: Record<string, string> = {
-        success: "测试通过：TLS 连接、搜索账号绑定和基础 DN 搜索均成功。",
+        success: "连接、搜索账号绑定和基础 DN 搜索均成功。填写测试用户名可继续验证用户和组查询。",
+        success_user: data.get("groupAttribute")
+          ? `已找到唯一用户，组查询匹配 ${Number(groupCount)} 个组。`
+          : "已找到唯一用户。配置 LDAP 组成员属性可验证组查询。",
         connection: "连接失败，请检查域名、端口和 TLS 证书。",
         bind: "搜索账号绑定失败，请检查搜索 DN 和密码。",
         search: "搜索失败，请检查基础 DN 和账号读取权限。",
-        group_search: "组搜索失败，请检查组基础 DN 和搜索账号的读取权限。",
+        group_search: "组基础 DN 搜索失败，请检查组基础 DN 和搜索账号的读取权限。",
+        user_search: "用户查询失败，请检查 UID、用户过滤器、搜索范围和读取权限。",
+        user_match: "未找到唯一匹配的用户，请检查用户名、UID、用户过滤器和搜索范围。",
+        group_query: "组成员查询失败，请检查组成员属性、组过滤器和读取权限。",
+        identity_mapping: "用户或组数据无法用于登录，请检查 DN 和组成员数量。",
       };
       status.textContent = messages[stage] ?? "测试失败，请检查 LDAP 配置。";
       return;
@@ -133,6 +144,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     }
     status.textContent = "已保存";
     if (resource === "ldap") {
+      form.closest("section")?.querySelector("[data-ldap-issue]")?.remove();
       const password = form.querySelector<HTMLInputElement>('[name="bindPassword"]');
       if (password) {
         password.value = "";

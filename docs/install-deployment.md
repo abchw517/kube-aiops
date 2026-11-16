@@ -491,6 +491,14 @@ kubectl -n kube-aiops-system get pvc kube-aiops-identity
 
 #### 2. 配置 API 并发布 HTTPS 入口
 
+首次部署时，生成本次部署专用的随机管理员引导密码。以下命令在已限制访问的 `/secure` 目录中创建密码文件，并将其导入集群 Secret。
+
+```bash
+(umask 077; openssl rand -base64 24 > /secure/kube-aiops-bootstrap-password)
+kubectl -n kube-aiops-system create secret generic kube-aiops-admin-bootstrap \
+  --from-file=password=/secure/kube-aiops-bootstrap-password
+```
+
 把以下片段合并到本次发布的 `api.yaml`。保留原有 Deployment 字段、容器镜像、探针和环境变量。将 `AUTH_ORIGIN` 改为浏览器实际访问的 HTTPS 来源，只填写协议、主机和非默认端口。Portal 和 API 使用同一个来源。
 
 ```yaml
@@ -511,13 +519,21 @@ spec:
               value: /var/lib/kube-aiops/identity.db
             - name: AUTH_BOOTSTRAP_ADMIN
               value: "true"
+            - name: AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE
+              value: /etc/kube-aiops/bootstrap/password
           volumeMounts:
             - name: identity-db
               mountPath: /var/lib/kube-aiops
+            - name: admin-bootstrap
+              mountPath: /etc/kube-aiops/bootstrap
+              readOnly: true
       volumes:
         - name: identity-db
           persistentVolumeClaim:
             claimName: kube-aiops-identity
+        - name: admin-bootstrap
+          secret:
+            secretName: kube-aiops-admin-bootstrap
 ```
 
 API 以 UID/GID 65532 运行，PVC 挂载目录需要可写。单副本配合 `Recreate` 使用同一个 SQLite 卷。会话有效期为 30 分钟，API 重启后需重新登录。
@@ -536,16 +552,18 @@ PVC 应为 `Bound`，匿名诊断请求应返回 `401`。
 
 #### 3. 初始化管理员并关闭引导
 
-1. 打开 `https://kube-aiops.example.com`，使用默认的本地账号入口，以 `admin` 和初始密码 `admin123` 登录。
+1. 打开 `https://kube-aiops.example.com`，使用默认的本地账号入口，以 `admin` 和部署时生成的引导密码登录。
 2. 在首次改密页面输入当前密码和至少 12 字节的新密码。保存后会话立即失效，用新密码重新登录，确认页面出现 **系统管理**。
-3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`，并同步更新运行中的 Deployment。
+3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`、`AUTH_BOOTSTRAP_ADMIN_PASSWORD_FILE` 和 `admin-bootstrap` 卷及挂载。应用清单，等待成功后删除引导 Secret 和本地引导文件。
 
 ```bash
-kubectl -n kube-aiops-system set env deployment/kube-aiops-api AUTH_BOOTSTRAP_ADMIN-
+kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system delete secret kube-aiops-admin-bootstrap
+rm -- /secure/kube-aiops-bootstrap-password
 ```
 
-再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。
+再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。旧版已完成首次改密的管理员可以沿用原密码。旧版仍处于默认密码引导状态时，按本节生成并挂载引导密码，再完成首次改密。
 
 #### 4. 创建本地用户并配置权限
 
@@ -576,14 +594,22 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 #### 5. 按需接入 LDAP / Active Directory
 
-准备域控的 LDAPS 域名、只读搜索账号和密码。使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（StartTLS）。
+准备域控的 LDAPS 域名、只读搜索账号和密码。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（StartTLS）。首次从 Portal 保存搜索密码前，创建一个用于加密 SQLite 密码字段的密钥。后续部署和恢复沿用同一密钥。
+
+```bash
+(umask 077; openssl rand -base64 32 > /secure/kube-aiops-ldap-encryption-key)
+kubectl -n kube-aiops-system create secret generic kube-aiops-ldap-encryption \
+  --from-file=key=/secure/kube-aiops-ldap-encryption-key
+```
+
+使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
   --from-file=ca.crt=/secure/ad-ca.crt
 ```
 
-向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可跳过 Secret、挂载和本节的 API 重启。
+向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可省略 `AUTH_LDAP_CA_FILE`、`ldap` 卷及挂载。保留加密密钥配置。
 
 ```yaml
 spec:
@@ -592,13 +618,21 @@ spec:
       containers:
         - name: api
           env:
+            - name: AUTH_LDAP_ENCRYPTION_KEY_FILE
+              value: /etc/kube-aiops/ldap-encryption/key
             - name: AUTH_LDAP_CA_FILE
               value: /etc/kube-aiops/ldap/ca.crt
           volumeMounts:
+            - name: ldap-encryption
+              mountPath: /etc/kube-aiops/ldap-encryption
+              readOnly: true
             - name: ldap
               mountPath: /etc/kube-aiops/ldap
               readOnly: true
       volumes:
+        - name: ldap-encryption
+          secret:
+            secretName: kube-aiops-ldap-encryption
         - name: ldap
           secret:
             secretName: kube-aiops-ldap
@@ -609,7 +643,9 @@ kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
 
-管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码后可先点 **测试 LDAP 服务器**，验证 TLS、搜索账号绑定和基础 DN 的读取权限。测试不保存配置，通过后再点 **保存配置**。密码写入 SQLite 且不会回显，请限制 PVC 和备份的读取权限。修改 URL 或搜索 DN 时需重新填写密码。
+管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码和 **LDAP 测试用户名**，再点 **测试 LDAP 服务器**。确认能唯一查到该用户，组查询匹配数符合预期。测试用户名留空时，只检查连接、搜索账号绑定和基础 DN。测试使用搜索账号执行只读查询，通过后再点 **保存配置**。
+
+搜索密码由 API 加密后写入 SQLite。修改 URL 或搜索 DN 时需重新填写密码。备份时将密钥和 SQLite 备份分别保管。已有 SQLite 升级前先挂载密钥，API 首次启动会迁移旧版明文密码。若证书或密钥配置错误，可用本地管理员登录查看 LDAP 状态并修复。旧快照和备份可能含明文，升级后应轮换域控搜索账号密码，并按现有保留策略处置旧备份。
 
 | 字段 | AD 示例 |
 | --- | --- |
@@ -624,6 +660,7 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 | LDAP 组基础 DN | 可选，例如 `OU=Groups,DC=example,DC=com` |
 | LDAP 组过滤器 | 可选，例如 `(objectClass=group)` |
 | LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
+| LDAP 测试用户名 | 例如 `alice`，仅用于本次测试 |
 
 在上一步策略中，将 `"ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"` 追加到需要授予同样权限的两条规则的 `groups` 数组，保留原有本地组。LDAP 组使用小写完整 DN，`memberOf` 对应用户的直接组。
 

@@ -158,21 +158,11 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
 		return Principal{}, ErrAuthenticationUnavailable
 	}
-	attributes := []string{"dn"}
-	if cfg.GroupAttr != "" {
-		attributes = append(attributes, cfg.GroupAttr)
-	}
-	search := ldap.NewSearchRequest(cfg.BaseDN, cfg.searchScope(), ldap.NeverDerefAliases,
-		2, 5, false, fmt.Sprintf(cfg.filterTemplate(), ldap.EscapeFilter(username)), attributes, nil)
-	result, err := conn.Search(search)
-	if err != nil {
-		return Principal{}, ErrAuthenticationUnavailable
-	}
-	if len(result.Entries) != 1 {
+	entry, stage := cfg.searchUser(conn, username)
+	if stage == "user_match" {
 		return Principal{}, ErrUnauthenticated
 	}
-	entry := result.Entries[0]
-	if strings.TrimSpace(entry.DN) == "" {
+	if stage != "" {
 		return Principal{}, ErrAuthenticationUnavailable
 	}
 	if err := conn.Bind(entry.DN, password); err != nil {
@@ -182,29 +172,61 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 		}
 		return Principal{}, ErrAuthenticationUnavailable
 	}
-	p := Principal{Subject: "ldap:" + strings.ToLower(entry.DN), Provider: "ldap"}
-	if cfg.GroupAttr != "" {
-		if hasRangedGroups(entry, cfg.GroupAttr) || cfg.GroupFilter != "" {
-			if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
-				return Principal{}, ErrAuthenticationUnavailable
-			}
+	if cfg.GroupAttr != "" && (hasRangedGroups(entry, cfg.GroupAttr) || cfg.GroupFilter != "") {
+		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
+			return Principal{}, ErrAuthenticationUnavailable
 		}
+	}
+	principal, stage := cfg.directoryPrincipal(conn, entry)
+	if stage != "" {
+		return Principal{}, ErrAuthenticationUnavailable
+	}
+	return principal, nil
+}
+
+func (cfg LDAPConfig) searchUser(conn *ldap.Conn, username string) (*ldap.Entry, string) {
+	attributes := []string{"dn"}
+	if cfg.GroupAttr != "" {
+		attributes = append(attributes, cfg.GroupAttr)
+	}
+	search := ldap.NewSearchRequest(cfg.BaseDN, cfg.searchScope(), ldap.NeverDerefAliases,
+		2, 5, false, fmt.Sprintf(cfg.filterTemplate(), ldap.EscapeFilter(username)), attributes, nil)
+	result, err := conn.Search(search)
+	if ldap.IsErrorWithCode(err, ldap.LDAPResultSizeLimitExceeded) {
+		return nil, "user_match"
+	}
+	if err != nil {
+		return nil, "user_search"
+	}
+	if len(result.Entries) != 1 {
+		return nil, "user_match"
+	}
+	entry := result.Entries[0]
+	if strings.TrimSpace(entry.DN) == "" {
+		return nil, "user_search"
+	}
+	return entry, ""
+}
+
+func (cfg LDAPConfig) directoryPrincipal(conn *ldap.Conn, entry *ldap.Entry) (Principal, string) {
+	principal := Principal{Subject: "ldap:" + strings.ToLower(entry.DN), Provider: "ldap"}
+	if cfg.GroupAttr != "" {
 		groups, err := ldapGroups(conn, entry, cfg.GroupAttr)
 		if err != nil {
-			return Principal{}, ErrAuthenticationUnavailable
+			return Principal{}, "group_query"
 		}
 		groups, err = cfg.filterGroups(conn, groups)
 		if err != nil {
-			return Principal{}, ErrAuthenticationUnavailable
+			return Principal{}, "group_query"
 		}
 		for _, group := range groups {
-			p.Groups = append(p.Groups, "ldap:"+strings.ToLower(group))
+			principal.Groups = append(principal.Groups, "ldap:"+strings.ToLower(group))
 		}
 	}
-	if err := p.Validate(); err != nil {
-		return Principal{}, ErrAuthenticationUnavailable
+	if err := principal.Validate(); err != nil {
+		return Principal{}, "identity_mapping"
 	}
-	return p, nil
+	return principal, ""
 }
 
 func parenthesizedFilter(value string) string {
@@ -363,30 +385,42 @@ func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
 	return conn, func() { stop(); conn.Close(); cancel() }, nil
 }
 
-// TestLDAP checks TLS, service-account bind and base DN search without writing settings.
-func TestLDAP(ctx context.Context, cfg LDAPConfig) string {
+// TestLDAP checks TLS, service-account bind and base DN search. If a username
+// is supplied, it also uses the same directory queries as login.
+func TestLDAP(ctx context.Context, cfg LDAPConfig, username string) (stage string, groupCount int) {
 	if cfg.Validate() != nil {
-		return "configuration"
+		return "configuration", 0
 	}
 	conn, closeConnection, err := dialLDAP(ctx, cfg)
 	if err != nil {
-		return "connection"
+		return "connection", 0
 	}
 	defer closeConnection()
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
-		return "bind"
+		return "bind", 0
 	}
 	result, err := conn.Search(ldap.NewSearchRequest(cfg.BaseDN, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
 		1, 5, false, "(objectClass=*)", []string{"1.1"}, nil))
 	if err != nil || len(result.Entries) != 1 {
-		return "search"
+		return "search", 0
 	}
 	if cfg.GroupBaseDN != "" {
 		result, err := conn.Search(ldap.NewSearchRequest(cfg.GroupBaseDN, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
 			1, 5, false, "(objectClass=*)", []string{"1.1"}, nil))
 		if err != nil || len(result.Entries) != 1 {
-			return "group_search"
+			return "group_search", 0
 		}
 	}
-	return ""
+	if username == "" {
+		return "success", 0
+	}
+	entry, stage := cfg.searchUser(conn, username)
+	if stage != "" {
+		return stage, 0
+	}
+	principal, stage := cfg.directoryPrincipal(conn, entry)
+	if stage != "" {
+		return stage, 0
+	}
+	return "success_user", len(principal.Groups)
 }
