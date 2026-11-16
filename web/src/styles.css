@@ -86,7 +86,6 @@ td { font-size: 14px; }
 .back-link { display: inline-block; margin-bottom: 20px; font-weight: 700; }
 .detail-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .detail-heading h2, .detail-copy h2 { margin: 0; font-size: 1.125rem; line-height: 1.35; }
-.detail-copy h2 { margin-bottom: 10px; }
 .detail-text { margin: 0; color: #3f4d63; font-size: 1rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-problem { margin-bottom: 20px; }
 .detail-list { margin: 0; display: grid; }
@@ -233,3 +232,13 @@ td { overflow-wrap: anywhere; }
 .role-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .legacy-roles { border-top: 1px solid #dce4f0; margin-top: 16px; padding-top: 12px; overflow-wrap: anywhere; }
 .legacy-roles summary { cursor: pointer; }
+
+.finding-review-trigger { min-height: 32px; padding-inline: 10px; font-size: .875rem; }
+.finding-review-dialog { width: min(42rem, calc(100% - 2rem)); max-height: min(90vh, 48rem); padding: 20px; border: 1px solid #dce4f0; border-radius: 12px; color: #172033; }
+.finding-review-dialog::backdrop { background: #102d4070; }
+.finding-review-form, .finding-review-form label { display: grid; gap: 8px; }
+.finding-review-form { gap: 14px; }
+.finding-review-form :is(h2, p) { margin: 0; }
+.finding-review-form textarea { width: 100%; resize: vertical; padding: 8px; font: inherit; border: 1px solid #aebed0; border-radius: 7px; }
+.finding-review-form [data-review-history] { display: grid; gap: 6px; margin-top: 8px; }
+.finding-review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }

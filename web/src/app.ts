@@ -28,6 +28,7 @@ import {
   renderCorrelationLoading,
   renderCorrelationSection,
 } from "./views/correlation.ts";
+import { bindFindingReview } from "./views/finding-review.ts";
 import { renderFindingDetail } from "./views/finding-detail.ts";
 import {
   renderFilters,
@@ -44,6 +45,7 @@ export class PortalApp {
   private knownKinds = new Set<string>();
   private renderGeneration = 0;
   private identityAdmin = false;
+  private findingAI = false;
   private mustChangePassword = false;
   private showLogout = !demoMode;
 
@@ -80,12 +82,14 @@ export class PortalApp {
 
   private async route(): Promise<void> {
     const generation = ++this.renderGeneration;
+    this.findingAI = false;
     if (!demoMode) {
       try {
         const response = await fetch("/api/v1/admin/status");
         const status = response.ok ? await response.json() : {};
         if (generation !== this.renderGeneration) return;
         this.identityAdmin = status.admin === true;
+        this.findingAI = this.identityAdmin && status.findingAI === true;
         this.mustChangePassword = status.mustChangePassword === true;
       } catch {
         if (generation !== this.renderGeneration) return;
@@ -142,7 +146,8 @@ export class PortalApp {
     try {
       const finding = await apiClient.getFinding({ id });
       if (generation !== this.renderGeneration) return;
-      this.renderShell(renderFindingDetail(finding) + renderCorrelationSection(id));
+      this.renderShell(renderFindingDetail(finding, this.findingAI) + renderCorrelationSection(id));
+      if (this.findingAI) bindFindingReview(this.root, id);
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
       if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {

@@ -778,3 +778,38 @@ make verify
 清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
+
+### 启用诊断详情的 AI 分析
+
+在生产身份接入和 SQLite PVC 就绪后，为 API 容器配置下列环境变量。URL 填写已授权使用的模型服务的完整 HTTPS Chat Completions 地址。通过 Kubernetes Secret 以只读文件挂载模型密钥，并让 API Pod 能访问该服务。
+
+```yaml
+env:
+  - name: FINDING_AI_URL
+    value: https://ai.example.com/v1/chat/completions
+  - name: FINDING_AI_MODEL
+    value: your-model
+  - name: FINDING_AI_KEY_FILE
+    value: /etc/kube-aiops/finding-ai/key
+volumeMounts:
+  - name: finding-ai
+    mountPath: /etc/kube-aiops/finding-ai
+    readOnly: true
+```
+
+在 Pod 的 `spec.volumes` 中增加：
+
+```yaml
+- name: finding-ai
+  secret:
+    secretName: kube-aiops-finding-ai
+```
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-finding-ai \
+  --from-file=key=/secure/finding-ai-key
+```
+
+管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。
+
+复核成功后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
