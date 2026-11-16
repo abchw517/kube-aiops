@@ -539,4 +539,4 @@ Remediation -> Disabled
 - Phase 4 · 人工审批修复
 - Phase 5 · 受控自动修复
 
-阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。
+阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。 Phase 3 的知识回写与诊断检索见 [LLM Wiki 集成设计](docs/llm-wiki-integration.md)。
