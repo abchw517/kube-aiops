@@ -1,4 +1,5 @@
 import { escapeHtml } from "../components/html.ts";
+import { renderRoles } from "./roles.ts";
 
 const ldapFields = [
   ["url", "LDAP URL"],
@@ -11,7 +12,7 @@ const ldapFields = [
   ["groupFilter", "LDAP 组过滤器"],
 ] as const;
 
-export async function renderIdentityAdmin(resource: string, initial: boolean): Promise<string> {
+export async function renderIdentityAdmin(resource: string, initial: boolean, roleID?: string): Promise<string> {
   const navigation = initial ? "" : `<nav class="identity-nav" aria-label="系统管理">
     <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
     <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
@@ -20,7 +21,7 @@ export async function renderIdentityAdmin(resource: string, initial: boolean): P
   </nav>`;
   let content: string;
   try {
-    content = await renderResource(resource, initial);
+    content = resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
   } catch {
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }
@@ -33,7 +34,7 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
       ${form("password", `<label>当前密码<input name="current" type="password" autocomplete="current-password" required></label>
         ${passwordField()}`, "修改密码")}`;
   }
-  const selected = resource === "users" || resource === "policy" ? resource : "ldap";
+  const selected = resource === "users" ? resource : "ldap";
   const response = await fetch(`/api/v1/admin/${selected}`);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("identity configuration unavailable");
@@ -45,11 +46,6 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
     return `<h2>本地用户</h2><ul>${rows.join("")}</ul>
       ${form("users", `<label>用户名<input name="username" required maxlength="250"></label>
         ${passwordField()}<label>所属组<input name="groups" placeholder="以逗号分隔"></label>`, "创建用户")}`;
-  }
-  if (selected === "policy") {
-    return `<h2>权限配置</h2>
-      <p>使用 local:用户名、local:组名或 ldap:完整组 DN 设置规则，并指定能力、集群和命名空间。</p>
-      ${form("policy", `<label>授权策略 JSON<textarea name="policy" rows="16" required>${escapeHtml(JSON.stringify(data, null, 2))}</textarea></label>`, "保存策略")}`;
   }
   return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p>
     ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
@@ -94,13 +90,12 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   if (!testingLDAP) data.delete("testUsername");
   try {
     let payload: unknown = Object.fromEntries(data);
-    if (resource === "policy") payload = JSON.parse(String(data.get("policy")));
     if (resource === "users") {
       payload = { username: data.get("username"), password: data.get("password"),
         groups: String(data.get("groups") ?? "").split(/[,，]/).map((group) => group.trim()).filter(Boolean) };
     }
     const response = await fetch(`/api/v1/admin/${testingLDAP ? "ldap-test" : resource}`, {
-      method: !testingLDAP && (resource === "policy" || resource === "ldap") ? "PUT" : "POST",
+      method: !testingLDAP && resource === "ldap" ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
