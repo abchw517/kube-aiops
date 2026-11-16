@@ -287,6 +287,23 @@ imagePullSecrets:
 
 应用清单前，按 [生产身份接入](#生产身份接入) 完成 SQLite PVC 和 `api.yaml` 配置。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
 
+### 启用诊断详情的 AI 分析
+
+完成 [配置 Engine 模型与语言](#配置-engine-模型与语言) 和 [生产身份接入](#生产身份接入) 后，在应用 API Deployment 前执行：
+
+```bash
+python3 scripts/configure-finding-ai.py "$release_dir/api.yaml" --context "$target_context"
+```
+
+脚本从 API 清单指定的 K8sGPT CR 读取 `spec.ai.model`、`spec.ai.baseUrl` 和 `spec.ai.secret`，自动配置 Chat Completions 地址并挂载 Engine 已有的密钥。同一命名空间直接挂载原 Secret，跨命名空间时仅同步被引用的密钥项。部署操作者需有读取 Engine CR 和源 Secret、在 API 命名空间维护同步 Secret 的权限。API Pod 需能访问模型服务。
+
+Engine 修改模型、地址或密钥后，重新执行脚本并应用渲染后的 API 清单；跨命名空间的密钥轮换通过这一步重新同步。
+
+管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。
+
+复核成功后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
+
+
 ### 应用清单并等待就绪
 
 在应用前检查清单。Web 示例的副本和资源按实际容量调整。
@@ -778,38 +795,3 @@ make verify
 清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
-
-### 启用诊断详情的 AI 分析
-
-在生产身份接入和 SQLite PVC 就绪后，为 API 容器配置下列环境变量。URL 填写已授权使用的模型服务的完整 HTTPS Chat Completions 地址。通过 Kubernetes Secret 以只读文件挂载模型密钥，并让 API Pod 能访问该服务。
-
-```yaml
-env:
-  - name: FINDING_AI_URL
-    value: https://ai.example.com/v1/chat/completions
-  - name: FINDING_AI_MODEL
-    value: your-model
-  - name: FINDING_AI_KEY_FILE
-    value: /etc/kube-aiops/finding-ai/key
-volumeMounts:
-  - name: finding-ai
-    mountPath: /etc/kube-aiops/finding-ai
-    readOnly: true
-```
-
-在 Pod 的 `spec.volumes` 中增加：
-
-```yaml
-- name: finding-ai
-  secret:
-    secretName: kube-aiops-finding-ai
-```
-
-```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-finding-ai \
-  --from-file=key=/secure/finding-ai-key
-```
-
-管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。
-
-复核成功后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
