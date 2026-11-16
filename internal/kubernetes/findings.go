@@ -8,14 +8,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/k8sgpt"
 )
 
 const (
-	resultPageSize = 200
-	maxResultScan  = 5000
+	resultPageSize    = 200
+	maxResultScan     = 5000
+	maxResultPages    = 100
+	resultScanTimeout = 8 * time.Second
 )
 
 func (c *Client) ListFindings(ctx context.Context, query finding.Query) (finding.Page, error) {
@@ -138,10 +141,13 @@ func (c *Client) filteredFindings(ctx context.Context, filter finding.Filter) ([
 }
 
 func (c *Client) listCurrentResults(ctx context.Context) ([]k8sgpt.Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, resultScanTimeout)
+	defer cancel()
 	items := make([]k8sgpt.Result, 0)
 	continueToken := ""
+	seen := make(map[string]struct{})
 
-	for {
+	for range maxResultPages {
 		query := url.Values{}
 		query.Set("limit", strconv.Itoa(resultPageSize))
 		query.Set("labelSelector", fmt.Sprintf(
@@ -166,11 +172,15 @@ func (c *Client) listCurrentResults(ctx context.Context) ([]k8sgpt.Result, error
 		}
 		continueToken = page.Metadata.Continue
 		if continueToken == "" {
-			break
+			return items, nil
 		}
+		if _, duplicate := seen[continueToken]; duplicate {
+			return nil, fmt.Errorf("Kubernetes results pagination returned a repeated cursor")
+		}
+		seen[continueToken] = struct{}{}
 	}
 
-	return items, nil
+	return nil, fmt.Errorf("Kubernetes results pagination exceeded %d pages", maxResultPages)
 }
 
 func (c *Client) belongsToCurrentK8sGPT(labels map[string]string) bool {

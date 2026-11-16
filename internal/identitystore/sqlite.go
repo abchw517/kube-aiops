@@ -26,7 +26,7 @@ func Open(path string) (*Store, error) {
 	if err := file.Close(); err != nil {
 		return nil, err
 	}
-	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_pragma=busy_timeout(5000)"}).String()
+	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_pragma=busy_timeout(5000)&_pragma=secure_delete(ON)"}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
