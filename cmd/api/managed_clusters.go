@@ -153,6 +153,7 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	if err != nil {
 		return httpapi.ClusterTarget{}, err
 	}
+	review.correlator = evidence
 	backend = review
 	cluster.ReviewEnabled = engineAI != nil
 

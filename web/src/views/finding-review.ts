@@ -3,14 +3,15 @@ export function findingReviewControls(): string {
     <dialog class="finding-review-dialog" aria-labelledby="finding-review-title">
       <form class="finding-review-form">
         <h2 id="finding-review-title">AI 分析</h2>
-        <p>补充证据，复核当前诊断。提交后，证据与历史结论会发送给配置的 AI 服务，请勿填写凭据或个人敏感信息。</p>
+        <p>补充已知信息，与 AI 核对原结论。AI 会参考当前诊断的关联证据。只有选择「总结并更新结论」才会保存新结论。请勿填写凭据或个人敏感信息。</p>
         <details><summary>原始结论与复核历史</summary><div data-review-history></div></details>
-        <label>数据来源<textarea name="source" rows="2" required maxlength="1024" placeholder="例如 14:30 的 Pod 事件或监控查询"></textarea></label>
-        <label>观察结论<textarea name="observation" rows="4" required maxlength="4000" placeholder="描述数据结果，以及它和现有结论的差异"></textarea></label>
+        <div class="finding-review-conversation" data-review-conversation aria-label="复核对话" role="log"></div>
+        <label>你的消息<textarea name="message" rows="3" required maxlength="4000" placeholder="输入已知信息、观察结果，或希望 AI 核实的问题"></textarea></label>
         <p role="status"></p>
         <div class="finding-review-actions">
           <button type="button" class="button secondary" data-close-review>关闭</button>
-          <button type="submit" class="button" disabled>分析并更新结论</button>
+          <button type="submit" class="button secondary" disabled>发送</button>
+          <button type="submit" class="button" data-finalize-review formnovalidate disabled>总结并更新结论</button>
         </div>
       </form>
     </dialog>`;
@@ -23,12 +24,28 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
   const status = form?.querySelector<HTMLElement>('[role="status"]');
   const history = form?.querySelector<HTMLElement>("[data-review-history]");
   const submit = form?.querySelector<HTMLButtonElement>('[type="submit"]');
+  const finalize = form?.querySelector<HTMLButtonElement>("[data-finalize-review]");
+  const log = form?.querySelector<HTMLElement>("[data-review-conversation]");
+  const messageField = form?.querySelector<HTMLTextAreaElement>('[name="message"]');
   const close = form?.querySelector<HTMLButtonElement>("[data-close-review]");
   const explanation = root.querySelector<HTMLElement>("[data-finding-explanation]");
-  if (!trigger || !dialog || !form || !status || !history || !submit || !close || !explanation) return;
+  if (!trigger || !dialog || !form || !status || !history || !submit || !finalize || !log || !messageField || !close || !explanation) return;
   const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id, cluster })}`;
   let revision = 0;
   let busy = false;
+  const messages: {role: "user" | "assistant"; text: string}[] = [];
+  const showMessage = (role: "user" | "assistant", text: string) => {
+    const entry = document.createElement("div");
+    entry.className = `finding-review-message finding-review-message-${role}`;
+    const title = document.createElement("strong");
+    title.textContent = role === "user" ? "你" : "AI";
+    const paragraph = document.createElement("p");
+    paragraph.className = "detail-text";
+    paragraph.textContent = text;
+    entry.append(title, paragraph);
+    log.append(entry);
+    log.scrollTop = log.scrollHeight;
+  };
 
   close.addEventListener("click", () => dialog.close());
   dialog.addEventListener("cancel", (event) => {
@@ -36,6 +53,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
   });
   trigger.addEventListener("click", async () => {
     submit.disabled = true;
+    finalize.disabled = true;
     close.disabled = true;
     busy = true;
     history.replaceChildren();
@@ -45,7 +63,12 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       const response = await fetch(url);
       if (!response.ok) throw new Error("review unavailable");
       const data = await response.json() as { original: string; history: { revision: number; conclusion: string }[] };
-      revision = data.history[0]?.revision ?? 0;
+      const latest = data.history[0]?.revision ?? 0;
+      if (latest !== revision) {
+        messages.length = 0;
+        log.replaceChildren();
+      }
+      revision = latest;
       const conclusions: [string, string][] = [["原始结论", data.original],
         ...data.history.map((item): [string, string] => [`复核 #${item.revision}`, item.conclusion])];
       for (const [label, conclusion] of conclusions) {
@@ -57,7 +80,8 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         history.append(title, text);
       }
       status.textContent = "";
-      submit.disabled = false;
+      submit.disabled = messages.length >= 20;
+      finalize.disabled = messages.length === 0;
     } catch {
       status.textContent = "无法加载复核记录，请关闭后重试。";
     } finally {
@@ -68,25 +92,25 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (submit.disabled) return;
-    const fields = new FormData(form);
-    const source = String(fields.get("source") ?? "").trim();
-    const observation = String(fields.get("observation") ?? "").trim();
-    const encoder = new TextEncoder();
-    if (!source || !observation || encoder.encode(source).length > 1024 || encoder.encode(observation).length > 4000) {
-      status.textContent = "请填写来源和结论，长度分别不能超过 1024 和 4000 字节。";
+    const finishing = event.submitter === finalize;
+    if (busy || (finishing ? finalize.disabled : submit.disabled)) return;
+    const message = messageField.value.trim();
+    if (finishing ? message !== "" : !message || new TextEncoder().encode(message).length > 4000) {
+      status.textContent = finishing ? "请先发送尚未提交的消息。" : "请填写消息，长度不能超过 4000 字节。";
       return;
     }
     busy = true;
     submit.disabled = true;
+    finalize.disabled = true;
     close.disabled = true;
-    status.textContent = "AI 正在复核，请稍候…";
+    messageField.readOnly = true;
+    status.textContent = finishing ? "正在总结并更新结论…" : "AI 正在复核…";
     let stale = false;
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source, observation, revision }),
+        body: JSON.stringify({ action: finishing ? "finalize" : "chat", messages: finishing ? messages : [...messages, { role: "user", text: message }], revision }),
       });
       if (response.status === 409) {
         stale = true;
@@ -107,7 +131,18 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         return;
       }
       if (!response.ok) throw new Error("analysis failed");
-      const result = await response.json() as { conclusion: string };
+      const result = await response.json() as { conclusion?: string; reply?: string };
+      if (!finishing) {
+        if (!result.reply) throw new Error("missing AI reply");
+        messages.push({ role: "user", text: message }, { role: "assistant", text: result.reply });
+        showMessage("user", message);
+        showMessage("assistant", result.reply);
+        form.reset();
+        status.textContent = messages.length >= 20 ? "已达到 10 轮，可以总结并更新结论。" : "";
+        messageField.focus();
+        return;
+      }
+      if (!result.conclusion) throw new Error("missing conclusion");
       explanation.textContent = `AI 复核结论\n\n${result.conclusion}`;
       form.reset();
       dialog.close();
@@ -115,7 +150,9 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       status.textContent = "暂时无法确认复核结果。请重新打开窗口查看记录后再试。";
     } finally {
       busy = false;
-      submit.disabled = stale;
+      submit.disabled = stale || messages.length >= 20;
+      finalize.disabled = stale || messages.length === 0;
+      messageField.readOnly = false;
       close.disabled = false;
     }
   });
