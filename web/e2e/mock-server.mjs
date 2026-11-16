@@ -33,9 +33,17 @@ const findings = [
 let warningEvidenceRequests = 0;
 let authenticationRequired = false;
 let authenticated = false;
+let adminSession = false;
+let role;
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (url.pathname === "/test/admin-session") {
+    adminSession = true;
+    authenticated = true;
+    response.writeHead(204).end();
+    return;
+  }
   if (url.pathname === "/test/require-auth") {
     authenticationRequired = true;
     authenticated = false;
@@ -62,6 +70,22 @@ createServer(async (request, response) => {
   }
   if (authenticationRequired && !authenticated && url.pathname.startsWith("/api/v1/")) {
     return json(response, 401, { error: { code: "UNAUTHORIZED" } });
+  }
+  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true });
+  if (url.pathname === "/api/v1/admin/roles" && adminSession) {
+    if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const spec = JSON.parse(Buffer.concat(chunks).toString());
+    if (request.method === "POST" && spec.name === "开发环境观察员" && spec.cluster === "local" &&
+        JSON.stringify(spec.namespaces) === '["default","payments"]' &&
+        JSON.stringify(spec.groups) === '["local:operators","ldap:CN=Readers,DC=example,DC=com"]' &&
+        JSON.stringify(spec.modules) === '["findings:list","correlations:read"]') {
+      role = { ...spec, id: "observer-role", revision: 1 };
+      response.writeHead(204).end();
+      return;
+    }
+    return json(response, 400, { error: "unexpected role configuration" });
   }
   if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: [{ id: "local", name: "local", status: "ready" }] });
   if (url.pathname === "/api/v1/clusters/local/namespaces") return json(response, 200, { items: [{ name: "default" }, { name: "payments" }] });

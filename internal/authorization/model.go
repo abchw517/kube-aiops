@@ -95,6 +95,8 @@ type DecisionRequest struct {
 	Principal  identity.Principal
 	Capability Capability
 	Scope      Scope
+	// Collection distinguishes entering a findings query from inspecting its results.
+	Collection bool
 }
 
 func (r DecisionRequest) Validate() error {
