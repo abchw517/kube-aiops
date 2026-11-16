@@ -306,6 +306,8 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 默认 Role 仅允许 API ServiceAccount 在 `k8sgpt-operator-system` 对 `k8sgpt-engine` 和 `k8sgpt-openai-secret` 执行单对象 `get`。自定义 Engine 名称、命名空间或 Secret 名称时，分别更新 API 的 `K8SGPT_NAMESPACE`、`K8SGPT_NAME` 以及 Role/RoleBinding 的命名空间和 Role 的 `resourceNames`。Kubernetes RBAC 按整个 Secret 授权，Engine 密钥应放在专用 Secret 中。
 
+默认只批准 `https://api.openai.com/v1/chat/completions`。使用智谱等兼容端点时，在 Portal API 的环境变量中设置 `FINDING_AI_ALLOWED_ENDPOINT` 为平台批准的完整 HTTPS 请求地址，例如 `https://open.bigmodel.cn/api/paas/v4/chat/completions`。地址必须与 Engine Base URL 推导出的请求地址完全一致，切换模型供应商时同步更新 API 清单。地址校验在读取 Secret 前执行。
+
 每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
 
 管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。
@@ -884,4 +886,4 @@ kubectl -n k8sgpt-operator-system create secret generic kube-aiops-collector \
 
 拷贝 [采集 CronJob 示例](../deploy/collector/cronjob.yaml)，替换 API 镜像、中心 HTTPS 地址、实例 ID 和 Engine 参数，再应用到目标集群。实例首次提交快照后显示在线，每分钟上报当前有效 Result。完整空快照表示当前无诊断，采集失败保留最后一份快照；超过三分钟未收到快照标记为离线。中心只保存凭据哈希，停用实例可阻止查询和继续上报。采集组件只读取指定 Engine 命名空间的 Results，不上传 Kubernetes 凭据。采集实例的 Kubernetes 资源详情和原生 Event 尚未上报，可配置独立指标、日志、告警证据源。
 
-**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。
+**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。

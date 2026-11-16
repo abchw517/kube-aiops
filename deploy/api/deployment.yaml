@@ -21,7 +21,7 @@ spec:
     spec:
       serviceAccountName: kube-aiops-api
       automountServiceAccountToken: true
-      terminationGracePeriodSeconds: 15
+      terminationGracePeriodSeconds: 60
       securityContext:
         runAsNonRoot: true
         seccompProfile:

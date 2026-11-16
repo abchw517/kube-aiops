@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -117,7 +118,13 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName})
 		backend = remote
 		if spec.AIEnabled {
-			engineAI = remote.EngineAI
+			approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT_" + strings.ToUpper(strings.ReplaceAll(spec.ID, "-", "_"))))
+			if approvedEndpoint == "" {
+				approvedEndpoint = strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT"))
+			}
+			engineAI = func(ctx context.Context) (kubernetes.EngineAIConfig, error) {
+				return remote.EngineAI(ctx, approvedEndpoint)
+			}
 		}
 	} else {
 		reports = &reportBackend{store: o.store, id: spec.ID}

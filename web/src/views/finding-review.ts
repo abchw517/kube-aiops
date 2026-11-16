@@ -93,6 +93,19 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         status.textContent = "其他复核已更新诊断，请关闭后重新打开窗口。";
         return;
       }
+      if (response.status === 502 && response.headers.get("Content-Type")?.includes("application/json")) {
+        const { code } = await response.json() as { code?: string };
+        const messages: Record<string, string> = {
+          AI_ENGINE_PERMISSION_DENIED: "API 无权读取 Engine 或 Secret，请检查 RBAC。",
+          AI_ENGINE_ENDPOINT_NOT_APPROVED: "Engine 模型地址未获批准，请检查 API 的允许地址。",
+          AI_ENGINE_CONFIG_INVALID: "Engine 的 AI 配置无效，请检查模型、地址和 Secret 引用。",
+          AI_ENGINE_UNAVAILABLE: "无法读取 Engine，请检查实例名称、命名空间和集群连接。",
+          AI_ENGINE_SECRET_UNAVAILABLE: "无法读取 Secret 或指定密钥项，请检查 Engine 的 Secret 引用。",
+          AI_PROVIDER_UNAVAILABLE: "模型调用失败，请检查服务连通性和模型凭据。",
+        };
+        status.textContent = code && Object.hasOwn(messages, code) ? messages[code] ?? "" : "AI 分析失败。";
+        return;
+      }
       if (!response.ok) throw new Error("analysis failed");
       const result = await response.json() as { conclusion: string };
       explanation.textContent = `AI 复核结论\n\n${result.conclusion}`;

@@ -10,8 +10,12 @@ async function get(path) {
 const html = await (await get("/")).text();
 assert.match(html, /<html lang="zh-CN">/);
 assert.match(html, /name="kube-aiops-demo" content="true"/);
-await get("/assets/portal.js");
-await get("/assets/portal.css");
+for (const extension of ["js", "css"]) {
+  const path = [...html.matchAll(/\/assets\/portal-[A-Z0-9]+\.(?:js|css)/g)]
+    .map(([match]) => match).find((asset) => asset.endsWith(`.${extension}`));
+  assert.ok(path, `missing hashed ${extension} asset`);
+  await get(path);
+}
 await get("/readyz");
 
 const findings = await (await get("/api/v1/findings")).json();

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -81,7 +82,10 @@ func main() {
 		}
 		var engineAI func(context.Context) (kubernetes.EngineAIConfig, error)
 		if os.Getenv("FINDING_AI_ENGINE_ENABLED") == "true" {
-			engineAI = backend.EngineAI
+			approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT"))
+			engineAI = func(ctx context.Context) (kubernetes.EngineAIConfig, error) {
+				return backend.EngineAI(ctx, approvedEndpoint)
+			}
 		}
 		review, reviewErr := newFindingReview(backend, store, engineAI)
 		if reviewErr != nil {
@@ -95,7 +99,7 @@ func main() {
 				queryBackend = review
 			}
 			if review.engineAI != nil {
-				writeTimeout = 50 * time.Second
+				writeTimeout = findingReviewTimeout + 5*time.Second
 			}
 		}
 		if store != nil {
@@ -104,7 +108,7 @@ func main() {
 				registry = &httpapi.ClusterBackends{Backend: queryBackend}
 				queryBackend = registry
 			}
-			writeTimeout = 50 * time.Second
+			writeTimeout = findingReviewTimeout + 5*time.Second
 			managed, err = newOnboarding(store, registry)
 			if err != nil {
 				logger.Error("load managed cluster directory failed", "error", err)
@@ -175,7 +179,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), writeTimeout+5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)

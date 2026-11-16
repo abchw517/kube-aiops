@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -25,8 +26,11 @@ func TestEngineAIReadsLiveReferencedSecret(t *testing.T) {
 	defer server.Close()
 	client := newEventTestClient(t, server, "service-token")
 	client.config.K8sGPTNS, client.config.K8sGPTName = "engine-ns", "engine"
+	if _, err := client.EngineAI(t.Context(), ""); !errors.Is(err, ErrEngineEndpoint) || reads.Load() != 0 {
+		t.Fatalf("unapproved endpoint must be rejected before reading Secret: %v", err)
+	}
 	for _, expected := range []string{"old-fixture", "new-fixture"} {
-		got, err := client.EngineAI(t.Context())
+		got, err := client.EngineAI(t.Context(), "https://model.example/v4/chat/completions")
 		if err != nil || got.Key != expected || got.Model != "glm" || got.Endpoint != "https://model.example/v4/chat/completions" {
 			t.Fatalf("unexpected Engine AI configuration, error: %v", err)
 		}
