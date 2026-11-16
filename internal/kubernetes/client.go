@@ -176,7 +176,7 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		return fmt.Errorf("parse Kubernetes CA")
 	}
 
-	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		RootCAs:    roots,
 	}}}

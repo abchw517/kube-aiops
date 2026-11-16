@@ -67,15 +67,15 @@ func main() {
 			}
 			defer store.Close()
 		}
-		review, reviewErr := newFindingReview(backend, store)
+		review, reviewErr := newFindingReview(backend, store, backend.EngineAI)
 		if reviewErr != nil {
 			logger.Error("invalid finding AI configuration", "error", reviewErr)
 			os.Exit(1)
 		}
 		if review != nil {
 			detailBackend = review
-			if review.endpoint != "" {
-				writeTimeout = 35 * time.Second
+			if review.engineAI != nil {
+				writeTimeout = 50 * time.Second
 			}
 		}
 		wrap, err = configureIdentityHandler(&bundle, store, review)

@@ -208,7 +208,7 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 		}
 		resource := r.PathValue("resource")
 		if resource == "status" && r.Method == http.MethodGet {
-			writeAdminJSON(w, map[string]bool{"admin": p.Provider == adminProvider, "findingAI": review != nil && review.endpoint != "" && p.Provider == adminProvider, "mustChangePassword": p.Provider == initialAdminProvider})
+			writeAdminJSON(w, map[string]bool{"admin": p.Provider == adminProvider, "findingAI": review != nil && review.engineAI != nil && p.Provider == adminProvider, "mustChangePassword": p.Provider == initialAdminProvider})
 			return
 		}
 		if p.Provider != adminProvider && !(p.Provider == initialAdminProvider && resource == "password") {
@@ -222,7 +222,7 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 				return
 			}
 		}
-		if resource == "finding-analysis" && review != nil && review.endpoint != "" {
+		if resource == "finding-analysis" && review != nil && review.engineAI != nil {
 			review.serve(w, r)
 			return
 		}
