@@ -306,6 +306,8 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 默认 Role 仅允许 API ServiceAccount 在 `k8sgpt-operator-system` 对 `k8sgpt-engine` 和 `k8sgpt-openai-secret` 执行单对象 `get`。自定义 Engine 名称、命名空间或 Secret 名称时，分别更新 API 的 `K8SGPT_NAMESPACE`、`K8SGPT_NAME` 以及 Role/RoleBinding 的命名空间和 Role 的 `resourceNames`。Kubernetes RBAC 按整个 Secret 授权，Engine 密钥应放在专用 Secret 中。
 
+默认只批准 `https://api.openai.com/v1/chat/completions`。使用智谱等兼容端点时，在 Portal API 的环境变量中设置 `FINDING_AI_ALLOWED_ENDPOINT` 为平台批准的完整 HTTPS 请求地址，例如 `https://open.bigmodel.cn/api/paas/v4/chat/completions`。地址必须与 Engine Base URL 推导出的请求地址完全一致，切换模型供应商时同步更新 API 清单。地址校验在读取 Secret 前执行。
+
 每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
 
 管理员在诊断详情点击 **AI 分析**，输入数据来源、观察结论和相关证据，然后点击 **分析并更新结论**。API 会把这些文字与原始诊断及最近五版复核结论发送给配置的 AI 服务。请勿提交凭据或个人敏感信息。模型只处理提交的文字，数据源地址不会被自动访问。模型请求最长 25 秒，入口代理需允许 API 请求完成。

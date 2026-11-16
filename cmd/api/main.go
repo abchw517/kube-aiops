@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -67,7 +68,10 @@ func main() {
 			}
 			defer store.Close()
 		}
-		review, reviewErr := newFindingReview(backend, store, backend.EngineAI)
+		approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT"))
+		review, reviewErr := newFindingReview(backend, store, func(ctx context.Context) (kubernetes.EngineAIConfig, error) {
+			return backend.EngineAI(ctx, approvedEndpoint)
+		})
 		if reviewErr != nil {
 			logger.Error("invalid finding AI configuration", "error", reviewErr)
 			os.Exit(1)
@@ -75,7 +79,7 @@ func main() {
 		if review != nil {
 			detailBackend = review
 			if review.engineAI != nil {
-				writeTimeout = 50 * time.Second
+				writeTimeout = findingReviewTimeout + 5*time.Second
 			}
 		}
 		wrap, err = configureIdentityHandler(&bundle, store, review)
@@ -139,7 +143,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), writeTimeout+5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
