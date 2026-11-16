@@ -44,7 +44,9 @@ func (b scopedFindingBackend) SummarizeFindings(ctx context.Context, filter find
 	page, err := b.ListFindings(ctx, finding.Query{Filter: filter})
 	summary := finding.Summary{Total: len(page.Items), ByNamespace: map[string]int{}}
 	for _, item := range page.Items {
-		summary.ByNamespace[item.Namespace]++
+		if item.Namespace != "" {
+			summary.ByNamespace[item.Namespace]++
+		}
 	}
 	return summary, err
 }
