@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/abchw517/kube-aiops/internal/finding"
 	"github.com/abchw517/kube-aiops/internal/identitystore"
+	"github.com/abchw517/kube-aiops/internal/kubernetes"
 )
 
 type reviewFixtureBackend struct{ testBackend }
@@ -46,14 +46,10 @@ func TestFindingReviewPersistsAndUsesHistory(t *testing.T) {
 		}}})
 	}))
 	defer provider.Close()
-	key := filepath.Join(t.TempDir(), "key")
-	if err := os.WriteFile(key, []byte("fixture-key"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("FINDING_AI_URL", provider.URL)
-	t.Setenv("FINDING_AI_MODEL", "fixture")
-	t.Setenv("FINDING_AI_KEY_FILE", key)
-	review, err := newFindingReview(reviewFixtureBackend{}, store)
+	t.Setenv("FINDING_AI_ENGINE_ENABLED", "true")
+	review, err := newFindingReview(reviewFixtureBackend{}, store, func(context.Context) (kubernetes.EngineAIConfig, error) {
+		return kubernetes.EngineAIConfig{Endpoint: provider.URL, Model: "fixture", Key: "fixture-key"}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

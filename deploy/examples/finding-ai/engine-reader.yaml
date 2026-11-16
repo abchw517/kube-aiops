@@ -1,0 +1,28 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-aiops-finding-ai-engine-reader
+  namespace: k8sgpt-operator-system
+rules:
+  - apiGroups: [core.k8sgpt.ai]
+    resources: [k8sgpts]
+    resourceNames: [k8sgpt-engine]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [k8sgpt-openai-secret]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-aiops-finding-ai-engine-reader
+  namespace: k8sgpt-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-aiops-finding-ai-engine-reader
+subjects:
+  - kind: ServiceAccount
+    name: kube-aiops-api
+    namespace: kube-aiops-system

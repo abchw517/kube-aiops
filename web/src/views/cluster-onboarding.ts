@@ -7,7 +7,6 @@ const fields = [
   ["environment", "环境", true], ["business", "业务", true], ["group", "集群名称", true],
   ["apiURL", "Kubernetes API 地址", false], ["engineNamespace", "Engine 命名空间", false],
   ["engineName", "Engine 实例名", false], ["prometheusURL", "Prometheus 地址", false],
-  ["aiURL", "AI Chat Completions 地址", false], ["aiModel", "AI 模型名", false],
   ["victoriaLogsURL", "VictoriaLogs 地址", false], ["alertmanagerURL", "Alertmanager 地址", false],
 ] as const;
 
@@ -47,6 +46,7 @@ export async function renderOnboarding(id?: string): Promise<string> {
       ${fields.filter(([key, , base]) => base || mode === "pull" || !["apiURL", "engineNamespace", "engineName"].includes(key)).map(([name,label,base]) =>
         `<label>${label}<input name="${name}" value="${escapeHtml(String(item?.[name] ?? ""))}" ${base ? "required" : ""}
           ${editing && name === "id" ? "readonly" : ""}></label>`).join("")}
+      ${mode === "pull" ? `<label><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""} style="width:auto"> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
       <label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>
       <p>${mode === "pull" ? "只读 token 和 CA 使用该实例 ID 对应的部署挂载。配置共享观测源时使用实例 ID 作为集群标签。" :
         "保存后会显示一次上报凭据。采集端首次提交快照后自动显示在线。"} </p>
@@ -71,7 +71,7 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean):
     const response = await fetch(endpoint + (testing ? "?test=true" : ""), {
       method: form.dataset.editing === "true" ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...values, mode: form.dataset.onboardingMode, enabled: data.has("enabled") }),
+      body: JSON.stringify({ ...values, mode: form.dataset.onboardingMode, enabled: data.has("enabled"), aiEnabled: data.has("aiEnabled") }),
     });
     if (!response.ok) {
       status.textContent = response.headers.get("Content-Type")?.includes("text/plain") ?

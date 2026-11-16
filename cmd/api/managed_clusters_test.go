@@ -63,3 +63,31 @@ func TestClusterSnapshotIsolationAndReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestManagedAIReviewUsesOnlySelectedPullInstance(t *testing.T) {
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "clusters.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	registry := &httpapi.ClusterBackends{Backend: testBackend{}}
+	o := &onboarding{store: store, registry: registry}
+	spec := managedCluster{ID: "remote", Name: "remote", Environment: "test", Business: "ops", Group: "apps",
+		Mode: "pull", Enabled: true, AIEnabled: true, APIURL: "https://remote.example",
+		EngineNamespace: "engine-ns", EngineName: "remote-engine"}
+	target, err := o.build(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.SetManaged(spec.ID, target)
+	if review := o.review("remote"); review == nil || review.engineAI == nil {
+		t.Fatal("remote Engine resolver was not attached")
+	}
+	if review := o.review("other"); review != nil {
+		t.Fatal("missing instance must not fall back to another Engine")
+	}
+	spec.Mode = "push"
+	if _, err := o.build(spec); err == nil {
+		t.Fatal("push-only cluster unexpectedly enabled Kubernetes Engine reading")
+	}
+}

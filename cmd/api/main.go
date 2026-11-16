@@ -79,7 +79,11 @@ func main() {
 			}
 			defer store.Close()
 		}
-		review, reviewErr := newFindingReview(backend, store)
+		var engineAI func(context.Context) (kubernetes.EngineAIConfig, error)
+		if os.Getenv("FINDING_AI_ENGINE_ENABLED") == "true" {
+			engineAI = backend.EngineAI
+		}
+		review, reviewErr := newFindingReview(backend, store, engineAI)
 		if reviewErr != nil {
 			logger.Error("invalid finding AI configuration", "error", reviewErr)
 			os.Exit(1)
@@ -90,8 +94,8 @@ func main() {
 			} else {
 				queryBackend = review
 			}
-			if review.endpoint != "" {
-				writeTimeout = 35 * time.Second
+			if review.engineAI != nil {
+				writeTimeout = 50 * time.Second
 			}
 		}
 		if store != nil {
@@ -100,7 +104,7 @@ func main() {
 				registry = &httpapi.ClusterBackends{Backend: queryBackend}
 				queryBackend = registry
 			}
-			writeTimeout = 35 * time.Second
+			writeTimeout = 50 * time.Second
 			managed, err = newOnboarding(store, registry)
 			if err != nil {
 				logger.Error("load managed cluster directory failed", "error", err)

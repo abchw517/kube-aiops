@@ -28,8 +28,7 @@ import (
 )
 
 type managedCluster struct {
-	AIURL           string `json:"aiURL,omitempty"`
-	AIModel         string `json:"aiModel,omitempty"`
+	AIEnabled       bool   `json:"aiEnabled,omitempty"`
 	ID              string `json:"id"`
 	Name            string `json:"name"`
 	Environment     string `json:"environment"`
@@ -107,6 +106,7 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	}
 	cluster := kubernetes.Cluster{ID: spec.ID, Name: spec.Name, Environment: spec.Environment, Business: spec.Business, Group: spec.Group, Status: "ready"}
 	var backend httpapi.Backend
+	var engineAI func(context.Context) (kubernetes.EngineAIConfig, error)
 	var reports *reportBackend
 	if spec.Mode == "pull" {
 		if !remoteHTTPS(spec.APIURL) || !clusterIDPattern.MatchString(spec.EngineNamespace) || !clusterIDPattern.MatchString(spec.EngineName) {
@@ -116,6 +116,9 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 		remote := kubernetes.NewClient(kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
 			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName})
 		backend = remote
+		if spec.AIEnabled {
+			engineAI = remote.EngineAI
+		}
 	} else {
 		reports = &reportBackend{store: o.store, id: spec.ID}
 		backend = reports
@@ -136,17 +139,15 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	if err != nil {
 		return httpapi.ClusterTarget{}, err
 	}
-	if (spec.AIURL == "") != (spec.AIModel == "") {
-		return httpapi.ClusterTarget{}, errors.New("AI 地址和模型必须同时填写")
+	if spec.AIEnabled && spec.Mode != "pull" {
+		return httpapi.ClusterTarget{}, errors.New("读取 Engine Secret 需要手动接入的 Kubernetes API 连接")
 	}
-	if spec.AIURL != "" {
-		review, err := newReviewWithConfig(backend, o.store, spec.AIURL, spec.AIModel, filepath.Join("/etc/kube-aiops/clusters", spec.ID, "ai-key"))
-		if err != nil {
-			return httpapi.ClusterTarget{}, err
-		}
-		backend = review
-		cluster.ReviewEnabled = true
+	review, err := newFindingReview(backend, o.store, engineAI)
+	if err != nil {
+		return httpapi.ClusterTarget{}, err
 	}
+	backend = review
+	cluster.ReviewEnabled = engineAI != nil
 
 	return httpapi.ClusterTarget{Backend: directoryBackend{Backend: backend, cluster: cluster, reports: reports}, Correlator: evidence}, nil
 }
