@@ -6,10 +6,11 @@ export function renderFindingDetail(finding: Finding): string {
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
         <a class="back-link" href="#/findings">← 返回诊断列表</a>
-        <div class="detail-title">
+        <div class="detail-heading">
+          <h2>故障信息</h2>
           <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>
-          <h2>${escapeHtml(finding.problem)}</h2>
         </div>
+        <p class="detail-text detail-problem">${escapeHtml(finding.problem)}</p>
         <dl class="detail-list">
           ${detailRow("诊断编号", finding.id)}
           ${detailRow("集群", finding.cluster)}
@@ -22,7 +23,7 @@ export function renderFindingDetail(finding: Finding): string {
       </section>
       <section class="panel detail-copy">
         <h2>诊断说明</h2>
-        <p>${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
+        <p class="detail-text">${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
       </section>
     </article>`;
 }

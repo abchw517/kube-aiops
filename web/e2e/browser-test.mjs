@@ -114,9 +114,9 @@ try {
       throw new Error(`Unexpected evidence markup or ranking: ${JSON.stringify(evidence)}`);
     }
 
-    await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
-    });
+    await assertDetailLayout(cdp, 1440, 2);
+    await assertDetailLayout(cdp, 920, 1);
+    await assertDetailLayout(cdp, 390, 1);
     const mobileLayout = await cdp.send("Runtime.evaluate", {
       expression: `({
         columns: getComputedStyle(document.querySelector(".correlation-grid")).gridTemplateColumns.trim().split(/\\s+/).length,
@@ -306,6 +306,42 @@ async function createCdpClient(webSocketUrl) {
       socket.close();
     },
   };
+}
+
+async function assertDetailLayout(cdp, width, columns) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width, height: 900, deviceScaleFactor: 1, mobile: width < 560,
+  });
+  const response = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const detail = document.querySelector(".detail-grid");
+      const texts = [...detail.querySelectorAll(".detail-text")];
+      return {
+        columns: getComputedStyle(detail).gridTemplateColumns.split(" ").length,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        texts: texts.map((text) => {
+          const style = getComputedStyle(text);
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const bounds = text.getBoundingClientRect();
+          const lines = [...range.getClientRects()];
+          return {
+            fontSize: Number.parseFloat(style.fontSize),
+            lineHeight: Number.parseFloat(style.lineHeight),
+            keepsNewline: text.innerText.includes("\\n"),
+            safeWrap: lines.length > 3 && lines.every((line) =>
+              line.left >= bounds.left - 1 && line.right <= bounds.right + 1),
+          };
+        }),
+      };
+    })()`,
+    returnByValue: true,
+  });
+  const layout = response.result?.value;
+  if (!layout || layout.columns !== columns || layout.overflow || layout.texts.length !== 2 ||
+    layout.texts.some((text) => text.fontSize !== 16 || text.lineHeight < 24 || !text.keepsNewline || !text.safeWrap)) {
+    throw new Error(`Finding text layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
+  }
 }
 
 async function assertPage(cdp, url, predicate, failureMessage) {
