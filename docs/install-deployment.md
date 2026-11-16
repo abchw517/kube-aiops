@@ -620,7 +620,10 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 | LDAP 用户 UID | `sAMAccountName` |
 | LDAP 附加用户过滤器 | `(objectClass=user)`，可留空。沿用带 `%s` 的旧模板时请留空 UID |
 | LDAP 用户搜索范围 | 子树（默认），可选单层或基础对象 |
-| LDAP 组属性 | `memberOf` |
+| LDAP 组成员属性 | `memberOf` |
+| LDAP 组基础 DN | 可选，例如 `OU=Groups,DC=example,DC=com` |
+| LDAP 组过滤器 | 可选，例如 `(objectClass=group)` |
+| LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
 
 在上一步策略中，将 `"ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"` 追加到需要授予同样权限的两条规则的 `groups` 数组，保留原有本地组。LDAP 组使用小写完整 DN，`memberOf` 对应用户的直接组。
 

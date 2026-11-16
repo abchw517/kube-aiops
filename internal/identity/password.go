@@ -54,6 +54,9 @@ type LDAPConfig struct {
 	UserFilter   string // Exactly one %s placeholder, escaped as an LDAP filter value.
 	UserUID      string
 	SearchScope  string
+	GroupBaseDN  string
+	GroupFilter  string
+	GroupScope   string
 	GroupAttr    string
 	TLSConfig    *tls.Config
 }
@@ -103,6 +106,27 @@ func (cfg LDAPConfig) Validate() error {
 	case "", "subtree", "onelevel", "base":
 	default:
 		return errors.New("LDAP 搜索范围无效")
+	}
+	if cfg.GroupBaseDN != "" {
+		if _, err := ldap.ParseDN(cfg.GroupBaseDN); err != nil {
+			return errors.New("LDAP 组基础 DN 无效")
+		}
+	}
+	if (cfg.GroupBaseDN != "" || cfg.GroupFilter != "" || cfg.GroupScope != "") && cfg.GroupAttr == "" {
+		return errors.New("请填写 LDAP 组成员属性，例如 memberOf")
+	}
+	if (cfg.GroupFilter != "" || cfg.GroupScope != "") && cfg.GroupBaseDN == "" {
+		return errors.New("配置组过滤器或范围时，请填写 LDAP 组基础 DN")
+	}
+	switch cfg.GroupScope {
+	case "", "subtree", "onelevel", "base":
+	default:
+		return errors.New("LDAP 组搜索范围无效")
+	}
+	if cfg.GroupFilter != "" {
+		if _, err := ldap.CompileFilter(parenthesizedFilter(cfg.GroupFilter)); err != nil {
+			return errors.New("LDAP 组过滤器无效，例如 (objectClass=group)")
+		}
 	}
 	filter := cfg.filterTemplate()
 	if strings.Count(filter, "%s") != 1 || strings.Count(filter, "%") != 1 {
@@ -160,12 +184,16 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 	}
 	p := Principal{Subject: "ldap:" + strings.ToLower(entry.DN), Provider: "ldap"}
 	if cfg.GroupAttr != "" {
-		if hasRangedGroups(entry, cfg.GroupAttr) {
+		if hasRangedGroups(entry, cfg.GroupAttr) || cfg.GroupFilter != "" {
 			if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
 				return Principal{}, ErrAuthenticationUnavailable
 			}
 		}
 		groups, err := ldapGroups(conn, entry, cfg.GroupAttr)
+		if err != nil {
+			return Principal{}, ErrAuthenticationUnavailable
+		}
+		groups, err = cfg.filterGroups(conn, groups)
 		if err != nil {
 			return Principal{}, ErrAuthenticationUnavailable
 		}
@@ -177,6 +205,55 @@ func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, pass
 		return Principal{}, ErrAuthenticationUnavailable
 	}
 	return p, nil
+}
+
+func parenthesizedFilter(value string) string {
+	if strings.HasPrefix(value, "(") {
+		return value
+	}
+	return "(" + value + ")"
+}
+
+func (cfg LDAPConfig) filterGroups(conn *ldap.Conn, groups []string) ([]string, error) {
+	if cfg.GroupBaseDN == "" {
+		return groups, nil
+	}
+	base, err := ldap.ParseDN(cfg.GroupBaseDN)
+	if err != nil {
+		return nil, err
+	}
+	selected := make([]string, 0, len(groups))
+	for _, group := range groups {
+		dn, err := ldap.ParseDN(group)
+		if err != nil {
+			return nil, err
+		}
+		inScope := base.EqualFold(dn) || base.AncestorOfFold(dn)
+		switch cfg.GroupScope {
+		case "base":
+			inScope = base.EqualFold(dn)
+		case "onelevel":
+			inScope = base.AncestorOfFold(dn) && len(dn.RDNs) == len(base.RDNs)+1
+		}
+		if !inScope {
+			continue
+		}
+		if cfg.GroupFilter != "" {
+			result, err := conn.Search(ldap.NewSearchRequest(group, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
+				1, 5, false, parenthesizedFilter(cfg.GroupFilter), []string{"1.1"}, nil))
+			if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if len(result.Entries) == 0 {
+				continue
+			}
+		}
+		selected = append(selected, group)
+	}
+	return selected, nil
 }
 
 func hasRangedGroups(entry *ldap.Entry, attr string) bool {
@@ -303,6 +380,13 @@ func TestLDAP(ctx context.Context, cfg LDAPConfig) string {
 		1, 5, false, "(objectClass=*)", []string{"1.1"}, nil))
 	if err != nil || len(result.Entries) != 1 {
 		return "search"
+	}
+	if cfg.GroupBaseDN != "" {
+		result, err := conn.Search(ldap.NewSearchRequest(cfg.GroupBaseDN, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
+			1, 5, false, "(objectClass=*)", []string{"1.1"}, nil))
+		if err != nil || len(result.Entries) != 1 {
+			return "group_search"
+		}
 	}
 	return ""
 }

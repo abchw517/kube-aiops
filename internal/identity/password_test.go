@@ -37,3 +37,16 @@ func TestAuthenticateLDAPRejectsUnsafeConfiguration(t *testing.T) {
 		t.Fatalf("empty passwords must be rejected: %v", err)
 	}
 }
+
+func TestLDAPGroupScopeRetainsOnlyMatchingMemberships(t *testing.T) {
+	cfg := LDAPConfig{GroupBaseDN: "OU=Groups,DC=example,DC=com", GroupScope: "onelevel"}
+	direct := "CN=Ops,ou=groups,dc=example,dc=com"
+	groups, err := cfg.filterGroups(nil, []string{
+		direct,
+		"CN=Nested,OU=Team,OU=Groups,DC=example,DC=com",
+		"CN=Other,OU=Other,DC=example,DC=com",
+	})
+	if err != nil || len(groups) != 1 || groups[0] != direct {
+		t.Fatalf("unexpected memberships: %v, %v", groups, err)
+	}
+}
