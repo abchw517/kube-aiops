@@ -14,9 +14,14 @@ export function renderFilters(
   knownKinds: string[],
   filters: FindingFilters,
 ): string {
+  const instance = clusters.find((item) => item.id === (filters.cluster ?? "local"));
+  const freshness = instance?.status === "waiting" ? "采集端尚未上报。" :
+    instance?.status === "offline" && instance.lastReportAt ?
+      `采集离线，显示最近一次上报的数据（${new Date(instance.lastReportAt * 1000).toLocaleString()}）。` : "";
   return `
+    ${freshness ? `<p class="evidence-notice" role="status">${escapeHtml(freshness)}</p>` : ""}
     <section class="panel filters" aria-label="诊断结果筛选">
-      ${renderSelect("cluster", "集群", clusters.map((item) => item.id), filters.cluster ?? "local")}
+      ${renderClusterSelect(clusters, filters.cluster ?? "local")}
       ${renderSelect("namespace", "命名空间", namespaces.map((item) => item.name), filters.namespace)}
       ${renderSelect("severity", "严重级别", ["critical", "warning", "info"] satisfies Severity[], filters.severity, formatSeverity)}
       ${renderSelect("kind", "资源类型", knownKinds, filters.kind)}
@@ -81,7 +86,7 @@ function renderFindingRow(finding: Finding): string {
       <td><span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span></td>
       <td>${escapeHtml(resource || "—")}</td>
       <td>${escapeHtml(finding.namespace ?? finding.resource.namespace ?? "—")}</td>
-      <td><a href="#/findings/${encodeURIComponent(finding.id)}">${escapeHtml(finding.problem)}</a></td>
+      <td><a href="#/findings/${encodeURIComponent(finding.id)}${finding.cluster === "local" ? "" : `?cluster=${encodeURIComponent(finding.cluster)}`}">${escapeHtml(finding.problem)}</a></td>
       <td>${formatTimestamp(finding.createdAt)}</td>
     </tr>`;
 }
@@ -123,4 +128,22 @@ function renderBreakdown(values: Record<string, number>): string {
         `<li><span>${escapeHtml(name || "未知")}</span><strong>${count}</strong></li>`,
     )
     .join("")}</ul>`;
+}
+
+function renderClusterSelect(clusters: Cluster[], selected: string): string {
+  const current = clusters.find((cluster) => cluster.id === selected) ?? clusters[0];
+  if (!current) return "";
+  const dimensions = [["environment", "环境"], ["business", "业务"], ["group", "集群名称"]] as const;
+  let available = clusters;
+  const selectors = dimensions.map(([key, label]) => {
+    const value = current[key] || "未分组";
+    const choices = [...new Set(available.map((item) => item[key] || "未分组"))];
+    available = available.filter((item) => (item[key] || "未分组") === value);
+    return `<label><span>${label}</span><select name="${key}" data-filter="${key}">
+      ${choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === value ? " selected" : ""}>${escapeHtml(choice)}</option>`).join("")}
+    </select></label>`;
+  });
+  return `${selectors.join("")}<label><span>集群实例</span><select name="cluster" data-filter="cluster">
+    ${available.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === current.id ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+    </select></label>`;
 }

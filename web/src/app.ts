@@ -1,3 +1,4 @@
+import { submitOnboarding } from "./views/cluster-onboarding.ts";
 import {
   ApiError,
   type Cluster,
@@ -63,6 +64,11 @@ export class PortalApp {
         void submitRole(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete");
         return;
       }
+      if (form instanceof HTMLFormElement && form.dataset.onboardingMode) {
+        event.preventDefault();
+        void submitOnboarding(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test");
+        return;
+      }
       if (form instanceof HTMLFormElement && form.dataset.identityResource) {
         event.preventDefault();
         void submitIdentityAdmin(form, () => {
@@ -116,10 +122,19 @@ export class PortalApp {
     this.renderShell(loadingState("正在加载筛选选项和诊断结果。"));
 
     try {
-      const [clusters, namespaces] = await Promise.all([
-        this.loadClusters(),
-        this.loadNamespaces(filters.cluster ?? "local"),
-      ]);
+      const clusters = await this.loadClusters();
+      if (generation !== this.renderGeneration) return;
+      if (clusters.length === 0) {
+        this.renderShell(authorizationDeniedState());
+        return;
+      }
+      const hash = window.location.hash;
+      const explicitCluster = new URLSearchParams(hash.split("?")[1]).has("cluster");
+      if (!explicitCluster && !clusters.some((cluster) => cluster.id === filters.cluster)) {
+        window.location.replace(`#/findings?${serializeFindingFilters({ cluster: clusters[0]?.id })}`);
+        return;
+      }
+      const namespaces = await this.loadNamespaces(filters.cluster ?? "local");
       if (generation !== this.renderGeneration) return;
 
       const [page, summary] = await Promise.all([
@@ -144,10 +159,13 @@ export class PortalApp {
   private async renderDetail(id: string, generation: number): Promise<void> {
     this.renderShell(loadingState("正在加载诊断详情。"));
     try {
-      const finding = await apiClient.getFinding({ id });
+      const finding = await apiClient.getFinding({ id, cluster: parseFindingFilters(window.location.hash).cluster });
       if (generation !== this.renderGeneration) return;
-      this.renderShell(renderFindingDetail(finding, this.findingAI) + renderCorrelationSection(id));
-      if (this.findingAI) bindFindingReview(this.root, id);
+      const reviewEnabled = finding.cluster === "local" ? this.findingAI :
+        this.identityAdmin && (await this.loadClusters().catch(() => [])).some((instance) => instance.id === finding.cluster && instance.reviewEnabled);
+      if (generation !== this.renderGeneration) return;
+      this.renderShell(renderFindingDetail(finding, reviewEnabled) + renderCorrelationSection(id));
+      if (this.identityAdmin) bindFindingReview(this.root, id, finding.cluster);
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
       if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {
@@ -161,7 +179,7 @@ export class PortalApp {
     region.innerHTML = renderCorrelationLoading();
     let content: string;
     try {
-      const bundle = await apiClient.getFindingCorrelation({ id });
+      const bundle = await apiClient.getFindingCorrelation({ id, cluster: parseFindingFilters(window.location.hash).cluster });
       content = renderCorrelationEvidence(bundle);
     } catch (error) {
       content = renderCorrelationError(error);
@@ -172,13 +190,12 @@ export class PortalApp {
   }
 
   private async loadClusters(): Promise<Cluster[]> {
-    if (this.clusters) return this.clusters;
     const response = await apiClient.listClusters();
     this.clusters = response.items;
     return response.items;
   }
 
-  private async loadNamespaces(cluster: "local"): Promise<Namespace[]> {
+  private async loadNamespaces(cluster: string): Promise<Namespace[]> {
     const cached = this.namespaces.get(cluster);
     if (cached) return cached;
     const response = await apiClient.listNamespaces({ cluster });
@@ -254,19 +271,41 @@ export class PortalApp {
       const id = region?.dataset.correlationFinding;
       if (region && id) void this.loadCorrelation(id, this.renderGeneration, region);
     }
-    if (action === "clear-filters") window.location.hash = "#/findings?cluster=local";
+    if (action === "clear-filters") window.location.hash = `#/findings?${serializeFindingFilters({ cluster: parseFindingFilters(window.location.hash).cluster })}`;
   }
 
   private handleFilterChange(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLSelectElement) || !target.dataset.filter) return;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (target.hasAttribute("data-role-directory")) {
+      const field = target.form?.elements.namedItem("cluster");
+      if (field instanceof HTMLInputElement && target.value) field.value = target.value;
+      return;
+    }
+    if (!target.dataset.filter) return;
 
     const filters = parseFindingFilters(window.location.hash);
     const value = target.value || undefined;
+    const dimensions = ["environment", "business", "group"] as const;
+    for (const [index, dimension] of dimensions.entries()) {
+      if (target.dataset.filter !== dimension) continue;
+      const available = this.clusters ?? [];
+      const current = available.find((entry) => entry.id === filters.cluster) ?? available[0];
+      const matching = available.find((entry) => (entry[dimension] || "未分组") === value &&
+        dimensions.slice(0, index).every((key) => (entry[key] || "未分组") === (current?.[key] || "未分组")));
+      if (matching) {
+        filters.cluster = matching.id;
+        filters.namespace = undefined;
+        window.location.hash = `#/findings?${serializeFindingFilters(filters)}`;
+      }
+      return;
+    }
     switch (target.dataset.filter) {
       case "cluster":
-        filters.cluster = "local";
+        filters.cluster = value;
         filters.namespace = undefined;
+        filters.kind = undefined;
+        this.knownKinds.clear();
         break;
       case "namespace":
         filters.namespace = value;

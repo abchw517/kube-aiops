@@ -38,6 +38,7 @@ func FromResult(result k8sgpt.Result) Finding {
 	}
 
 	return Finding{
+		ResultUID: strings.TrimSpace(result.Metadata.UID),
 		ID:        strings.TrimSpace(result.Metadata.Name),
 		Cluster:   LocalCluster,
 		Namespace: resource.Namespace,

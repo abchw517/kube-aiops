@@ -150,7 +150,7 @@ func (s *Server) authorizeRequest(
 		Principal:  principal,
 		Capability: capability,
 		Scope:      scope,
-		Collection: capability == authorization.CapabilityFindingsList || capability == authorization.CapabilityFindingsSummary,
+		Collection: (capability == authorization.CapabilityClustersList && scope == authorization.GlobalScope()) || capability == authorization.CapabilityFindingsList || capability == authorization.CapabilityFindingsSummary,
 	})
 	if err != nil {
 		setAuditOutcome(r, internalaudit.OutcomeSecurityUnavailable)
@@ -199,10 +199,7 @@ func namespacePathScope(r *http.Request) authorization.Scope {
 }
 
 func findingQueryScope(r *http.Request) authorization.Scope {
-	cluster := strings.TrimSpace(r.URL.Query().Get("cluster"))
-	if cluster == "" {
-		cluster = localClusterID
-	}
+	cluster := queryCluster(r)
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	if namespace == "" {
 		return authorization.ClusterScope(cluster)

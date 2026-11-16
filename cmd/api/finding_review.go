@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -39,7 +38,7 @@ type findingRevision struct {
 }
 
 func newFindingReview(backend httpapi.Backend, store *identitystore.Store, engineAI func(context.Context) (kubernetes.EngineAIConfig, error)) (*findingReview, error) {
-	if os.Getenv("FINDING_AI_ENGINE_ENABLED") != "true" {
+	if engineAI == nil {
 		if store == nil {
 			return nil, nil
 		}
@@ -53,7 +52,11 @@ func newFindingReview(backend httpapi.Backend, store *identitystore.Store, engin
 }
 
 func reviewKey(item finding.Finding) string {
-	metadata, _ := json.Marshal([]any{item.Cluster, item.Namespace, item.ID, item.Resource, item.CreatedAt})
+	parts := []any{item.Cluster, item.Namespace, item.ID, item.Resource, item.CreatedAt}
+	if item.Cluster != "local" && item.ResultUID != "" {
+		parts = []any{item.Cluster, item.ResultUID}
+	}
+	metadata, _ := json.Marshal(parts)
 	return fmt.Sprintf("%x", sha256.Sum256(metadata))
 }
 

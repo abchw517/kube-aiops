@@ -55,6 +55,9 @@ type eventRecord struct {
 // The selector, time window and result limits are derived from the backend-owned correlation Query;
 // callers cannot provide arbitrary Kubernetes selectors or proxy paths.
 func (c *Client) Events(ctx context.Context, query correlation.Query) ([]correlation.CorrelationSignal, error) {
+	if strings.TrimSpace(query.Scope.Cluster) != c.config.ClusterID {
+		return nil, fmt.Errorf("unsupported Kubernetes correlation cluster")
+	}
 	endpoint, start, end, limit, err := eventListRequest(query)
 	if err != nil {
 		return nil, err
@@ -90,9 +93,7 @@ func (c *Client) Events(ctx context.Context, query correlation.Query) ([]correla
 }
 
 func eventListRequest(query correlation.Query) (string, time.Time, time.Time, int, error) {
-	if strings.TrimSpace(query.Scope.Cluster) != localClusterID {
-		return "", time.Time{}, time.Time{}, 0, fmt.Errorf("unsupported Kubernetes correlation cluster")
-	}
+
 	if query.Budget.MaxSignalsPerSource < 1 || query.Budget.MaxSignalsPerSource > correlation.MaxSignalsPerSource {
 		return "", time.Time{}, time.Time{}, 0, fmt.Errorf("invalid Kubernetes event signal budget")
 	}

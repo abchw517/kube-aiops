@@ -23,6 +23,30 @@ type RoleSpec struct {
 }
 
 func (role RoleSpec) rules() ([]Rule, error) {
+	if strings.Contains(role.Cluster, ",") {
+		ids := strings.Split(role.Cluster, ",")
+		if len(ids) > 64 {
+			return nil, fmt.Errorf("每个角色最多选择 64 个实例")
+		}
+		seen := map[string]bool{}
+		var rules []Rule
+		for _, raw := range ids {
+			id := strings.TrimSpace(raw)
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			instance := role
+			instance.Cluster = id
+			scoped, err := instance.rules()
+			if err != nil {
+				return nil, err
+			}
+			rules = append(rules, scoped...)
+		}
+		return rules, nil
+	}
+
 	if validateSelector("role name", role.Name) != nil || len(role.Name) > 128 {
 		return nil, fmt.Errorf("角色名称不能为空，长度不能超过 128 字节")
 	}
@@ -66,7 +90,11 @@ func (role RoleSpec) rules() ([]Rule, error) {
 		rule := Rule{Effect: EffectAllow, Subjects: role.Subjects, Groups: role.Groups, Capabilities: []Capability{module}, Scopes: scopes}
 		switch module {
 		case CapabilityClustersList:
-			rule.Scopes = []Scope{GlobalScope()}
+			entry := rule
+			entry.Scopes = []Scope{GlobalScope()}
+			entry.collectionOnly = true
+			rules = append(rules, entry)
+			rule.Scopes = []Scope{ClusterScope(role.Cluster)}
 		case CapabilityNamespacesList:
 			rule.Scopes = []Scope{ClusterScope(role.Cluster)}
 		case CapabilityFindingsList, CapabilityFindingsSummary:

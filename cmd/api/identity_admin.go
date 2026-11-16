@@ -197,7 +197,7 @@ func (a *identityAdmin) directory(ctx context.Context, user, pass string) (ident
 	return principal, nil
 }
 
-func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *findingReview) http.Handler {
+func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *findingReview, managed *onboarding) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -222,8 +222,24 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 				return
 			}
 		}
-		if resource == "finding-analysis" && review != nil && review.engineAI != nil {
-			review.serve(w, r)
+		if resource == "cluster-onboarding" && managed != nil {
+			managed.admin(w, r)
+			return
+		}
+		if resource == "finding-analysis" {
+			instance := r.URL.Query().Get("cluster")
+			selected := review
+			if instance != "" && instance != "local" {
+				selected = nil
+				if managed != nil {
+					selected = managed.review(instance)
+				}
+			}
+			if selected != nil && selected.engineAI != nil {
+				selected.serve(w, r)
+				return
+			}
+			http.Error(w, "该集群实例尚未启用 AI 复核", 404)
 			return
 		}
 		a.handle(w, r, resource, s)

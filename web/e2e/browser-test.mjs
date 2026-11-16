@@ -249,6 +249,21 @@ try {
     });
     await assertText(cdp, (text) => text.includes("AI 复核结论") && text.includes("更新结论：镜像仓库拒绝访问"),
       "AI review did not update the diagnostic explanation");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
+      (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector("[data-onboarding-mode]");
+        form.elements.id.value = "dev-yunfan-01";
+        form.elements.name.value = "研发实例";
+        form.elements.environment.value = "研发";
+        form.elements.business.value = "云帆";
+        form.elements.group.value = "应用集群";
+        form.requestSubmit();
+      })()`,
+    });
+    await assertText(cdp, (text) => text.includes("请将上报凭据保存到采集端 Secret"), "Enrollment did not return credentials");
+
 
   } finally {
     cdp.close();

@@ -86,6 +86,17 @@ createServer(async (request, response) => {
     }
     return json(response, 400, { error: "invalid fixture evidence" });
   }
+  if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
+    if (request.method === "GET") return json(response, 200, []);
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (input.id === "dev-yunfan-01" && input.environment === "研发" && input.business === "云帆" &&
+        input.group === "应用集群" && input.mode === "push" && input.enabled) {
+      return json(response, 200, { token: "fixture-report-token" });
+    }
+    return json(response, 400, { error: "invalid onboarding fixture" });
+  }
   if (url.pathname === "/api/v1/admin/roles" && adminSession) {
     if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });
     const chunks = [];

@@ -9,6 +9,9 @@ import (
 )
 
 func (s *typedSanitizer) Finding(item finding.Finding) (finding.Finding, error) {
+	if err := validateBoundedField("finding.resultUid", item.ResultUID, s.policy.MaxIdentifierBytes, false); err != nil {
+		return finding.Finding{}, err
+	}
 	if err := validateBoundedField("finding.id", item.ID, s.policy.MaxIdentifierBytes, true); err != nil {
 		return finding.Finding{}, err
 	}

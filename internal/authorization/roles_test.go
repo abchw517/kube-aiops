@@ -27,7 +27,7 @@ func TestRoleModulesPreserveScopeAndLegacyDenies(t *testing.T) {
 		collection bool
 		allowed    bool
 	}{
-		{CapabilityClustersList, GlobalScope(), false, true},
+		{CapabilityClustersList, GlobalScope(), true, true},
 		{CapabilityNamespacesList, ClusterScope("local"), false, true},
 		{CapabilityNamespacesList, ClusterScope("other"), false, false},
 		{CapabilityFindingsList, ClusterScope("local"), true, true},

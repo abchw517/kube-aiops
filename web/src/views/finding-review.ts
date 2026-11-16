@@ -16,7 +16,7 @@ export function findingReviewControls(): string {
     </dialog>`;
 }
 
-export function bindFindingReview(root: HTMLElement, id: string): void {
+export function bindFindingReview(root: HTMLElement, id: string, cluster = "local"): void {
   const trigger = root.querySelector<HTMLButtonElement>("[data-open-review]");
   const dialog = root.querySelector<HTMLDialogElement>(".finding-review-dialog");
   const form = dialog?.querySelector<HTMLFormElement>("form");
@@ -26,7 +26,7 @@ export function bindFindingReview(root: HTMLElement, id: string): void {
   const close = form?.querySelector<HTMLButtonElement>("[data-close-review]");
   const explanation = root.querySelector<HTMLElement>("[data-finding-explanation]");
   if (!trigger || !dialog || !form || !status || !history || !submit || !close || !explanation) return;
-  const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id })}`;
+  const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id, cluster })}`;
   let revision = 0;
   let busy = false;
 

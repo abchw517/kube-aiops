@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: d36f2a5a 4d325c63 9bce53dc 418289c1 68e6ecb0 09f9be72 15d83de6 4b759702
+// Contract source SHA-256 groups: bb8a6351 2f5df311 6f1cdeaf ac554f16 d7d73e85 0ca81325 e3349bc6 373fd27a
 
 export interface StatusResponse {
   "status": string;
@@ -13,6 +13,11 @@ export interface Principal {
 }
 
 export interface Cluster {
+  "lastReportAt"?: number;
+  "reviewEnabled"?: boolean;
+  "business"?: string;
+  "group"?: string;
+  "environment"?: string;
   "id": string;
   "name": string;
   "status": string;
@@ -56,8 +61,9 @@ export interface ResourceRef {
 }
 
 export interface Finding {
+  "resultUid"?: string;
   "id": string;
-  "cluster": "local";
+  "cluster": string;
   "namespace"?: string;
   "severity": Severity;
   "resource": ResourceRef;
@@ -98,7 +104,7 @@ export interface TimeWindow {
 }
 
 export interface CorrelationScope {
-  "cluster": "local";
+  "cluster": string;
   "namespace"?: string;
   "resource": ResourceRef;
 }
@@ -155,18 +161,18 @@ export interface ErrorResponse {
 }
 
 export interface ListNamespacesParams {
-  "cluster": "local";
+  "cluster": string;
 }
 
 export interface GetResourceParams {
-  "cluster": "local";
+  "cluster": string;
   "kind": "pod" | "pods" | "deployment" | "deployments";
   "namespace": string;
   "name": string;
 }
 
 export interface ListFindingsParams {
-  "cluster"?: "local";
+  "cluster"?: string;
   "namespace"?: string;
   "kind"?: string;
   "severity"?: Severity;
@@ -176,7 +182,7 @@ export interface ListFindingsParams {
 }
 
 export interface SummarizeFindingsParams {
-  "cluster"?: "local";
+  "cluster"?: string;
   "namespace"?: string;
   "kind"?: string;
   "severity"?: Severity;
@@ -185,10 +191,12 @@ export interface SummarizeFindingsParams {
 
 export interface GetFindingParams {
   "id": string;
+  "cluster"?: string;
 }
 
 export interface GetFindingCorrelationParams {
   "id": string;
+  "cluster"?: string;
 }
 
 export interface ApiClientOptions {
@@ -277,11 +285,19 @@ export class KubeAIOpsApiClient {
 
   async getFinding(params: GetFindingParams): Promise<Finding> {
     let path = `/api/v1/findings/${encodeURIComponent(String(params["id"]))}`;
+    const query = new URLSearchParams();
+    if (params["cluster"] !== undefined) query.set("cluster", String(params["cluster"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
     return this.request<Finding>(path);
   }
 
   async getFindingCorrelation(params: GetFindingCorrelationParams): Promise<CorrelationBundle> {
     let path = `/api/v1/findings/${encodeURIComponent(String(params["id"]))}/correlation`;
+    const query = new URLSearchParams();
+    if (params["cluster"] !== undefined) query.set("cluster", String(params["cluster"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
     return this.request<CorrelationBundle>(path);
   }
 

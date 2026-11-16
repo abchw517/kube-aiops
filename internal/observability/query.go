@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/internal/correlation"
-	"github.com/abchw517/kube-aiops/internal/finding"
 )
 
 var objectName = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 
 func ValidateScope(scope correlation.CorrelationScope) error {
 	resource := scope.Resource
-	if scope.Cluster != finding.LocalCluster || len(resource.Name) > 253 || !objectName.MatchString(resource.Name) {
+	if len(scope.Cluster) > 63 || !objectName.MatchString(scope.Cluster) || len(resource.Name) > 253 || !objectName.MatchString(resource.Name) {
 		return errors.New("invalid observability resource scope")
 	}
 	if resource.Kind == "Node" {

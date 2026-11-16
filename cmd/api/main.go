@@ -23,15 +23,21 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "identity-import" {
-			logger.Error("usage: kube-aiops-api [identity-import]")
+		var run func() error
+		switch {
+		case len(os.Args) == 2 && os.Args[1] == "identity-import":
+			run = importIdentity
+		case len(os.Args) == 2 && os.Args[1] == "cluster-report":
+			run = clusterReport
+		default:
+			logger.Error("usage: kube-aiops-api [identity-import|cluster-report]")
 			os.Exit(2)
 		}
-		if err := importIdentity(); err != nil {
-			logger.Error("identity import failed", "error", err)
+		if err := run(); err != nil {
+			logger.Error("command failed", "command", os.Args[1], "error", err)
 			os.Exit(1)
 		}
-		logger.Info("identity import complete")
+		logger.Info("command complete", "command", os.Args[1])
 		return
 	}
 
@@ -54,9 +60,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	queryBackend, err := loadClusters(os.Getenv("KUBERNETES_CLUSTERS_FILE"), backend, cfg)
+	if err != nil {
+		logger.Error("load cluster configuration failed", "error", err)
+		os.Exit(1)
+	}
+
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
-	var detailBackend httpapi.Backend = backend
+	var managed *onboarding
 	writeTimeout := 10 * time.Second
 	if cfg.SecurityMode == security.ModeProduction {
 		var store *identitystore.Store
@@ -68,21 +80,42 @@ func main() {
 			}
 			defer store.Close()
 		}
-		approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT"))
-		review, reviewErr := newFindingReview(backend, store, func(ctx context.Context) (kubernetes.EngineAIConfig, error) {
-			return backend.EngineAI(ctx, approvedEndpoint)
-		})
+		var engineAI func(context.Context) (kubernetes.EngineAIConfig, error)
+		if os.Getenv("FINDING_AI_ENGINE_ENABLED") == "true" {
+			approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT"))
+			engineAI = func(ctx context.Context) (kubernetes.EngineAIConfig, error) {
+				return backend.EngineAI(ctx, approvedEndpoint)
+			}
+		}
+		review, reviewErr := newFindingReview(backend, store, engineAI)
 		if reviewErr != nil {
 			logger.Error("invalid finding AI configuration", "error", reviewErr)
 			os.Exit(1)
 		}
 		if review != nil {
-			detailBackend = review
+			if registry, ok := queryBackend.(*httpapi.ClusterBackends); ok {
+				registry.Backend = review
+			} else {
+				queryBackend = review
+			}
 			if review.engineAI != nil {
 				writeTimeout = findingReviewTimeout + 5*time.Second
 			}
 		}
-		wrap, err = configureIdentityHandler(&bundle, store, review)
+		if store != nil {
+			registry, ok := queryBackend.(*httpapi.ClusterBackends)
+			if !ok {
+				registry = &httpapi.ClusterBackends{Backend: queryBackend}
+				queryBackend = registry
+			}
+			writeTimeout = findingReviewTimeout + 5*time.Second
+			managed, err = newOnboarding(store, registry)
+			if err != nil {
+				logger.Error("load managed cluster directory failed", "error", err)
+				os.Exit(1)
+			}
+		}
+		wrap, err = configureIdentityHandler(&bundle, store, review, managed)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
@@ -90,7 +123,7 @@ func main() {
 	}
 	handler, err := buildHandler(
 		logger,
-		detailBackend,
+		queryBackend,
 		cfg.ReadyTimeout,
 		cfg.SecurityMode,
 		bundle,
@@ -113,6 +146,9 @@ func main() {
 
 	if wrap != nil {
 		handler = wrap(handler)
+	}
+	if managed != nil {
+		handler = managed.reporting(handler)
 	}
 
 	server := &http.Server{
@@ -152,7 +188,7 @@ func main() {
 	logger.Info("kube-aiops-api stopped")
 }
 
-func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview) (func(http.Handler) http.Handler, error) {
+func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview, managed *onboarding) (func(http.Handler) http.Handler, error) {
 	if store == nil {
 		sessions, err := configureIdentity(bundle)
 		if sessions == nil {
@@ -169,5 +205,7 @@ func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Stor
 		return nil, err
 	}
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
-	return func(next http.Handler) http.Handler { return sessions.Wrap(admin.wrap(sessions, next, review)) }, nil
+	return func(next http.Handler) http.Handler {
+		return sessions.Wrap(admin.wrap(sessions, next, review, managed))
+	}, nil
 }

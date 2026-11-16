@@ -21,11 +21,14 @@ const (
 )
 
 type Config struct {
-	APIURL     string
-	TokenFile  string
-	CAFile     string
-	K8sGPTNS   string
-	K8sGPTName string
+	ClusterID   string
+	ClusterName string
+	Environment string
+	APIURL      string
+	TokenFile   string
+	CAFile      string
+	K8sGPTNS    string
+	K8sGPTName  string
 }
 
 type Client struct {
@@ -41,9 +44,14 @@ func (e *APIError) Error() string {
 }
 
 type Cluster struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	LastReportAt  int64  `json:"lastReportAt,omitempty"`
+	ReviewEnabled bool   `json:"reviewEnabled,omitempty"`
+	Business      string `json:"business,omitempty"`
+	Group         string `json:"group,omitempty"`
+	Environment   string `json:"environment,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Status        string `json:"status"`
 }
 
 type Namespace struct {
@@ -67,11 +75,21 @@ type ResourceDetail struct {
 }
 
 func NewClient(config Config) *Client {
+	if config.ClusterID == "" {
+		config.ClusterID = localClusterID
+	}
+	if config.ClusterName == "" {
+		config.ClusterName = config.ClusterID
+	}
 	return &Client{config: config}
 }
 
 func (c *Client) Clusters() []Cluster {
-	return []Cluster{{ID: localClusterID, Name: localClusterID, Status: "ready"}}
+	status := "unknown"
+	if c.config.ClusterID == localClusterID {
+		status = "ready"
+	}
+	return []Cluster{{ID: c.config.ClusterID, Name: c.config.ClusterName, Environment: c.config.Environment, Status: status}}
 }
 
 func (c *Client) Ready(ctx context.Context) error {
