@@ -2,14 +2,18 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/abchw517/kube-aiops/internal/authorization"
 	"github.com/abchw517/kube-aiops/internal/identity"
 	"github.com/abchw517/kube-aiops/internal/identitystore"
 	"github.com/abchw517/kube-aiops/internal/security"
@@ -76,6 +80,41 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","groups":["local:ops"],"capabilities":["clusters:list"],"scopes":[{"cluster":"*"}]}]}`, admin, 204)
 	request("GET", "/api/v1/clusters", "", alice, 200)
 	t.Setenv("AUTH_LDAP_BIND_PASSWORD_FILE", "")
+	const rolesPath = "/api/v1/admin/roles"
+	const role = `{"name":"观察员","groups":["local:ops"],"modules":["findings:list","findings:summary"],"cluster":"local","namespaces":["dev"]}`
+	request("GET", rolesPath, "", alice, 403)
+	request("POST", rolesPath, role, alice, 403)
+	request("POST", rolesPath, strings.Replace(role, "findings:list", "secrets:read", 1), admin, 400)
+	request("POST", rolesPath, role, admin, 204)
+	request("POST", rolesPath, role, admin, 409)
+	request("GET", "/api/v1/findings", "", alice, 200)
+	request("GET", "/api/v1/findings?namespace=dev", "", alice, 200)
+	request("GET", "/api/v1/findings?namespace=prod", "", alice, 403)
+	request("GET", "/api/v1/findings/summary?namespace=dev", "", alice, 200)
+	request("GET", "/api/v1/findings/summary?namespace=prod", "", alice, 403)
+	var config struct {
+		Roles       []authorization.Role `json:"roles"`
+		LegacyRules []authorization.Rule `json:"legacyRules"`
+	}
+	rolesResponse := request("GET", rolesPath, "", admin, 200)
+	if err := json.Unmarshal(rolesResponse.Body.Bytes(), &config); err != nil || len(config.Roles) != 1 || len(config.LegacyRules) != 1 {
+		t.Fatalf("expected the new role and the existing rule: %s, %v", rolesResponse.Body.String(), err)
+	}
+	query := url.Values{"id": {config.Roles[0].ID}, "revision": {strconv.Itoa(config.Roles[0].Revision)}}
+	request("PUT", rolesPath+"?"+query.Encode(), strings.Replace(role, "dev", "prod", 1), admin, 204)
+	request("PUT", rolesPath+"?"+query.Encode(), role, admin, 409)
+	request("DELETE", rolesPath+"?"+query.Encode(), "", admin, 409)
+	request("GET", "/api/v1/findings?namespace=dev", "", alice, 403)
+	request("GET", "/api/v1/findings?namespace=prod", "", alice, 200)
+	restored, err := newIdentityAdmin(t.Context(), store)
+	if err != nil || len(restored.roles) != 1 || restored.roles[0].Namespaces[0] != "prod" {
+		t.Fatalf("edited role not persisted: %v", err)
+	}
+	query.Set("revision", strconv.Itoa(restored.roles[0].Revision))
+	request("DELETE", rolesPath+"?"+query.Encode(), "", admin, 204)
+	request("GET", "/api/v1/findings?namespace=prod", "", alice, 403)
+	request("GET", "/api/v1/clusters", "", alice, 200)
+
 	const ldapPath = "/api/v1/admin/ldap"
 	const settings = `{"url":"ldaps://directory.example.com","baseDN":"dc=example,dc=com","bindDN":"cn=reader,dc=example,dc=com","userFilter":"(uid=%s)","groupAttribute":"memberOf","bindPassword":"test-bind-password"}`
 	request("PUT", ldapPath, settings, alice, 403)

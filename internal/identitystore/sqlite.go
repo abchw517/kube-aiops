@@ -46,6 +46,10 @@ func Open(path string) (*Store, error) {
 			groups_json TEXT NOT NULL,
 			last_login TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS authorization_roles (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			document TEXT NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS authorization_policy (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			document TEXT NOT NULL
@@ -90,6 +94,18 @@ func (s *Store) Policy(ctx context.Context) ([]byte, error) {
 	var policy []byte
 	err := s.QueryRowContext(ctx, "SELECT document FROM authorization_policy WHERE id=1").Scan(&policy)
 	return policy, err
+}
+
+func (s *Store) Roles(ctx context.Context) ([]byte, error) {
+	var roles []byte
+	err := s.QueryRowContext(ctx, "SELECT document FROM authorization_roles WHERE id=1").Scan(&roles)
+	return roles, err
+}
+
+func (s *Store) SaveRoles(ctx context.Context, roles []byte) error {
+	_, err := s.ExecContext(ctx, `INSERT INTO authorization_roles VALUES (1, ?)
+		ON CONFLICT(id) DO UPDATE SET document=excluded.document`, string(roles))
+	return err
 }
 
 func (s *Store) LocalAccount(ctx context.Context, username string) (identity.LocalAccount, error) {

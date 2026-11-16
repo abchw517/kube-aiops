@@ -213,3 +213,20 @@ td { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; }
 }
+
+.roles-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.roles-heading h2 { margin: 0; }
+.role-list { padding: 0; list-style: none; }
+.role-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid #dce4f0; padding: 14px 0; }
+.role-list li div { min-width: 0; overflow-wrap: anywhere; }
+.role-list h3, .role-list p { margin: 0 0 5px; }
+.role-form { margin-inline: 0; }
+.role-form fieldset { min-width: 0; margin: 0; padding: 12px; border: 1px solid #dce4f0; border-radius: 7px; }
+.role-form legend { padding-inline: 5px; font-weight: 700; }
+.role-fields, .role-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 10px; }
+.role-form .role-module { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 8px; padding: 8px; background: #f3f8fa; border-radius: 6px; cursor: pointer; }
+.role-module input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: #1f4fd1; }
+.role-module small { display: block; color: #455b70; }
+.role-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.legacy-roles { border-top: 1px solid #dce4f0; margin-top: 16px; padding-top: 12px; overflow-wrap: anywhere; }
+.legacy-roles summary { cursor: pointer; }

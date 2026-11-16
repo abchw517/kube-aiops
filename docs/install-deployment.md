@@ -550,27 +550,17 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 #### 4. 创建本地用户并配置权限
 
 1. 进入 **系统管理 → 用户管理**，创建 `portal-operator`，设置至少 12 字节的密码，并填写所属组 `operators`。
-2. 进入 **系统管理 → 权限配置**，保存下列策略。将 `dev` 替换成账号实际负责的命名空间。第一条允许发现集群和命名空间以及加载列表和汇总入口，第二条将实际诊断结果、详情和证据限定在 `local/dev`。
+2. 进入 **系统管理 → 权限配置 → 添加角色**。按下表填写，然后点 **保存角色**。
 
-```json
-{
-  "version": "v1",
-  "rules": [
-    {
-      "effect": "allow",
-      "groups": ["local:operators"],
-      "capabilities": ["clusters:list", "namespaces:list", "findings:list", "findings:summary"],
-      "scopes": [{"cluster": "*"}]
-    },
-    {
-      "effect": "allow",
-      "groups": ["local:operators"],
-      "capabilities": ["findings:list", "findings:summary", "findings:read", "resources:read", "correlations:read"],
-      "scopes": [{"cluster": "local", "namespace": "dev"}]
-    }
-  ]
-}
-```
+   | 配置项 | 示例 |
+   | --- | --- |
+   | 角色名称 | 开发环境观察员 |
+   | 权限模块 | 勾选 **集群列表**、**命名空间列表**、**诊断列表**、**诊断汇总**、**诊断详情**、**资源详情** 和 **关联证据** |
+   | 集群 ID | `local` |
+   | 命名空间 | `dev`。多个命名空间用逗号分隔，`*` 表示所选集群的全部命名空间 |
+   | 本地组 | `operators`。也可以在 **本地用户** 中直接填写账号，每行一个 |
+
+   集群列表用于选择已接入的平台集群，命名空间列表用于发现所选集群下的命名空间名称。诊断结果、详情和证据按角色指定的命名空间授权。已有策略显示在 **已有策略规则** 中并继续生效，其中的显式拒绝优先。
 
 3. 在独立浏览器会话用 `portal-operator` 登录。确认列表、汇总、详情和证据只返回授权命名空间的数据。尝试切换到其他命名空间，确认请求被拒绝。另用未分配权限的测试账号验证诊断请求返回 `403`，退出后刷新页面应重新要求登录。
 
@@ -644,7 +634,7 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 | LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
 | LDAP 测试用户名 | 例如 `alice`，仅用于本次测试 |
 
-在上一步策略中，将 `"ldap:cn=kube-aiops-readers,ou=groups,dc=example,dc=com"` 追加到需要授予同样权限的两条规则的 `groups` 数组，保留原有本地组。LDAP 组使用小写完整 DN，`memberOf` 对应用户的直接组。
+进入 **系统管理 → 权限配置**，编辑需要授予同样权限的角色，在 **LDAP 组** 填写完整 DN，例如 `CN=kube-aiops-readers,OU=Groups,DC=example,DC=com`。多个组每行填写一个。LDAP 的 `memberOf` 对应用户的直接组。
 
 在独立浏览器会话选择登录框下方的 **LDAP / Active Directory 登录**，用属于目标组的测试账号验证登录与授权。再用可认证但不属于授权组的账号验证诊断访问返回 `403`。LDAP 密码由域控验证，SQLite 保存 LDAP 用户 DN、登录名、组和最近登录时间。
 

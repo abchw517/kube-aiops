@@ -6,6 +6,7 @@ import {
   type Namespace,
 } from "../../clients/typescript/generated.ts";
 import { renderIdentityAdmin, submitIdentityAdmin } from "./views/identity-admin.ts";
+import { submitRole } from "./views/roles.ts";
 import { apiClient } from "./api/client.ts";
 import {
   authenticationRequiredState,
@@ -55,6 +56,11 @@ export class PortalApp {
     this.root.addEventListener("click", (event) => this.handleClick(event));
     this.root.addEventListener("submit", (event) => {
       const form = event.target;
+      if (form instanceof HTMLFormElement && form.hasAttribute("data-role-form")) {
+        event.preventDefault();
+        void submitRole(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete");
+        return;
+      }
       if (form instanceof HTMLFormElement && form.dataset.identityResource) {
         event.preventDefault();
         void submitIdentityAdmin(form, () => {
@@ -86,8 +92,8 @@ export class PortalApp {
       }
       const adminRoute = window.location.hash.startsWith("#/admin");
       if (this.mustChangePassword || (this.identityAdmin && adminRoute)) {
-        const resource = this.mustChangePassword ? "password" : window.location.hash.split("/")[2] ?? "ldap";
-        const body = await renderIdentityAdmin(resource, this.mustChangePassword);
+        const [, , resource = "ldap", roleID] = window.location.hash.split("/");
+        const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, this.mustChangePassword, roleID);
         if (generation === this.renderGeneration) this.renderShell(body);
         return;
       }

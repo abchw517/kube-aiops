@@ -195,6 +195,43 @@ try {
     await assertPage(cdp, "about:blank", (text) => text === "", "Previous Portal document was not cleared");
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) => text.includes("需要身份认证"), "Logged out user still had access to a finding");
+    await fetch("http://127.0.0.1:4173/test/admin-session");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/policy/new",
+      (text) => text.includes("权限模块") && text.includes("角色成员"), "Role form did not render");
+    const controls = await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector("[data-role-form]");
+        return [...form.querySelectorAll('input[type="checkbox"]')].map((input) => input.checked);
+      })()`, returnByValue: true,
+    });
+    if (controls.result?.value?.length !== 7 || controls.result.value.some(Boolean)) {
+      throw new Error("New role did not offer seven unchecked permission modules");
+    }
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector("[data-role-form]");
+        form.elements.name.value = "开发环境观察员";
+        form.elements.namespaces.value = "default， payments";
+        form.elements.localGroups.value = "operators";
+        form.elements.ldapGroups.value = "CN=Readers,DC=example,DC=com";
+        form.querySelector('[value="findings:list"]').click();
+        form.querySelector('[value="correlations:read"]').click();
+        form.requestSubmit();
+      })()`,
+    });
+    await assertText(cdp, (text) => text.includes("开发环境观察员") && text.includes("local:operators"),
+      "Role was not listed after saving the selected modules");
+    await cdp.send("Runtime.evaluate", {
+      expression: `document.querySelector('a[href="#/admin/policy/observer-role"]').click()`,
+    });
+    await assertText(cdp, (text) => text.includes("编辑角色"), "Role editor did not open");
+    const checked = await cdp.send("Runtime.evaluate", {
+      expression: '[...document.querySelectorAll("[name=modules]:checked")].map((input) => input.value)',
+      returnByValue: true,
+    });
+    if (JSON.stringify(checked.result?.value) !== '["findings:list","correlations:read"]') {
+      throw new Error("Role editor did not restore selected checkboxes");
+    }
   } finally {
     cdp.close();
   }

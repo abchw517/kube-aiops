@@ -33,6 +33,8 @@ type Rule struct {
 	Groups       []string     `json:"groups,omitempty"`
 	Capabilities []Capability `json:"capabilities"`
 	Scopes       []Scope      `json:"scopes"`
+
+	collectionOnly bool
 }
 
 type PolicyAuthorizer struct {
@@ -40,17 +42,25 @@ type PolicyAuthorizer struct {
 }
 
 func ParsePolicyJSON(data []byte) (*PolicyAuthorizer, error) {
+	policy, err := DecodePolicyJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	return NewPolicyAuthorizer(policy)
+}
+
+func DecodePolicyJSON(data []byte) (Policy, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
 	var policy Policy
 	if err := decoder.Decode(&policy); err != nil {
-		return nil, fmt.Errorf("decode authorization policy: %w", err)
+		return Policy{}, fmt.Errorf("decode authorization policy: %w", err)
 	}
 	if err := ensureJSONEOF(decoder); err != nil {
-		return nil, err
+		return Policy{}, err
 	}
-	return NewPolicyAuthorizer(policy)
+	return policy, nil
 }
 
 func ensureJSONEOF(decoder *json.Decoder) error {
@@ -140,7 +150,8 @@ func (a *PolicyAuthorizer) Authorize(_ context.Context, request DecisionRequest)
 
 	allowed := false
 	for _, rule := range a.rules {
-		if !selectorMatches(rule, request.Principal) ||
+		if (rule.collectionOnly && !request.Collection) ||
+			!selectorMatches(rule, request.Principal) ||
 			!capabilityMatches(rule.Capabilities, request.Capability) ||
 			!scopesMatch(rule.Scopes, request.Scope) {
 			continue

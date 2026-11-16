@@ -39,13 +39,15 @@ type ldapSettings struct {
 }
 
 type identityAdmin struct {
-	store     *identitystore.Store
-	origin    string
-	mu        sync.RWMutex
-	policy    *authorization.PolicyAuthorizer
-	ldap      *identity.LDAPConfig
-	settings  ldapSettings
-	ldapIssue string
+	store      *identitystore.Store
+	origin     string
+	mu         sync.RWMutex
+	policy     *authorization.PolicyAuthorizer
+	basePolicy authorization.Policy
+	roles      []authorization.Role
+	ldap       *identity.LDAPConfig
+	settings   ldapSettings
+	ldapIssue  string
 }
 
 func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identityAdmin, error) {
@@ -67,7 +69,19 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 	} else if err != nil {
 		return nil, err
 	}
-	a.policy, err = authorization.ParsePolicyJSON(policy)
+	a.basePolicy, err = authorization.DecodePolicyJSON(policy)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := store.Roles(ctx)
+	if err == nil {
+		if err := json.Unmarshal(roles, &a.roles); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	a.policy, err = a.basePolicy.WithRoles(a.roles)
 	if err != nil {
 		return nil, err
 	}
@@ -340,17 +354,26 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 			http.Error(w, "invalid policy", 400)
 			return
 		}
-		policy, parseErr := authorization.ParsePolicyJSON(document)
+		base, parseErr := authorization.DecodePolicyJSON(document)
 		if parseErr != nil {
 			http.Error(w, "invalid policy", 400)
 			return
 		}
 		a.mu.Lock()
+		policy, parseErr := base.WithRoles(a.roles)
+		if parseErr != nil {
+			a.mu.Unlock()
+			http.Error(w, "invalid policy", 400)
+			return
+		}
 		err = a.store.Import(ctx, nil, document)
 		if err == nil {
-			a.policy = policy
+			a.basePolicy, a.policy = base, policy
 		}
 		a.mu.Unlock()
+	case resource == "roles":
+		a.handleRoles(w, r)
+		return
 	case resource == "ldap" && r.Method == http.MethodGet:
 		a.mu.RLock()
 		settings := a.settings
