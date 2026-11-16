@@ -33,6 +33,9 @@ type ldapSettings struct {
 	BindPassword string `json:"bindPassword,omitempty"`
 	UserUID      string `json:"userUID,omitempty"`
 	SearchScope  string `json:"searchScope,omitempty"`
+	GroupBaseDN  string `json:"groupBaseDN,omitempty"`
+	GroupFilter  string `json:"groupFilter,omitempty"`
+	GroupScope   string `json:"groupScope,omitempty"`
 }
 
 type identityAdmin struct {
@@ -87,7 +90,7 @@ func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identit
 			return nil, err
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
-		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), "", "", ""}
+		a.settings = ldapSettings{os.Getenv("AUTH_LDAP_URL"), os.Getenv("AUTH_LDAP_BASE_DN"), os.Getenv("AUTH_LDAP_BIND_DN"), os.Getenv("AUTH_LDAP_USER_FILTER"), os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), "", "", "", "", "", ""}
 	} else {
 		return nil, err
 	}
@@ -99,7 +102,7 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 	if s.URL == "" {
 		return nil, nil
 	}
-	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr, UserUID: s.UserUID, SearchScope: s.SearchScope}
+	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr, UserUID: s.UserUID, SearchScope: s.SearchScope, GroupBaseDN: s.GroupBaseDN, GroupFilter: s.GroupFilter, GroupScope: s.GroupScope}
 	if err := applyLDAPCredentials(&cfg, s.BindPassword); err != nil {
 		return nil, err
 	}
@@ -349,6 +352,13 @@ func (a *identityAdmin) handle(w http.ResponseWriter, r *http.Request, resource 
 			http.Error(w, "invalid LDAP configuration", 400)
 			return
 		}
+		settings.URL = strings.TrimSpace(settings.URL)
+		settings.BindDN = strings.TrimSpace(settings.BindDN)
+		settings.BaseDN = strings.TrimSpace(settings.BaseDN)
+		settings.UserUID = strings.TrimSpace(settings.UserUID)
+		settings.GroupAttr = strings.TrimSpace(settings.GroupAttr)
+		settings.GroupBaseDN = strings.TrimSpace(settings.GroupBaseDN)
+		settings.GroupFilter = strings.TrimSpace(settings.GroupFilter)
 		a.mu.Lock()
 		if settings.URL != "" && settings.BindPassword == "" {
 			if settings.URL != a.settings.URL || settings.BindDN != a.settings.BindDN {

@@ -6,7 +6,9 @@ const ldapFields = [
   ["baseDN", "LDAP 基础 DN"],
   ["userUID", "LDAP 用户 UID"],
   ["userFilter", "LDAP 附加用户过滤器"],
-  ["groupAttribute", "LDAP 组属性"],
+  ["groupAttribute", "LDAP 组成员属性"],
+  ["groupBaseDN", "LDAP 组基础 DN"],
+  ["groupFilter", "LDAP 组过滤器"],
 ] as const;
 
 export async function renderIdentityAdmin(resource: string, initial: boolean): Promise<string> {
@@ -56,6 +58,12 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
         <option value="subtree">子树</option>
         <option value="onelevel"${data.searchScope === "onelevel" ? " selected" : ""}>单层</option>
         <option value="base"${data.searchScope === "base" ? " selected" : ""}>基础对象</option>
+      </select></label>
+      <label>LDAP 组搜索范围<select name="groupScope">
+        <option value="">默认（子树）</option>
+        <option value="subtree"${data.groupScope === "subtree" ? " selected" : ""}>子树</option>
+        <option value="onelevel"${data.groupScope === "onelevel" ? " selected" : ""}>单层</option>
+        <option value="base"${data.groupScope === "base" ? " selected" : ""}>基础对象</option>
       </select></label>
       <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>`, "保存配置")}`;
 }
@@ -114,6 +122,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
         connection: "连接失败，请检查域名、端口和 TLS 证书。",
         bind: "搜索账号绑定失败，请检查搜索 DN 和密码。",
         search: "搜索失败，请检查基础 DN 和账号读取权限。",
+        group_search: "组搜索失败，请检查组基础 DN 和搜索账号的读取权限。",
       };
       status.textContent = messages[stage] ?? "测试失败，请检查 LDAP 配置。";
       return;
@@ -125,7 +134,10 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     status.textContent = "已保存";
     if (resource === "ldap") {
       const password = form.querySelector<HTMLInputElement>('[name="bindPassword"]');
-      if (password) password.placeholder = data.get("url") ? "已配置，留空保留" : "输入搜索账号密码";
+      if (password) {
+        password.value = "";
+        password.placeholder = data.get("url") ? "已配置，留空保留" : "输入搜索账号密码";
+      }
     }
     if (resource === "password") signedOut();
     if (resource === "users") {
@@ -138,7 +150,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   } catch {
     status.textContent = "无法保存，请检查输入或连接。";
   } finally {
-    if (!testingLDAP) {
+    if (resource !== "ldap") {
       for (const field of form.querySelectorAll<HTMLInputElement>('input[type="password"]')) field.value = "";
     }
     for (const control of buttons) control.disabled = false;
