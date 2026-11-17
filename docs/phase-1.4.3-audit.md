@@ -75,13 +75,13 @@ Canonical route metadata comes from the real `http.ServeMux` matcher, so paths s
 ## Implemented Components
 
 ```text
-internal/audit/
+api/internal/audit/
 ├── event.go          # fixed Event / Outcome schema + validation
 ├── event_test.go     # bounded schema safety tests
 ├── sink.go           # Sink / SinkFunc provider-neutral boundary
 └── recorder.go       # request-local bounded lifecycle state
 
-internal/httpapi/
+api/internal/httpapi/
 ├── audit.go          # route match, status, outcome, latency, sink delivery
 ├── audit_test.go     # outcome/security/leakage regression coverage
 ├── authn.go          # principal + AuthN outcome annotation

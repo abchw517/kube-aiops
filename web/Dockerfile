@@ -8,14 +8,13 @@ COPY web/tsconfig.json web/tsconfig.json
 COPY web/index.html web/index.html
 COPY web/scripts web/scripts
 COPY web/src web/src
-COPY clients/typescript/generated.ts clients/typescript/generated.ts
 
 WORKDIR /src/web
 RUN npm run build
 
 FROM ${NGINX_RUNTIME_IMAGE}
 
-COPY web/nginx.conf /etc/nginx/nginx.conf
+COPY config/web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder --chown=101:101 /src/web/dist /usr/share/nginx/html
 
 USER 101:101

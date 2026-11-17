@@ -1,4 +1,4 @@
-import type { Severity } from "../../../clients/typescript/generated.ts";
+import type { Severity } from "../api/generated.ts";
 
 const severityLabels: Record<Severity, string> = {
   critical: "严重",

@@ -26,7 +26,7 @@ flowchart TD
 ## 接入位置与最小改动
 
 - 保留 K8sGPT Operator、Engine 和 Result CR。Portal API 在现有 Finding 映射与证据关联之后增加诊断说明生成服务，从 Wiki 检索结果、K8sGPT 原始说明以及现有 Kubernetes 事件和观测证据构造模型输入。
-- 当前 `cmd/api/finding_review.go` 使用 SQLite 的 `finding_reviews` 保存复核结论。沿用已有结论历史，新增草稿、人工确认元数据和同步任务表。接入 #73 后，`总结并更新结论` 调整为生成草稿，用户预览后使用 `确认并发布知识`。
+- 当前 `api/internal/diagnosis/finding_review.go` 使用 SQLite 的 `finding_reviews` 保存复核结论。沿用已有结论历史，新增草稿、人工确认元数据和同步任务表。接入 #73 后，`总结并更新结论` 调整为生成草稿，用户预览后使用 `确认并发布知识`。
 - 保持详情查询可用。首次读取时返回原始 Finding 及增强说明状态，后台生成完成后再展示增强说明。列表、统计和健康检查沿用现有路径。页面优先展示已确认的最终结论，并提供初步诊断和增强说明供回看。后台生成不能覆盖已确认结论。
 - Wiki 模块在 Portal API 进程内运行。诊断服务和发布任务通过 Go 接口调用模块，浏览器使用现有同源 API 和身份授权查看结论、知识引用及同步状态。现有 Engine 模型连接继续复用。
 - Portal 是首期增强说明的出口。如果消费方直接读取 `kubectl get results` 或其它 Result CR 客户端，仍看到 Engine 生成的原始诊断。若这些消费者也需要检索增强结果，可复用 Portal API 的说明接口，或在后续评估能否在 Engine 调用模型前加入检索钩子。

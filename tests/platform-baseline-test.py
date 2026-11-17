@@ -133,9 +133,9 @@ def validate_kubernetes_schema_baseline() -> None:
 
 
 def validate_backend_api_surface() -> None:
-    client = read("internal/kubernetes/client.go")
+    client = read("api/internal/kubernetes/client.go")
     for stable_path in ("/api/v1", "/apis/apps/v1"):
-        require_contains(client, stable_path, "internal/kubernetes/client.go")
+        require_contains(client, stable_path, "api/internal/kubernetes/client.go")
 
     forbidden_paths = (
         "/apis/extensions/v1beta1",
@@ -151,7 +151,7 @@ def validate_backend_api_surface() -> None:
 
     # K8sGPT v1alpha1 is the upstream CRD API and must not be confused with a
     # deprecated Kubernetes built-in beta API.
-    require_contains(client, "/apis/core.k8sgpt.ai/v1alpha1", "internal/kubernetes/client.go")
+    require_contains(client, "/apis/core.k8sgpt.ai/v1alpha1", "api/internal/kubernetes/client.go")
 
 
 def main() -> None:

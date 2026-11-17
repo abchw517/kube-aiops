@@ -37,7 +37,7 @@ It does not turn the Portal into a Kubernetes API proxy and does not derive auth
 
 Phase 1.4.2 delivered:
 
-- centralized `internal/authorization` package;
+- centralized `api/internal/permissions/authorization` package;
 - provider-neutral `Capability`, `Scope`, `DecisionRequest`, `Decision`, and `Authorizer` contracts;
 - versioned `v1` deterministic policy model with subject/group selectors;
 - explicit allow/deny effects with deny taking precedence over allow;

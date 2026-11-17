@@ -1,0 +1,149 @@
+import type {
+  Cluster,
+  Finding,
+  FindingSummary,
+  Namespace,
+  Severity,
+} from "../../api/generated.ts";
+import { escapeHtml, formatSeverity, formatTimestamp } from "../../components/html.ts";
+import type { FindingFilters } from "../../domain/filters.ts";
+
+export function renderFilters(
+  clusters: Cluster[],
+  namespaces: Namespace[],
+  knownKinds: string[],
+  filters: FindingFilters,
+): string {
+  const instance = clusters.find((item) => item.id === (filters.cluster ?? "local"));
+  const freshness = instance?.status === "waiting" ? "采集端尚未上报。" :
+    instance?.status === "offline" && instance.lastReportAt ?
+      `采集离线，显示最近一次上报的数据（${new Date(instance.lastReportAt * 1000).toLocaleString()}）。` : "";
+  return `
+    ${freshness ? `<p class="evidence-notice" role="status">${escapeHtml(freshness)}</p>` : ""}
+    <section class="panel filters" aria-label="诊断结果筛选">
+      ${renderClusterSelect(clusters, filters.cluster ?? "local")}
+      ${renderSelect("namespace", "命名空间", namespaces.map((item) => item.name), filters.namespace)}
+      ${renderSelect("severity", "严重级别", ["critical", "warning", "info"] satisfies Severity[], filters.severity, formatSeverity)}
+      ${renderSelect("kind", "资源类型", knownKinds, filters.kind)}
+      <button class="button secondary" type="button" data-action="clear-filters">清除筛选</button>
+    </section>`;
+}
+
+export function renderSummary(summary: FindingSummary): string {
+  const severity = summary.bySeverity;
+  return `
+    <section class="summary-grid" aria-label="诊断结果汇总" data-testid="finding-summary">
+      ${metricCard("总数", summary.total)}
+      ${metricCard(formatSeverity("critical"), severity.critical ?? 0)}
+      ${metricCard(formatSeverity("warning"), severity.warning ?? 0)}
+      ${metricCard(formatSeverity("info"), severity.info ?? 0)}
+    </section>
+    <section class="summary-breakdown panel">
+      <div>
+        <h3>按资源类型</h3>
+        ${renderBreakdown(summary.byKind)}
+      </div>
+      <div>
+        <h3>按命名空间</h3>
+        ${renderBreakdown(summary.byNamespace)}
+      </div>
+    </section>`;
+}
+
+export function renderFindingTable(findings: Finding[], total = findings.length): string {
+  return `
+    <section class="panel table-panel" data-testid="finding-list">
+      <div class="section-heading">
+        <div>
+          <h2>共 ${total} 条诊断结果${findings.length !== total ? `，本页 ${findings.length} 条` : ""}</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>严重级别</th>
+              <th>资源</th>
+              <th>命名空间</th>
+              <th>问题</th>
+              <th>发现时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${findings.map(renderFindingRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderFindingRow(finding: Finding): string {
+  const resource = [finding.resource.kind, finding.resource.name]
+    .filter(Boolean)
+    .join("/");
+  return `
+    <tr>
+      <td><span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span></td>
+      <td>${escapeHtml(resource || "—")}</td>
+      <td>${escapeHtml(finding.namespace ?? finding.resource.namespace ?? "—")}</td>
+      <td><a href="#/findings/${encodeURIComponent(finding.id)}${finding.cluster === "local" ? "" : `?cluster=${encodeURIComponent(finding.cluster)}`}">${escapeHtml(finding.problem)}</a></td>
+      <td>${formatTimestamp(finding.createdAt)}</td>
+    </tr>`;
+}
+
+function renderSelect<Value extends string>(
+  name: string,
+  label: string,
+  values: Value[],
+  selected?: string,
+  formatValue: (value: Value) => string = (value) => value,
+): string {
+  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const allOption = name === "cluster" ? "" : '<option value="">全部</option>';
+  return `
+    <label>
+      <span>${escapeHtml(label)}</span>
+      <select name="${escapeHtml(name)}" data-filter="${escapeHtml(name)}">
+        ${allOption}
+        ${unique
+          .map(
+            (value) =>
+              `<option value="${escapeHtml(value)}"${selected === value ? " selected" : ""}>${escapeHtml(formatValue(value))}</option>`,
+          )
+          .join("")}
+      </select>
+    </label>`;
+}
+
+function metricCard(label: string, value: number): string {
+  return `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${value}</strong></article>`;
+}
+
+function renderBreakdown(values: Record<string, number>): string {
+  const entries = Object.entries(values).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) return '<p class="muted">暂无数据</p>';
+  return `<ul class="breakdown">${entries
+    .map(
+      ([name, count]) =>
+        `<li><span>${escapeHtml(name || "未知")}</span><strong>${count}</strong></li>`,
+    )
+    .join("")}</ul>`;
+}
+
+function renderClusterSelect(clusters: Cluster[], selected: string): string {
+  const current = clusters.find((cluster) => cluster.id === selected) ?? clusters[0];
+  if (!current) return "";
+  const dimensions = [["environment", "环境"], ["business", "业务"], ["group", "集群名称"]] as const;
+  let available = clusters;
+  const selectors = dimensions.map(([key, label]) => {
+    const value = current[key] || "未分组";
+    const choices = [...new Set(available.map((item) => item[key] || "未分组"))];
+    available = available.filter((item) => (item[key] || "未分组") === value);
+    return `<label><span>${label}</span><select name="${key}" data-filter="${key}">
+      ${choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === value ? " selected" : ""}>${escapeHtml(choice)}</option>`).join("")}
+    </select></label>`;
+  });
+  return `${selectors.join("")}<label><span>集群实例</span><select name="cluster" data-filter="cluster">
+    ${available.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === current.id ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+    </select></label>`;
+}

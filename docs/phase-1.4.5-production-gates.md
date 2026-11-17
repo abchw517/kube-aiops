@@ -37,7 +37,7 @@ This stage does not add a new user feature surface. It proves that the existing 
 The current real binary composition is:
 
 ```text
-cmd/api/main.go
+api/internal/portal/main.go
     ↓
 httpapi.NewHandler(logger, backend, readyTimeout)
 ```
@@ -128,7 +128,7 @@ func (b SecurityBundle) ValidateForProduction() error
 
 The production handler factory should require a validated bundle before returning a handler.
 
-The compatibility `NewHandler(...)` may remain for tests/development if required, but `cmd/api` production composition and deployment manifests must not silently rely on it.
+The compatibility `NewHandler(...)` may remain for tests/development if required, but `api/internal/portal` production composition and deployment manifests must not silently rely on it.
 
 ## Startup / Readiness Gate
 
@@ -323,17 +323,17 @@ Run live-cluster checks using the [deployment guide](install-deployment.md#验�
 Recommended initial implementation structure:
 
 ```text
-internal/runtime/ or internal/security/
+api/internal/runtime/ or api/internal/security/
 ├── mode.go
 ├── bundle.go
 ├── validate.go
 └── *_test.go
 
-internal/httpapi/
+api/internal/httpapi/
 ├── security_composition_test.go
 └── route_security_gate_test.go
 
-cmd/api/
+api/internal/portal/
 └── main / composition wiring updates
 
 tests/

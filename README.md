@@ -88,32 +88,28 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 ```text
 .
 ├── api/
+│   ├── cmd/api/          # Go 入口
+│   ├── internal/
+│   │   ├── portal/       # 依赖装配与 HTTP 路由
+│   │   ├── permissions/  # 身份、角色、权限和 LDAP 凭据
+│   │   ├── diagnosis/    # 诊断复核与诊断知识发布
+│   │   ├── wiki/         # 文档、问答、附件、同步与计划
+│   │   └── …            # API 领域、数据源和共享组件
 │   └── openapi.yaml
-├── clients/
-│   └── typescript/generated.ts
-├── cmd/api/
-├── config/
-│   └── platform-versions.env
-├── internal/
-├── Makefile
-├── preflight.sh
-├── install.sh
-├── verify.sh
-├── uninstall.sh
-├── Dockerfile
-├── deploy/
-│   ├── api/
-│   ├── k8sgpt/
-│   └── web/
 ├── web/
-├── tests/
-│   └── platform-baseline-test.py
+│   └── src/              # Portal、功能页面和生成的 API 客户端
+├── config/               # 版本基线和 Web 运行配置
+├── deploy/               # 按组件分组的 Kubernetes YAML
+│   ├── api/
+│   ├── web/
+│   ├── collector/
+│   └── k8sgpt/
 ├── docs/
-│   ├── kubernetes-v1.36-baseline.md
-│   ├── architecture.md
-│   └── security.md
-└── .github/workflows/
-    └── ci.yml
+├── docx/                 # 保留项目验收和交付文档
+├── scripts/
+├── tests/
+├── Dockerfile            # API 镜像的根目录构建入口
+└── Makefile
 ```
 
 # 快速开始

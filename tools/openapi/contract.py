@@ -14,11 +14,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = ROOT / "api" / "openapi.yaml"
-SERVER_PATH = ROOT / "internal" / "httpapi" / "server.go"
-GENERATED_PATH = ROOT / "clients" / "typescript" / "generated.ts"
-FINDING_MODEL_PATH = ROOT / "internal" / "finding" / "model.go"
-KUBERNETES_MODEL_PATH = ROOT / "internal" / "kubernetes" / "client.go"
-IDENTITY_MODEL_PATH = ROOT / "internal" / "identity" / "principal.go"
+SERVER_PATH = ROOT / "api" / "internal" / "httpapi" / "server.go"
+GENERATED_PATH = ROOT / "web" / "src" / "api" / "generated.ts"
+FINDING_MODEL_PATH = ROOT / "api" / "internal" / "diagnosis" / "finding" / "model.go"
+KUBERNETES_MODEL_PATH = ROOT / "api" / "internal" / "kubernetes" / "client.go"
+IDENTITY_MODEL_PATH = ROOT / "api" / "internal" / "permissions" / "identity" / "principal.go"
 
 HTTP_METHODS = {"get", "put", "post", "delete", "patch", "head", "options", "trace"}
 FORBIDDEN_PROPERTY_NAMES = {

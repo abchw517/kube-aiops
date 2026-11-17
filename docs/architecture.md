@@ -80,7 +80,7 @@ api/openapi.yaml
       ↓
 tools/openapi/contract.py
       ↓
-clients/typescript/generated.ts
+web/src/api/generated.ts
       ↓
 web/src/api/client.ts
       ↓

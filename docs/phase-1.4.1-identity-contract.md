@@ -27,7 +27,7 @@ unsigned identity headers, Kubernetes user-token proxying, or frontend-managed l
 
 ## Principal Contract
 
-The backend identity model is `internal/identity.Principal`:
+The backend identity model is `api/internal/permissions/identity.Principal`:
 
 ```text
 Principal

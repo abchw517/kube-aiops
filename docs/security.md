@@ -70,7 +70,7 @@ Mutation and Auto Remediation remain disabled.
 
 The Web Portal:
 
-- consumes only `clients/typescript/generated.ts`
+- consumes only `web/src/api/generated.ts`
 - does not use Kubernetes credentials
 - does not call Kubernetes API directly
 - does not call Prometheus/VictoriaLogs/Alertmanager directly

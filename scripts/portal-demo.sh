@@ -48,7 +48,7 @@ trap 'exit 143' TERM
 
 cd "$ROOT_DIR"
 npm --prefix web run build
-CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$work_dir/backend" ./cmd/api
+CGO_ENABLED=0 GOTOOLCHAIN=local go build -o "$work_dir/backend" ./api/cmd/api
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
   -addext subjectAltName=IP:127.0.0.1 -keyout "$work_dir/key.pem" -out "$work_dir/ca.pem" \
   >"$work_dir/tls.log" 2>&1 || { cat "$work_dir/tls.log" >&2; exit 1; }

@@ -2,7 +2,7 @@ import type {
   ListFindingsParams,
   Severity,
   SummarizeFindingsParams,
-} from "../../../clients/typescript/generated.ts";
+} from "../api/generated.ts";
 
 export type FindingFilters = Pick<
   ListFindingsParams,

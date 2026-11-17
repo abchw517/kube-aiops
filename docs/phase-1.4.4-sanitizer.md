@@ -46,7 +46,7 @@ The implementation deliberately does **not** read broader sensitive data and att
 ## Implemented Package
 
 ```text
-internal/sanitizer/
+api/internal/sanitizer/
 ├── error.go
 ├── policy.go
 ├── text.go

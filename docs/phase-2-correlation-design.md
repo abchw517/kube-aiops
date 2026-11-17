@@ -488,7 +488,7 @@ api/openapi.yaml
         ↓
 API Contract Gate
         ↓
-clients/typescript/generated.ts
+web/src/api/generated.ts
         ↓
 web/src/api/client.ts
         ↓

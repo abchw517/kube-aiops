@@ -111,7 +111,7 @@ Phase 1.4.5 is not a new feature surface. It is the final composition and releas
 Current repository reality at Phase 1.4.5 entry:
 
 ```text
-cmd/api/main.go
+api/internal/portal/main.go
     ↓
 httpapi.NewHandler(...)
 ```
