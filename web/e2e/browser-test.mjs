@@ -201,11 +201,17 @@ try {
     const controls = await cdp.send("Runtime.evaluate", {
       expression: `(() => {
         const form = document.querySelector("[data-role-form]");
-        return [...form.querySelectorAll('input[type="checkbox"]')].map((input) => input.checked);
+        return [...form.querySelectorAll('input[name="modules"]')].map((input) => ({
+          value: input.value,
+          checked: input.checked,
+        }));
       })()`, returnByValue: true,
     });
-    if (controls.result?.value?.length !== 10 || controls.result.value.some(Boolean)) {
-      throw new Error("New role did not offer ten unchecked permission modules");
+    const modules = controls.result?.value ?? [];
+    if (modules.length !== 12 || modules.some(({ checked }) => checked) ||
+        !["environments:manage", "business-lines:manage"].every((capability) =>
+          modules.some(({ value }) => value === capability))) {
+      throw new Error("New role did not offer all twelve permission modules unchecked");
     }
     await cdp.send("Runtime.evaluate", {
       expression: `(() => {
