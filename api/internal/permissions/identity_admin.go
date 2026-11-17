@@ -39,15 +39,18 @@ type ldapSettings struct {
 }
 
 type Admin struct {
-	store      *identitystore.Store
-	origin     string
-	mu         sync.RWMutex
-	policy     *authorization.PolicyAuthorizer
-	basePolicy authorization.Policy
-	roles      []authorization.Role
-	ldap       *identity.LDAPConfig
-	settings   ldapSettings
-	ldapIssue  string
+	store            *identitystore.Store
+	origin           string
+	mu               sync.RWMutex
+	policy           *authorization.PolicyAuthorizer
+	basePolicy       authorization.Policy
+	roles            []authorization.Role
+	ldap             *identity.LDAPConfig
+	settings         ldapSettings
+	ldapIssue        string
+	ldapRevision     uint64
+	ldapVerification ldapVerification
+	ldapProbe        ldapLoginProbe
 }
 
 func New(ctx context.Context, store *identitystore.Store) (*Admin, error) {
@@ -347,70 +350,8 @@ func (a *Admin) Handle(w http.ResponseWriter, r *http.Request, resource string, 
 		return
 	case (resource == "ldap" && r.Method == http.MethodPut) ||
 		(resource == "ldap-test" && r.Method == http.MethodPost):
-		var input struct {
-			ldapSettings
-			TestUsername string `json:"testUsername,omitempty"`
-		}
-		if !adminhttp.Decode(w, r, &input) {
-			http.Error(w, "invalid LDAP configuration", 400)
-			return
-		}
-		settings := input.ldapSettings
-		username := strings.TrimSpace(input.TestUsername)
-		if resource == "ldap-test" && (len(username) > 250 || strings.ContainsRune(username, 0)) {
-			http.Error(w, "LDAP 测试用户名无效", 400)
-			return
-		}
-		settings.URL = strings.TrimSpace(settings.URL)
-		settings.BindDN = strings.TrimSpace(settings.BindDN)
-		settings.BaseDN = strings.TrimSpace(settings.BaseDN)
-		settings.UserUID = strings.TrimSpace(settings.UserUID)
-		settings.GroupAttr = strings.TrimSpace(settings.GroupAttr)
-		settings.GroupBaseDN = strings.TrimSpace(settings.GroupBaseDN)
-		settings.GroupFilter = strings.TrimSpace(settings.GroupFilter)
-		a.mu.Lock()
-		if settings.URL != "" && settings.BindPassword == "" {
-			if settings.URL != a.settings.URL || settings.BindDN != a.settings.BindDN {
-				a.mu.Unlock()
-				http.Error(w, "password_required", 400)
-				return
-			}
-			settings.BindPassword = a.settings.BindPassword
-		}
-		cfg, configErr := settings.configuration()
-		if configErr != nil {
-			a.mu.Unlock()
-			http.Error(w, configErr.Error(), 400)
-			return
-		}
-		if resource == "ldap-test" && cfg == nil {
-			a.mu.Unlock()
-			http.Error(w, "请填写 LDAP URL 后再测试", 400)
-			return
-		}
-		if resource == "ldap-test" {
-			a.mu.Unlock()
-			stage, groups := identity.TestLDAP(ctx, *cfg, username)
-			adminhttp.WriteJSON(w, struct {
-				Stage      string `json:"stage"`
-				GroupCount int    `json:"groupCount"`
-			}{stage, groups})
-			return
-		}
-		if cfg == nil {
-			settings.BindPassword = ""
-		}
-		document, encodeErr := encodeLDAPSettings(settings)
-		if encodeErr != nil {
-			a.mu.Unlock()
-			http.Error(w, encodeErr.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		_, err = a.store.ExecContext(ctx, "INSERT INTO ldap_settings VALUES (1,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", string(document))
-		if err == nil {
-			a.ldap, a.settings, a.ldapIssue = cfg, settings, ""
-		}
-		a.mu.Unlock()
+		a.handleLDAPChange(w, r, resource == "ldap-test")
+		return
 	default:
 		http.NotFound(w, r)
 		return

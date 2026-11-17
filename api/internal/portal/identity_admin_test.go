@@ -134,27 +134,14 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	const ldapPath = "/api/v1/admin/ldap"
 	const settings = `{"url":"ldaps://directory.example.com","baseDN":"dc=example,dc=com","bindDN":"cn=reader,dc=example,dc=com","userFilter":"(uid=%s)","groupAttribute":"memberOf","bindPassword":"test-bind-password"}`
 	request("PUT", ldapPath, settings, alice, 403)
-	request("PUT", ldapPath, settings, admin, 204)
-	request("PUT", ldapPath, strings.Replace(settings, "test-bind-password", "", 1), admin, 204)
+	request("PUT", ldapPath, settings, admin, 409)
 	w := request("GET", ldapPath, "", admin, 200)
-	if strings.Contains(w.Body.String(), "bindPassword") || !strings.Contains(w.Body.String(), `"passwordConfigured":true`) {
-		t.Fatalf("LDAP credential response is not redacted: %s", w.Body.String())
-	}
-	var document string
-	if err := store.QueryRowContext(t.Context(), "SELECT document FROM ldap_settings").Scan(&document); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(document, "test-bind-password") || !strings.Contains(document, "passwordCiphertext") {
-		t.Fatal("LDAP search password was not encrypted in SQLite")
+	if strings.Contains(w.Body.String(), "bindPassword") || !strings.Contains(w.Body.String(), `"passwordConfigured":false`) {
+		t.Fatalf("unverified configuration became active: %s", w.Body.String())
 	}
 	reloaded, err := permissions.New(t.Context(), store)
 	if err != nil {
-		t.Fatal("LDAP configuration did not persist")
-	}
-	restoredLDAP := httptest.NewRecorder()
-	reloaded.Handle(restoredLDAP, httptest.NewRequest("GET", ldapPath, nil), "ldap", nil)
-	if restoredLDAP.Code != 200 || !strings.Contains(restoredLDAP.Body.String(), `"passwordConfigured":true`) {
-		t.Fatalf("LDAP configuration did not persist: %s", restoredLDAP.Body.String())
+		t.Fatal(err)
 	}
 	if _, err := reloaded.Local(t.Context(), "admin", "admin123"); !errors.Is(err, identity.ErrUnauthenticated) {
 		t.Fatalf("bootstrap must not reset the administrator password after restart: %v", err)

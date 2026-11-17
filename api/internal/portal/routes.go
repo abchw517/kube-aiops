@@ -74,7 +74,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			http.Error(w, "该集群实例尚未启用 AI 复核", 404)
 			return
 		}
-		a.Handle(w, r, resource, s)
+		a.Handle(w, r.WithContext(identity.WithPrincipal(r.Context(), p)), resource, s)
 	})
 	wikis.Register(mux, s, review.AskWiki)
 	mux.Handle("/", next)
