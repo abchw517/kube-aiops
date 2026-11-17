@@ -37,6 +37,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
   const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id, cluster })}`;
   let revision = 0;
   let busy = false;
+  let session: AbortController | undefined;
   let baseline = "";
   let draftId = "";
   const messages: {role: "user" | "assistant"; text: string}[] = [];
@@ -53,14 +54,24 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     log.scrollTop = log.scrollHeight;
   };
 
-  close.addEventListener("click", () => dialog.close());
+  const stopReview = () => {
+    session?.abort();
+    session = undefined;
+    busy = false;
+    messageField.readOnly = false;
+    if (dialog.open) dialog.close();
+  };
+  close.addEventListener("click", stopReview);
   dialog.addEventListener("cancel", (event) => {
-    if (busy) event.preventDefault();
+    event.preventDefault();
+    stopReview();
   });
   trigger.addEventListener("click", async () => {
+    if (dialog.open) return;
+    session = new AbortController();
+    const { signal } = session;
     submit.disabled = true;
     finalize.disabled = true;
-    close.disabled = true;
     busy = true;
     history.replaceChildren();
     baselineView.replaceChildren();
@@ -69,9 +80,10 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     status.textContent = "正在加载复核记录…";
     dialog.showModal();
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal });
       if (!response.ok) throw new Error("review unavailable");
       const data = await response.json() as { original: string; history: { revision: number; conclusion: string }[] };
+      if (signal.aborted) return;
       const latest = data.history[0]?.revision ?? 0;
       if (latest !== revision) {
         messages.length = 0;
@@ -91,9 +103,10 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       baseline = data.original;
       status.textContent = "正在结合 Wiki 生成增强说明…";
       try {
-        const enhanced = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action: "enhance", revision})});
+        const enhanced = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action: "enhance", revision}), signal});
         if (enhanced.ok) {
           const result = await enhanced.json() as {conclusion?: string; citations?: {knowledgeId: string; revision: number; title: string}[]};
+          if (signal.aborted) return;
           baseline = result.conclusion ?? baseline;
           const text = document.createElement("p");
           text.className = "detail-text";
@@ -109,14 +122,14 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       } catch {
         // The original explanation remains available if enhancement fails.
       }
+      if (signal.aborted) return;
       status.textContent = "";
       submit.disabled = messages.length >= 20;
       finalize.disabled = messages.length === 0;
     } catch {
-      status.textContent = "无法加载复核记录，请关闭后重试。";
+      if (!signal.aborted) status.textContent = "无法加载复核记录，请关闭后重试。";
     } finally {
-      busy = false;
-      close.disabled = false;
+      if (!signal.aborted) busy = false;
     }
   });
 
@@ -124,7 +137,8 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     event.preventDefault();
     const finishing = event.submitter === finalize;
     const publishing = event.submitter === confirm;
-    if (busy || (publishing ? !draftId : finishing ? finalize.disabled : submit.disabled)) return;
+    const signal = session?.signal;
+    if (!signal || busy || (publishing ? !draftId : finishing ? finalize.disabled : submit.disabled)) return;
     const message = messageField.value.trim();
     if (!publishing && (finishing ? message !== "" : !message || new TextEncoder().encode(message).length > 4000)) {
       status.textContent = finishing ? "请先发送尚未提交的消息。" : "请填写消息，长度不能超过 4000 字节。";
@@ -133,16 +147,17 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     busy = true;
     submit.disabled = true;
     finalize.disabled = true;
-    close.disabled = true;
     messageField.readOnly = true;
     status.textContent = publishing ? "正在确认并发布…" : finishing ? "正在生成草稿…" : "AI 正在复核…";
     let stale = false;
     try {
       const response = await fetch(url, {
         method: "POST",
+        signal: publishing ? undefined : signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(publishing ? {action: "confirm", draftId, revision} : {action: finishing ? "summarize" : "chat", messages: finishing ? messages : [...messages, { role: "user", text: message }], revision, baseline}),
       });
+      if (signal.aborted && (!publishing || !response.ok)) return;
       if (response.status === 409) {
         stale = true;
         status.textContent = "其他复核已更新诊断，请关闭后重新打开窗口。";
@@ -150,6 +165,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       }
       if (response.status === 502 && response.headers.get("Content-Type")?.includes("application/json")) {
         const { code } = await response.json() as { code?: string };
+        if (signal.aborted) return;
         const messages: Record<string, string> = {
           AI_ENGINE_PERMISSION_DENIED: "API 无权读取 Engine 或 Secret，请检查 RBAC。",
           AI_ENGINE_ENDPOINT_NOT_APPROVED: "Engine 模型地址未获批准，请检查 API 的允许地址。",
@@ -163,6 +179,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
       }
       if (!response.ok) throw new Error("analysis failed");
       const result = await response.json() as { conclusion?: string; reply?: string; draftId?: string };
+      if (signal.aborted && !publishing) return;
       if (!finishing && !publishing) {
         draftId = "";
         confirm.hidden = true;
@@ -185,16 +202,19 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         return;
       }
       explanation.textContent = `AI 复核结论\n\n${result.conclusion}`;
-      form.reset();
-      dialog.close();
+      if (!signal.aborted) {
+        form.reset();
+        stopReview();
+      }
     } catch {
-      status.textContent = "暂时无法确认复核结果。请重新打开窗口查看记录后再试。";
+      if (!signal.aborted) status.textContent = "暂时无法确认复核结果。请重新打开窗口查看记录后再试。";
     } finally {
-      busy = false;
-      submit.disabled = stale || messages.length >= 20;
-      finalize.disabled = stale || messages.length === 0;
-      messageField.readOnly = false;
-      close.disabled = false;
+      if (!signal.aborted) {
+        busy = false;
+        submit.disabled = stale || messages.length >= 20;
+        finalize.disabled = stale || messages.length === 0;
+        messageField.readOnly = false;
+      }
     }
   });
 }
