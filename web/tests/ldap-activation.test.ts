@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { invalidateLDAPDraft, submitIdentityAdmin } from "../src/views/permissions/identity-admin.ts";
+
+test("LDAP activation enables save only for the tested draft and omits the employee password", async (t) => {
+  class Input {
+    name: string;
+    value: string;
+    placeholder = "";
+
+    constructor(name: string, value: string) {
+      this.name = name;
+      this.value = value;
+    }
+  }
+  const data = {
+    url: new Input("url", "ldaps://directory.example.com"),
+    bindPassword: new Input("bindPassword", "fixture-bind"),
+    testUsername: new Input("testUsername", "employee"),
+    testPassword: new Input("testPassword", "fixture-employee"),
+  };
+  class FixtureFormData extends Map<string, string> {
+    constructor() {
+      super(Object.values(data).map(({ name, value }) => [name, value]));
+    }
+  }
+  const originalFormData = Object.getOwnPropertyDescriptor(globalThis, "FormData");
+  Object.defineProperty(globalThis, "FormData", { value: FixtureFormData, configurable: true });
+  t.after(() => {
+    if (originalFormData) Object.defineProperty(globalThis, "FormData", originalFormData);
+  });
+  Object.defineProperty(globalThis, "HTMLInputElement", { value: Input, configurable: true });
+  t.after(() => Reflect.deleteProperty(globalThis, "HTMLInputElement"));
+  const save = { disabled: true };
+  const verify = { disabled: false };
+  const status = { textContent: "" };
+  const form = {
+    dataset: { identityResource: "ldap" },
+    querySelectorAll: () => [save, verify],
+    querySelector: (selector: string) => {
+      if (selector.includes("testPassword")) return data.testPassword;
+      if (selector.includes("bindPassword")) return data.bindPassword;
+      if (selector.includes("role=")) return status;
+      return save;
+    },
+    closest: () => null,
+  } as unknown as HTMLFormElement;
+  const requests: { path: string; body: Record<string, unknown> }[] = [];
+  t.mock.method(globalThis, "fetch", async (path: string, init: RequestInit) => {
+    requests.push({ path, body: JSON.parse(String(init.body)) });
+    return path.endsWith("ldap-test")
+      ? Response.json({ stage: "success", verification: "test-proof" })
+      : new Response(null, { status: 204 });
+  });
+
+  await submitIdentityAdmin(form, () => {});
+  assert.equal(requests.length, 0);
+  await submitIdentityAdmin(form, () => {}, true);
+  assert.equal(requests[0]?.body.testPassword, "fixture-employee");
+  assert.equal(data.testPassword.value, "");
+  assert.equal(save.disabled, false);
+
+  data.url.value = "ldaps://changed.example.com";
+  invalidateLDAPDraft(form, data.url as unknown as EventTarget);
+  assert.equal(save.disabled, true);
+  await submitIdentityAdmin(form, () => {});
+  assert.equal(requests.length, 1);
+
+  data.testPassword.value = "fixture-employee";
+  await submitIdentityAdmin(form, () => {}, true);
+  await submitIdentityAdmin(form, () => {});
+  assert.equal(requests.at(-1)?.path, "/api/v1/admin/ldap");
+  assert.deepEqual(requests.at(-1)?.body, {
+    url: "ldaps://changed.example.com", bindPassword: "fixture-bind", verification: "test-proof",
+  });
+  assert.equal(data.bindPassword.value, "");
+  assert.equal(save.disabled, true);
+});

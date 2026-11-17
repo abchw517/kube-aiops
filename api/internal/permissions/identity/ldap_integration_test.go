@@ -133,6 +133,18 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 	if _, err := AuthenticateLDAP(cfg, "alice", "incorrect"); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatalf("bad password: %v", err)
 	}
+	for _, test := range []struct{ user, password, stage string }{
+		{"alice", "fixture-user", "success"},
+		{"alice", "incorrect", "user_auth"},
+		{"unknown", "fixture-user", "user_match"},
+	} {
+		if stage := VerifyLDAPLogin(t.Context(), cfg, test.user, test.password); stage != test.stage {
+			t.Errorf("LDAP verification for %q returned %q, want %q", test.user, stage, test.stage)
+		}
+	}
+	if stage := VerifyLDAPLogin(t.Context(), invalid, "alice", "fixture-user"); stage != "bind" {
+		t.Errorf("invalid bind returned %q", stage)
+	}
 	cfg.TLSConfig = nil
 	if _, err := AuthenticateLDAP(cfg, "alice", "fixture-user"); !errors.Is(err, ErrAuthenticationUnavailable) {
 		t.Fatalf("untrusted CA: %v", err)

@@ -8,7 +8,7 @@ import {
   type FindingSummary,
   type Namespace,
 } from "./api/generated.ts";
-import { renderIdentityAdmin, submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
+import { invalidateLDAPDraft, renderIdentityAdmin, submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
 import { submitRole } from "./views/permissions/roles.ts";
 import { apiClient } from "./api/client.ts";
 import {
@@ -89,6 +89,14 @@ export class PortalApp {
       }
       void this.login(event);
     });
+    const updateLDAP = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const form = target.closest<HTMLFormElement>('form[data-identity-resource="ldap"]');
+      if (form) invalidateLDAPDraft(form, target);
+    };
+    this.root.addEventListener("input", updateLDAP);
+    this.root.addEventListener("change", updateLDAP);
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
     if (!window.location.hash) window.location.hash = "#/findings";
     void this.route();

@@ -144,44 +144,56 @@ func AuthenticateLDAP(cfg LDAPConfig, username, password string) (Principal, err
 
 // AuthenticateLDAPContext searches as the service account and verifies the user's bind.
 func AuthenticateLDAPContext(ctx context.Context, cfg LDAPConfig, username, password string) (Principal, error) {
+	principal, _, err := probeLDAPLogin(ctx, cfg, username, password)
+	return principal, err
+}
+
+// VerifyLDAPLogin probes the same directory operations used by a real login
+// without registering an account or issuing a session.
+func VerifyLDAPLogin(ctx context.Context, cfg LDAPConfig, username, password string) string {
+	_, stage, _ := probeLDAPLogin(ctx, cfg, username, password)
+	return stage
+}
+
+func probeLDAPLogin(ctx context.Context, cfg LDAPConfig, username, password string) (Principal, string, error) {
 	if username == "" || password == "" {
-		return Principal{}, ErrUnauthenticated
+		return Principal{}, "credentials_required", ErrUnauthenticated
 	}
 	if cfg.Validate() != nil {
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, "configuration", ErrAuthenticationUnavailable
 	}
 	conn, closeConnection, err := dialLDAP(ctx, cfg)
 	if err != nil {
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, "connection", ErrAuthenticationUnavailable
 	}
 	defer closeConnection()
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, "bind", ErrAuthenticationUnavailable
 	}
 	entry, stage := cfg.searchUser(conn, username)
 	if stage == "user_match" {
-		return Principal{}, ErrUnauthenticated
+		return Principal{}, stage, ErrUnauthenticated
 	}
 	if stage != "" {
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, stage, ErrAuthenticationUnavailable
 	}
 	if err := conn.Bind(entry.DN, password); err != nil {
 		var ldapErr *ldap.Error
 		if errors.As(err, &ldapErr) && ldapErr.ResultCode == ldap.LDAPResultInvalidCredentials {
-			return Principal{}, ErrUnauthenticated
+			return Principal{}, "user_auth", ErrUnauthenticated
 		}
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, "user_auth", ErrAuthenticationUnavailable
 	}
 	if cfg.GroupAttr != "" && (hasRangedGroups(entry, cfg.GroupAttr) || cfg.GroupFilter != "") {
 		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
-			return Principal{}, ErrAuthenticationUnavailable
+			return Principal{}, "group_query", ErrAuthenticationUnavailable
 		}
 	}
 	principal, stage := cfg.directoryPrincipal(conn, entry)
 	if stage != "" {
-		return Principal{}, ErrAuthenticationUnavailable
+		return Principal{}, stage, ErrAuthenticationUnavailable
 	}
-	return principal, nil
+	return principal, "success", nil
 }
 
 func (cfg LDAPConfig) searchUser(conn *ldap.Conn, username string) (*ldap.Entry, string) {
