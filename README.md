@@ -85,6 +85,8 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 
 ## 目录结构
 
+目录与文件的组织要求见[代码规范](docx/coding-standards.md)。
+
 ```text
 .
 ├── api/
