@@ -31,7 +31,7 @@ Detailed record: `docx/phase-1.3-completion.md`.
 - post-merge main workflow: `kube-aiops CI #63`
 - post-merge workflow conclusion: `success`
 
-Detailed record: `docs/phase-1.4.1-identity-contract.md`.
+Detailed record: `docx/phase-1.4.1-identity-contract.md`.
 
 ## Phase 1.4.2 Completion Evidence
 
@@ -45,7 +45,7 @@ Detailed record: `docs/phase-1.4.1-identity-contract.md`.
   - `Secret Scan`
   - `Kubernetes v1.36 Kind E2E`
 
-Detailed record: `docs/phase-1.4.2-authorization.md`.
+Detailed record: `docx/phase-1.4.2-authorization.md`.
 
 ## Phase 1.4.3 Completion Evidence
 
@@ -64,13 +64,13 @@ Detailed record: `docs/phase-1.4.2-authorization.md`.
 - Kind regression passed Kubernetes `v1.36.4` baseline validation, lifecycle/rollback/concurrency/trusted-uninstall E2E, and the Phase 1.2 read-only API E2E.
 - completed capability includes bounded typed audit events, provider-neutral Sink, request-local Recorder, AuthN/AuthZ outcomes, canonical route patterns, normalized scope, response status/latency, sink-failure isolation and sensitive-data leakage regression tests.
 
-Detailed completion/design record: `docs/phase-1.4.3-audit.md`.
+Detailed completion/design record: `docx/phase-1.4.3-audit.md`.
 
 ## Historical Phase 1.4.4 Entry
 
 Phase 1.4.4 adds a reusable, allowlist-oriented Sanitizer before response data leaves the backend trust boundary. It is defense in depth: it must not replace safe DTO/OpenAPI projections and must never justify adding Secret reads, Pod Logs, raw Kubernetes objects, raw K8sGPT Result CR payloads or broader Kubernetes permissions.
 
-Detailed design and acceptance boundary: `docs/phase-1.4.4-sanitizer.md`.
+Detailed design and acceptance boundary: `docx/phase-1.4.4-sanitizer.md`.
 
 See the [Phase 1.4 completion record](phase-1.4-completion.md) for the delivered read-only security boundary.
 

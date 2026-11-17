@@ -84,8 +84,8 @@ Correlation Bundle
 
 Phase 2 remains read-only and does not include RCA Agent, Runbook execution, remediation or Auto Remediation.
 
-Authoritative completion details: `docs/phase-1.4-completion.md`.
+Authoritative completion details: `docx/phase-1.4-completion.md`.
 
-Phase 2 entry boundary: `docs/phase-2-entry.md`.
+Phase 2 entry boundary: `docx/phase-2-entry.md`.
 
-Phase 2 architecture: `docs/phase-2-correlation-design.md`.
+Phase 2 architecture: `docx/phase-2-correlation-design.md`.

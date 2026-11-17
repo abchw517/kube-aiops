@@ -13,7 +13,7 @@ Completion baseline:
 
 > `v1.34` is retained here as historical evidence of the exact Phase 1.2 completion run.
 > The repository's current supported platform baseline is maintained separately in
-> `docs/kubernetes-v1.36-baseline.md` and is upgraded to Kubernetes v1.36.4 only after
+> `docx/kubernetes-v1.36-baseline.md` and is upgraded to Kubernetes v1.36.4 only after
 > its PR and post-merge `main` gates are green.
 
 ## Completion Gate

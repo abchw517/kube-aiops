@@ -2,7 +2,7 @@
 .github
 .gitignore
 README.md
-docs
+docx
 deploy
 tests
 *.md

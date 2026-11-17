@@ -12,7 +12,7 @@
 | Phase 2 | 已完成 | Kubernetes Events、Prometheus、VictoriaLogs、Alertmanager 四类证据关联 |
 | Phase 3–5 | 已规划 | RCA Agent 和 Runbook、人工审批修复、受控自动修复 |
 
-交付与验收记录见 [Phase 1.4](docs/phase-1.4-completion.md) 和 [Phase 2](docs/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docs/kubernetes-v1.36-baseline.md)。
+交付与验收记录见 [Phase 1.4](docx/phase-1.4-completion.md) 和 [Phase 2](docx/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docx/kubernetes-v1.36-baseline.md)。
 
 ## Web Portal Demo
 
@@ -20,11 +20,11 @@
 make portal-demo
 ```
 
-打开 <http://127.0.0.1:4173/#/findings>，查看两条中文样例诊断和四类关联证据。Demo 运行真实 Go API，通过本地 HTTPS 样例服务模拟集群和可观测性数据源，可独立于 Kubernetes 运行。远程访问可设置 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT`。运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docs/portal-demo.md)。
+打开 <http://127.0.0.1:4173/#/findings>，查看两条中文样例诊断和四类关联证据。Demo 运行真实 Go API，通过本地 HTTPS 样例服务模拟集群和可观测性数据源，可独立于 Kubernetes 运行。远程访问可设置 `PORTAL_DEMO_HOST` 和 `PORTAL_DEMO_PORT`。运行 `make portal-demo-check` 可自动验收。依赖和演示步骤见 [Portal Demo](docx/portal-demo.md)。
 
 ## 安装与部署
 
-`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docs/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。
+`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docx/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。
 
 ## 当前支持基线
 
@@ -81,7 +81,7 @@ flowchart TD
     Backend -->|按需查询告警| Alertmanager["Alertmanager"]
 ```
 
-Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docs/architecture.md) 和 [生产部署](docs/install-deployment.md#生产部署)。
+Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docx/architecture.md) 和 [生产部署](docx/install-deployment.md#生产部署)。
 
 ## 目录结构
 
@@ -104,7 +104,6 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   ├── web/
 │   ├── collector/
 │   └── k8sgpt/
-├── docs/
 ├── docx/                 # 保留项目验收和交付文档
 ├── scripts/
 ├── tests/
@@ -179,7 +178,7 @@ make install
 K8SGPT_IMAGE_REGISTRY=harbor.example.com/public make install
 ```
 
-该前缀适用于 Operator、RBAC Proxy 和 Engine，安装器以 `仓库/镜像:基线版本` 拉取。同步命令与单镜像变量见 [使用内网镜像仓库](docs/install-deployment.md#使用内网镜像仓库)。
+该前缀适用于 Operator、RBAC Proxy 和 Engine，安装器以 `仓库/镜像:基线版本` 拉取。同步命令与单镜像变量见 [使用内网镜像仓库](docx/install-deployment.md#使用内网镜像仓库)。
 
 安装链路：
 
@@ -228,7 +227,7 @@ ghcr.io/k8sgpt-ai/k8sgpt:v0.4.41@sha256:1bc581442ac9c3a9e2f9a2f818c2bd84ba476b44
 ```
 
 Engine `v0.4.41` 在诊断提示词中明确要求使用配置的语言。中文诊断通过
-`K8SGPT_AI_LANGUAGE=Chinese` 启用，操作步骤见 [部署文档](docs/install-deployment.md#配置-engine-模型与语言)。
+`K8SGPT_AI_LANGUAGE=Chinese` 启用，操作步骤见 [部署文档](docx/install-deployment.md#配置-engine-模型与语言)。
 
 Operator 版本门禁：
 
@@ -330,7 +329,7 @@ CRD 默认不自动删除，避免误伤其它实例或后续重新安装。
 
 # 目标集群验收
 
-按安装部署指南检查 Operator、Engine 和 Result，再验证 Portal 能读取目标集群的诊断。需要验证真实 Provider 时，在现有测试集群检查分析健康及本次新鲜 Result。完整命令见 [安装部署指南](docs/install-deployment.md#验证部署)。
+按安装部署指南检查 Operator、Engine 和 Result，再验证 Portal 能读取目标集群的诊断。需要验证真实 Provider 时，在现有测试集群检查分析健康及本次新鲜 Result。完整命令见 [安装部署指南](docx/install-deployment.md#验证部署)。
 
 # Phase 1.2 Portal Backend
 
@@ -522,11 +521,11 @@ Remediation -> Disabled
 
 详细设计：
 
-- `docs/kubernetes-v1.36-baseline.md`
-- `docs/architecture.md`
-- `docs/security.md`
-- `docs/phase-1.1-acceptance.md`
-- `docs/phase-1.1-hardening.md`
+- `docx/kubernetes-v1.36-baseline.md`
+- `docx/architecture.md`
+- `docx/security.md`
+- `docx/phase-1.1-acceptance.md`
+- `docx/phase-1.1-hardening.md`
 - `docx/phase-1.2-completion.md`
 
 ## 路线图
@@ -535,4 +534,4 @@ Remediation -> Disabled
 - Phase 4 · 人工审批修复
 - Phase 5 · 受控自动修复
 
-阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docs/phase-3-5-roadmap.md)。 Phase 3 的知识回写与诊断检索见 [LLM Wiki 集成设计](docs/llm-wiki-integration.md)。
+阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。 Phase 3 的知识回写与诊断检索见 [LLM Wiki 集成设计](docx/llm-wiki-integration.md)。

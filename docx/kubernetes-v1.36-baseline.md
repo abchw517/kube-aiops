@@ -1,6 +1,6 @@
 # kube-aiops Kubernetes v1.36 Platform Baseline
 
-Kubernetes v1.36.4 是 kube-aiops 的部署验证基线。版本配置位于 `config/platform-versions.env`，使用 `make platform-check` 检查版本、镜像引用和 API 使用面。初次激活的验收记录见 [v1.36 基线激活记录](../docx/kubernetes-v1.36-activation.md)。
+Kubernetes v1.36.4 是 kube-aiops 的部署验证基线。版本配置位于 `config/platform-versions.env`，使用 `make platform-check` 检查版本、镜像引用和 API 使用面。初次激活的验收记录见 [v1.36 基线激活记录](kubernetes-v1.36-activation.md)。
 
 ## 支持版本矩阵
 
