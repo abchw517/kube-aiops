@@ -172,7 +172,13 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
           AI_ENGINE_CONFIG_INVALID: "Engine 的 AI 配置无效，请检查模型、地址和 Secret 引用。",
           AI_ENGINE_UNAVAILABLE: "无法读取 Engine，请检查实例名称、命名空间和集群连接。",
           AI_ENGINE_SECRET_UNAVAILABLE: "无法读取 Secret 或指定密钥项，请检查 Engine 的 Secret 引用。",
-          AI_PROVIDER_UNAVAILABLE: "模型调用失败，请检查服务连通性和模型凭据。",
+          AI_PROVIDER_ACCESS_DENIED: "模型服务拒绝访问，请检查 API Key 和模型授权。",
+          AI_PROVIDER_RATE_LIMITED: "模型服务触发限流，请稍后重试并检查配额。",
+          AI_PROVIDER_TIMEOUT: "模型响应超时，请重试并检查服务延迟。",
+          AI_PROVIDER_CONNECT_FAILED: "无法连接模型服务，请检查 API Pod 的出口、DNS 和 TLS。",
+          AI_PROVIDER_REQUEST_REJECTED: "模型服务拒绝请求，请核对模型名称和接口地址。",
+          AI_PROVIDER_RESPONSE_INVALID: "模型未返回完整正文，请检查模型接口兼容性。",
+          AI_PROVIDER_UNAVAILABLE: "模型服务暂不可用，请稍后重试。",
         };
         status.textContent = code && Object.hasOwn(messages, code) ? messages[code] ?? "" : "AI 分析失败。";
         return;
