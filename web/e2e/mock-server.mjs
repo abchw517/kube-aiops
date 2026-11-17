@@ -80,6 +80,15 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/wiki/knowledge") {
     return json(response, 200, {items: [wikiDoc], filters: {environment: ["测试"], business: ["运维"], documentType: ["排障手册"]}, page: 1, total: 1, pageSize: 20});
   }
+  if (url.pathname === "/api/v1/wiki/ask" && request.method === "POST") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (input.question === "镜像拉取怎么排查？") {
+      return json(response, 200, {answer: "请验证仓库权限。", citations: [{...wikiDoc, revision: 1}]});
+    }
+    return json(response, 400, {error: "invalid fixture question"});
+  }
   if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
     return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
   }
@@ -100,7 +109,10 @@ createServer(async (request, response) => {
       if (matches(1)) return json(response, 200, { reply: transcript[1].text });
       if (matches(3)) return json(response, 200, { reply: transcript[3].text });
     }
-    if (input.action === "enhance") return json(response, 200, {conclusion: "增强诊断案例", citations: []});
+    if (input.action === "enhance") {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 900));
+      return json(response, 200, {conclusion: "增强诊断案例", citations: []});
+    }
     if (input.revision === 0 && input.action === "summarize" && matches(4)) {
       return json(response, 200, {conclusion: "镜像仓库拒绝访问", draftId: "fixture-draft"});
     }

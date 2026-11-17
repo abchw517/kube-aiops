@@ -31,7 +31,7 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string> 
   if (!response.ok) return '<section class="panel" role="alert">无法读取知识库内容。<a href="#/wiki">返回知识库</a></section>';
   if (id) {
     const doc = await response.json() as WikiDocument;
-    return `<section class="panel"><a href="#/wiki">返回知识库</a>
+    return `<section class="panel wiki-card"><a href="#/wiki">返回知识库</a>
       <h2>${escapeHtml(doc.title)}</h2><p>${escapeHtml(doc.environment)} / ${escapeHtml(doc.business)} / ${escapeHtml(doc.documentType)}</p>
       <div class="wiki-document-body">${escapeHtml(doc.body)}</div>
       <details><summary>订正文档</summary><form data-wiki-revision class="wiki-import-form">
@@ -47,21 +47,24 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string> 
     next.set("page", String(page));
     return escapeHtml(next.toString());
   };
-  return `<section class="panel">
-    <form data-wiki-filters class="filters">
+  return `<div class="wiki-workspace"><section class="panel wiki-card" aria-labelledby="wiki-list-title">
+    <div class="wiki-toolbar"><h2 id="wiki-list-title">知识文档 <small>${data.total} 篇</small></h2>
+      <button type="button" class="button" data-open-wiki-ask>AI 知识问答</button></div>
+    <form data-wiki-filters class="wiki-filters">
       ${filters.map(([key, label]) => `<label>${label}<select name="${key}"><option value="">全部</option>${
         (data.filters[key] ?? []).map((value) => `<option value="${escapeHtml(value)}"${query.get(key) === value ? " selected" : ""}>${escapeHtml(value)}</option>`).join("")
       }</select></label>`).join("")}
       <button type="submit" class="button">筛选</button>
+      <a class="button secondary" href="#/wiki">重置</a>
     </form>
     ${data.items.length ? `<div class="table-wrap"><table><thead><tr><th>标题</th><th>环境</th><th>业务线</th><th>类型</th><th>更新时间</th></tr></thead><tbody>
     ${data.items.map((doc) => `<tr><td><a href="#/wiki/${encodeURIComponent(doc.knowledgeId ?? "")}?revision=${doc.revision ?? 1}">${escapeHtml(doc.title)}</a></td>
       <td>${escapeHtml(doc.environment)}</td><td>${escapeHtml(doc.business)}</td><td>${escapeHtml(doc.documentType)}</td><td>${formatTimestamp(doc.createdAt)}</td></tr>`).join("")}
-    </tbody></table></div>` : "<p>暂无符合条件的文档。</p>"}
+    </tbody></table></div>` : `<div class="wiki-empty"><strong>${query.size ? "暂无符合筛选条件的文档" : "知识库暂无文档"}</strong><p>${query.size ? "可重置筛选查看全部文档。" : "可从下方新增知识、批量导入或同步远端 Wiki。"}</p></div>`}
     ${data.page > 1 ? `<a href="#/wiki?${pageLink(data.page - 1)}">上一页</a>` : ""}
     ${data.page * data.pageSize < data.total ? `<a href="#/wiki?${pageLink(data.page + 1)}">下一页</a>` : ""}
   </section>
-  <section class="panel"><details><summary>新增知识</summary>
+  <section class="wiki-management" aria-labelledby="wiki-management-title"><h2 id="wiki-management-title">知识管理</h2><details class="panel wiki-tool"><summary>新增知识</summary>
     <form data-wiki-import class="wiki-import-form">
       <label>集群实例<input name="cluster" required value="local"></label>
       <label>命名空间<input name="namespace" required></label>
@@ -74,7 +77,7 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string> 
       <p data-wiki-status role="status"></p>
       <div><button class="button secondary" type="submit">预览并整理</button> <button class="button" type="submit" value="publish" disabled>确认发布</button></div>
     </form>
-  </details></section>${renderWikiTools(admin)}`;
+  </details>${renderWikiTools(admin)}</section></div>`;
 }
 
 export function bindWiki(root: HTMLElement, reload: () => void): void {
@@ -148,7 +151,7 @@ export function bindWiki(root: HTMLElement, reload: () => void): void {
       status.textContent = "请求失败，请重试。";
     } finally {
       form.inert = false;
-      for (const button of buttons) if (button !== publishButton) button.disabled = false;
+      for (const button of buttons) if (button !== publishButton || publish) button.disabled = false;
     }
   });
 }

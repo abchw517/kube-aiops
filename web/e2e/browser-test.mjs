@@ -239,6 +239,12 @@ try {
     });
     await assertText(cdp, (text) => text.includes("你的消息") && !text.includes("正在加载复核记录"),
       "AI review dialog did not load");
+    await assertText(cdp, (text) => text.includes("正在结合 Wiki 生成增强说明"), "Enhancement did not enter its waiting state");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-close-review]").click()'});
+    await assertText(cdp, (text) => !text.includes("你的消息"), "AI review did not close while enhancement was pending");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-open-review]").click()'});
+    await assertText(cdp, (text) => text.includes("增强诊断案例") && !text.includes("正在结合 Wiki"),
+      "AI review did not recover after reopening");
     for (const [message, reply] of [
       ["Pod 事件显示镜像仓库拒绝访问", "请补充镜像仓库返回的状态码。"],
       ["仓库返回 403", "403 支持访问被拒绝，请核实拉取凭据。"],
@@ -265,7 +271,22 @@ try {
     });
     await assertText(cdp, (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新增知识"),
       "Wiki navigation did not load the knowledge list");
-    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-close-wiki-ask]").click()`});
+    const wikiDialog = await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-wiki-dialog]").open',
+      returnByValue: true,
+    });
+    if (wikiDialog.result?.value !== false) throw new Error("Wiki should open on the document list without a dialog");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-open-wiki-ask]").click()'});
+    await assertText(cdp, (text) => text.includes("问题") && text.includes("发送"), "Wiki question dialog did not open");
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const form = document.querySelector("[data-wiki-ask]");
+        form.elements.question.value = "镜像拉取怎么排查？";
+        form.requestSubmit();
+      })()`,
+    });
+    await assertText(cdp, (text) => text.includes("请验证仓库权限。"), "Wiki question answer did not render");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-close-wiki-ask]").click()'});
     await cdp.send("Runtime.evaluate", {
       expression: `document.querySelector('a[href^="#/wiki/"]').click()`,
     });

@@ -29,24 +29,22 @@ async function wikiRequest(url: string, method: string, body?: unknown): Promise
 }
 
 export function renderWikiTools(admin: boolean): string {
-  return `<button type="button" class="button" data-open-wiki-ask>AI 知识问答</button>
-  <dialog data-wiki-dialog><section class="panel"><h2>AI 知识问答</h2>
+  return `<dialog class="wiki-dialog" data-wiki-dialog aria-labelledby="wiki-ask-title"><header class="wiki-toolbar"><h2 id="wiki-ask-title">AI 知识问答</h2><button type="button" data-close-wiki-ask class="button secondary">关闭</button></header>
     <div data-wiki-dialog-log role="log"></div>
     <form data-wiki-ask class="wiki-import-form">
-      <label>问题<textarea name="question" required maxlength="2000"></textarea></label>
-      <p role="status"></p><div><button type="submit" class="button">发送</button>
-      <button type="button" data-close-wiki-ask class="button secondary">关闭</button></div>
-    </form></section></dialog>
-  <section class="panel"><details><summary>批量导入</summary><form data-wiki-batch class="wiki-import-form">
+      <label>问题<textarea name="question" rows="4" required maxlength="2000" placeholder="例如：如何排查镜像拉取失败？"></textarea></label>
+      <p role="status"></p><div><button type="submit" class="button">发送</button></div>
+    </form></dialog>
+  <details class="panel wiki-tool"><summary>批量导入</summary><form data-wiki-batch class="wiki-import-form">
     <label>集群实例<input name="cluster" required value="local"></label><label>命名空间<input name="namespace" required></label>
     <label>环境<input name="environment" required></label><label>业务线<input name="business" required></label>
     <label>类型<select name="documentType"><option>排障手册</option><option>故障复盘</option><option>操作规程</option><option>常见问题</option></select></label>
     <label>文档<input name="files" type="file" accept=".md,.markdown,.txt,.docx" multiple required></label>
-    <p role="status"></p><button class="button" type="submit">生成逐文件预览</button></form><div data-wiki-batch-list></div></details></section>
-  <section class="panel"><details><summary>远端 Wiki 同步</summary><form data-wiki-sync class="wiki-import-form">
-    <label>来源编号<input name="id" pattern="[a-z0-9][a-z0-9-]{0,62}" required></label>
+    <p role="status"></p><button class="button" type="submit">生成逐文件预览</button></form><div data-wiki-batch-list></div></details>
+  <details class="panel wiki-tool"><summary>远端 Wiki 同步</summary><form data-wiki-sync class="wiki-import-form">
+    <label>来源编号<input name="id" pattern="[a-z0-9][a-z0-9\\-]{0,62}" required></label>
     ${admin ? '<label>目录 URL<input type="url" name="url"></label><label>集群实例<input name="cluster" value="local"></label><label>命名空间<input name="namespace"></label><button type="submit" value="source" class="button secondary">注册来源</button>' : ""}
-    <label>Wiki 账号<input name="username" autocomplete="off"></label>
+    <label for="wiki-sync-username">Wiki 账号</label><input id="wiki-sync-username" name="username" autocomplete="off">
     <label>Wiki 密码<input type="password" name="password" autocomplete="new-password"></label>
     <button type="submit" value="load" class="button secondary">读取本人绑定</button>
     <button type="submit" value="check" class="button secondary">测试连接</button>
@@ -56,14 +54,13 @@ export function renderWikiTools(admin: boolean): string {
     <label>Cron（可选）<input name="cron" placeholder="0 2 * * *"></label>
     <label>时区<input name="zone" value="Asia/Shanghai"></label>
     <button type="submit" value="schedule" class="button secondary">保存定时计划</button><p role="status"></p>
-  </form></details></section>`;
+  </form></details>`;
 }
 
 export function bindWikiTools(root: HTMLElement): void {
   const dialog = root.querySelector<HTMLDialogElement>("[data-wiki-dialog]");
   const log = root.querySelector<HTMLElement>("[data-wiki-dialog-log]");
   const prior: string[] = [];
-  dialog?.showModal();
   root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", () => dialog?.showModal());
   root.querySelector("[data-close-wiki-ask]")?.addEventListener("click", () => dialog?.close());
   bindWikiTool(root, "[data-wiki-ask]", async (fields, status) => {
@@ -134,11 +131,15 @@ export function bindWikiTools(root: HTMLElement): void {
   const sourceInput = root.querySelector<HTMLInputElement>("[data-wiki-sync] [name=id]");
   sourceInput?.addEventListener("change", () => {
     const load = root.querySelector<HTMLButtonElement>('[data-wiki-sync] [value="load"]');
+    for (const [name, value] of Object.entries({ username: "", password: "", interval: "0", cron: "", zone: "Asia/Shanghai" })) {
+      const field = sourceInput.form?.elements.namedItem(name);
+      if (field instanceof HTMLInputElement) field.value = value;
+    }
     if (sourceInput.checkValidity()) load?.click();
   });
   bindWikiTool(root, "[data-wiki-sync]", async (fields, status, event) => {
     const base = `/api/v1/wiki/sources/${encodeURIComponent(String(fields.get("id")))}`;
-    const action = event.submitter?.getAttribute("value");
+    const action = event.submitter?.getAttribute("value") ?? "load";
     if (action === "source") {
       await wikiRequest(base, "PUT", {url: fields.get("url"), cluster: fields.get("cluster"), namespace: fields.get("namespace")});
       status.textContent = "来源已注册。";
