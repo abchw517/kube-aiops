@@ -12,6 +12,8 @@ const modules = [
   ["wiki:read", "知识库浏览", "查看授权范围内的文档"],
   ["wiki:publish", "知识库发布", "录入并发布授权范围内的文档"],
   ["wiki:sync", "知识库同步", "管理本人远端 Wiki 凭据"],
+  ["environments:manage", "环境管理", "新增、改名和删除环境"],
+  ["business-lines:manage", "业务线管理", "维护跨环境业务线"],
 ] as const;
 
 interface Role {
@@ -38,6 +40,7 @@ function moduleName(id: string): string {
 }
 
 function scopeName(cluster: string, namespace?: string): string {
+  if (cluster === "*" && !namespace) return "平台级";
   return `${cluster === "*" ? "全部集群" : cluster} / ${namespace === "*" ? "全部命名空间" : namespace || "集群级"}`;
 }
 
@@ -114,6 +117,7 @@ function roleForm(role: Role | undefined, clusters: Cluster[]): string {
         </label>`).join("")}
       </div></fieldset>
       <fieldset><legend>授权范围</legend>
+        <small>环境和业务线管理使用平台范围。集群实例 ID 填写 *，命名空间留空；集群权限请另建角色。</small>
         <div class="role-fields">
           ${directory}
           <label>集群实例 ID（逗号分隔）<input name="cluster" value="${escapeHtml(role?.cluster ?? "local")}" maxlength="4096" required></label>

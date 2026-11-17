@@ -291,6 +291,10 @@ try {
       expression: `document.querySelector('a[href^="#/wiki/"]').click()`,
     });
     await assertText(cdp, (text) => text.includes("验证仓库权限"), "Wiki detail did not render");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
+      (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
+      (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
       (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
     await cdp.send("Runtime.evaluate", {

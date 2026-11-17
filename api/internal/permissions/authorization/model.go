@@ -11,29 +11,33 @@ import (
 const (
 	GlobalCluster = "*"
 
-	CapabilityClustersList     Capability = "clusters:list"
-	CapabilityNamespacesList   Capability = "namespaces:list"
-	CapabilityFindingsList     Capability = "findings:list"
-	CapabilityFindingsSummary  Capability = "findings:summary"
-	CapabilityFindingsRead     Capability = "findings:read"
-	CapabilityResourcesRead    Capability = "resources:read"
-	CapabilityCorrelationsRead Capability = "correlations:read"
-	CapabilityWikiRead         Capability = "wiki:read"
-	CapabilityWikiPublish      Capability = "wiki:publish"
-	CapabilityWikiSync         Capability = "wiki:sync"
+	CapabilityClustersList        Capability = "clusters:list"
+	CapabilityNamespacesList      Capability = "namespaces:list"
+	CapabilityFindingsList        Capability = "findings:list"
+	CapabilityFindingsSummary     Capability = "findings:summary"
+	CapabilityFindingsRead        Capability = "findings:read"
+	CapabilityResourcesRead       Capability = "resources:read"
+	CapabilityCorrelationsRead    Capability = "correlations:read"
+	CapabilityWikiRead            Capability = "wiki:read"
+	CapabilityWikiPublish         Capability = "wiki:publish"
+	CapabilityWikiSync            Capability = "wiki:sync"
+	CapabilityEnvironmentsManage  Capability = "environments:manage"
+	CapabilityBusinessLinesManage Capability = "business-lines:manage"
 )
 
 var knownCapabilities = map[Capability]struct{}{
-	CapabilityClustersList:     {},
-	CapabilityNamespacesList:   {},
-	CapabilityFindingsList:     {},
-	CapabilityFindingsSummary:  {},
-	CapabilityFindingsRead:     {},
-	CapabilityResourcesRead:    {},
-	CapabilityCorrelationsRead: {},
-	CapabilityWikiRead:         {},
-	CapabilityWikiPublish:      {},
-	CapabilityWikiSync:         {},
+	CapabilityClustersList:        {},
+	CapabilityNamespacesList:      {},
+	CapabilityFindingsList:        {},
+	CapabilityFindingsSummary:     {},
+	CapabilityFindingsRead:        {},
+	CapabilityResourcesRead:       {},
+	CapabilityCorrelationsRead:    {},
+	CapabilityWikiRead:            {},
+	CapabilityWikiPublish:         {},
+	CapabilityWikiSync:            {},
+	CapabilityEnvironmentsManage:  {},
+	CapabilityBusinessLinesManage: {},
 }
 
 type Capability string

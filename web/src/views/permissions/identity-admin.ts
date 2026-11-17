@@ -1,4 +1,3 @@
-import { renderOnboarding } from "../clusters/cluster-onboarding.ts";
 import { escapeHtml } from "../../components/html.ts";
 import { renderRoles } from "./roles.ts";
 
@@ -18,13 +17,11 @@ export async function renderIdentityAdmin(resource: string, initial: boolean, ro
     <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
     <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
     <a href="#/admin/policy"${resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
-    <a href="#/admin/clusters"${resource === "clusters" ? ' aria-current="page"' : ""}>集群接入</a>
     <a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>
   </nav>`;
   let content: string;
   try {
-    if (resource === "clusters") content = await renderOnboarding(roleID);
-    else content = resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
+    content = resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
   } catch {
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }

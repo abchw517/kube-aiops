@@ -46,6 +46,21 @@ func Open(path string) (*Store, error) {
 			groups_json TEXT NOT NULL,
 			last_login TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS resource_catalog_initialized (
+			id INTEGER PRIMARY KEY CHECK (id = 1)
+		);
+		CREATE TABLE IF NOT EXISTS resource_catalog (
+			kind TEXT NOT NULL,
+			id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			PRIMARY KEY(kind, id)
+		);
+		CREATE TABLE IF NOT EXISTS resource_catalog_names (
+			kind TEXT NOT NULL,
+			name TEXT NOT NULL,
+			id TEXT NOT NULL,
+			PRIMARY KEY(kind, name)
+		);
 		CREATE TABLE IF NOT EXISTS managed_clusters (
 			id TEXT PRIMARY KEY,
 			document TEXT NOT NULL,

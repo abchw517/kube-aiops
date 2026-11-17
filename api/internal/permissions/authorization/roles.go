@@ -62,8 +62,8 @@ func (role RoleSpec) rules() ([]Rule, error) {
 			}
 		}
 	}
-	if err := (Scope{Cluster: role.Cluster}).Validate(); err != nil || role.Cluster == GlobalCluster {
-		return nil, fmt.Errorf("请选择一个具体集群")
+	if err := (Scope{Cluster: role.Cluster}).Validate(); err != nil {
+		return nil, fmt.Errorf("请选择一个有效的授权范围")
 	}
 	if len(role.Namespaces) > 64 || (len(role.Namespaces) > 1 && slices.Contains(role.Namespaces, GlobalCluster)) {
 		return nil, fmt.Errorf("请选择最多 64 个命名空间，或单独填写 *")
@@ -86,9 +86,18 @@ func (role RoleSpec) rules() ([]Rule, error) {
 		if module.Validate() != nil || seen[module] {
 			return nil, fmt.Errorf("权限模块无效或重复")
 		}
+		catalogModule := module == CapabilityEnvironmentsManage || module == CapabilityBusinessLinesManage
+		if role.Cluster == GlobalCluster && !catalogModule {
+			return nil, fmt.Errorf("请选择一个具体集群")
+		}
 		seen[module] = true
 		rule := Rule{Effect: EffectAllow, Subjects: role.Subjects, Groups: role.Groups, Capabilities: []Capability{module}, Scopes: scopes}
 		switch module {
+		case CapabilityEnvironmentsManage, CapabilityBusinessLinesManage:
+			if role.Cluster != GlobalCluster || len(scopes) != 0 {
+				return nil, fmt.Errorf("环境和业务线管理需要平台范围")
+			}
+			rule.Scopes = []Scope{GlobalScope()}
 		case CapabilityClustersList:
 			entry := rule
 			entry.Scopes = []Scope{GlobalScope()}

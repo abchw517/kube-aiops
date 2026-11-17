@@ -1,3 +1,4 @@
+import { renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
 import { submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
 import {
@@ -47,6 +48,7 @@ export class PortalApp {
   private knownKinds = new Set<string>();
   private renderGeneration = 0;
   private identityAdmin = false;
+  private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
   private findingAI = false;
   private mustChangePassword = false;
   private showLogout = !demoMode;
@@ -63,6 +65,11 @@ export class PortalApp {
       if (form instanceof HTMLFormElement && form.hasAttribute("data-role-form")) {
         event.preventDefault();
         void submitRole(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete");
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.dataset.resourceCatalog) {
+        event.preventDefault();
+        void submitResourceCatalog(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete", () => void this.route());
         return;
       }
       if (form instanceof HTMLFormElement && form.dataset.onboardingMode) {
@@ -96,12 +103,32 @@ export class PortalApp {
         const status = response.ok ? await response.json() : {};
         if (generation !== this.renderGeneration) return;
         this.identityAdmin = status.admin === true;
+        this.resourceAccess = {
+          clusters: this.identityAdmin,
+          environments: status.manageEnvironments === true,
+          "business-lines": status.manageBusinessLines === true,
+        };
         this.findingAI = this.identityAdmin && status.findingAI === true;
         this.mustChangePassword = status.mustChangePassword === true;
       } catch {
         if (generation !== this.renderGeneration) return;
       }
-      const adminRoute = window.location.hash.startsWith("#/admin");
+      const hash = window.location.hash;
+      if (!this.mustChangePassword && this.identityAdmin && /^#\/admin\/clusters(?:\/|$)/.test(hash)) {
+        window.location.replace(hash.replace("#/admin/clusters", "#/resources/clusters"));
+        return;
+      }
+      if (!this.mustChangePassword && /^#\/resources(?:\/|$)/.test(hash)) {
+        this.renderShell(loadingState("正在加载资源管理。"));
+        try {
+          const body = await renderResourceManagement(hash, this.resourceAccess);
+          if (generation === this.renderGeneration) this.renderShell(body);
+        } catch {
+          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载资源管理。"));
+        }
+        return;
+      }
+      const adminRoute = hash.startsWith("#/admin");
       if (this.mustChangePassword || (this.identityAdmin && adminRoute)) {
         const [, , resource = "ldap", roleID] = window.location.hash.split("/");
         const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, this.mustChangePassword, roleID);
@@ -245,8 +272,9 @@ export class PortalApp {
     const adminPage = this.mustChangePassword || (this.identityAdmin && hash.startsWith("#/admin"));
     const detailPage = /^#\/findings\/[^?]+/.test(hash);
     const signedOut = content.includes("data-login");
+    const resourcePage = !this.mustChangePassword && /^#\/resources(?:\/|$)/.test(hash);
     const wikiPage = /^#\/wiki(?:[/?]|$)/.test(hash);
-    const title = adminPage ? "系统管理" : wikiPage ? "运维知识库" : detailPage ? "诊断详情" : "诊断控制台";
+    const title = adminPage ? "系统管理" : resourcePage ? "资源管理" : wikiPage ? "运维知识库" : detailPage ? "诊断详情" : "诊断控制台";
     this.root.innerHTML = `
       <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
       <header class="topbar">
@@ -260,7 +288,8 @@ export class PortalApp {
       </header>
       <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
         ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
-          <a href="#/findings"${adminPage || wikiPage ? "" : ' aria-current="page"'}>诊断控制台</a>
+          <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : ' aria-current="page"'}>诊断控制台</a>
+          ${Object.values(this.resourceAccess).some(Boolean) ? `<a href="#/resources"${resourcePage ? ' aria-current="page"' : ""}>资源管理</a>` : ""}
           ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
           ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
         </nav>`}

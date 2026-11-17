@@ -31,7 +31,11 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	}
 	defer store.Close()
 	bundle := defaultProductionBundle(testLogger())
-	wrap, err := configureIdentityHandler(t.Context(), &bundle, store, nil, nil)
+	managed, err := newOnboarding(store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrap, err := configureIdentityHandler(t.Context(), &bundle, store, nil, managed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +67,7 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	}
 	request("GET", "/api/v1/clusters", "", initial, 403)
 	request("GET", "/api/v1/admin/users", "", initial, 403)
+	request("GET", "/api/v1/admin/environments", "", initial, 403)
 	request("POST", "/api/v1/admin/password", `{"current":"admin123","password":"admin123"}`, initial, 400)
 	request("GET", "/api/v1/clusters", "", initial, 403)
 	request("POST", "/api/v1/admin/password", `{"current":"admin123","password":"fixture-changed-password"}`, initial, 204)
@@ -76,9 +81,14 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	request("POST", "/api/v1/admin/users", `{"username":"alice","password":"fixture-alice-password","groups":["ops"]}`, admin, 204)
 	alice := request("POST", login, `{"provider":"local","username":"alice","password":"fixture-alice-password"}`, nil, 204).Result().Cookies()[0]
 	request("GET", "/api/v1/admin/users", "", alice, 403)
+	request("GET", "/api/v1/admin/environments", "", alice, 403)
+	request("GET", "/api/v1/admin/environments", "", admin, 200)
 	request("GET", "/api/v1/clusters", "", alice, 403)
-	request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","groups":["local:ops"],"capabilities":["clusters:list"],"scopes":[{"cluster":"*"}]}]}`, admin, 204)
+	request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","groups":["local:ops"],"capabilities":["clusters:list","environments:manage"],"scopes":[{"cluster":"*"}]}]}`, admin, 204)
 	request("GET", "/api/v1/clusters", "", alice, 200)
+	request("GET", "/api/v1/admin/environments", "", alice, 200)
+	request("POST", "/api/v1/admin/environments", `{"name":"联调"}`, alice, 200)
+	request("GET", "/api/v1/admin/business-lines", "", alice, 403)
 	t.Setenv("AUTH_LDAP_BIND_PASSWORD_FILE", "")
 	const rolesPath = "/api/v1/admin/roles"
 	const role = `{"name":"观察员","groups":["local:ops"],"modules":["findings:list","findings:summary"],"cluster":"local","namespaces":["dev"]}`

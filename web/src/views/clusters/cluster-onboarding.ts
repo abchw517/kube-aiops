@@ -1,7 +1,7 @@
 import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
-const route = "#/admin/clusters";
+const route = "#/resources/clusters";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],
   ["environment", "环境", true], ["business", "业务", true], ["group", "集群名称", true],
