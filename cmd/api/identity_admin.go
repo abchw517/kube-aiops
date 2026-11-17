@@ -39,15 +39,18 @@ type ldapSettings struct {
 }
 
 type identityAdmin struct {
-	store      *identitystore.Store
-	origin     string
-	mu         sync.RWMutex
-	policy     *authorization.PolicyAuthorizer
-	basePolicy authorization.Policy
-	roles      []authorization.Role
-	ldap       *identity.LDAPConfig
-	settings   ldapSettings
-	ldapIssue  string
+	wikiSyncMu     sync.Mutex
+	wikiSyncActive map[string]bool
+	wikiTransport  http.RoundTripper
+	store          *identitystore.Store
+	origin         string
+	mu             sync.RWMutex
+	policy         *authorization.PolicyAuthorizer
+	basePolicy     authorization.Policy
+	roles          []authorization.Role
+	ldap           *identity.LDAPConfig
+	settings       ldapSettings
+	ldapIssue      string
 }
 
 func newIdentityAdmin(ctx context.Context, store *identitystore.Store) (*identityAdmin, error) {
@@ -236,7 +239,7 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 				}
 			}
 			if selected != nil && selected.engineAI != nil {
-				selected.serve(w, r)
+				selected.serve(w, r.WithContext(a.withWikiFindingLookup(identity.WithPrincipal(r.Context(), p), p)))
 				return
 			}
 			http.Error(w, "该集群实例尚未启用 AI 复核", 404)
@@ -245,10 +248,18 @@ func (a *identityAdmin) wrap(s *identity.Sessions, next http.Handler, review *fi
 		a.handle(w, r, resource, s)
 	})
 	mux.HandleFunc("/api/v1/wiki/sources/{id}", a.wikiSourceHandler(s, a.handleWikiSource))
+	mux.HandleFunc("/api/v1/wiki/sources/{id}/check", a.wikiSourceHandler(s, a.handleWikiCheck))
+	mux.HandleFunc("/api/v1/wiki/sources/{id}/sync", a.wikiSourceHandler(s, a.handleWikiSync))
+	mux.HandleFunc("/api/v1/wiki/sources/{id}/schedule", a.wikiSourceHandler(s, a.handleWikiSchedule))
 	mux.HandleFunc("/api/v1/wiki/sources/{id}/credential", a.wikiSourceHandler(s, a.handleWikiCredential))
 	mux.HandleFunc("/api/v1/wiki/knowledge", a.wikiSessionHandler(s, a.handleWikiDocuments))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions/1", a.wikiSessionHandler(s, a.handleWikiDocument))
+	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions/{revision}", a.wikiSessionHandler(s, a.handleWikiDocument))
+	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions", a.wikiSessionHandler(s, a.handleWikiRevision))
+	mux.HandleFunc("/api/v1/wiki/imports/files", a.wikiSessionHandler(s, a.handleWikiFiles))
 	mux.HandleFunc("/api/v1/wiki/imports", a.wikiSessionHandler(s, a.handleWikiImport))
+	mux.HandleFunc("/api/v1/wiki/ask", a.wikiSessionHandler(s, func(w http.ResponseWriter, r *http.Request, p identity.Principal) {
+		a.handleWikiAsk(w, r, p, review)
+	}))
 	mux.Handle("/", next)
 	return mux
 }

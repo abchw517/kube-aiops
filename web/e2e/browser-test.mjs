@@ -237,16 +237,27 @@ try {
     await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-open-review]").click()',
     });
-    await assertText(cdp, (text) => text.includes("数据来源") && text.includes("观察结论") && !text.includes("正在加载复核记录"),
+    await assertText(cdp, (text) => text.includes("你的消息") && !text.includes("正在加载复核记录"),
       "AI review dialog did not load");
+    for (const [message, reply] of [
+      ["Pod 事件显示镜像仓库拒绝访问", "请补充镜像仓库返回的状态码。"],
+      ["仓库返回 403", "403 支持访问被拒绝，请核实拉取凭据。"],
+    ]) {
+      await cdp.send("Runtime.evaluate", {
+        expression: `(() => {
+          const form = document.querySelector(".finding-review-form");
+          form.elements.message.value = ${JSON.stringify(message)};
+          form.requestSubmit();
+        })()`,
+      });
+      await assertText(cdp, (text) => text.includes(message) && text.includes(reply) && !text.includes("更新结论：镜像仓库拒绝访问"),
+        "AI review did not display the conversation without updating the diagnosis");
+    }
     await cdp.send("Runtime.evaluate", {
-      expression: `(() => {
-        const form = document.querySelector(".finding-review-form");
-        form.elements.source.value = "Pod 事件";
-        form.elements.observation.value = "镜像仓库拒绝访问";
-        form.requestSubmit();
-      })()`,
+      expression: 'document.querySelector("[data-finalize-review]").click()',
     });
+    await assertText(cdp, (text) => text.includes("结论草稿") && text.includes("核对草稿后可确认"), "Draft was not shown");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-confirm-review]").click()`});
     await assertText(cdp, (text) => text.includes("AI 复核结论") && text.includes("更新结论：镜像仓库拒绝访问"),
       "AI review did not update the diagnostic explanation");
     await cdp.send("Runtime.evaluate", {
@@ -254,6 +265,7 @@ try {
     });
     await assertText(cdp, (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新增知识"),
       "Wiki navigation did not load the knowledge list");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-close-wiki-ask]").click()`});
     await cdp.send("Runtime.evaluate", {
       expression: `document.querySelector('a[href^="#/wiki/"]').click()`,
     });

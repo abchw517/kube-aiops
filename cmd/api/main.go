@@ -66,6 +66,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	bundle := defaultProductionBundle(logger)
 	var wrap func(http.Handler) http.Handler
 	var managed *onboarding
@@ -93,6 +96,7 @@ func main() {
 			os.Exit(1)
 		}
 		if review != nil {
+			review.correlator = correlator
 			if registry, ok := queryBackend.(*httpapi.ClusterBackends); ok {
 				registry.Backend = review
 			} else {
@@ -115,7 +119,7 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		wrap, err = configureIdentityHandler(&bundle, store, review, managed)
+		wrap, err = configureIdentityHandler(ctx, &bundle, store, review, managed)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
@@ -160,9 +164,6 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("kube-aiops-api started", "addr", cfg.HTTPAddr, "security_mode", cfg.SecurityMode)
@@ -188,7 +189,7 @@ func main() {
 	logger.Info("kube-aiops-api stopped")
 }
 
-func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Store, review *findingReview, managed *onboarding) (func(http.Handler) http.Handler, error) {
+func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, store *identitystore.Store, review *findingReview, managed *onboarding) (func(http.Handler) http.Handler, error) {
 	if store == nil {
 		sessions, err := configureIdentity(bundle)
 		if sessions == nil {
@@ -205,6 +206,7 @@ func configureIdentityHandler(bundle *security.Bundle, store *identitystore.Stor
 		return nil, err
 	}
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
+	go admin.runWikiSchedule(ctx)
 	return func(next http.Handler) http.Handler {
 		return sessions.Wrap(admin.wrap(sessions, next, review, managed))
 	}, nil

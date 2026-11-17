@@ -2,11 +2,14 @@ import { escapeHtml, formatTimestamp } from "../components/html.ts";
 
 import { authenticationRequiredState, authorizationDeniedState } from "../components/states.ts";
 
+import { bindWikiTools, renderWikiTools } from "./wiki-tools.ts";
+
 const endpoint = "/api/v1/wiki/knowledge";
 const filters = [["environment", "环境"], ["business", "业务线"], ["documentType", "类型"]] as const;
 
 interface WikiDocument {
   knowledgeId?: string;
+  revision?: number;
   title: string;
   cluster: string;
   namespace: string;
@@ -17,11 +20,12 @@ interface WikiDocument {
   createdAt?: string;
 }
 
-export async function renderWiki(hash: string): Promise<string> {
+export async function renderWiki(hash: string, admin: boolean): Promise<string> {
   const [path, search] = hash.split("?", 2);
   const id = path?.match(/^#\/wiki\/([a-f0-9]{64})$/)?.[1];
   const query = new URLSearchParams(search);
-  const response = await fetch(id ? `${endpoint}/${id}/revisions/1` : `${endpoint}?${query}`);
+  const revision = Number(query.get("revision")) || 1;
+  const response = await fetch(id ? `${endpoint}/${id}/revisions/${revision}` : `${endpoint}?${query}`);
   if (response.status === 401) return authenticationRequiredState();
   if (response.status === 403) return authorizationDeniedState();
   if (!response.ok) return '<section class="panel" role="alert">无法读取知识库内容。<a href="#/wiki">返回知识库</a></section>';
@@ -29,7 +33,13 @@ export async function renderWiki(hash: string): Promise<string> {
     const doc = await response.json() as WikiDocument;
     return `<section class="panel"><a href="#/wiki">返回知识库</a>
       <h2>${escapeHtml(doc.title)}</h2><p>${escapeHtml(doc.environment)} / ${escapeHtml(doc.business)} / ${escapeHtml(doc.documentType)}</p>
-      <div class="wiki-document-body">${escapeHtml(doc.body)}</div></section>`;
+      <div class="wiki-document-body">${escapeHtml(doc.body)}</div>
+      <details><summary>订正文档</summary><form data-wiki-revision class="wiki-import-form">
+      <input type="hidden" name="revision" value="${doc.revision ?? revision}">
+      <label>标题<input name="title" value="${escapeHtml(doc.title)}" required></label>
+      <label>正文<textarea name="body" required rows="8">${escapeHtml(doc.body)}</textarea></label>
+      <p role="status"></p><button type="submit" class="button">确认发布修订</button>
+      </form></details></section>`;
   }
   const data = await response.json() as {items: WikiDocument[]; filters: Record<string, string[]>; page: number; pageSize: number; total: number};
   const pageLink = (page: number) => {
@@ -45,7 +55,7 @@ export async function renderWiki(hash: string): Promise<string> {
       <button type="submit" class="button">筛选</button>
     </form>
     ${data.items.length ? `<div class="table-wrap"><table><thead><tr><th>标题</th><th>环境</th><th>业务线</th><th>类型</th><th>更新时间</th></tr></thead><tbody>
-    ${data.items.map((doc) => `<tr><td><a href="#/wiki/${encodeURIComponent(doc.knowledgeId ?? "")}">${escapeHtml(doc.title)}</a></td>
+    ${data.items.map((doc) => `<tr><td><a href="#/wiki/${encodeURIComponent(doc.knowledgeId ?? "")}?revision=${doc.revision ?? 1}">${escapeHtml(doc.title)}</a></td>
       <td>${escapeHtml(doc.environment)}</td><td>${escapeHtml(doc.business)}</td><td>${escapeHtml(doc.documentType)}</td><td>${formatTimestamp(doc.createdAt)}</td></tr>`).join("")}
     </tbody></table></div>` : "<p>暂无符合条件的文档。</p>"}
     ${data.page > 1 ? `<a href="#/wiki?${pageLink(data.page - 1)}">上一页</a>` : ""}
@@ -64,10 +74,11 @@ export async function renderWiki(hash: string): Promise<string> {
       <p data-wiki-status role="status"></p>
       <div><button class="button secondary" type="submit">预览并整理</button> <button class="button" type="submit" value="publish" disabled>确认发布</button></div>
     </form>
-  </details></section>`;
+  </details></section>${renderWikiTools(admin)}`;
 }
 
 export function bindWiki(root: HTMLElement, reload: () => void): void {
+  bindWikiTools(root);
   root.querySelector<HTMLFormElement>("[data-wiki-filters]")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;

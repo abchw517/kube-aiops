@@ -60,6 +60,14 @@ func Open(path string) (*Store, error) {
 			conclusion TEXT NOT NULL,
 			PRIMARY KEY(finding_key, revision)
 		);
+		CREATE TABLE IF NOT EXISTS wiki_review_drafts (
+			id TEXT PRIMARY KEY,
+			finding_key TEXT NOT NULL,
+			owner TEXT NOT NULL,
+			revision INTEGER NOT NULL,
+			conclusion TEXT NOT NULL,
+			expires_at INTEGER NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS wiki_documents (
 			id TEXT PRIMARY KEY NOT NULL,
 			cluster TEXT NOT NULL,
@@ -72,11 +80,36 @@ func Open(path string) (*Store, error) {
 			created_at TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS wiki_documents_scope ON wiki_documents(cluster, namespace, environment, business, document_type);
+		CREATE TABLE IF NOT EXISTS wiki_revisions (
+			knowledge_id TEXT NOT NULL,
+			revision INTEGER NOT NULL,
+			document TEXT NOT NULL,
+			PRIMARY KEY(knowledge_id, revision)
+		);
 		CREATE TABLE IF NOT EXISTS wiki_sources (
 			id TEXT PRIMARY KEY NOT NULL,
 			url TEXT NOT NULL,
 			cluster TEXT NOT NULL,
 			namespace TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS wiki_remote_pages (
+			source_id TEXT NOT NULL,
+			page_id TEXT NOT NULL,
+			knowledge_id TEXT NOT NULL,
+			source_url TEXT NOT NULL,
+			content_hash TEXT NOT NULL,
+			missing INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(source_id, page_id)
+		);
+		CREATE TABLE IF NOT EXISTS wiki_sync_schedules (
+			source_id TEXT PRIMARY KEY,
+			provider TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			minutes INTEGER NOT NULL,
+			cron TEXT NOT NULL,
+			time_zone TEXT NOT NULL,
+			next_at INTEGER NOT NULL,
+			last_result TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE IF NOT EXISTS wiki_source_credentials (
 			source_id TEXT NOT NULL,

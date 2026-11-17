@@ -112,7 +112,7 @@ export class PortalApp {
     if (!demoMode && /^#\/wiki(?:[/?]|$)/.test(window.location.hash)) {
       this.renderShell(loadingState("正在加载知识库。"));
       try {
-        const body = await renderWiki(window.location.hash);
+        const body = await renderWiki(window.location.hash, this.identityAdmin);
         if (generation === this.renderGeneration) {
           this.renderShell(body);
           bindWiki(this.root, () => void this.route());

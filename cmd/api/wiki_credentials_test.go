@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -10,10 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/abchw517/kube-aiops/internal/identity"
 	"github.com/abchw517/kube-aiops/internal/identitystore"
+	"github.com/abchw517/kube-aiops/internal/kubernetes"
 )
 
 func TestWikiWithPortalTestAccounts(t *testing.T) {
@@ -35,7 +40,38 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := sessions.Wrap(admin.wrap(sessions, http.NotFoundHandler(), nil, nil))
+	var remoteCalls atomic.Int32
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, _ := r.BasicAuth()
+		if user != "wiki-alice" || pass != "fixture-alice-wiki-secret" {
+			w.WriteHeader(401)
+			return
+		}
+		remoteCalls.Add(1)
+		writeAdminJSON(w, wikiRemoteDirectory{Pages: []wikiRemotePage{{ID: "page-1", Title: "远端排障", Body: "检查远端仓库"}}})
+	}))
+	defer remote.Close()
+	admin.wikiTransport = remote.Client().Transport
+	model := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := new(bytes.Buffer)
+		_, _ = body.ReadFrom(r.Body)
+		if !bytes.Contains(body.Bytes(), []byte("镜像拉取")) || bytes.Contains(body.Bytes(), []byte("fixture-password-value")) {
+			http.Error(w, "invalid prompt", 400)
+			return
+		}
+		writeAdminJSON(w, map[string]any{"choices": []any{map[string]any{
+			"finish_reason": "stop", "message": map[string]string{"content": "请检查仓库凭据。"},
+		}}})
+	}))
+	defer model.Close()
+	review, err := newFindingReview(reviewFixtureBackend{}, store, func(context.Context) (kubernetes.EngineAIConfig, error) {
+		return kubernetes.EngineAIConfig{Endpoint: model.URL, Model: "fixture", Key: "fixture-key"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	review.client = model.Client()
+	handler := sessions.Wrap(admin.wrap(sessions, http.NotFoundHandler(), review, nil))
 	request := func(method, path, body string, cookie *http.Cookie, status int) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -60,7 +96,7 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 	root := login("admin", "fixture-admin-new")
 	const source = "/api/v1/wiki/sources/ops"
 	const credential = source + "/credential"
-	request("PUT", source, `{"url":"https://wiki.example.com/ops","cluster":"local","namespace":"dev"}`, root, 204)
+	request("PUT", source, `{"url":"`+remote.URL+`/ops","cluster":"local","namespace":"dev"}`, root, 204)
 	request("PUT", source, `{"url":"https://wiki.example.com/changed","cluster":"local","namespace":"dev"}`, root, 409)
 	request("POST", "/api/v1/admin/users", `{"username":"alice","password":"fixture-alice-pass","groups":["ops"]}`, root, 204)
 	request("POST", "/api/v1/admin/users", `{"username":"bob","password":"fixture-bob-pass","groups":["ops"]}`, root, 204)
@@ -125,10 +161,85 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		}
 		path := knowledge + "/" + doc.ID + "/revisions/1"
 		request("GET", path, "", alice, 200)
+		revision := knowledge + "/" + doc.ID + "/revisions"
+		request("POST", revision, `{"expectedRevision":1,"title":"镜像拉取订正","body":"检查仓库凭据"}`, alice, 200)
+		request("POST", revision, `{"expectedRevision":1,"title":"旧版本","body":"应被拒绝"}`, alice, 409)
+		if out := request("GET", revision+"/2", "", alice, 200); !strings.Contains(out.Body.String(), `"revision":2`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("GET", path, "", alice, 200); strings.Contains(out.Body.String(), "镜像拉取订正") {
+			t.Fatal(out.Body.String())
+		}
+
+		const question = `{"question":"镜像拉取失败怎么办","environment":"测试","business":"运维"}`
+		if out := request("POST", "/api/v1/wiki/ask", question, alice, 200); !strings.Contains(out.Body.String(), "请检查仓库凭据") || !strings.Contains(out.Body.String(), `"revision":2`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("POST", "/api/v1/wiki/ask", question, bob, 200); !strings.Contains(out.Body.String(), `"citations":[]`) {
+			t.Fatal(out.Body.String())
+		}
+
 		request("GET", path, "", bob, 404)
 		if out := request("GET", knowledge, "", bob, 200); strings.Contains(out.Body.String(), "运维") || !strings.Contains(out.Body.String(), `"total":0`) {
 			t.Fatal(out.Body.String())
 		}
 	})
 
+	t.Run("manual and scheduled sync reuse Alice's binding", func(t *testing.T) {
+		request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","subjects":["local:alice"],"capabilities":["wiki:sync","wiki:read"],"scopes":[{"cluster":"local","namespace":"dev"}]}]}`, root, 204)
+		if out := request("POST", source+"/sync", "", alice, 200); !strings.Contains(out.Body.String(), `"saved":1`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("POST", source+"/sync", "", alice, 200); !strings.Contains(out.Body.String(), `"skipped":1`) {
+			t.Fatal(out.Body.String())
+		}
+		request("PUT", source+"/schedule", `{"intervalMinutes":1}`, alice, 204)
+		if _, err := store.ExecContext(t.Context(), "UPDATE wiki_sync_schedules SET next_at=? WHERE source_id=?", time.Now().Add(-time.Second).Unix(), "ops"); err != nil {
+			t.Fatal(err)
+		}
+		request("POST", "/api/v1/auth/logout", "", alice, 204)
+		admin.runDueWikiSchedule(t.Context())
+		if remoteCalls.Load() != 3 {
+			t.Fatalf("expected two manual and one scheduled remote login, got %d", remoteCalls.Load())
+		}
+		alice = login("alice", "fixture-alice-pass")
+		if out := request("GET", source+"/schedule", "", alice, 200); !strings.Contains(out.Body.String(), `"intervalMinutes":1`) {
+			t.Fatal(out.Body.String())
+		}
+		request("PUT", source+"/schedule", `{"intervalMinutes":0}`, alice, 204)
+	})
+}
+
+func TestWikiDOCXPlainText(t *testing.T) {
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	part, err := writer.Create("word/document.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+		<w:p><w:r><w:t>排障手册</w:t></w:r></w:p><w:p><w:r><w:t>检查仓库权限</w:t></w:r></w:p>
+		</w:body></w:document>`))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := wikiFileText("guide.docx", &buffer)
+	if err != nil || out != "排障手册\n检查仓库权限\n" {
+		t.Fatalf("unexpected DOCX extraction %q: %v", out, err)
+	}
+
+}
+
+func TestWikiCronRespectsTimezone(t *testing.T) {
+	schedule, err := parseWikiCron("0 2 * * *", "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := time.Date(2026, 11, 16, 17, 0, 0, 0, time.UTC)
+	if got := schedule.next(after); !got.Equal(after.Add(time.Hour)) {
+		t.Fatalf("unexpected next run %s", got)
+	}
+	if _, err := parseWikiCron("60 2 * * *", "Asia/Shanghai"); err == nil {
+		t.Fatal("invalid Cron accepted")
+	}
 }
