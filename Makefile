@@ -112,23 +112,23 @@ uninstall:
 	@PURGE_SECRET="$${PURGE_SECRET:-false}" PURGE_NAMESPACE="$${PURGE_NAMESPACE:-false}" PURGE_DEMO="$${PURGE_DEMO:-false}" bash ./uninstall.sh
 
 api-fmt-check:
-	@test -z "$$(gofmt -l cmd internal)" || { gofmt -d cmd internal; exit 1; }
+	@test -z "$$(gofmt -l api)" || { gofmt -d api; exit 1; }
 
 api-test:
 	@go test ./...
 
 api-build:
 	@mkdir -p "$(BUILD_DIR)"
-	@go build -o "$(API_BINARY)" ./cmd/api
+	@go build -o "$(API_BINARY)" ./api/cmd/api
 
 api-run:
-	@go run ./cmd/api
+	@go run ./api/cmd/api
 
 api-contract-validate:
 	@python tools/openapi/contract.py validate
 
 api-client-generate:
-	@python tools/openapi/contract.py generate --output clients/typescript/generated.ts
+	@python tools/openapi/contract.py generate --output web/src/api/generated.ts
 
 api-client-drift-check:
 	@python tools/openapi/contract.py drift

@@ -1,4 +1,4 @@
-import { KubeAIOpsApiClient } from "../../../clients/typescript/generated.ts";
+import { KubeAIOpsApiClient } from "./generated.ts";
 
 function resolveApiBaseUrl(): string {
   const configured = document

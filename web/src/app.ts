@@ -1,14 +1,14 @@
-import { bindWiki, renderWiki } from "./views/wiki.ts";
-import { submitOnboarding } from "./views/cluster-onboarding.ts";
+import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
+import { submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
 import {
   ApiError,
   type Cluster,
   type FindingPage,
   type FindingSummary,
   type Namespace,
-} from "../../clients/typescript/generated.ts";
-import { renderIdentityAdmin, submitIdentityAdmin } from "./views/identity-admin.ts";
-import { submitRole } from "./views/roles.ts";
+} from "./api/generated.ts";
+import { renderIdentityAdmin, submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
+import { submitRole } from "./views/permissions/roles.ts";
 import { apiClient } from "./api/client.ts";
 import {
   authenticationRequiredState,
@@ -29,14 +29,14 @@ import {
   renderCorrelationEvidence,
   renderCorrelationLoading,
   renderCorrelationSection,
-} from "./views/correlation.ts";
-import { bindFindingReview } from "./views/finding-review.ts";
-import { renderFindingDetail } from "./views/finding-detail.ts";
+} from "./views/diagnosis/correlation.ts";
+import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
+import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
 import {
   renderFilters,
   renderFindingTable,
   renderSummary,
-} from "./views/finding-list.ts";
+} from "./views/diagnosis/finding-list.ts";
 
 const demoMode = document.querySelector('meta[name="kube-aiops-demo"][content="true"]') !== null;
 

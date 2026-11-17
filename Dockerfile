@@ -14,8 +14,8 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go mod download
 
-COPY cmd ./cmd
-COPY internal ./internal
+COPY api/cmd ./api/cmd
+COPY api/internal ./api/internal
 
 # 缓存模块和 Go 编译产物
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
       -trimpath \
       -ldflags='-s -w' \
       -o /out/kube-aiops-api \
-      ./cmd/api
+      ./api/cmd/api
 
 FROM scratch
 
