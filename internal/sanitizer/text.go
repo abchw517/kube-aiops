@@ -26,6 +26,11 @@ var (
 	javascriptPattern          = regexp.MustCompile(`(?i)\bjavascript\s*:`)
 )
 
+// WikiText applies the diagnostic text redaction rules to knowledge content.
+func WikiText(value string, maxBytes int) string {
+	return sanitizeDiagnosticText(value, maxBytes)
+}
+
 func sanitizeDiagnosticText(value string, maxBytes int) string {
 	value = strings.ToValidUTF8(value, "\uFFFD")
 	value = normalizeControls(value)

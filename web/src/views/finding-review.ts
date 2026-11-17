@@ -3,15 +3,17 @@ export function findingReviewControls(): string {
     <dialog class="finding-review-dialog" aria-labelledby="finding-review-title">
       <form class="finding-review-form">
         <h2 id="finding-review-title">AI 分析</h2>
-        <p>补充已知信息，与 AI 核对原结论。AI 会参考当前诊断的关联证据。只有选择「总结并更新结论」才会保存新结论。请勿填写凭据或个人敏感信息。</p>
+        <p>补充已知信息，与 AI 核对原结论。AI 会参考当前诊断的关联证据。先生成总结草稿，确认后才会保存结论并发布知识。请勿填写凭据或个人敏感信息。</p>
         <details><summary>原始结论与复核历史</summary><div data-review-history></div></details>
+        <div data-review-baseline></div>
         <div class="finding-review-conversation" data-review-conversation aria-label="复核对话" role="log"></div>
         <label>你的消息<textarea name="message" rows="3" required maxlength="4000" placeholder="输入已知信息、观察结果，或希望 AI 核实的问题"></textarea></label>
         <p role="status"></p>
         <div class="finding-review-actions">
           <button type="button" class="button secondary" data-close-review>关闭</button>
           <button type="submit" class="button secondary" disabled>发送</button>
-          <button type="submit" class="button" data-finalize-review formnovalidate disabled>总结并更新结论</button>
+          <button type="submit" class="button" data-finalize-review formnovalidate disabled>生成结论草稿</button>
+          <button type="submit" class="button" data-confirm-review formnovalidate hidden>确认并发布知识</button>
         </div>
       </form>
     </dialog>`;
@@ -25,14 +27,18 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
   const history = form?.querySelector<HTMLElement>("[data-review-history]");
   const submit = form?.querySelector<HTMLButtonElement>('[type="submit"]');
   const finalize = form?.querySelector<HTMLButtonElement>("[data-finalize-review]");
+  const confirm = form?.querySelector<HTMLButtonElement>("[data-confirm-review]");
+  const baselineView = form?.querySelector<HTMLElement>("[data-review-baseline]");
   const log = form?.querySelector<HTMLElement>("[data-review-conversation]");
   const messageField = form?.querySelector<HTMLTextAreaElement>('[name="message"]');
   const close = form?.querySelector<HTMLButtonElement>("[data-close-review]");
   const explanation = root.querySelector<HTMLElement>("[data-finding-explanation]");
-  if (!trigger || !dialog || !form || !status || !history || !submit || !finalize || !log || !messageField || !close || !explanation) return;
+  if (!trigger || !dialog || !form || !status || !history || !submit || !finalize || !confirm || !baselineView || !log || !messageField || !close || !explanation) return;
   const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id, cluster })}`;
   let revision = 0;
   let busy = false;
+  let baseline = "";
+  let draftId = "";
   const messages: {role: "user" | "assistant"; text: string}[] = [];
   const showMessage = (role: "user" | "assistant", text: string) => {
     const entry = document.createElement("div");
@@ -57,6 +63,9 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     close.disabled = true;
     busy = true;
     history.replaceChildren();
+    baselineView.replaceChildren();
+    draftId = "";
+    confirm.hidden = true;
     status.textContent = "正在加载复核记录…";
     dialog.showModal();
     try {
@@ -79,6 +88,27 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         text.textContent = conclusion || "暂无结论。";
         history.append(title, text);
       }
+      baseline = data.original;
+      status.textContent = "正在结合 Wiki 生成增强说明…";
+      try {
+        const enhanced = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action: "enhance", revision})});
+        if (enhanced.ok) {
+          const result = await enhanced.json() as {conclusion?: string; citations?: {knowledgeId: string; revision: number; title: string}[]};
+          baseline = result.conclusion ?? baseline;
+          const text = document.createElement("p");
+          text.className = "detail-text";
+          text.textContent = `增强诊断说明\n\n${baseline}`;
+          baselineView.append(text);
+          for (const citation of result.citations ?? []) {
+            const link = document.createElement("a");
+            link.href = `#/wiki/${encodeURIComponent(citation.knowledgeId)}?revision=${citation.revision}`;
+            link.textContent = citation.title;
+            baselineView.append(link, document.createTextNode(" "));
+          }
+        }
+      } catch {
+        // The original explanation remains available if enhancement fails.
+      }
       status.textContent = "";
       submit.disabled = messages.length >= 20;
       finalize.disabled = messages.length === 0;
@@ -93,9 +123,10 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const finishing = event.submitter === finalize;
-    if (busy || (finishing ? finalize.disabled : submit.disabled)) return;
+    const publishing = event.submitter === confirm;
+    if (busy || (publishing ? !draftId : finishing ? finalize.disabled : submit.disabled)) return;
     const message = messageField.value.trim();
-    if (finishing ? message !== "" : !message || new TextEncoder().encode(message).length > 4000) {
+    if (!publishing && (finishing ? message !== "" : !message || new TextEncoder().encode(message).length > 4000)) {
       status.textContent = finishing ? "请先发送尚未提交的消息。" : "请填写消息，长度不能超过 4000 字节。";
       return;
     }
@@ -104,13 +135,13 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
     finalize.disabled = true;
     close.disabled = true;
     messageField.readOnly = true;
-    status.textContent = finishing ? "正在总结并更新结论…" : "AI 正在复核…";
+    status.textContent = publishing ? "正在确认并发布…" : finishing ? "正在生成草稿…" : "AI 正在复核…";
     let stale = false;
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: finishing ? "finalize" : "chat", messages: finishing ? messages : [...messages, { role: "user", text: message }], revision }),
+        body: JSON.stringify(publishing ? {action: "confirm", draftId, revision} : {action: finishing ? "summarize" : "chat", messages: finishing ? messages : [...messages, { role: "user", text: message }], revision, baseline}),
       });
       if (response.status === 409) {
         stale = true;
@@ -131,18 +162,28 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         return;
       }
       if (!response.ok) throw new Error("analysis failed");
-      const result = await response.json() as { conclusion?: string; reply?: string };
-      if (!finishing) {
+      const result = await response.json() as { conclusion?: string; reply?: string; draftId?: string };
+      if (!finishing && !publishing) {
+        draftId = "";
+        confirm.hidden = true;
         if (!result.reply) throw new Error("missing AI reply");
         messages.push({ role: "user", text: message }, { role: "assistant", text: result.reply });
         showMessage("user", message);
         showMessage("assistant", result.reply);
         form.reset();
-        status.textContent = messages.length >= 20 ? "已达到 10 轮，可以总结并更新结论。" : "";
+        status.textContent = messages.length >= 20 ? "已达到 10 轮，可以生成结论草稿。" : "";
         messageField.focus();
         return;
       }
       if (!result.conclusion) throw new Error("missing conclusion");
+      if (!publishing) {
+        if (!result.draftId) throw new Error("missing draft");
+        draftId = result.draftId;
+        confirm.hidden = false;
+        showMessage("assistant", `结论草稿\n\n${result.conclusion}`);
+        status.textContent = "核对草稿后可确认并发布知识。";
+        return;
+      }
       explanation.textContent = `AI 复核结论\n\n${result.conclusion}`;
       form.reset();
       dialog.close();

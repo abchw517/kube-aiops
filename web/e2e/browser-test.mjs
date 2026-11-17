@@ -204,8 +204,8 @@ try {
         return [...form.querySelectorAll('input[type="checkbox"]')].map((input) => input.checked);
       })()`, returnByValue: true,
     });
-    if (controls.result?.value?.length !== 7 || controls.result.value.some(Boolean)) {
-      throw new Error("New role did not offer seven unchecked permission modules");
+    if (controls.result?.value?.length !== 10 || controls.result.value.some(Boolean)) {
+      throw new Error("New role did not offer ten unchecked permission modules");
     }
     await cdp.send("Runtime.evaluate", {
       expression: `(() => {
@@ -256,8 +256,20 @@ try {
     await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-finalize-review]").click()',
     });
+    await assertText(cdp, (text) => text.includes("结论草稿") && text.includes("核对草稿后可确认"), "Draft was not shown");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-confirm-review]").click()`});
     await assertText(cdp, (text) => text.includes("AI 复核结论") && text.includes("更新结论：镜像仓库拒绝访问"),
       "AI review did not update the diagnostic explanation");
+    await cdp.send("Runtime.evaluate", {
+      expression: `document.querySelector('a[href="#/wiki"]').click()`,
+    });
+    await assertText(cdp, (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新增知识"),
+      "Wiki navigation did not load the knowledge list");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-close-wiki-ask]").click()`});
+    await cdp.send("Runtime.evaluate", {
+      expression: `document.querySelector('a[href^="#/wiki/"]').click()`,
+    });
+    await assertText(cdp, (text) => text.includes("验证仓库权限"), "Wiki detail did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
       (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
     await cdp.send("Runtime.evaluate", {

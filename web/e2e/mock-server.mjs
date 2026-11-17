@@ -75,6 +75,14 @@ createServer(async (request, response) => {
   if (authenticationRequired && !authenticated && url.pathname.startsWith("/api/v1/")) {
     return json(response, 401, { error: { code: "UNAUTHORIZED" } });
   }
+  const wikiID = "a".repeat(64);
+  const wikiDoc = {knowledgeId: wikiID, title: "镜像拉取排障", environment: "测试", business: "运维", documentType: "排障手册"};
+  if (url.pathname === "/api/v1/wiki/knowledge") {
+    return json(response, 200, {items: [wikiDoc], filters: {environment: ["测试"], business: ["运维"], documentType: ["排障手册"]}, page: 1, total: 1, pageSize: 20});
+  }
+  if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
+    return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
+  }
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, findingAI: true });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: [] });
@@ -92,7 +100,11 @@ createServer(async (request, response) => {
       if (matches(1)) return json(response, 200, { reply: transcript[1].text });
       if (matches(3)) return json(response, 200, { reply: transcript[3].text });
     }
-    if (input.revision === 0 && input.action === "finalize" && matches(4)) {
+    if (input.action === "enhance") return json(response, 200, {conclusion: "增强诊断案例", citations: []});
+    if (input.revision === 0 && input.action === "summarize" && matches(4)) {
+      return json(response, 200, {conclusion: "镜像仓库拒绝访问", draftId: "fixture-draft"});
+    }
+    if (input.revision === 0 && input.action === "confirm" && input.draftId === "fixture-draft") {
       return json(response, 200, { revision: 1, conclusion: "更新结论：镜像仓库拒绝访问" });
     }
     return json(response, 400, { error: "invalid fixture evidence" });
