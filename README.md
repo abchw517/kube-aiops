@@ -114,6 +114,8 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 └── Makefile
 ```
 
+从仓库根目录运行 `make api-build` 或 `make web-build`。直接构建容器镜像时，API 使用根目录的 `Dockerfile`，Web 使用 `web/Dockerfile`，两者都以根目录为构建上下文。升级旧流水线时，按[目录迁移说明](docx/install-deployment.md#从旧目录布局升级)更新路径。
+
 # 快速开始
 
 ## 0. 平台基线与 Preflight

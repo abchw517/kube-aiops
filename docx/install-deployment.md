@@ -2,6 +2,21 @@
 
 在已有 Kubernetes 集群中按顺序完成 [预检](#1-依赖和预检) → [安装 K8sGPT](#2-安装-k8sgpt) → [准备镜像](#3-准备-api-和-web-镜像) → [部署 API 与 Web Portal](#4-部署-api-与-web-portal)。已有 K8sGPT 部署时，先核对其 Namespace、实例名和 Result。API 清单默认读取 `k8sgpt-operator-system/k8sgpt-engine`，使用其他实例时，按实际配置调整 API 清单中的 `K8SGPT_NAMESPACE` 和 `K8SGPT_NAME`，并核对 ServiceAccount 的读取权限。
 
+## 从旧目录布局升级
+
+升级前检查 CI、镜像构建脚本和文档链接中硬编码的路径。
+
+| 用途 | 旧路径 | 当前路径 |
+| --- | --- | --- |
+| 安装部署指南 | `docs/install-deployment.md` | `docx/install-deployment.md` |
+| Go API 入口 | `./cmd/api` | `./api/cmd/api` |
+| 生成的 Web API 客户端 | `clients/typescript/generated.ts` | `web/src/api/generated.ts` |
+| Web NGINX 配置 | `web/nginx.conf` | `config/web/nginx.conf` |
+
+从仓库根目录运行 `make api-build`、`make web-build` 和 `make api-contract-check` 验证构建与接口契约。生产镜像按[准备镜像](#3-准备-api-和-web-镜像)构建，API 和 Web 均使用仓库根目录作为 Docker 构建上下文。
+
+正式发布分别使用 `deploy/api/` 和 `deploy/web/`。可观测性示例中的 Deployment 与正式清单使用相同的资源名，使用示例时从 `deploy/examples/observability/` 选择所需文件并按[可观测性配置](#配置可观测性来源)渲染，再应用生成的清单。
+
 ## 0. 验证 Portal Demo
 
 在仓库根目录启动 Demo。尚未获取源码时，先执行第 1 节的克隆命令。Demo 使用简体中文样例数据，可在没有 kubeconfig、Kubernetes 集群和监控凭据的环境中运行。
