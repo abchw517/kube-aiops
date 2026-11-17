@@ -103,7 +103,8 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   ├── api/
 │   ├── web/
 │   ├── collector/
-│   └── k8sgpt/
+│   ├── k8sgpt/
+│   └── examples/         # 可选部署清单
 ├── docx/                 # 保留项目验收和交付文档
 ├── scripts/
 ├── tests/

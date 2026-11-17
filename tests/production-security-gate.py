@@ -16,7 +16,26 @@ def fail(message: str) -> int:
     return 1
 
 
+def validate_deployment_targets() -> int:
+    resources = {}
+    for component in ("api", "web"):
+        for path in sorted((ROOT / "deploy" / component).rglob("*.y*ml")):
+            for manifest in yaml.safe_load_all(path.read_text(encoding="utf-8")):
+                if not manifest:
+                    continue
+                metadata = manifest.get("metadata", {})
+                group = manifest["apiVersion"].rpartition("/")[0]
+                key = (group, manifest["kind"], metadata.get("namespace", ""), metadata["name"])
+                if key in resources:
+                    first = resources[key].relative_to(ROOT)
+                    return fail(f"duplicate deployment resource {key}: {first}, {path.relative_to(ROOT)}")
+                resources[key] = path
+    return 0
+
+
 def main() -> int:
+    if validate_deployment_targets():
+        return 1
     deployment = yaml.safe_load((ROOT / "deploy/api/deployment.yaml").read_text(encoding="utf-8"))
     containers = deployment["spec"]["template"]["spec"].get("containers") or []
     api = next((item for item in containers if item.get("name") == "api"), None)

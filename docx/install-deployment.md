@@ -296,10 +296,12 @@ imagePullSecrets:
   value: "true"
 ```
 
-先应用 [Engine 读取权限](../deploy/api/examples/finding-ai/engine-reader.yaml)，再应用本次 API Deployment：
+可选清单位于 `deploy/examples/`。发布 API 和 Web 时分别选择 `deploy/api/`、`deploy/web/`，按所需功能单独应用示例。
+
+先应用 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml)，再应用本次 API Deployment：
 
 ```bash
-kubectl --context "$target_context" apply -f deploy/api/examples/finding-ai/engine-reader.yaml
+kubectl --context "$target_context" apply -f deploy/examples/finding-ai/engine-reader.yaml
 kubectl --context "$target_context" apply -f "$release_dir/api.yaml"
 kubectl --context "$target_context" -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
@@ -341,11 +343,11 @@ Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。其余三个来源通�
 
 ### 完整 Deployment 示例
 
-仓库提供完整的 [API Deployment](../deploy/api/examples/observability/api-deployment.yaml) 和 [Web Deployment](../deploy/web/examples/observability/web-deployment.yaml) 示例。API 示例配置了三个数据源的集群内 HTTP 地址和集群标签，Web 通过项目 API 获取关联证据。部署前修改镜像、数据源地址和集群标签，并按生产身份接入章节完成 API 认证授权。
+仓库提供完整的 [API Deployment](../deploy/examples/observability/api-deployment.yaml) 和 [Web Deployment](../deploy/examples/observability/web-deployment.yaml) 示例。API 示例配置了三个数据源的集群内 HTTP 地址和集群标签，Web 通过项目 API 获取关联证据。部署前修改镜像、数据源地址和集群标签，并按生产身份接入章节完成 API 认证授权。
 
 ```bash
-cp deploy/api/examples/observability/api-deployment.yaml "$release_dir/api-observability-example.yaml"
-cp deploy/web/examples/observability/web-deployment.yaml "$release_dir/web-observability-example.yaml"
+cp deploy/examples/observability/api-deployment.yaml "$release_dir/api-observability-example.yaml"
+cp deploy/examples/observability/web-deployment.yaml "$release_dir/web-observability-example.yaml"
 
 # 修改镜像、数据源地址与集群标签后检查并应用
 kubectl apply --dry-run=server -f "$release_dir/api-observability-example.yaml" -f "$release_dir/web-observability-example.yaml"
@@ -513,7 +515,7 @@ API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API
 ```bash
 kubectl apply -f deploy/api/namespace.yaml
 kubectl get storageclass
-kubectl apply -f deploy/api/examples/identity/pvc.yaml
+kubectl apply -f deploy/examples/identity/pvc.yaml
 kubectl -n kube-aiops-system get pvc kube-aiops-identity
 ```
 
@@ -888,4 +890,4 @@ kubectl -n k8sgpt-operator-system create secret generic kube-aiops-collector \
 
 拷贝 [采集 CronJob 示例](../deploy/collector/cronjob.yaml)，替换 API 镜像、中心 HTTPS 地址、实例 ID 和 Engine 参数，再应用到目标集群。实例首次提交快照后显示在线，每分钟上报当前有效 Result。完整空快照表示当前无诊断，采集失败保留最后一份快照；超过三分钟未收到快照标记为离线。中心只保存凭据哈希，停用实例可阻止查询和继续上报。采集组件只读取指定 Engine 命名空间的 Results，不上传 Kubernetes 凭据。采集实例的 Kubernetes 资源详情和原生 Event 尚未上报，可配置独立指标、日志、告警证据源。
 
-**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/api/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。
+**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。
