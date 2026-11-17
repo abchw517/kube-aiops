@@ -59,3 +59,31 @@ func TestRoleModulesPreserveScopeAndLegacyDenies(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogRoleUsesOnlyGlobalScope(t *testing.T) {
+	for _, tc := range []struct {
+		name, cluster string
+		namespaces    []string
+		modules       []Capability
+		valid         bool
+	}{
+		{"global catalog", "*", nil, []Capability{CapabilityEnvironmentsManage, CapabilityBusinessLinesManage}, true},
+		{"cluster catalog", "local", nil, []Capability{CapabilityEnvironmentsManage}, false},
+		{"global namespaced", "*", []string{"dev"}, []Capability{CapabilityBusinessLinesManage}, false},
+		{"mixed global", "*", nil, []Capability{CapabilityBusinessLinesManage, CapabilityClustersList}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rules, err := (RoleSpec{Name: "catalog", Subjects: []string{"local:alice"}, Cluster: tc.cluster, Namespaces: tc.namespaces, Modules: tc.modules}).rules()
+			if (err == nil) != tc.valid {
+				t.Fatalf("rules=%+v err=%v", rules, err)
+			}
+			if tc.valid {
+				for _, rule := range rules {
+					if len(rule.Scopes) != 1 || rule.Scopes[0] != GlobalScope() {
+						t.Fatalf("expected a global scope: %+v", rule)
+					}
+				}
+			}
+		})
+	}
+}

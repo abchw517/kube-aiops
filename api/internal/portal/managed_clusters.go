@@ -55,6 +55,9 @@ type onboarding struct {
 
 func newOnboarding(store *identitystore.Store, registry *httpapi.ClusterBackends) (*onboarding, error) {
 	o := &onboarding{store: store, registry: registry}
+	if err := initResourceCatalog(context.Background(), store); err != nil {
+		return nil, err
+	}
 	if err := o.load(context.Background()); err != nil {
 		return nil, err
 	}

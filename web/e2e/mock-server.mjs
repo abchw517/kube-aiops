@@ -92,7 +92,7 @@ createServer(async (request, response) => {
   if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
     return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
   }
-  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, findingAI: true });
+  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: [] });
     const chunks = [];
@@ -120,6 +120,9 @@ createServer(async (request, response) => {
       return json(response, 200, { revision: 1, conclusion: "更新结论：镜像仓库拒绝访问" });
     }
     return json(response, 400, { error: "invalid fixture evidence" });
+  }
+  if (url.pathname === "/api/v1/admin/environments" && adminSession && request.method === "GET") {
+    return json(response, 200, [{ id: "development", name: "研发" }]);
   }
   if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
     if (request.method === "GET") return json(response, 200, []);
