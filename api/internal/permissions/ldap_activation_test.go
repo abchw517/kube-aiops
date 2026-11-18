@@ -2,7 +2,6 @@ package permissions
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +17,8 @@ import (
 func TestLDAPActivationRequiresVerificationOfExactDraft(t *testing.T) {
 	t.Setenv("AUTH_LDAP_CA_FILE", "")
 	t.Setenv("AUTH_LDAP_BIND_PASSWORD_FILE", "")
-	writeIdentityTestFile(t, "AUTH_LDAP_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	t.Setenv("AUTH_LDAP_ENCRYPTION_KEY_FILE", "")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN", "")
 	store, err := identitystore.Open(filepath.Join(t.TempDir(), "identity.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,10 +93,22 @@ func TestLDAPActivationRequiresVerificationOfExactDraft(t *testing.T) {
 	if err := store.QueryRowContext(t.Context(), "SELECT document FROM ldap_settings").Scan(&document); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(document, "fixture-bind") || strings.Contains(document, "fixture-personal-password") || !strings.Contains(document, "passwordCiphertext") {
-		t.Fatalf("unexpected persisted credential fields: %s", document)
+	if !strings.Contains(document, `"bindPassword":"fixture-bind"`) || strings.Contains(document, "fixture-personal-password") || strings.Contains(document, "passwordCiphertext") {
+		t.Fatal("expected only the search password to be persisted without an external key")
 	}
 	if a.settings.URL != "ldap://directory.example.com" || !a.settings.AllowPlainLDAP || !strings.Contains(document, `"allowPlainLDAP":true`) {
 		t.Fatal("verified draft did not become active")
+	}
+	if err := store.Import(t.Context(), nil, []byte(`{"version":"v1","rules":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := New(t.Context(), store)
+	if err != nil || restarted.ldap == nil || restarted.ldap.BindPassword != "fixture-bind" {
+		t.Fatalf("search password did not load from SQLite after restart: %v", err)
+	}
+	w := httptest.NewRecorder()
+	restarted.Handle(w, httptest.NewRequest(http.MethodGet, "/", nil), "ldap", nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"passwordConfigured":true`) || strings.Contains(w.Body.String(), "fixture-bind") {
+		t.Fatal("LDAP configuration response did not redact the search password")
 	}
 }

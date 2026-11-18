@@ -21,7 +21,7 @@ type storedLDAPSettings struct {
 func ldapPasswordCipher() (cipher.AEAD, error) {
 	path := os.Getenv("AUTH_LDAP_ENCRYPTION_KEY_FILE")
 	if path == "" {
-		return nil, errors.New("请挂载 LDAP 密码加密密钥并设置 AUTH_LDAP_ENCRYPTION_KEY_FILE")
+		return nil, errors.New("旧版 LDAP 搜索密码已加密。请重新填写搜索密码，验证后保存配置")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -45,13 +45,13 @@ func ldapPasswordContext(settings ldapSettings) []byte {
 
 func encodeLDAPSettings(settings ldapSettings) ([]byte, error) {
 	document := storedLDAPSettings{ldapSettings: settings}
-	document.BindPassword = ""
-	if settings.BindPassword != "" {
+	if settings.BindPassword != "" && os.Getenv("AUTH_LDAP_ENCRYPTION_KEY_FILE") != "" {
 		aead, err := ldapPasswordCipher()
 		if err != nil {
 			return nil, err
 		}
 		encrypted := aead.Seal(nil, nil, []byte(settings.BindPassword), ldapPasswordContext(settings))
+		document.BindPassword = ""
 		document.PasswordCiphertext = base64.StdEncoding.EncodeToString(encrypted)
 	}
 	return json.Marshal(document)
@@ -64,6 +64,7 @@ func loadLDAPSettings(ctx context.Context, store *identitystore.Store, raw []byt
 	}
 	settings := document.ldapSettings
 	if document.PasswordCiphertext != "" {
+		settings.BindPassword = ""
 		aead, err := ldapPasswordCipher()
 		if err != nil {
 			return settings, err
@@ -77,9 +78,8 @@ func loadLDAPSettings(ctx context.Context, store *identitystore.Store, raw []byt
 			return settings, errors.New("无法解密 LDAP 搜索密码，请检查密钥或重新保存搜索密码")
 		}
 		settings.BindPassword = string(password)
-	} else if settings.BindPassword != "" {
-		// Keep the old database format readable during an upgrade and migrate it
-		// before LDAP can use the credential.
+	} else if settings.BindPassword != "" && os.Getenv("AUTH_LDAP_ENCRYPTION_KEY_FILE") != "" {
+		// Deployments that supply a key encrypt SQLite credentials on startup.
 		updated, err := encodeLDAPSettings(settings)
 		if err != nil {
 			settings.BindPassword = ""
