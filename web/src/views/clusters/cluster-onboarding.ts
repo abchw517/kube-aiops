@@ -94,15 +94,15 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
   if (!id) {
     const states = [...new Set(items.map(collectionStatus))];
     return `<div class="catalog-section">
-      <div class="cluster-heading"><div><h2>集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
+      <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
         <button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>
       </div></div>
       <div class="cluster-filters">
-        <label>搜索集群<input type="search" data-cluster-filter="query" placeholder="名称、ID、环境或业务线"></label>
+        <label>搜索集群<input type="search" name="query" autocomplete="off" data-cluster-filter="query" placeholder="名称、ID、环境或业务线…"></label>
         <label>采集状态<select data-cluster-filter="status"><option value="">全部状态</option>
           ${states.map((state) => `<option>${escapeHtml(state)}</option>`).join("")}</select></label>
       </div>
-      <div class="catalog-table-wrap"><table class="catalog-table cluster-table">
+      <div class="catalog-table-wrap" role="region" aria-labelledby="cluster-list-title" tabindex="0"><table class="catalog-table cluster-table">
         <thead><tr><th scope="col">集群</th><th scope="col">环境 / 业务线</th><th scope="col">集群类型</th><th scope="col">采集状态</th><th scope="col">操作</th></tr></thead>
         <tbody>${items.map((item) => `<tr data-cluster-row data-status="${escapeHtml(collectionStatus(item))}">
           <td><strong>${escapeHtml(item.group || item.name)}</strong> <code>${escapeHtml(item.id)}</code>

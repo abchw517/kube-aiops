@@ -18,14 +18,17 @@
   border: 1px solid #aebed0;
   border-radius: 7px;
 }
-.wiki-workspace, .wiki-management { display: grid; gap: 16px; min-width: 0; }
-.wiki-card { min-width: 0; padding: clamp(16px, 3vw, 24px); }
+.wiki-workspace, .wiki-management { display: grid; align-items: start; gap: 16px; min-width: 0; }
+.wiki-card { min-width: 0; padding: clamp(14px, 2vw, 22px); }
 .wiki-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .wiki-toolbar h2, .wiki-management h2 { margin: 0; font-size: 1.125rem; }
-.wiki-toolbar small { margin-inline-start: 8px; color: #53627a; font-weight: 500; }
+.wiki-toolbar small { margin-inline-start: 8px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .wiki-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto; gap: 12px; align-items: end; margin: 20px 0; }
 .wiki-filters label { display: grid; gap: 6px; min-width: 0; font-size: .875rem; }
 .wiki-filters select { width: 100%; min-height: 42px; border: 1px solid #aebed0; border-radius: 8px; padding: 0 10px; background: #fff; color: inherit; }
+.wiki-card table { min-width: 590px; }
+.wiki-card th { white-space: nowrap; }
+.wiki-card td:last-child { font-variant-numeric: tabular-nums; }
 .wiki-empty { text-align: center; padding: 36px 16px; border: 1px dashed #cbd7e5; border-radius: 8px; }
 .wiki-empty p { margin: 8px 0 0; color: #53627a; }
 .wiki-tool > summary { padding: 16px 20px; font-weight: 700; cursor: pointer; }
@@ -39,6 +42,9 @@
 .wiki-dialog [role="log"] { max-height: 34vh; overflow-y: auto; overflow-wrap: anywhere; }
 .wiki-dialog [role="log"] > section { padding: 12px; margin-bottom: 8px; background: #f3f8fa; border-radius: 8px; }
 .wiki-dialog [role="status"]:empty { display: none; }
-@media (max-width: 720px) {
+@media (min-width: 1360px) {
+  .wiki-workspace { grid-template-columns: minmax(0, 1fr) minmax(270px, 26%); }
+}
+@media (max-width: 960px) {
   .wiki-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

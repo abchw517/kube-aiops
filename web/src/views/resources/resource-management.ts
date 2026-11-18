@@ -21,8 +21,8 @@ export function resolveResourceTab(hash: string, access: ResourceAccess): Tab | 
 export function renderCatalog(kind: Catalog, entries: Entry[]): string {
   const name = kind === "environments" ? "环境" : "业务线";
   return `<div class="catalog-section" data-catalog-kind="${kind}">
-    <h2>${name}管理</h2>
-    <div class="catalog-table-wrap"><table class="catalog-table">
+    <h2 id="catalog-title">${name}管理</h2>
+    <div class="catalog-table-wrap" role="region" aria-labelledby="catalog-title" tabindex="0"><table class="catalog-table">
       <thead><tr><th scope="col">${name}名称</th><th scope="col">${name} ID</th><th scope="col">操作</th></tr></thead>
       <tbody>${entries.map((entry) => `<tr>
         <td>${escapeHtml(entry.name)}</td><td><code>${escapeHtml(entry.id)}</code></td>

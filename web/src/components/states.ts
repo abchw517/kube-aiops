@@ -4,7 +4,7 @@ export function loadingState(label: string): string {
   return `
     <section class="state-card" role="status" aria-busy="true">
       <div class="spinner" aria-hidden="true"></div>
-      <h2>正在加载</h2>
+      <h2>正在加载…</h2>
       <p>${escapeHtml(label)}</p>
     </section>`;
 }
@@ -17,12 +17,13 @@ export function emptyState(): string {
     </section>`;
 }
 
+/** 提供带独立标题和即时状态提示的登录表单。 */
 export function authenticationRequiredState(): string {
   return `
-    <section class="state-card error" role="alert" data-testid="authentication-required-state">
-      <h2>需要身份认证</h2>
+    <section class="state-card" aria-labelledby="login-heading" data-testid="authentication-required-state">
+      <h1 id="login-heading">需要身份认证</h1>
       <form class="login-form" data-login>
-        <label>用户名<input name="username" autocomplete="username" required maxlength="256"></label>
+        <label>用户名<input name="username" autocomplete="username" spellcheck="false" required maxlength="256"></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
         <p role="status" data-login-status></p>
         <button class="button" type="submit">登录</button>

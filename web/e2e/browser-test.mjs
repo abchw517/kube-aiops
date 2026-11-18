@@ -55,6 +55,9 @@ try {
     if (locale?.language !== "zh-CN" || locale?.severity !== "严重") {
       throw new Error(`Chinese locale or severity label missing: ${JSON.stringify(locale)}`);
     }
+    await assertFindingWorkspaceLayout(cdp, 1440, 2);
+    await assertFindingWorkspaceLayout(cdp, 390, 1);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
 
     await assertPage(
       cdp,
@@ -387,19 +390,21 @@ try {
     await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
     const nav = await cdp.send("Runtime.evaluate", { expression: `(() => {
       const links = [...document.querySelectorAll(".workspace-nav > a")];
+      const current = links.find((link) => link.getAttribute("aria-current") === "page");
       return {
         labels: links.map((link) => link.textContent).join("/"),
         indents: [...new Set(links.map((link) => getComputedStyle(link).paddingInlineStart))].length,
-        sidebar: getComputedStyle(links[0].parentElement).backgroundColor,
-        page: getComputedStyle(document.body).backgroundColor,
+        current: current?.textContent,
+        selectedBackground: current && getComputedStyle(current).backgroundColor,
+        inactiveBackground: getComputedStyle(links[0]).backgroundColor,
       };
     })()`, returnByValue: true });
     const navigation = nav.result?.value;
     if (navigation?.labels !== "诊断控制台/运维知识库/资源管理/系统管理" || navigation.indents !== 1) {
       throw new Error("The four modules must be peers in the workspace navigation");
     }
-    if (navigation.sidebar !== "rgb(18, 38, 55)" || navigation.page !== "rgb(241, 245, 249)") {
-      throw new Error("Workspace chrome must use the resource management prototype colors");
+    if (navigation.current !== "资源管理" || navigation.selectedBackground === navigation.inactiveBackground) {
+      throw new Error("Workspace navigation must distinguish the active resource module");
     }
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("最近登录") && text.includes("reader"), "User filters did not render");
@@ -631,6 +636,38 @@ async function createCdpClient(webSocketUrl) {
       socket.close();
     },
   };
+}
+
+// 验证分组筛选、响应式统计栏和窄屏表格焦点。
+async function assertFindingWorkspaceLayout(cdp, width, columns) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width, height: 900, deviceScaleFactor: 1, mobile: width < 560,
+  });
+  const response = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const workspace = document.querySelector(".finding-workspace");
+      const table = workspace.querySelector(".table-wrap");
+      const heading = document.getElementById(table.getAttribute("aria-labelledby"));
+      const primaryLink = table.querySelector(".finding-problem a");
+      table.focus({ preventScroll: true });
+      return {
+        columns: getComputedStyle(workspace).gridTemplateColumns.split(" ").length,
+        legends: [...document.querySelectorAll(".filters legend")].map((node) => node.textContent),
+        tableOverflows: table.scrollWidth > table.clientWidth,
+        pageOverflows: document.documentElement.scrollWidth > innerWidth,
+        namedRegion: table.getAttribute("role") === "region" && heading?.textContent.includes("条诊断结果"),
+        canFocusTable: table.tabIndex === 0 && document.activeElement === table,
+        findingLinkVisible: primaryLink.getBoundingClientRect().right <= table.getBoundingClientRect().right,
+      };
+    })()`,
+    returnByValue: true,
+  });
+  const layout = response.result?.value;
+  if (!layout || layout.columns !== columns || layout.legends.join("/") !== "集群范围/结果筛选" ||
+    layout.tableOverflows !== (width < 560) || layout.pageOverflows || !layout.namedRegion || !layout.canFocusTable ||
+    !layout.findingLinkVisible) {
+    throw new Error(`Finding workspace layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
+  }
 }
 
 async function assertDetailLayout(cdp, width, columns) {

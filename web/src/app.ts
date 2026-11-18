@@ -1,22 +1,19 @@
-import { submitNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
-import { filterAccounts, handlePlatformClick, queryAudit, submitAuditRetention, submitPlatform, updateScopeOptions } from "./views/permissions/platform-admin.ts";
-import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
+import { bindPortalForms } from "./portal-forms.ts";
+import { filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
+import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
-import { filterClusterRows, handleClusterMaintenanceClick, recheckCollection, submitClusterMaintenance, submitOnboarding, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
+import { filterClusterRows, handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import {
   ApiError,
   type Cluster,
-  type FindingPage,
-  type FindingSummary,
   type Namespace,
 } from "./api/generated.ts";
-import { invalidateLDAPDraft, renderIdentityAdmin, submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
-import { submitRole } from "./views/permissions/roles.ts";
+import { invalidateLDAPDraft, renderIdentityAdmin } from "./views/permissions/identity-admin.ts";
 import { apiClient } from "./api/client.ts";
+import { renderPortalShell } from "./components/portal-shell.ts";
 import {
   authenticationRequiredState,
   authorizationDeniedState,
-  emptyState,
   errorState,
   loadingState,
 } from "./components/states.ts";
@@ -35,11 +32,7 @@ import {
 } from "./views/diagnosis/correlation.ts";
 import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
 import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
-import {
-  renderFilters,
-  renderFindingTable,
-  renderSummary,
-} from "./views/diagnosis/finding-list.ts";
+import { renderFindingWorkspace } from "./views/diagnosis/finding-list.ts";
 
 const demoMode = document.querySelector('meta[name="kube-aiops-demo"][content="true"]') !== null;
 
@@ -69,66 +62,15 @@ export class PortalApp {
       handlePlatformClick(event);
       this.handleClick(event);
     });
-    this.root.addEventListener("submit", (event) => {
-      const form = event.target;
-      if (form instanceof HTMLFormElement && form.hasAttribute("data-role-form")) {
-        event.preventDefault();
-        void submitRole(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete");
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.resourceCatalog) {
-        event.preventDefault();
-        void submitResourceCatalog(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete", () => void this.route());
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.clusterMaintenance) {
-        event.preventDefault();
-        void submitClusterMaintenance(form, () => void this.route());
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.collectionCheck) {
-        event.preventDefault();
-        void recheckCollection(form, () => void this.route());
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.onboardingMode) {
-        event.preventDefault();
-        void submitOnboarding(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test", () => void this.route());
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.namespaceOwnership) {
-        event.preventDefault();
-        void submitNamespaceOwnership(form);
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.platform) {
-        event.preventDefault();
-        const action = event instanceof SubmitEvent ? event.submitter?.getAttribute("value") ?? "" : "";
-        if (action) void submitPlatform(form, action, () => void this.route());
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.hasAttribute("data-audit-retention")) {
-        event.preventDefault();
-        void submitAuditRetention(form);
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.hasAttribute("data-audit-filter")) {
-        event.preventDefault();
-        const button = event instanceof SubmitEvent ? event.submitter : null;
-        void queryAudit(form, button?.hasAttribute("data-audit-next") ? button.getAttribute("value") ?? "" : "");
-        return;
-      }
-      if (form instanceof HTMLFormElement && form.dataset.identityResource) {
-        event.preventDefault();
-        void submitIdentityAdmin(form, () => {
-          this.identityAdmin = false;
-          this.mustChangePassword = false;
-          window.location.hash = "#/findings";
-          void this.route();
-        }, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test");
-        return;
-      }
-      void this.login(event);
+    bindPortalForms(this.root, {
+      refresh: () => void this.route(),
+      completePasswordChange: () => {
+        this.identityAdmin = false;
+        this.mustChangePassword = false;
+        window.location.hash = "#/findings";
+        void this.route();
+      },
+      login: (event) => void this.login(event),
     });
     const updateLDAP = (event: Event) => {
       const target = event.target;
@@ -198,6 +140,10 @@ export class PortalApp {
       try {
         const body = await renderWiki(window.location.hash, this.identityAdmin);
         if (generation === this.renderGeneration) {
+          if (body === null) {
+            this.renderShell(authenticationRequiredState(), true);
+            return;
+          }
           this.renderShell(body);
           bindWiki(this.root, () => void this.route());
         }
@@ -243,10 +189,18 @@ export class PortalApp {
 
       if (filters.kind) this.knownKinds.add(filters.kind);
       for (const kind of Object.keys(summary.byKind)) this.knownKinds.add(kind);
-      this.renderFindingDomain(clusters, namespaces, filters, page, summary);
+      this.renderShell(renderFindingWorkspace({
+        clusters,
+        namespaces,
+        filters,
+        page,
+        summary,
+        knownKinds: [...this.knownKinds],
+        hasCursor: Boolean(this.pageCursor()),
+      }));
     } catch (error) {
       if (generation !== this.renderGeneration) return;
-      this.renderShell(this.requestErrorState(error));
+      this.renderRequestError(error);
     }
   }
 
@@ -268,7 +222,7 @@ export class PortalApp {
       if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {
       if (generation !== this.renderGeneration) return;
-      this.renderShell(this.requestErrorState(error));
+      this.renderRequestError(error);
     }
   }
 
@@ -301,62 +255,28 @@ export class PortalApp {
     return response.items;
   }
 
-  private renderFindingDomain(
-    clusters: Cluster[],
-    namespaces: Namespace[],
-    filters: FindingFilters,
-    page: FindingPage,
-    summary: FindingSummary,
-  ): void {
-    const body = `
-      ${renderFilters(clusters, namespaces, [...this.knownKinds], filters)}
-      ${renderSummary(summary)}
-      ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, summary.total)}
-    `;
-    const params = new URLSearchParams(serializeFindingFilters(filters));
-    if (page.pagination.continue) params.set("continue", page.pagination.continue);
-    const next = page.pagination.continue
-      ? `<a class="button" href="#/findings?${params.toString().replaceAll("&", "&amp;")}">下一页</a>`
-      : "";
-    const first = this.pageCursor()
-      ? `<a class="button" href="#/findings?${serializeFindingFilters(filters).replaceAll("&", "&amp;")}">返回首页</a>`
-      : "";
-    this.renderShell(body + (first || next ? `<nav class="pagination" aria-label="诊断结果分页">${first}${next}</nav>` : ""));
-  }
-
-  private renderShell(content: string): void {
-    const hash = window.location.hash;
-    const adminPage = this.mustChangePassword || (this.identityAdmin && hash.startsWith("#/admin"));
-    const detailPage = /^#\/findings\/[^?]+/.test(hash);
-    const signedOut = content.includes("data-login");
-    const resourcePage = !this.mustChangePassword && /^#\/resources(?:\/|$)/.test(hash);
-    const wikiPage = /^#\/wiki(?:[/?]|$)/.test(hash);
-    const title = adminPage ? "系统管理" : resourcePage ? "资源管理" : wikiPage ? "运维知识库" : detailPage ? "诊断详情" : "诊断控制台";
-    this.root.innerHTML = `
-      <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
-      <header class="topbar">
-        <a class="brand" href="#/findings" aria-label="kube-aiops 诊断首页">
-          <span class="brand-mark" aria-hidden="true">K</span>
-          <span><strong>kube-aiops</strong><small>Kubernetes 诊断</small></span>
-        </a>
-        <div class="portal-actions">
-          ${this.canChangePassword && !this.identityAdmin && !this.mustChangePassword && !signedOut ? '<a class="button secondary" href="#/admin/password">修改密码</a>' : ""}
-          ${this.showLogout && !signedOut ? '<button class="button secondary" type="button" data-action="logout">退出登录</button>' : ""}
-        </div>
-      </header>
-      <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
-        ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
-          <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : ' aria-current="page"'}>诊断控制台</a>
-          ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
-          ${Object.values(this.resourceAccess).some(Boolean) ? `<a href="#/resources"${resourcePage ? ' aria-current="page"' : ""}>资源管理</a>` : ""}
-          ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
-        </nav>`}
-        <main id="portal-content" class="page-shell" tabindex="-1">
-          ${demoMode ? '<p class="demo-notice">演示数据</p>' : ""}
-          ${signedOut ? "" : `<header class="page-intro"><h1>${title}</h1></header>`}
-          ${content}
-        </main>
-      </div>`;
+  /** 更新统一外框，并恢复仍然存在的全局导航焦点。 */
+  private renderShell(content: string, signedOut = false): void {
+    const active = document.activeElement;
+    const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
+      active.closest(".topbar, .workspace-nav, .skip-link") ? active : null;
+    const mainFocused = active instanceof HTMLElement && active.id === "portal-content" && this.root.contains(active);
+    this.root.innerHTML = renderPortalShell(content, {
+      hash: window.location.hash,
+      demoMode,
+      identityAdmin: this.identityAdmin,
+      canManageResources: Object.values(this.resourceAccess).some(Boolean),
+      mustChangePassword: this.mustChangePassword,
+      canChangePassword: this.canChangePassword,
+      showLogout: this.showLogout,
+      signedOut,
+    });
+    if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
+    if (activeLink) {
+      const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .workspace-nav a, .skip-link"));
+      links.find((link) => link.className === activeLink.className && link.href === activeLink.href)
+        ?.focus({ preventScroll: true });
+    }
   }
 
   private handleClick(event: Event): void {
@@ -483,21 +403,22 @@ export class PortalApp {
       this.identityAdmin = false;
       this.mustChangePassword = false;
       ++this.renderGeneration;
-      this.renderShell(authenticationRequiredState());
+      this.renderShell(authenticationRequiredState(), true);
     } catch {
       button.textContent = "退出失败，请重试";
       button.disabled = false;
     }
   }
 
-  private requestErrorState(error: unknown): string {
-    if (error instanceof ApiError) {
-      if (error.status === 401) {
-        this.showLogout = false;
-        return authenticationRequiredState();
-      }
-      if (error.status === 403) return authorizationDeniedState();
+  /** 根据诊断接口状态显示登录、无权限或重试页面。 */
+  private renderRequestError(error: unknown): void {
+    if (error instanceof ApiError && error.status === 401) {
+      this.showLogout = false;
+      this.renderShell(authenticationRequiredState(), true);
+      return;
     }
-    return errorState("无法获取诊断数据，请稍后重试。");
+    this.renderShell(error instanceof ApiError && error.status === 403
+      ? authorizationDeniedState()
+      : errorState("无法获取诊断数据，请稍后重试。"));
   }
 }

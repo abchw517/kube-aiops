@@ -177,7 +177,7 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
     <div class="system-stats">${stats.map(([label, count]) => `<div class="system-card"><span>${label}</span><strong>${count}</strong></div>`).join("")}</div>
     <div class="system-user-layout"><section class="system-card">
     <div class="platform-filters system-field-grid">
-      <label>搜索账号<input type="search" data-platform-filter="query" placeholder="输入账号名或身份"></label>
+      <label>搜索账号<input type="search" name="query" autocomplete="off" data-platform-filter="query" placeholder="输入账号名或身份…"></label>
       <label>账号类型<select data-platform-filter="kind"><option value="">全部类型</option>${options(Object.entries(kinds).map(([id,name]) => ({ id,name })))}</select></label>
       <label>账号状态<select data-platform-filter="status"><option value="">全部状态</option><option>正常</option><option>待改密</option><option>平台已停用</option><option>目录已停用</option></select></label>
     </div>
@@ -189,8 +189,8 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       <button type="button" class="button secondary catalog-danger" data-system-open="delete-account" data-platform-delete
         title="选择一个可删除的账号" disabled>删除用户</button>
     </div>
-    <div class="catalog-table-wrap"><table class="catalog-table account-table">
-      <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th>账号</th><th>类型</th><th>状态</th><th>最近登录</th></tr></thead>
+    <div class="catalog-table-wrap" role="region" aria-label="账号列表" tabindex="0"><table class="catalog-table account-table">
+      <thead><tr><th scope="col"><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th scope="col">账号</th><th scope="col">类型</th><th scope="col">状态</th><th scope="col">最近登录</th></tr></thead>
       <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
         <td><div class="system-user-cell">${accountAvatar(item)}<div class="account-identity"><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
         <td>${h(kinds[item.kind])}</td><td>${accountStatus(item)}</td>
@@ -257,8 +257,8 @@ async function renderAccess(tab?: string): Promise<string> {
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
       <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
-    </nav><div class="catalog-table-wrap"><table class="catalog-table">
-      <thead><tr>${headers.map((title) => `<th>${title}</th>`).join("")}</tr></thead><tbody>
+    </nav><div class="catalog-table-wrap" role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
+      <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
       ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
     ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") :
       roleEditor() + access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
@@ -308,8 +308,8 @@ async function renderOperations(superAdmin: boolean): Promise<string> {
     <input type="hidden" name="batch">
     ${submit("查询")}<button class="button secondary" type="submit" data-audit-next value="${before}"${before ? "" : " hidden"}>下一页</button>
     <p role="status"></p>
-  </form><div class="catalog-table-wrap"><table class="catalog-table">
-    <thead><tr><th>时间（北京时间）</th><th>操作者</th><th>操作类型</th><th>风险等级</th><th>目标</th><th>结果</th><th>操作</th></tr></thead>
+  </form><div class="catalog-table-wrap" role="region" aria-label="操作审计记录" tabindex="0"><table class="catalog-table audit-table">
+    <thead><tr><th scope="col">时间（北京时间）</th><th scope="col">操作者</th><th scope="col">操作类型</th><th scope="col">风险等级</th><th scope="col">目标</th><th scope="col">结果</th><th scope="col">操作</th></tr></thead>
     <tbody data-audit-results>${operationRows(items)}</tbody></table></div><div class="catalog-bottom" data-audit-count>当前页 ${items.length} 条记录</div></section>`;
 }
 
