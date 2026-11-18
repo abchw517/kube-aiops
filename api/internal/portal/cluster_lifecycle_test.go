@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -196,5 +197,53 @@ users:
 
 	if _, _, err := decodeKubeconfig(strings.Replace(kubeconfig, "user: { token: fixture-valid-cluster }", "user: { exec: { command: unsupported } }", 1)); err == nil {
 		t.Fatal("executable kubeconfig credential accepted")
+	}
+}
+
+type assignmentBackend struct{ testBackend }
+
+func (assignmentBackend) ListNamespaces(context.Context) ([]kubernetes.Namespace, error) {
+	return []kubernetes.Namespace{{Name: "payments"}, {Name: "platform"}}, nil
+}
+
+func TestNamespaceAssignmentsCommitTogether(t *testing.T) {
+	ctx := t.Context()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "clusters.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	registry := &httpapi.ClusterBackends{Backend: assignmentBackend{}}
+	o, err := newOnboarding(store, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.SetLocal(httpapi.ClusterTarget{Backend: assignmentBackend{}})
+	if _, err := store.ExecContext(ctx, `INSERT INTO resource_catalog_ids VALUES ('business-lines','cloud','cloud','cloud')`); err != nil {
+		t.Fatal(err)
+	}
+
+	save := func(body string, want int) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		o.namespaceAssignments(w, httptest.NewRequest("PUT", "/?cluster=local", strings.NewReader(body)))
+		if w.Code != want {
+			t.Fatalf("got %d want %d: %s", w.Code, want, w.Body.String())
+		}
+	}
+	save(`{"namespace":"payments","businesses":["cloud"]}`, 204)
+	save(`{"assignments":[{"namespace":"payments","businesses":[]},{"namespace":"platform","businesses":["missing"]}]}`, 409)
+	assigned, err := o.namespaceBusiness(ctx, "local", "payments", "cloud")
+	if err != nil || !assigned {
+		t.Fatalf("partial update after invalid assignment: %v %v", assigned, err)
+	}
+	save(`{"assignments":[{"namespace":"payments","businesses":[]},{"namespace":"platform","businesses":["cloud"]}]}`, 204)
+	payments, err := o.namespaceBusiness(ctx, "local", "payments", "cloud")
+	if err != nil || payments {
+		t.Fatalf("payments assignment remained: %v %v", payments, err)
+	}
+	platform, err := o.namespaceBusiness(ctx, "local", "platform", "cloud")
+	if err != nil || !platform {
+		t.Fatalf("platform assignment missing: %v %v", platform, err)
 	}
 }

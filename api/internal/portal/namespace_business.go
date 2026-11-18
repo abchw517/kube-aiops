@@ -5,12 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"slices"
 	"strings"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/httpapi"
-	"github.com/abchw517/kube-aiops/api/internal/kubernetes"
 )
 
 func (o *onboarding) scopedCluster(id string) (httpapi.ClusterTarget, bool) {
@@ -87,6 +85,7 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 		http.Error(w, "集群不可用", 404)
 		return
 	}
+	directory, _ := target.Backend.(directoryBackend)
 	if r.Method == http.MethodGet {
 		namespaces, err := target.Backend.ListNamespaces(ctx)
 		if err != nil {
@@ -114,18 +113,46 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 			http.Error(w, "归属暂不可用", 503)
 			return
 		}
-		adminhttp.WriteJSON(w, map[string]any{"namespaces": namespaces, "assigned": assigned})
+		rows.Close()
+		payload := map[string]any{"namespaces": namespaces, "assigned": assigned}
+		if directory.spec.ClusterType == "dedicated" {
+			key, err := catalogStableKey(ctx, o.store, businessKind, directory.spec.Business)
+			if err != nil {
+				http.Error(w, "归属暂不可用", 503)
+				return
+			}
+			var id string
+			err = o.store.QueryRowContext(ctx, "SELECT id FROM resource_catalog_ids WHERE kind=? AND stable_key=? AND alias=id", businessKind, key).Scan(&id)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "归属暂不可用", 503)
+				return
+			}
+			payload["dedicatedBusinessId"] = id
+		}
+		adminhttp.WriteJSON(w, payload)
 		return
 	}
 	if r.Method != http.MethodPut {
 		w.WriteHeader(405)
 		return
 	}
-	var input struct {
+	type assignment struct {
 		Namespace  string
 		Businesses []string
 	}
-	if !adminhttp.Decode(w, r, &input) || input.Namespace == "" || len(input.Businesses) > 50 {
+	var input struct {
+		assignment
+		Assignments []assignment
+	}
+	if !adminhttp.Decode(w, r, &input) || (input.Assignments != nil && (input.Namespace != "" || input.Businesses != nil)) {
+		http.Error(w, "归属无效", 400)
+		return
+	}
+	changes := input.Assignments
+	if changes == nil {
+		changes = []assignment{input.assignment}
+	}
+	if len(changes) == 0 {
 		http.Error(w, "归属无效", 400)
 		return
 	}
@@ -134,9 +161,21 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 		http.Error(w, "命名空间不可用", 503)
 		return
 	}
-	if !slices.ContainsFunc(namespaces, func(ns kubernetes.Namespace) bool { return ns.Name == input.Namespace }) {
-		http.Error(w, "命名空间不存在", 404)
-		return
+	knownNames := make(map[string]bool, len(namespaces))
+	for _, ns := range namespaces {
+		knownNames[ns.Name] = true
+	}
+	seen := make(map[string]bool, len(changes))
+	for _, change := range changes {
+		if change.Namespace == "" || len(change.Businesses) > 50 || seen[change.Namespace] {
+			http.Error(w, "归属无效", 400)
+			return
+		}
+		if !knownNames[change.Namespace] {
+			http.Error(w, "命名空间不存在", 404)
+			return
+		}
+		seen[change.Namespace] = true
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -150,7 +189,6 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer tx.Rollback()
-	directory, _ := target.Backend.(directoryBackend)
 	dedicatedBusiness := ""
 	if directory.spec.ClusterType == "dedicated" {
 		dedicatedBusiness, err = catalogStableKey(ctx, tx, businessKind, directory.spec.Business)
@@ -159,28 +197,30 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=?", cluster, input.Namespace); err != nil {
-		http.Error(w, "保存失败", 503)
-		return
-	}
-	for _, id := range input.Businesses {
-		var key string
-		err := tx.QueryRowContext(ctx, "SELECT stable_key FROM resource_catalog_ids WHERE kind='business-lines' AND alias=? AND id=?", id, id).Scan(&key)
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "业务线不存在", 409)
-			return
-		}
-		if err != nil {
+	for _, change := range changes {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=?", cluster, change.Namespace); err != nil {
 			http.Error(w, "保存失败", 503)
 			return
 		}
-		if dedicatedBusiness != "" && key != dedicatedBusiness {
-			http.Error(w, "独立业务集群只能分配到所属业务线", 409)
-			return
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, input.Namespace, key); err != nil {
-			http.Error(w, "保存失败", 503)
-			return
+		for _, id := range change.Businesses {
+			var key string
+			err := tx.QueryRowContext(ctx, "SELECT stable_key FROM resource_catalog_ids WHERE kind='business-lines' AND alias=? AND id=?", id, id).Scan(&key)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "业务线不存在", 409)
+				return
+			}
+			if err != nil {
+				http.Error(w, "保存失败", 503)
+				return
+			}
+			if dedicatedBusiness != "" && key != dedicatedBusiness {
+				http.Error(w, "独立业务集群只能分配到所属业务线", 409)
+				return
+			}
+			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, change.Namespace, key); err != nil {
+				http.Error(w, "保存失败", 503)
+				return
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

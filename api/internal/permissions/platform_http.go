@@ -27,6 +27,7 @@ type accountView struct {
 	Roles             []string         `json:"roles"`
 	Groups            []string         `json:"groups"`
 	Effective         []effectiveScope `json:"effective"`
+	LastLoginAt       int64            `json:"lastLoginAt,omitempty"`
 }
 
 type platformChange struct {
@@ -69,7 +70,35 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 				users = append(users, accountView{ID: superSubject, Username: "admin", Kind: "super", MustChange: initial, Roles: []string{adminRole}})
 			}
 			for _, account := range state.Accounts {
-				users = append(users, accountView{account.ID, account.Username, account.Kind, account.Disabled, account.DirectoryDisabled, account.MustChange, account.Roles, account.Groups, state.effective(account)})
+				users = append(users, accountView{
+					ID: account.ID, Username: account.Username, Kind: account.Kind, Disabled: account.Disabled,
+					DirectoryDisabled: account.DirectoryDisabled, MustChange: account.MustChange,
+					Roles: account.Roles, Groups: account.Groups, Effective: state.effective(account),
+				})
+			}
+			rows, err := a.store.QueryContext(ctx, `SELECT actor, MAX(created_at) FROM operation_audit
+				WHERE action='登录' AND result='成功' AND actor<>'' GROUP BY actor`)
+			if err != nil {
+				http.Error(w, "无法加载最近登录记录", 503)
+				return
+			}
+			defer rows.Close()
+			lastLogins := make(map[string]int64)
+			for rows.Next() {
+				var actor string
+				var at int64
+				if err := rows.Scan(&actor, &at); err != nil {
+					http.Error(w, "无法加载最近登录记录", 503)
+					return
+				}
+				lastLogins[actor] = at
+			}
+			if err := rows.Err(); err != nil {
+				http.Error(w, "无法加载最近登录记录", 503)
+				return
+			}
+			for i := range users {
+				users[i].LastLoginAt = lastLogins[users[i].ID]
 			}
 			slices.SortFunc(users, func(a, b accountView) int { return strings.Compare(a.ID, b.ID) })
 			adminhttp.WriteJSON(w, users)
@@ -533,7 +562,31 @@ func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 		items = items[:100]
 		next = items[99].ID
 	}
-	adminhttp.WriteJSON(w, map[string]any{"items": items, "before": next})
+	rows.Close()
+	payload := map[string]any{"items": items, "before": next}
+	if r.URL.RawQuery == "" {
+		actionRows, err := a.store.QueryContext(r.Context(), "SELECT DISTINCT action FROM operation_audit ORDER BY action")
+		if err != nil {
+			http.Error(w, "审计记录暂不可用", 503)
+			return
+		}
+		defer actionRows.Close()
+		actions := make([]string, 0)
+		for actionRows.Next() {
+			var action string
+			if actionRows.Scan(&action) != nil {
+				http.Error(w, "审计记录暂不可用", 503)
+				return
+			}
+			actions = append(actions, action)
+		}
+		if actionRows.Err() != nil {
+			http.Error(w, "审计记录暂不可用", 503)
+			return
+		}
+		payload["actions"] = actions
+	}
+	adminhttp.WriteJSON(w, payload)
 }
 
 func (a *Admin) changePlatformPassword(ctx context.Context, p identity.Principal, current, next string) error {

@@ -34,8 +34,9 @@ export async function renderIdentityAdmin(resource: string, initial: boolean, ro
 
 async function renderResource(resource: string, initial: boolean): Promise<string> {
   if (resource === "password") {
-    return `<h2>${initial ? "请先修改临时密码" : "修改密码"}</h2>
-      ${form("password", `<label>当前密码<input name="current" type="password" autocomplete="current-password" required></label>
+    return `<div class="platform-heading"><div><h2>修改密码</h2>
+      <p>${initial ? "请先设置新密码，再进入历史诊断。" : "为当前本地账号设置新密码。"}</p></div></div>
+      ${form("password", `${initial ? '<p class="system-notice">当前会话仅可用于完成首次改密。</p>' : ""}<label>${initial ? "临时密码" : "当前密码"}<input name="current" type="password" autocomplete="current-password" required></label>
         ${passwordField()}<label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" required></label>`, "保存新密码")}`;
   }
   const response = await fetch("/api/v1/admin/ldap");
@@ -43,10 +44,10 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
     throw new Error("identity configuration unavailable");
   }
   const data = await response.json();
-  return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p>
+  return `<div class="platform-heading"><div><h2>认证配置</h2><p>验证待启用的 LDAP 配置后保存。</p></div></div>
     ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
     <form class="system-ldap" data-identity-resource="ldap">
-    <section class="system-card system-form"><h3>LDAP 连接配置</h3><div class="system-field-grid">${ldapFields.map(([key, label]) =>
+    <section class="system-card system-form"><div class="system-card-heading"><h3>LDAP 连接配置</h3><span class="system-badge" data-ldap-config-state>${data.url ? "配置已启用" : "尚未配置"}</span></div><div class="system-field-grid">${ldapFields.map(([key, label]) =>
       `<label>${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}"></label>`).join("")}
       <label>LDAP 用户搜索范围<select name="searchScope">
         <option value="subtree">子树</option>
@@ -60,15 +61,16 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
         <option value="base"${data.groupScope === "base" ? " selected" : ""}>基础对象</option>
       </select></label>
       <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>
-      </div><button class="button" type="submit" disabled>保存配置</button>
-      <p>修改配置后需重新测试，失败时继续使用当前配置。</p></section>
+      </div><button class="button" type="submit" disabled>保存并启用</button>
+      <p>修改配置后需重新测试，失败时继续使用当前配置。</p>
+      <details><summary>LDAP 配置说明</summary><p>支持 LDAPS 和 StartTLS，均验证证书。AD 通常使用 sAMAccountName。已有 %s 模板时请留空 UID。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p></details></section>
     <section class="system-card system-form"><h3>测试待启用配置</h3>
       <label>LDAP 测试员工账号<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
       <label>LDAP 测试员工密码<input name="testPassword" type="password" maxlength="1024" autocomplete="off"></label>
-      <button class="button secondary" type="submit" value="test">测试 LDAP 服务器</button>
+      <button class="button secondary" type="submit" value="test">运行测试</button>
       <fieldset><legend>验证步骤</legend><ol class="system-validation-steps">
       ${ldapSteps.map((step) => `<li><span>${step}</span><span class="system-badge" data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>
-      <p role="status" aria-live="polite"></p></section></form>`;
+      <small>测试登录不会创建会话、用户记录或角色关联。</small><p role="status" aria-live="polite"></p></section></form>`;
 }
 
 function form(resource: string, fields: string, label: string): string {
@@ -107,6 +109,8 @@ export function invalidateLDAPDraft(form: HTMLFormElement, target: EventTarget |
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
       target.name === "testUsername" || target.name === "testPassword") return;
   ldapVerification.delete(form);
+  const state = form.querySelector("[data-ldap-config-state]");
+  if (state) state.textContent = "有未保存变更";
   showLDAPSteps(form);
   const save = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="test"])');
   if (save) save.disabled = true;
@@ -196,6 +200,8 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     status.textContent = "已保存";
     if (ldap) {
       ldapVerification.delete(form);
+      const state = form.querySelector("[data-ldap-config-state]");
+      if (state) state.textContent = data.get("url") ? "配置已启用" : "尚未配置";
       form.closest("section")?.querySelector("[data-ldap-issue]")?.remove();
       const password = form.querySelector<HTMLInputElement>('[name="bindPassword"]');
       if (password) {

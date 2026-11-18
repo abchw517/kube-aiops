@@ -59,7 +59,7 @@ export function handleResourceCatalogClick(event: MouseEvent): void {
     <div class="catalog-dialog-body">
       ${deleting ? `<p>确定删除「${escapeHtml(entryName)}」 <code>${escapeHtml(id)}</code>？</p>` : `
         <label>${name}名称<input name="name" value="${escapeHtml(entryName)}" required maxlength="128"></label>
-        <label>${name} ID<input name="id" value="${escapeHtml(id)}" required maxlength="128" ${editing ? "" : 'pattern="[a-z][a-z0-9-]*"'}></label>
+        <label>${name} ID<input name="id" value="${escapeHtml(id)}" required maxlength="128" ${editing ? "" : 'pattern="[a-z][a-z0-9\\-]*"'}></label>
         <small>${editing ? "修改 ID 会保留原有资源引用。新 ID 使用小写字母、数字或连字符，并以字母开头。" : "使用小写字母开头，可包含小写字母、数字或连字符。"}</small>`}
       <p role="status" aria-live="polite"></p>
     </div>
@@ -87,7 +87,7 @@ export async function renderResourceManagement(hash: string, access: ResourceAcc
     }
     content = renderCatalog(selected, await response.json() as Entry[]);
   }
-  return `<section class="panel identity-panel">
+  return `<section class="panel identity-panel resource-management">
     <nav class="identity-nav" aria-label="资源管理">${navigation}</nav>
     ${content}
   </section>`;
