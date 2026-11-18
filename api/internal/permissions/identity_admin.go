@@ -25,17 +25,18 @@ const (
 )
 
 type ldapSettings struct {
-	URL          string `json:"url"`
-	BaseDN       string `json:"baseDN"`
-	BindDN       string `json:"bindDN"`
-	UserFilter   string `json:"userFilter"`
-	GroupAttr    string `json:"groupAttribute"`
-	BindPassword string `json:"bindPassword,omitempty"`
-	UserUID      string `json:"userUID,omitempty"`
-	SearchScope  string `json:"searchScope,omitempty"`
-	GroupBaseDN  string `json:"groupBaseDN,omitempty"`
-	GroupFilter  string `json:"groupFilter,omitempty"`
-	GroupScope   string `json:"groupScope,omitempty"`
+	URL            string `json:"url"`
+	AllowPlainLDAP bool   `json:"allowPlainLDAP,omitempty"`
+	BaseDN         string `json:"baseDN"`
+	BindDN         string `json:"bindDN"`
+	UserFilter     string `json:"userFilter"`
+	GroupAttr      string `json:"groupAttribute"`
+	BindPassword   string `json:"bindPassword,omitempty"`
+	UserUID        string `json:"userUID,omitempty"`
+	SearchScope    string `json:"searchScope,omitempty"`
+	GroupBaseDN    string `json:"groupBaseDN,omitempty"`
+	GroupFilter    string `json:"groupFilter,omitempty"`
+	GroupScope     string `json:"groupScope,omitempty"`
 }
 
 type Admin struct {
@@ -99,7 +100,7 @@ func New(ctx context.Context, store *identitystore.Store) (*Admin, error) {
 		a.settings = ldapSettings{
 			URL: os.Getenv("AUTH_LDAP_URL"), BaseDN: os.Getenv("AUTH_LDAP_BASE_DN"),
 			BindDN: os.Getenv("AUTH_LDAP_BIND_DN"), UserFilter: os.Getenv("AUTH_LDAP_USER_FILTER"),
-			GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"),
+			GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), AllowPlainLDAP: os.Getenv("AUTH_LDAP_ALLOW_PLAIN") == "true",
 		}
 		err = nil
 	default:
@@ -135,7 +136,7 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 	if s.URL == "" {
 		return nil, nil
 	}
-	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr, UserUID: s.UserUID, SearchScope: s.SearchScope, GroupBaseDN: s.GroupBaseDN, GroupFilter: s.GroupFilter, GroupScope: s.GroupScope}
+	cfg := identity.LDAPConfig{URL: s.URL, BaseDN: s.BaseDN, BindDN: s.BindDN, UserFilter: s.UserFilter, GroupAttr: s.GroupAttr, UserUID: s.UserUID, SearchScope: s.SearchScope, GroupBaseDN: s.GroupBaseDN, GroupFilter: s.GroupFilter, GroupScope: s.GroupScope, AllowPlainLDAP: s.AllowPlainLDAP}
 	if err := applyLDAPCredentials(&cfg, s.BindPassword); err != nil {
 		return nil, err
 	}

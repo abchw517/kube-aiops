@@ -175,8 +175,24 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/admin/ldap" && adminSession && request.method === "GET") {
     return json(response, 200, { url: "ldaps://example.test", baseDN: "dc=example,dc=test" });
   }
-  if (url.pathname === "/api/v1/admin/ldap-test" && adminSession && request.method === "POST") {
-    return json(response, 200, { stage: "success", verification: "fixture-verification" });
+  if (adminSession && (url.pathname === "/api/v1/admin/ldap-test" && request.method === "POST" ||
+      url.pathname === "/api/v1/admin/ldap" && request.method === "PUT")) {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (request.method === "POST" && input.testUsername === "fixture-employee" && input.testPassword === "fixture-password") {
+      if (input.baseDN === "dc=example,dc=test") return json(response, 200, { stage: "connection_tcp" });
+      if (input.url !== "ldap://example.test" || input.allowPlainLDAP !== true) {
+        return json(response, 400, { error: "missing plain LDAP opt-in" });
+      }
+      return json(response, 200, { stage: "success", verification: "fixture-verification" });
+    }
+    if (request.method === "PUT" && input.verification === "fixture-verification" && input.allowPlainLDAP === true &&
+        !Object.hasOwn(input, "testPassword") && !Object.hasOwn(input, "testUsername")) {
+      response.writeHead(204).end();
+      return;
+    }
+    return json(response, 400, { error: "unexpected LDAP request" });
   }
   if (url.pathname === "/api/v1/admin/namespace-business" && adminSession) {
     if (request.method === "PUT") {

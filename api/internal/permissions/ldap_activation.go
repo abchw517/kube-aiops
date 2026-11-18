@@ -27,6 +27,9 @@ type ldapVerification struct {
 
 func (s ldapSettings) normalized() ldapSettings {
 	s.URL = strings.TrimSpace(s.URL)
+	if !strings.HasPrefix(strings.ToLower(s.URL), "ldap://") {
+		s.AllowPlainLDAP = false
+	}
 	s.BindDN = strings.TrimSpace(s.BindDN)
 	s.BaseDN = strings.TrimSpace(s.BaseDN)
 	s.UserUID = strings.TrimSpace(s.UserUID)

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"io"
 	"net"
 	"net/http/httptest"
 	"slices"
@@ -146,6 +145,9 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 		t.Errorf("invalid bind returned %q", stage)
 	}
 	cfg.TLSConfig = nil
+	if stage := VerifyLDAPLogin(t.Context(), cfg, "alice", "fixture-user"); stage != "connection_certificate" {
+		t.Fatalf("untrusted certificate reported as %q", stage)
+	}
 	if _, err := AuthenticateLDAP(cfg, "alice", "fixture-user"); !errors.Is(err, ErrAuthenticationUnavailable) {
 		t.Fatalf("untrusted CA: %v", err)
 	}
@@ -170,12 +172,19 @@ func writeLDAPResponse(conn net.Conn, id, payload *ber.Packet) {
 	_, _ = conn.Write(response.Bytes())
 }
 
-func TestLDAPStartTLSRefusalStopsBeforeBind(t *testing.T) {
+func TestPlainLDAPRequiresOptInAndBindsDirectly(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
+
+	cfg := LDAPConfig{URL: "ldap://" + listener.Addr().String(), BaseDN: "dc=example",
+		BindDN: "cn=reader,dc=example", BindPassword: "fixture-bind", UserUID: "sAMAccountName",
+		UserFilter: "(objectClass=user)", SearchScope: "onelevel"}
+	if stage := VerifyLDAPLogin(t.Context(), cfg, "alice", "fixture-employee"); stage != "configuration" {
+		t.Fatalf("plain LDAP without opt-in must fail validation, got %q", stage)
+	}
 	finished := make(chan bool, 1)
 	go func() {
 		conn, err := listener.Accept()
@@ -186,24 +195,18 @@ func TestLDAPStartTLSRefusalStopsBeforeBind(t *testing.T) {
 		defer conn.Close()
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 		packet, err := ber.ReadPacket(conn)
-		if err != nil || packet.Children[1].Tag != ldap.ApplicationExtendedRequest {
+		if err != nil || len(packet.Children) < 2 || packet.Children[1].Tag != ldap.ApplicationBindRequest {
 			finished <- false
 			return
 		}
-		writeLDAPResponse(conn, packet.Children[0], ldapResult(ldap.ApplicationExtendedResponse, ldap.LDAPResultUnavailable))
-		_, err = ber.ReadPacket(conn)
-		finished <- errors.Is(err, io.EOF)
+		writeLDAPResponse(conn, packet.Children[0], ldapResult(ldap.ApplicationBindResponse, ldap.LDAPResultInvalidCredentials))
+		finished <- true
 	}()
-	cfg := LDAPConfig{URL: "ldap://" + listener.Addr().String(), BaseDN: "dc=example",
-		BindDN: "cn=reader,dc=example", BindPassword: "fixture-bind", UserUID: "sAMAccountName",
-		UserFilter: "(objectClass=user)", SearchScope: "onelevel"}
-	if got := cfg.filterTemplate(); got != "(&(sAMAccountName=%s)(objectClass=user))" {
-		t.Fatalf("unexpected user filter: %s", got)
-	}
-	if stage, _ := TestLDAP(t.Context(), cfg, "alice"); stage != "connection" {
-		t.Fatalf("unexpected test stage: %s", stage)
+	cfg.AllowPlainLDAP = true
+	if stage := VerifyLDAPLogin(t.Context(), cfg, "alice", "fixture-employee"); stage != "bind" {
+		t.Fatalf("unexpected LDAP test stage: %q", stage)
 	}
 	if !<-finished {
-		t.Fatal("expected StartTLS and connection close without a bind")
+		t.Fatal("expected the first LDAP request to be a bind")
 	}
 }

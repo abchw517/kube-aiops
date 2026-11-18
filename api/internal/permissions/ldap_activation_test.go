@@ -24,11 +24,11 @@ func TestLDAPActivationRequiresVerificationOfExactDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	draft := `"url":"ldaps://directory.example.com","baseDN":"dc=example,dc=com","bindDN":"cn=reader,dc=example,dc=com","userFilter":"(uid=%s)","bindPassword":"fixture-bind"`
+	draft := `"url":"ldap://directory.example.com","allowPlainLDAP":true,"baseDN":"dc=example,dc=com","bindDN":"cn=reader,dc=example,dc=com","userFilter":"(uid=%s)","bindPassword":"fixture-bind"`
 	a := &Admin{store: store, settings: ldapSettings{URL: "ldaps://old.example.com"}}
 	probeStage := "success"
 	a.ldapProbe = func(_ context.Context, cfg identity.LDAPConfig, user, password string) string {
-		if cfg.BindPassword != "fixture-bind" || user != "employee" || password != "fixture-personal-password" {
+		if !cfg.AllowPlainLDAP || cfg.BindPassword != "fixture-bind" || user != "employee" || password != "fixture-personal-password" {
 			t.Fatal("probe did not receive the candidate configuration and employee credentials")
 		}
 		return probeStage
@@ -46,6 +46,7 @@ func TestLDAPActivationRequiresVerificationOfExactDraft(t *testing.T) {
 	}
 	const operator = "local:admin"
 	const employee = `,"testUsername":"employee","testPassword":"fixture-personal-password"`
+	request(http.MethodPost, operator, strings.Replace(draft, `"allowPlainLDAP":true,`, "", 1)+employee, http.StatusBadRequest)
 	request(http.MethodPut, operator, draft, http.StatusConflict)
 	for _, failure := range []string{"connection", "bind", "user_match", "user_auth"} {
 		probeStage = failure
@@ -95,7 +96,7 @@ func TestLDAPActivationRequiresVerificationOfExactDraft(t *testing.T) {
 	if strings.Contains(document, "fixture-bind") || strings.Contains(document, "fixture-personal-password") || !strings.Contains(document, "passwordCiphertext") {
 		t.Fatalf("unexpected persisted credential fields: %s", document)
 	}
-	if a.settings.URL != "ldaps://directory.example.com" {
+	if a.settings.URL != "ldap://directory.example.com" || !a.settings.AllowPlainLDAP || !strings.Contains(document, `"allowPlainLDAP":true`) {
 		t.Fatal("verified draft did not become active")
 	}
 }

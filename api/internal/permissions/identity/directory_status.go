@@ -13,8 +13,8 @@ import (
 // Uncertain responses are omitted to preserve active sessions until expiry.
 func LDAPDisabled(ctx context.Context, cfg LDAPConfig, users map[string]string) map[string]bool {
 	results := make(map[string]bool)
-	conn, closeConnection, err := dialLDAP(ctx, cfg)
-	if err != nil {
+	conn, closeConnection, stage := dialLDAP(ctx, cfg)
+	if stage != "" {
 		return results
 	}
 	defer closeConnection()
