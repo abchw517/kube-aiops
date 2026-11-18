@@ -1,7 +1,7 @@
 # 系统管理 · 功能拆解
 
-- 需求基线 [首版 PRD](kube-aiops-system-management-prd.md)（2026-11-17 评审稿）
-- 交互参考 [HTML 原型](kube-aiops-system-management-prototype.html)
+- 需求基线 [首版 PRD](00-prd.md)
+- 交互参考 [HTML 原型](prototype.html)
 - [模块开发规范](../development-standard.md)
 - [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [单元测试用例](05-unit-test-cases.md)
 
@@ -60,6 +60,9 @@
 - 用户故事 [SM-US05](03-user-stories.md#sm-us05)
 
 ### SM-F06
+
+- LDAP 连接显式区分明文直连与校验证书的 LDAPS。目录连接结果区分 DNS、TCP、TLS 握手和证书校验。失败保留当前测试凭据，成功清空。验证和保存绑定同一草稿，验证有效期为五分钟。
+- 配置及搜索密码写入 SQLite，默认无需密钥。已有密文可用原密钥读取，缺密钥时重新验证并保存。测试员工凭据不持久化。
 
 **LDAP 草稿四阶段测试和启用** · PRD §4.1 · 页面 [SM-P03](01-pages.md#sm-p03)
 
@@ -160,6 +163,8 @@
 - 用户故事 [SM-US15](03-user-stories.md#sm-us15)
 
 ### SM-F16
+
+- 审计保留（PR #91 待合并）按事件发生时间分风险等级计算，默认 3 / 5 / 7 天。超管写入策略后清理超期记录并生成审计，普通管理员可读。查询排除已超期数据，清理不抹除用户管理的最近登录时间。列表和详情使用北京时间。
 
 **操作审计写入与检索** · PRD §7 · 页面 [SM-P07](01-pages.md#sm-p07)
 

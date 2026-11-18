@@ -1,7 +1,7 @@
 # 系统管理 · 单元测试用例
 
-- 需求基线 [首版 PRD](kube-aiops-system-management-prd.md)（2026-11-17 评审稿）
-- 交互参考 [HTML 原型](kube-aiops-system-management-prototype.html)
+- 需求基线 [首版 PRD](00-prd.md)
+- 交互参考 [HTML 原型](prototype.html)
 - [模块开发规范](../development-standard.md)
 - [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [单元测试用例](05-unit-test-cases.md)
 
@@ -42,6 +42,8 @@
 | SM-UT02-07 | Web · 选中单个账号并确认 | 确认框默认聚焦取消，确认后从列表移除，取消保留原记录 |
 
 ### SM-UT03
+
+- 浏览器补充（PR #93 待合并）在 1440px 和 390px 验证长 DN 换行、状态和按钮对齐、两行关联关系及危险操作确认。
 
 **搜索用户与账号详情** · 开发任务 [SM-T03](04-development-tasks.md#sm-t03)
 
@@ -86,6 +88,8 @@
 | SM-UT05-04 | Web · 恢复后的超级管理员使用临时凭据 | 只展示待改密流程 |
 
 ### SM-UT06
+
+- 回归补充 检查明文显式许可、LDAPS 拒绝不受信任证书、测试失败保留员工凭据、成功清空、过期或变更草稿后要求复测、无外部密钥保存 SQLite 后重启读取，以及 GET 不回显搜索密码。
 
 **LDAP 草稿四阶段测试和启用** · 开发任务 [SM-T06](04-development-tasks.md#sm-t06)
 
@@ -239,6 +243,8 @@
 
 ### SM-UT16
 
+- 保留回归（PR #91 待合并）验证默认 3 / 5 / 7 天、边界超期不可查、只有超管可保存、策略重启后持久化、清理不影响最近登录时间，以及列表和详情的北京时间格式。
+
 **操作审计写入与检索** · 开发任务 [SM-T16](04-development-tasks.md#sm-t16)
 
 - 被测对象 api/internal/audit + identitystore + 操作审计 Web。
@@ -270,4 +276,4 @@
 
 ## 待评审后的补测
 
-改密入口、普通管理员密码流程、整批失败审计、审计保留时长及风险等级映射确认后补充断言。已删除的 LDAP 身份需验证再次登录时无法自动登记。
+改密入口、普通管理员密码流程、整批失败审计及风险等级映射确认后补充断言。已删除的 LDAP 身份需验证再次登录时无法自动登记。

@@ -1,7 +1,7 @@
 # 系统管理 · 用户故事
 
-- 需求基线 [首版 PRD](kube-aiops-system-management-prd.md)（2026-11-17 评审稿）
-- 交互参考 [HTML 原型](kube-aiops-system-management-prototype.html)
+- 需求基线 [首版 PRD](00-prd.md)
+- 交互参考 [HTML 原型](prototype.html)
 - [模块开发规范](../development-standard.md)
 - [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [单元测试用例](05-unit-test-cases.md)
 
@@ -34,6 +34,8 @@
 - 选中一个可删除的用户时可在列表发起删除。确认后账号移出列表、旧会话失效并写入审计。删除 LDAP 员工后，同一目录身份不能再次自动登记。
 
 ### SM-US03
+
+- 验收补充（PR #93 待合并）在桌面和窄屏查看用户详情，长 DN 可换行，状态和操作对齐，多项关系可横排换行。停用和授权确认仍可操作。
 
 **搜索用户与账号详情** · 功能 [SM-F03](02-features.md#sm-f03) · 任务 [SM-T03](04-development-tasks.md#sm-t03) · 用例 [SM-UT03](05-unit-test-cases.md#sm-ut03)
 
@@ -71,6 +73,8 @@
 - 记录恢复事件且无密码明文。
 
 ### SM-US06
+
+- 验收补充 我可以用原测试员工账号和密码重试一次失败的验证，成功后字段清空。没有挂载密钥仍可保存搜索密码，重启后已保存配置继续生效。
 
 **LDAP 草稿四阶段测试和启用** · 功能 [SM-F06](02-features.md#sm-f06) · 任务 [SM-T06](04-development-tasks.md#sm-t06) · 用例 [SM-UT06](05-unit-test-cases.md#sm-ut06)
 
@@ -194,6 +198,8 @@
 - 归属变化即时重判。
 
 ### SM-US16
+
+- 验收补充（PR #91 待合并）超级管理员可调整低、中、高风险的保留天数。我可以查看保留策略和北京时间审计记录。保存策略后，超期记录立即不可查。
 
 **操作审计写入与检索** · 功能 [SM-F16](02-features.md#sm-f16) · 任务 [SM-T16](04-development-tasks.md#sm-t16) · 用例 [SM-UT16](05-unit-test-cases.md#sm-ut16)
 

@@ -10,6 +10,17 @@
 .user-selection { justify-content:space-between }
 .user-selection > [data-action="delete-user"] { margin-inline-start:auto }
 #dialog .btn.confirm-danger { background:#a33144; border-color:#a33144; color:white }
+.account-identity { min-width: 0; overflow-wrap: anywhere; }
+.account-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px }
+.account-toolbar .row { margin-inline-start:auto }
+.account-bindings { margin:0 }
+.account-binding { display:grid; grid-template-columns:minmax(4.5rem,max-content) minmax(0,1fr); align-items:baseline; gap:8px 12px; padding:10px 0; border-bottom:1px solid var(--line) }
+.account-binding dt { color:var(--muted); font-weight:650 }
+.account-binding dd { margin:0; display:flex; flex-wrap:wrap; gap:6px; overflow-wrap:anywhere }
+.account-bindings-footer { display:flex; justify-content:flex-end; margin-top:12px }
+.audit-retention { margin-bottom:16px }
+.audit-retention summary { cursor:pointer }
+.audit-retention form { margin-top:12px }
 </style></head>
 <body>
 <header class="top"><span class="mark" aria-hidden="true">k</span><span class="brand">kube-aiops</span><span class="divider"></span><small class="project">运维控制台</small><div class="mode"><small>原型身份</small><select id="actor" aria-label="切换原型身份"><option value="super">超级管理员</option><option value="admin">系统管理员</option><option value="ldap">LDAP 员工</option><option value="guest">本地访客</option><option value="temporary">访客待改密</option></select></div></header>
@@ -22,14 +33,15 @@ const all = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const state = {
   page:"users", actor:"super", detail:"liwei", tab:"effective", q:"", filter:"", status:"", checked:new Set(), permissionTab:"roles",
-  auditFilter:{q:"",type:"",level:""}, tested:false, ldapSteps:[],
-  ldap:{address:"ldaps://directory.example.internal:636",bind:"CN=svc-aiops,OU=Service Accounts,DC=example,DC=internal",base:"OU=Employees,DC=example,DC=internal",attribute:"sAMAccountName",range:"整个子树"},
+  auditFilter:{q:"",type:"",level:""}, retention:{"低":3,"中":5,"高":7}, retentionOpen:false,
+  tested:false, ldapSteps:[], ldapTest:{account:"",password:"",failure:"tcp",message:""},
+  ldap:{address:"ldaps://directory.example.internal:636",bind:"CN=svc-aiops,OU=Service Accounts,DC=example,DC=internal",base:"OU=Employees,DC=example,DC=internal",attribute:"sAMAccountName",range:"整个子树",allowPlain:false,passwordConfigured:true},
   groups:[{id:"g1",name:"云帆生产观察组",roles:["r1"],desc:"生产业务命名空间历史诊断"},{id:"g2",name:"研测运维组",roles:["r2"],desc:"研发、测试环境诊断查看"}],
   roles:[{id:"guest",name:"访客只读",fixed:true,scopes:[["研发","全部集群","—","全部命名空间"],["测试","全部集群","—","全部命名空间"]]},{id:"admin",name:"系统管理员",fixed:true,scopes:[]},{id:"r1",name:"云帆生产诊断",scopes:[["生产","prod-shared","云帆","yunfan-api"],["生产","prod-shared","云帆","yunfan-jobs"]]},{id:"r2",name:"研发集群观察",scopes:[["研发","dev-k8s","—","全部命名空间"]]},{id:"r3",name:"预发布诊断观察",scopes:[["预发布","stg-yunfan","云帆","yunfan-api"]]}],
   users:[
     {id:"superadmin",name:"超级管理员",type:"super",status:"enabled",roles:["admin"],groups:[],time:"今天 09:12"},
     {id:"ops.liu",name:"刘洋",type:"admin",status:"enabled",roles:["admin"],groups:[],time:"今天 10:32"},
-    {id:"liwei",name:"李伟",type:"ldap",status:"enabled",roles:["guest","r1"],groups:["g1"],time:"今天 14:26"},
+    {id:"liwei",name:"李伟",dn:"ldap:cn=李伟,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering,dc=example,dc=internal",type:"ldap",status:"enabled",roles:["guest","r1"],groups:["g1"],time:"今天 14:26"},
     {id:"zhangmin",name:"张敏",type:"ldap",status:"enabled",roles:["guest","r3"],groups:["g2"],time:"今天 13:08"},
     {id:"chenyu",name:"陈宇",type:"ldap",status:"disabled",roles:["guest"],groups:["g2"],time:"昨天 18:42"},
     {id:"visitor-qa",name:"测试访客",type:"guest",status:"enabled",roles:["guest"],groups:[],time:"今天 11:06"},
@@ -44,6 +56,15 @@ const state = {
     {time:"2026-11-17 09:45:01",who:"服务器恢复脚本",type:"重置超级管理员密码",level:"高",target:"superadmin",result:"成功"}
   ]
 };
+const auditClock = new Intl.DateTimeFormat("zh-CN", {timeZone:"Asia/Shanghai",year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+const auditTime = at => auditClock.format(at).replace(/\s/g,"");
+const auditDay = 86_400_000;
+const sampleAuditBase = Date.parse("2026-11-17T14:28:12+08:00");
+const sampleAuditNow = Date.now();
+for(const event of state.audits){
+ event.at=sampleAuditNow+Date.parse(event.time.replace(" ","T")+"+08:00")-sampleAuditBase;
+}
+const withinRetention = event => event.at > Date.now()-state.retention[event.level]*auditDay;
 const user = id => state.users.find(u => u.id === id);
 const role = id => state.roles.find(r => r.id === id);
 const group = id => state.groups.find(g => g.id === id);
@@ -56,7 +77,7 @@ const link = (text,action,value="") => '<button type="button" class="link" data-
 const choices = (items, value) => items.map(([key,label])=>'<option value="'+esc(key)+'"'+(value===key?' selected':'')+'>'+esc(label)+'</option>').join("");
 const avatar = u => '<span class="avatar '+(u.type==="ldap"?"mint":u.type==="guest"?"":"dark")+'">'+esc(u.name.at(0))+'</span>';
 const header = (title,description,actions="") => '<div class="bread">系统管理 / '+title+'</div><div class="hero"><div><h1>'+title+'</h1><p>'+description+'</p></div><div class="row">'+actions+'</div></div>';
-const audit = (type,target,level="中",items) => state.audits.unshift({time:new Date().toLocaleString("sv-SE"),who:({super:"superadmin",admin:"ops.liu",ldap:"liwei",guest:"visitor-qa",temporary:"visitor-demo"})[state.actor],type,level,target,result:items?.some(i=>i[1]==="失败")?(items.some(i=>i[1]==="成功")?"部分成功":"失败"):"成功",items});
+const audit = (type,target,level="中",items) => state.audits.unshift({at:Date.now(),who:({super:"superadmin",admin:"ops.liu",ldap:"liwei",guest:"visitor-qa",temporary:"visitor-demo"})[state.actor],type,level,target,result:items?.some(i=>i[1]==="失败")?(items.some(i=>i[1]==="成功")?"部分成功":"失败"):"成功",items});
 function notify(text){$("#toast").textContent=text;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$("#toast").textContent="",3300)}
 function table(headers,rows,empty="暂无符合条件的记录"){
  return '<div class="scroll"><table class="table"><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join("")+'</tr></thead><tbody>'+(rows.join("")||'<tr><td colspan="'+headers.length+'">'+empty+'</td></tr>')+'</tbody></table></div>';
@@ -66,6 +87,11 @@ const navs=[["users","用户管理","◎"],["ldap","认证配置","◇"],["permi
 function render(){
  const allowed=admin()?navs.slice(0,5):state.actor==="temporary"?navs.filter(n=>n[0]==="password"):navs.filter(n=>n[0]==="diagnosis"||(state.actor==="guest"&&n[0]==="password"));
  if(!allowed.some(n=>n[0]===state.page))state.page=allowed[0][0];
+ if(state.page!=="ldap"){
+  clearTimeout(ldapTimer);
+  state.ldapDraft=null;state.ldapDirty=false;state.tested=false;state.ldapSteps=[];
+  state.ldapTest.account=state.ldapTest.password=state.ldapTest.message="";
+ }
  $("#nav").innerHTML='<h2>'+(admin()?"系统管理":"我的工作台")+'</h2>'+allowed.map(([id,title,icon])=>'<button type="button" data-action="nav" data-value="'+id+'"'+(state.page===id?' aria-current="page"':'')+'><span class="icon" aria-hidden="true">'+icon+'</span>'+title+'</button>').join("")+'<div class="note">交互原型 · 模拟数据</div>';
  $("#main").innerHTML=({users:usersPage,ldap:ldapPage,permissions:permissionsPage,audit:auditPage,password:passwordPage,diagnosis:diagnosisPage})[state.page]();
 }
@@ -97,18 +123,37 @@ function userDetail(u){
  const tabs=[["effective","生效权限"],["bindings","关联关系"]];
  let content;
  if(state.tab==="bindings"){
-  content='<div class="stack"><p><strong>直接角色</strong> '+(u.roles.map(r=>tags(role(r)?.name)).join(" ")||"—")+'</p><p><strong>用户组</strong> '+(u.groups.map(g=>tags(group(g)?.name)).join(" ")||"—")+'</p>'+(u.type==="ldap"?btn("分配或撤销","assign",u.id,"primary"):'<small>本地账号通过预置角色获得权限。</small>')+'</div>';
+  content='<dl class="account-bindings"><div class="account-binding"><dt>用户组</dt><dd>'+(u.groups.map(g=>tags(group(g)?.name)).join("")||'<span class="muted">未加入用户组</span>')+'</dd></div><div class="account-binding"><dt>直接角色</dt><dd>'+(u.roles.map(r=>tags(role(r)?.name)).join("")||'<span class="muted">未分配直接角色</span>')+'</dd></div></dl><footer class="account-bindings-footer">'+(u.type==="ldap"?btn("分配或撤销","assign",u.id,"primary"):'<small class="muted">本地账号通过预置角色获得权限。</small>')+'</footer>';
  }else{
   content=u.status!=="enabled"?'<div class="notice warn">当前账号没有访问权限。启用并完成所需的改密后，按关联角色生效。</div>':["admin","super"].includes(u.type)?'<div class="scope"><strong>全局管理与诊断查看</strong><div class="source">直接授予 → 系统管理员</div></div>':entries.length?entries.map(({scope,sources})=>'<div class="scope"><div class="row between"><strong>历史诊断查看</strong>'+tags(sources.length+" 条来源","ok")+'</div><p>'+esc(scopeName(scope))+'</p>'+sources.map(x=>'<div class="source">'+esc(x)+'</div>').join("")+'</div>').join(""):'<p class="muted">没有生效权限，下次成功登录时恢复访客只读。</p>';
  }
  const actions=["ldap","guest"].includes(u.type)?btn(u.status==="disabled"?"重新启用":"停用","toggle",u.id,u.status==="disabled"?"":"danger")+(u.type==="guest"?btn("重置密码","reset",u.id):""):u.type==="admin"&&state.actor==="super"?btn("删除管理员","remove-admin",u.id,"danger"):"";
- return '<section class="panel"><div class="detailhead stack"><div class="row">'+avatar(u)+'<div><h2>'+esc(u.name)+'</h2><small class="mono">'+esc(u.id)+'</small></div>'+tags(...statuses[u.status])+'</div><div class="row">'+actions+'</div></div><div class="tabs" role="tablist" aria-label="用户详情">'+tabs.map(([k,v])=>'<button type="button" role="tab" aria-selected="'+(state.tab===k)+'" data-action="user-tab" data-value="'+k+'">'+v+'</button>').join("")+'</div><div class="detailbody">'+content+'</div></section>';
+ return '<section class="panel"><div class="detailhead stack"><div class="row">'+avatar(u)+'<div class="account-identity"><h2>'+esc(u.name)+'</h2><small class="mono">'+esc(u.dn||u.id)+'</small></div></div><div class="account-toolbar">'+tags(...statuses[u.status])+'<div class="row">'+actions+'</div></div></div><div class="tabs" role="tablist" aria-label="用户详情">'+tabs.map(([k,v])=>'<button type="button" role="tab" aria-selected="'+(state.tab===k)+'" data-action="user-tab" data-value="'+k+'">'+v+'</button>').join("")+'</div><div class="detailbody">'+content+'</div></section>';
 }
+const ldapStages=["目录连接","搜索账号绑定","测试员工查询","测试员工认证"];
+const ldapFailures={
+ dns:[0,"API Pod 无法解析 LDAP 域名。"],tcp:[0,"API Pod 无法连接 LDAP 端口。"],
+ handshake:[0,"TCP 已连通，但 LDAPS 握手失败。"],certificate:[0,"LDAPS 证书校验失败，请核对域名和 CA。"],
+ bind:[1,"搜索账号绑定失败。"],search:[2,"测试员工查询失败。"],auth:[3,"测试员工认证失败。"]
+};
+const ldapSaveHint = () => state.tested ? "四项验证已通过，可以保存并启用。" : "请填写测试员工账号和密码，运行测试。四项验证通过后即可保存。";
+let ldapTimer;
 function ldapPage(){
- const stages=["连接目录","认证绑定账号","查找测试员工","验证员工登录"];
  const ds=state.ldapDraft||state.ldap;
- const field=(key,label,type="text",value=ds[key])=>'<label class="field">'+label+'<input type="'+type+'" data-ldap="'+key+'" value="'+esc(value)+'" '+(type==="password"?'autocomplete="off"':'')+'></label>';
- return header("认证配置","验证待启用的 LDAP 配置后保存。")+'<div class="split half"><section class="panel pad stack"><div class="row between"><h2>LDAP 连接配置</h2>'+tags(state.ldapDirty?"有未保存变更":"配置已启用",state.ldapDirty?"warn":"ok")+'</div><div class="gridform">'+field("address","目录地址")+field("base","用户搜索基准 DN")+field("bind","绑定账号 DN")+field("attribute","登录名属性")+'<label class="field">搜索范围<select data-ldap="range">'+choices([["整个子树","整个子树"],["单层","单层"],["基准对象","基准对象"]],ds.range)+'</select></label>'+field("bindPassword","新绑定密码","password","")+'</div><button class="btn primary" data-action="save-ldap" '+(state.tested&&state.ldapDirty?"":"disabled")+'>保存并启用</button><p class="muted">修改配置后需要重新测试，测试失败时继续使用当前配置。</p></section><section class="panel pad stack"><h2>测试待启用配置</h2><div class="gridform">'+field("account","测试员工账号","text","liwei")+field("password","员工密码（示例）","password","")+'</div><div class="row">'+btn("运行测试","test-ldap","","primary")+btn("演示失败","test-ldap","fail")+'</div><ul class="list timeline">'+stages.map((stage,i)=>'<li class="row between"><span>'+stage+'</span>'+tags(state.ldapSteps[i]||"待验证",state.ldapSteps[i]==="通过"?"ok":state.ldapSteps[i]==="失败"?"bad":"")+'</li>').join("")+'</ul><small>测试登录不创建正式会话、用户记录或角色关联。</small></section></div>';
+ const draft=(key,label,type="text")=>'<label class="field">'+label+'<input type="'+type+'" data-ldap="'+key+'" value="'+esc(ds[key])+'" '+(type==="password"?'autocomplete="new-password" placeholder="'+(state.ldap.passwordConfigured?"已配置，留空保留":"请输入 LDAP 搜索密码")+'"':"")+'></label>';
+ const testField=(key,label,type)=>'<label class="field">'+label+'<input type="'+type+'" data-ldap-test="'+key+'" value="'+esc(state.ldapTest[key])+'" autocomplete="off"></label>';
+ return header("认证配置","验证待启用的 LDAP 配置后保存。")
+ +'<div class="split half"><section class="panel pad stack"><div class="row between"><h2>LDAP 连接配置</h2>'+tags(state.ldapDirty?"有未保存变更":"配置已启用",state.ldapDirty?"warn":"ok")+'</div>'
+ +'<div class="gridform">'+draft("address","目录地址")+draft("base","用户搜索基准 DN")+draft("bind","绑定账号 DN")+draft("attribute","登录名属性")
+ +'<label class="field">搜索范围<select data-ldap="range">'+choices([["整个子树","整个子树"],["单层","单层"],["基准对象","基准对象"]],ds.range)+'</select></label>'+draft("bindPassword","LDAP 搜索密码","password")+'</div>'
+ +'<label class="check"><input type="checkbox" data-ldap="allowPlain" '+(ds.allowPlain?"checked":"")+'>允许明文 LDAP（仅用于 ldap://）</label>'
+ +'<button class="btn primary" data-action="save-ldap" '+(state.tested?"":"disabled")+'>保存并启用</button><small id="ldap-save-hint" role="status">'+esc(ldapSaveHint())+'</small>'
+ +'<details><summary>LDAP 配置说明</summary><p>ldaps:// 使用 TLS 并校验证书。ldap:// 经明确允许后直接连接，绑定凭据以明文传输。配置和搜索密码保存到 SQLite，默认无需挂载密钥。私有 CA 可通过部署 Secret 提供。</p></details></section>'
+ +'<section class="panel pad stack"><h2>测试待启用配置</h2><div class="gridform">'+testField("account","LDAP 测试员工账号","text")+testField("password","LDAP 测试员工密码","password")+'</div>'
+ +'<small>测试失败时保留当前表单的账号和密码，便于重试。验证通过后清空。</small><div class="row">'+btn("运行测试","test-ldap","","primary")
+ +'<label>模拟失败阶段 <select data-ldap-test="failure">'+choices(Object.entries(ldapFailures).map(([key,[,message]])=>[key,message]),state.ldapTest.failure)+'</select></label>'+btn("演示失败","test-ldap","fail")+'</div>'
+ +'<ul class="list timeline">'+ldapStages.map((stage,i)=>'<li class="row between"><span>'+stage+'</span>'+tags(state.ldapSteps[i]||"待验证",state.ldapSteps[i]==="通过"?"ok":state.ldapSteps[i]==="失败"?"bad":"")+'</li>').join("")+'</ul>'
+ +'<small>测试登录不创建正式会话、用户记录或角色关联。</small><p role="status">'+esc(state.ldapTest.message)+'</p></section></div>';
 }
 function permissionsPage(){
  const roles=state.permissionTab==="roles";
@@ -120,15 +165,21 @@ function permissionsPage(){
 }
 function auditPage(){
  const f=state.auditFilter;
- const rows=state.audits.map((a,i)=>[a,i]).filter(([a])=>(!f.q||[a.who,a.target].join(" ").toLowerCase().includes(f.q.toLowerCase()))&&(!f.type||a.type===f.type)&&(!f.level||a.level===f.level));
- return header("操作审计","查询账号变更、认证事件和逐项批量结果。")+'<section class="panel"><div class="filters"><input type="search" id="audit-q" aria-label="搜索审计账号" placeholder="搜索操作者或目标账号" value="'+esc(f.q)+'"><select id="audit-type" aria-label="操作类型">'+choices([["","所有操作"],...[...new Set(state.audits.map(a=>a.type))].map(v=>[v,v])],f.type)+'</select><select id="audit-level" aria-label="风险等级">'+choices([["","所有等级"],...["低","中","高"].map(v=>[v,v])],f.level)+'</select></div>'+table(["时间","操作者","操作类型","风险","目标","结果",""],rows.map(([a,i])=>'<tr><td class="mono">'+esc(a.time)+'</td><td>'+esc(a.who)+'</td><td>'+esc(a.type)+'</td><td>'+tags(a.level,a.level==="高"?"bad":a.level==="中"?"warn":"")+'</td><td>'+esc(a.target)+'</td><td>'+tags(a.result,a.result==="成功"?"ok":a.result==="失败"?"bad":"warn")+'</td><td>'+link("详情","audit-detail",i)+'</td></tr>'))+'<div class="foot">共 '+rows.length+' 条记录</div></section>';
+ const active=state.audits.filter(withinRetention);
+ const rows=state.audits.map((a,i)=>[a,i]).filter(([a])=>withinRetention(a)&&(!f.q||[a.who,a.target].join(" ").toLowerCase().includes(f.q.toLowerCase()))&&(!f.type||a.type===f.type)&&(!f.level||a.level===f.level));
+ const levels=["低","中","高"];
+ const summary=levels.map(level=>level+" "+state.retention[level]+" 天").join(" / ");
+ const policy=state.actor==="super"?'<details class="panel pad audit-retention" '+(state.retentionOpen?"open":"")+'><summary>审计保留策略 · '+esc(summary)+'</summary><form id="audit-retention" class="stack"><p>按记录生成时间计算。缩短保留时间后，保存时会清理超期记录。</p><div class="gridform">'+levels.map(level=>'<label class="field">'+level+'风险保留天数<input type="number" min="1" step="1" required name="'+level+'" value="'+state.retention[level]+'"></label>').join("")+'</div><button class="btn primary" type="submit">保存保留策略</button></form></details>':'<p class="audit-retention">审计保留策略 · '+esc(summary)+'</p>';
+ return header("操作审计","查询账号变更、认证事件和逐项批量结果。")+policy+'<section class="panel"><div class="filters"><input type="search" id="audit-q" aria-label="搜索审计账号" placeholder="搜索操作者或目标账号" value="'+esc(f.q)+'"><select id="audit-type" aria-label="操作类型">'+choices([["","所有操作"],...[...new Set(active.map(a=>a.type))].map(v=>[v,v])],f.type)+'</select><select id="audit-level" aria-label="风险等级">'+choices([["","所有等级"],...["低","中","高"].map(v=>[v,v])],f.level)+'</select></div>'+table(["时间（北京时间）","操作者","操作类型","风险","目标","结果",""],rows.map(([a,i])=>'<tr><td class="mono">'+auditTime(a.at)+'</td><td>'+esc(a.who)+'</td><td>'+esc(a.type)+'</td><td>'+tags(a.level,a.level==="高"?"bad":a.level==="中"?"warn":"")+'</td><td>'+esc(a.target)+'</td><td>'+tags(a.result,a.result==="成功"?"ok":a.result==="失败"?"bad":"warn")+'</td><td>'+link("详情","audit-detail",i)+'</td></tr>'))+'<div class="foot">共 '+rows.length+' 条记录</div></section>';
 }
 function passwordPage(){
  const temp=state.actor==="temporary";
  return header("修改密码",temp?"请先设置新密码，再进入历史诊断。":"为当前本地账号设置新密码。")+'<section class="panel pad stack" style="max-width:570px">'+(temp?'<div class="notice warn">当前会话仅可用于完成首次改密。</div>':"")+'<form id="password-form" class="stack"><label class="field">'+(temp?"临时密码":"当前密码")+'<input type="password" required autocomplete="current-password"></label><label class="field">新密码<input name="next" type="password" required autocomplete="new-password"></label><label class="field">确认新密码<input name="again" type="password" required autocomplete="new-password"></label><button class="btn primary">保存新密码</button></form></section>';
 }
 function diagnosisPage(){
- const u=user(state.actor==="ldap"?"liwei":"visitor-qa"), entries=effective(u);
+ const u=user(state.actor==="ldap"?"liwei":"visitor-qa");
+ if(!u)return header("历史诊断","该账号已删除，无法登录本系统。");
+ const entries=effective(u);
  return header("历史诊断","当前账号可访问的诊断数据范围。")+'<section class="panel">'+table(["环境","集群","业务线","命名空间","权限"],entries.map(({scope:s})=>'<tr>'+s.map(x=>'<td>'+esc(x)+'</td>').join("")+'<td>'+tags("历史诊断查看","ok")+'</td></tr>'),"暂无可查看的历史诊断")+'</section>';
 }
 let onSubmit;
@@ -237,7 +288,7 @@ function accountAction(action,id){
 }
 function auditDetail(i){
  const a=state.audits[i];if(!a)return;
- modal("审计详情",'<div class="row">'+tags(a.level+"风险")+tags(a.result)+'</div><h3>'+esc(a.type)+'</h3><p>操作者 '+esc(a.who)+' · 目标 '+esc(a.target)+'</p><p class="mono">'+esc(a.time)+'</p>'+(a.items?table(["对象","结果","说明"],a.items.map(i=>'<tr>'+i.map(x=>'<td>'+esc(x)+'</td>').join("")+'</tr>')):""),"");
+ modal("审计详情",'<div class="row">'+tags(a.level+"风险")+tags(a.result)+'</div><h3>'+esc(a.type)+'</h3><p>操作者 '+esc(a.who)+' · 目标 '+esc(a.target)+'</p><p class="mono">'+auditTime(a.at)+'</p>'+(a.items?table(["对象","结果","说明"],a.items.map(i=>'<tr>'+i.map(x=>'<td>'+esc(x)+'</td>').join("")+'</tr>')):""),"");
 }
 document.addEventListener("click",event=>{
  const b=event.target.closest("[data-action]");if(!b)return;
@@ -265,12 +316,22 @@ document.addEventListener("click",event=>{
  case "drop-scope":scopeDraft.splice(Number(v),1);showScopes();break;
  case "test-ldap":{
   const cfg=state.ldapDraft||state.ldap;
-  const failed=v==="fail"?2:!/^ldaps?:\/\//.test(cfg.address)?0:!cfg.bind.trim()?1:!cfg.base.trim()?2:!$("#main [data-ldap=account]").value.trim()?2:!$("#main [data-ldap=password]").value?3:-1;
-  state.tested=failed===-1;state.ldapSteps=Array.from({length:4},(_,i)=>failed===-1||i<failed?"通过":i===failed?"失败":"待验证");
-  render();notify(state.tested?"四项验证通过。":"测试未通过，当前启用配置保持不变。");break;
+  const employee=state.ldapTest;
+  if(!employee.account.trim()||!employee.password){employee.message="请输入有效的 LDAP 测试员工账号和密码。";render();break;}
+  const failure=!/^ldaps?:\/\//i.test(cfg.address)||(/^ldap:\/\//i.test(cfg.address)&&!cfg.allowPlain)?[0,"请核对 URL。使用 ldap:// 需允许明文 LDAP。"]:
+   !cfg.bind.trim()?ldapFailures.bind:!cfg.base.trim()?ldapFailures.search:v==="fail"?ldapFailures[employee.failure]:null;
+  const failed=failure?.[0]??-1;
+  state.tested=!failure;state.ldapSteps=ldapStages.map((_,i)=>!failure||i<failed?"通过":i===failed?"失败":"待验证");
+  employee.message=failure?.[1]??"四项验证全部通过，可以保存。";
+  clearTimeout(ldapTimer);
+  if(!failure){
+   employee.account=employee.password="";
+   ldapTimer=setTimeout(()=>{state.tested=false;state.ldapSteps=[];employee.message="验证已失效，请重新测试。";if(state.page==="ldap")render();},300000);
+  }
+  render();break;
  }
  case "save-ldap":
-  if(state.tested&&state.ldapDirty){const draft={...state.ldapDraft};delete draft.bindPassword;state.ldap=draft;state.ldapDraft=null;state.ldapDirty=false;state.tested=false;audit("启用 LDAP 配置","LDAP","高");render();notify("已保存并启用 LDAP 配置。");}break;
+  if(state.tested){const draft={...(state.ldapDraft||state.ldap)};draft.passwordConfigured=Boolean(draft.bindPassword||draft.passwordConfigured);delete draft.bindPassword;state.ldap=draft;state.ldapDraft=null;state.ldapDirty=false;state.tested=false;state.ldapSteps=[];clearTimeout(ldapTimer);audit("启用 LDAP 配置","LDAP","高");render();$("#ldap-save-hint").textContent="已保存并启用 LDAP 配置。";}break;
  }
 });
 function filterInput(el,value,apply){const position=el.selectionStart;apply(value);render();const restored=document.getElementById(el.id);restored.focus();restored.setSelectionRange(position,position)}
@@ -278,11 +339,15 @@ document.addEventListener("input",event=>{
  const e=event.target;
  if(e.id==="user-q")filterInput(e,e.value,v=>state.q=v);
  if(e.id==="audit-q")filterInput(e,e.value,v=>state.auditFilter.q=v);
+ const testKey=e.dataset.ldapTest;
+ if(testKey)state.ldapTest[testKey]=e.value;
  const key=e.dataset.ldap;
- if(key&&key!=="account"&&key!=="password"){
-  state.ldapDraft={...(state.ldapDraft||state.ldap),[key]:e.value};state.ldapDirty=true;state.tested=false;state.ldapSteps=[];
+ if(key){
+  clearTimeout(ldapTimer);
+  state.ldapDraft={...(state.ldapDraft||state.ldap),[key]:e.type==="checkbox"?e.checked:e.value};state.ldapDirty=true;state.tested=false;state.ldapSteps=[];
   const status=$("#main .tag");status.textContent="有未保存变更";status.className="tag warn";
   $("[data-action=save-ldap]").disabled=true;
+  $("#ldap-save-hint").textContent="配置已修改，请重新运行测试后保存。";
   all(".timeline .tag").forEach(el=>{el.textContent="待验证";el.className="tag"});
  }
 });
@@ -303,11 +368,25 @@ document.addEventListener("change",event=>{
 document.addEventListener("submit",event=>{
  const f=event.target;
  if(f.id==="dialog-form"){event.preventDefault();onSubmit?.(new FormData(f));}
+ if(f.id==="audit-retention"){
+  event.preventDefault();
+  if(state.actor!=="super")return;
+  const days=Object.fromEntries([...new FormData(f)].map(([key,value])=>[key,Number(value)]));
+  if(Object.values(days).length!==3||Object.values(days).some(day=>!Number.isSafeInteger(day)||day<1))return;
+  state.audits=state.audits.filter(withinRetention);
+  state.retention=days;
+  state.audits=state.audits.filter(withinRetention);
+  state.retentionOpen=true;
+  audit("修改审计保留策略",["低","中","高"].map(level=>level+" "+days[level]+" 天").join(" / "),"高");
+  render();notify("已保存保留策略。");
+ }
  if(f.id==="password-form"){
   event.preventDefault();const data=new FormData(f);
   if(data.get("next")!==data.get("again")){notify("两次输入的新密码不一致。");return}
   audit("修改本地密码",({super:"superadmin",admin:"ops.liu",guest:"visitor-qa",temporary:"visitor-demo"})[state.actor],"中");
-  if(state.actor==="temporary"){user("visitor-demo").status="enabled";state.actor="guest";$("#actor").value="guest";navigate("diagnosis");}
+  if(state.actor==="temporary"){
+   const account=user("visitor-demo");if(!account){notify("该账号已删除，无法登录本系统。");return;}
+   account.status="enabled";state.actor="guest";$("#actor").value="guest";navigate("diagnosis");}
   else f.reset();
   notify("示例密码已修改。");
  }
