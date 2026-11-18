@@ -37,6 +37,7 @@ Back-off pulling image "busybox:1.36": 403 Forbidden
 let warningEvidenceRequests = 0;
 let authenticationRequired = false;
 let authenticated = false;
+const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
 let adminSession = false;
 let role;
 
@@ -212,13 +213,13 @@ createServer(async (request, response) => {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const change = JSON.parse(Buffer.concat(chunks).toString());
-      if (change.action === "grant" && change.ids?.[0] === "ldap:reader" && change.values?.[0] === "guest-readonly") {
-        return json(response, 200, [{ id: "ldap:reader" }]);
+      if (change.action === "grant" && change.ids?.[0] === ldapReaderId && change.values?.[0] === "guest-readonly") {
+        return json(response, 200, [{ id: ldapReaderId }]);
       }
       return json(response, 400, { error: "unexpected account assignment" });
     }
     return json(response, 200, [{
-      id: "ldap:reader", username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
+      id: ldapReaderId, username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
       effective: [{ environment: "development", sources: ["直接授予 → 访客只读", "用户组 运维 → 观察员"] }],
     }]);
   }
