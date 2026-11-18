@@ -198,7 +198,7 @@ async function renderAccess(tab?: string): Promise<string> {
     operationForm("access", role?.id ?? "", `<label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
       <h3>历史诊断查看</h3>
       <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-      <p class="system-scope-empty">请添加至少一项授权范围。</p>
+      <p class="system-scope-empty">尚未添加权限范围。</p>
       ${scopeInputs(clusters.items, businesses)}
       <button type="button" class="button secondary" data-scope-add>＋ 添加范围</button>`, "保存角色", "role-save"));
   const remove = (item: Entry, kind: "group" | "role") => editor(`remove:${item.id}`, "确认删除",

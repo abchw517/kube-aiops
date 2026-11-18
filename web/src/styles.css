@@ -403,3 +403,11 @@ td { overflow-wrap: anywhere; }
   .resource-management .identity-nav, .resource-management .catalog-section { padding-inline: 10px; }
   .system-stats .system-card { flex-wrap: wrap; }
 }
+
+
+.cluster-table { min-width: 720px; }
+.cluster-table th, .cluster-status { white-space: nowrap; }
+.cluster-table td:first-child { min-width: 120px; }
+.cluster-table td .catalog-actions { min-width: 210px; }
+.system-editor-body h3, .system-editor-body > [role="status"] { margin: 0; }
+.system-editor-body > [data-scope-add] { justify-self: start; }

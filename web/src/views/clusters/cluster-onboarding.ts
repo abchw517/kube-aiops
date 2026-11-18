@@ -102,7 +102,7 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
         <label>采集状态<select data-cluster-filter="status"><option value="">全部状态</option>
           ${states.map((state) => `<option>${escapeHtml(state)}</option>`).join("")}</select></label>
       </div>
-      <div class="catalog-table-wrap"><table class="catalog-table">
+      <div class="catalog-table-wrap"><table class="catalog-table cluster-table">
         <thead><tr><th scope="col">集群</th><th scope="col">环境 / 业务线</th><th scope="col">集群类型</th><th scope="col">采集状态</th><th scope="col">操作</th></tr></thead>
         <tbody>${items.map((item) => `<tr data-cluster-row data-status="${escapeHtml(collectionStatus(item))}">
           <td><strong>${escapeHtml(item.group || item.name)}</strong> <code>${escapeHtml(item.id)}</code>
