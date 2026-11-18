@@ -28,11 +28,13 @@ type browserSession struct {
 }
 
 type Sessions struct {
-	origin    string
-	providers map[string]PasswordVerifier
-	mu        sync.Mutex
-	active    map[[32]byte]browserSession
-	limits    map[string]*loginLimit
+	origin          string
+	providers       map[string]PasswordVerifier
+	mu              sync.Mutex
+	active          map[[32]byte]browserSession
+	limits          map[string]*loginLimit
+	ValidateSession func(context.Context, Principal) error
+	RecordLogin     func(context.Context, string, string, int)
 }
 
 type loginLimit struct {
@@ -57,17 +59,23 @@ func NewSessions(origin string, providers map[string]PasswordVerifier) (*Session
 	}, nil
 }
 
-func (s *Sessions) Authenticate(_ context.Context, r *http.Request) (Principal, error) {
+func (s *Sessions) Authenticate(ctx context.Context, r *http.Request) (Principal, error) {
 	key, ok := sessionKey(r)
 	if !ok {
 		return Principal{}, ErrUnauthenticated
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	session, ok := s.active[key]
 	if !ok || !time.Now().Before(session.expires) {
 		delete(s.active, key)
+		s.mu.Unlock()
 		return Principal{}, ErrUnauthenticated
+	}
+	s.mu.Unlock()
+	if s.ValidateSession != nil {
+		if err := s.ValidateSession(ctx, session.principal); err != nil {
+			return Principal{}, err
+		}
 	}
 	return session.principal, nil
 }
@@ -124,6 +132,13 @@ func (s *Sessions) login(w http.ResponseWriter, r *http.Request) {
 	if err := decoder.Decode(&credentials); err != nil || decoder.Decode(new(any)) != io.EOF {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	if s.RecordLogin != nil && validateRequiredValue("username", credentials.Username, maxSubjectLength) == nil {
+		defer func() {
+			if audit, ok := w.(*sessionAuditWriter); ok {
+				s.RecordLogin(r.Context(), credentials.Username, audit.subject, audit.status)
+			}
+		}()
 	}
 	verify := s.providers[credentials.Provider]
 	if verify == nil || validateRequiredValue("username", credentials.Username, maxSubjectLength) != nil ||

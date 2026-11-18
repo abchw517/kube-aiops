@@ -1,3 +1,5 @@
+import { submitNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
+import { filterAccounts, handlePlatformClick, queryAudit, submitPlatform, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
 import { recheckCollection, submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
@@ -51,6 +53,8 @@ export class PortalApp {
   private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
   private findingAI = false;
   private mustChangePassword = false;
+  private canChangePassword = false;
+  private superAdministrator = false;
   private showLogout = !demoMode;
 
   constructor(root: HTMLElement) {
@@ -61,6 +65,7 @@ export class PortalApp {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
       handleResourceCatalogClick(event);
+      handlePlatformClick(event);
       this.handleClick(event);
     });
     this.root.addEventListener("submit", (event) => {
@@ -85,6 +90,23 @@ export class PortalApp {
         void submitOnboarding(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test");
         return;
       }
+      if (form instanceof HTMLFormElement && form.dataset.namespaceOwnership) {
+        event.preventDefault();
+        void submitNamespaceOwnership(form);
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.dataset.platform) {
+        event.preventDefault();
+        const action = event instanceof SubmitEvent ? event.submitter?.getAttribute("value") ?? "" : "";
+        if (action) void submitPlatform(form, action, () => void this.route());
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.hasAttribute("data-audit-filter")) {
+        event.preventDefault();
+        const button = event instanceof SubmitEvent ? event.submitter : null;
+        void queryAudit(form, button?.hasAttribute("data-audit-next") ? button.getAttribute("value") ?? "" : "");
+        return;
+      }
       if (form instanceof HTMLFormElement && form.dataset.identityResource) {
         event.preventDefault();
         void submitIdentityAdmin(form, () => {
@@ -104,6 +126,9 @@ export class PortalApp {
       if (form) invalidateLDAPDraft(form, target);
     };
     this.root.addEventListener("input", updateLDAP);
+    this.root.addEventListener("input", filterAccounts);
+    this.root.addEventListener("change", filterAccounts);
+    this.root.addEventListener("change", (event) => void updateScopeOptions(event));
     this.root.addEventListener("change", updateLDAP);
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
     if (!window.location.hash) window.location.hash = "#/findings";
@@ -126,6 +151,8 @@ export class PortalApp {
         };
         this.findingAI = this.identityAdmin && status.findingAI === true;
         this.mustChangePassword = status.mustChangePassword === true;
+        this.canChangePassword = status.canChangePassword === true;
+        this.superAdministrator = status.superAdministrator === true;
       } catch {
         if (generation !== this.renderGeneration) return;
       }
@@ -145,9 +172,9 @@ export class PortalApp {
         return;
       }
       const adminRoute = hash.startsWith("#/admin");
-      if (this.mustChangePassword || (this.identityAdmin && adminRoute)) {
+      if (this.mustChangePassword || (this.identityAdmin && adminRoute) || (this.canChangePassword && hash === "#/admin/password")) {
         const [, , resource = "ldap", roleID] = window.location.hash.split("/");
-        const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, this.mustChangePassword, roleID);
+        const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, this.mustChangePassword, roleID, this.identityAdmin, this.superAdministrator);
         if (generation === this.renderGeneration) this.renderShell(body);
         return;
       }
@@ -299,15 +326,16 @@ export class PortalApp {
           <span><strong>kube-aiops</strong><small>Kubernetes 诊断</small></span>
         </a>
         <div class="portal-actions">
+          ${this.canChangePassword && !this.identityAdmin && !this.mustChangePassword && !signedOut ? '<a class="button secondary" href="#/admin/password">修改密码</a>' : ""}
           ${this.showLogout && !signedOut ? '<button class="button secondary" type="button" data-action="logout">退出登录</button>' : ""}
         </div>
       </header>
       <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
         ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
           <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : ' aria-current="page"'}>诊断控制台</a>
+          ${demoMode ? "" : `<a class="workspace-subnav" href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
           ${Object.values(this.resourceAccess).some(Boolean) ? `<a href="#/resources"${resourcePage ? ' aria-current="page"' : ""}>资源管理</a>` : ""}
           ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
-          ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
         </nav>`}
         <main id="portal-content" class="page-shell" tabindex="-1">
           ${demoMode ? '<p class="demo-notice">演示数据</p>' : ""}

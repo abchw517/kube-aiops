@@ -112,6 +112,8 @@
 
 ### RM-US09
 
+作为系统管理员，我可以在环境编辑弹窗修改 ID，已有集群和角色授权继续生效。
+
 **环境维护与删除保护** · 功能 [RM-F09](02-features.md#rm-f09) · 任务 [RM-T09](04-development-tasks.md#rm-t09) · 用例 [RM-UT09](05-unit-test-cases.md#rm-ut09)
 
 作为环境管理者，我希望维护环境并了解删除阻塞原因。
@@ -149,6 +151,8 @@
 - 操作以服务端授权为准。
 
 ### RM-US12
+
+作为系统管理员，我可以在业务线编辑弹窗修改 ID，已有命名空间归属和角色授权继续生效。
 
 **业务线维护与删除保护** · 功能 [RM-F12](02-features.md#rm-f12) · 任务 [RM-T12](04-development-tasks.md#rm-t12) · 用例 [RM-UT12](05-unit-test-cases.md#rm-ut12)
 

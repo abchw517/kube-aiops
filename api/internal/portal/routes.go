@@ -20,7 +20,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 		}
 		resource := r.PathValue("resource")
 		if resource == "status" && r.Method == http.MethodGet {
-			status := map[string]bool{"admin": p.Provider == permissions.AdminProvider, "findingAI": review.Enabled() && p.Provider == permissions.AdminProvider, "mustChangePassword": p.Provider == permissions.InitialAdminProvider}
+			status := map[string]bool{"admin": p.Provider == permissions.AdminProvider, "findingAI": review.Enabled() && p.Provider == permissions.AdminProvider, "mustChangePassword": permissions.MustChangePassword(p), "canChangePassword": permissions.CanChangePassword(p), "superAdministrator": p.Subject == "local:admin" && p.Provider == permissions.AdminProvider}
 			if managed != nil {
 				status["manageEnvironments"] = status["admin"]
 				status["manageBusinessLines"] = status["admin"]
@@ -28,7 +28,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			adminhttp.WriteJSON(w, status)
 			return
 		}
-		if p.Provider != permissions.AdminProvider && !(p.Provider == permissions.InitialAdminProvider && resource == "password") {
+		if p.Provider != permissions.AdminProvider && !(resource == "password" && permissions.CanChangePassword(p)) {
 			http.Error(w, "forbidden", 403)
 			return
 		}
@@ -36,13 +36,22 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		if managed != nil && (resource == environmentKind || resource == businessKind) {
-			managed.catalog(w, r, resource)
+		if (resource == "users" || resource == "roles" || resource == "policy") && p.Subject != "local:admin" {
+			http.Error(w, "forbidden", 403)
 			return
 		}
-		if resource == "cluster-onboarding" && managed != nil {
-			managed.admin(w, r)
-			return
+		if managed != nil {
+			switch resource {
+			case environmentKind, businessKind:
+				a.AuditChange(w, r, p.Subject, "维护资源目录", "中", resource, func(w http.ResponseWriter, r *http.Request) { managed.catalog(w, r, resource) })
+				return
+			case "cluster-onboarding":
+				a.AuditChange(w, r, p.Subject, "维护集群接入", "高", resource, managed.admin)
+				return
+			case "namespace-business":
+				a.AuditChange(w, r, p.Subject, "调整命名空间归属", "高", resource, managed.namespaceAssignments)
+				return
+			}
 		}
 		if resource == "finding-analysis" {
 			instance := r.URL.Query().Get("cluster")
@@ -60,7 +69,12 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			http.Error(w, "该集群实例尚未启用 AI 复核", 404)
 			return
 		}
-		a.Handle(w, r.WithContext(identity.WithPrincipal(r.Context(), p)), resource, s)
+		r = r.WithContext(identity.WithPrincipal(r.Context(), p))
+		if resource == "ldap" || resource == "roles" || resource == "policy" || resource == "users" {
+			a.AuditChange(w, r, p.Subject, "维护 "+resource, "高", resource, func(w http.ResponseWriter, r *http.Request) { a.Handle(w, r, resource, s) })
+			return
+		}
+		a.Handle(w, r, resource, s)
 	})
 	wikis.Register(mux, s, review.AskWiki)
 	mux.Handle("/", next)

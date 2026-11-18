@@ -177,6 +177,9 @@ func probeLDAPLogin(ctx context.Context, cfg LDAPConfig, username, password stri
 	if stage != "" {
 		return Principal{}, stage, ErrAuthenticationUnavailable
 	}
+	if directoryEntryDisabled(entry, time.Now()) {
+		return Principal{}, "user_auth", ErrUnauthenticated
+	}
 	if err := conn.Bind(entry.DN, password); err != nil {
 		var ldapErr *ldap.Error
 		if errors.As(err, &ldapErr) && ldapErr.ResultCode == ldap.LDAPResultInvalidCredentials {
@@ -197,10 +200,22 @@ func probeLDAPLogin(ctx context.Context, cfg LDAPConfig, username, password stri
 }
 
 func (cfg LDAPConfig) searchUser(conn *ldap.Conn, username string) (*ldap.Entry, string) {
-	attributes := []string{"dn"}
+	attributes := []string{"dn", "userAccountControl", "pwdAccountLockedTime", "nsAccountLock", "shadowExpire"}
 	if cfg.GroupAttr != "" {
 		attributes = append(attributes, cfg.GroupAttr)
 	}
+	entry, stage := cfg.searchDirectoryUser(conn, username, attributes)
+	switch stage {
+	case "success":
+		return entry, ""
+	case "user_absent":
+		return nil, "user_match"
+	default:
+		return nil, stage
+	}
+}
+
+func (cfg LDAPConfig) searchDirectoryUser(conn *ldap.Conn, username string, attributes []string) (*ldap.Entry, string) {
 	search := ldap.NewSearchRequest(cfg.BaseDN, cfg.searchScope(), ldap.NeverDerefAliases,
 		2, 5, false, fmt.Sprintf(cfg.filterTemplate(), ldap.EscapeFilter(username)), attributes, nil)
 	result, err := conn.Search(search)
@@ -210,6 +225,9 @@ func (cfg LDAPConfig) searchUser(conn *ldap.Conn, username string) (*ldap.Entry,
 	if err != nil {
 		return nil, "user_search"
 	}
+	if len(result.Entries) == 0 {
+		return nil, "user_absent"
+	}
 	if len(result.Entries) != 1 {
 		return nil, "user_match"
 	}
@@ -217,7 +235,7 @@ func (cfg LDAPConfig) searchUser(conn *ldap.Conn, username string) (*ldap.Entry,
 	if strings.TrimSpace(entry.DN) == "" {
 		return nil, "user_search"
 	}
-	return entry, ""
+	return entry, "success"
 }
 
 func (cfg LDAPConfig) directoryPrincipal(conn *ldap.Conn, entry *ldap.Entry) (Principal, string) {

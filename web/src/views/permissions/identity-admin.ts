@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../components/html.ts";
+import { renderPlatform } from "./platform-admin.ts";
 import { renderRoles } from "./roles.ts";
 
 const ldapFields = [
@@ -12,16 +13,18 @@ const ldapFields = [
   ["groupFilter", "LDAP 组过滤器"],
 ] as const;
 
-export async function renderIdentityAdmin(resource: string, initial: boolean, roleID?: string): Promise<string> {
-  const navigation = initial ? "" : `<nav class="identity-nav" aria-label="系统管理">
+export async function renderIdentityAdmin(resource: string, initial: boolean, roleID?: string, administrator = true, superAdmin = false): Promise<string> {
+  const navigation = initial || !administrator ? "" : `<nav class="identity-nav" aria-label="系统管理">
     <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
     <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
-    <a href="#/admin/policy"${resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
+    <a href="#/admin/access"${resource === "access" || resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
+    <a href="#/admin/operations"${resource === "operations" ? ' aria-current="page"' : ""}>操作审计</a>
     <a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>
   </nav>`;
   let content: string;
   try {
-    content = resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
+    content = ["users", "access", "operations"].includes(resource) ? await renderPlatform(resource, roleID, superAdmin)
+      : resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
   } catch {
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }
@@ -30,23 +33,15 @@ export async function renderIdentityAdmin(resource: string, initial: boolean, ro
 
 async function renderResource(resource: string, initial: boolean): Promise<string> {
   if (resource === "password") {
-    return `<h2>${initial ? "首次登录，请修改管理员密码" : "修改管理员密码"}</h2>
+    return `<h2>${initial ? "请先修改临时密码" : "修改密码"}</h2>
       ${form("password", `<label>当前密码<input name="current" type="password" autocomplete="current-password" required></label>
         ${passwordField()}`, "修改密码")}`;
   }
-  const selected = resource === "users" ? resource : "ldap";
-  const response = await fetch(`/api/v1/admin/${selected}`);
+  const response = await fetch("/api/v1/admin/ldap");
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("identity configuration unavailable");
   }
   const data = await response.json();
-  if (selected === "users") {
-    const rows = (data as { username: string; groups: string[] | null }[]).map((user) =>
-      `<li>${escapeHtml(user.username)} · ${escapeHtml(user.groups?.join("、") || "无组")}</li>`);
-    return `<h2>本地用户</h2><ul>${rows.join("")}</ul>
-      ${form("users", `<label>用户名<input name="username" required maxlength="250"></label>
-        ${passwordField()}<label>所属组<input name="groups" placeholder="以逗号分隔"></label>`, "创建用户")}`;
-  }
   return `<h2>认证配置</h2><p>本地账号始终可用。支持 ldaps://（TLS）和 ldap://（StartTLS），均验证证书。AD 用户 UID 通常填写 sAMAccountName，附加过滤器可填 (objectClass=user)。已有 %s 模板时请留空 UID。搜索密码在此配置。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p>
     ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
     ${form("ldap", ldapFields.map(([key, label]) =>
@@ -70,13 +65,28 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
 
 function form(resource: string, fields: string, label: string): string {
   return `<form class="login-form identity-form" data-identity-resource="${resource}">
-    ${fields}<p role="status"></p><button class="button" type="submit"${resource === "ldap" ? " disabled" : ""}>${label}</button>
+    ${fields}${resource === "ldap" ? `<fieldset><legend>验证步骤</legend><ol>
+      ${ldapSteps.map((step) => `<li>${step} · <span data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>` : ""}
+    <p role="status"></p><button class="button" type="submit"${resource === "ldap" ? " disabled" : ""}>${label}</button>
     ${resource === "ldap" ? '<button class="button secondary" type="submit" value="test">测试 LDAP 服务器</button>' : ""}
   </form>`;
 }
 
 function passwordField(): string {
   return '<label>新密码<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="72"></label>';
+}
+
+const ldapSteps = ["目录连接", "搜索账号绑定", "测试员工查询", "测试员工认证"] as const;
+
+function showLDAPSteps(form: HTMLFormElement, stage = ""): void {
+  const failureIndex: Record<string, number> = { connection: 0, bind: 1, search: 2, user_search: 2,
+    user_match: 2, user_auth: 3, group_search: 3, group_query: 3, identity_mapping: 3 };
+  const failed = failureIndex[stage];
+  const items = form.querySelectorAll<HTMLElement>("[data-ldap-step]");
+  items.forEach((item, index) => {
+    item.textContent = stage === "success" || (failed !== undefined && index < failed) ? "通过" :
+      index === failed ? "失败" : "待验证";
+  });
 }
 
 const ldapVerification = new WeakMap<HTMLFormElement, string>();
@@ -93,6 +103,7 @@ export function invalidateLDAPDraft(form: HTMLFormElement, target: EventTarget |
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
       target.name === "testUsername" || target.name === "testPassword") return;
   ldapVerification.delete(form);
+  showLDAPSteps(form);
   const save = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="test"])');
   if (save) save.disabled = true;
   const status = form.querySelector('[role="status"]');
@@ -106,7 +117,10 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   if (!status || !button || (ldap ? pendingLDAP.has(form) || (!testingLDAP && !ldapVerification.has(form)) : button.disabled)) return;
   if (ldap) {
     pendingLDAP.add(form);
-    if (testingLDAP) ldapVerification.delete(form);
+    if (testingLDAP) {
+      ldapVerification.delete(form);
+      showLDAPSteps(form);
+    }
   }
   const buttons = form.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
   for (const control of buttons) control.disabled = true;
@@ -118,10 +132,6 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     let payload: unknown = Object.fromEntries(data);
     if (ldap && !testingLDAP) {
       payload = { ...Object.fromEntries(ldapDraft(form)), verification: ldapVerification.get(form) };
-    }
-    if (resource === "users") {
-      payload = { username: data.get("username"), password: data.get("password"),
-        groups: String(data.get("groups") ?? "").split(/[,，]/).map((group) => group.trim()).filter(Boolean) };
     }
     const response = await fetch(`/api/v1/admin/${testingLDAP ? "ldap-test" : resource}`, {
       method: !testingLDAP && resource === "ldap" ? "PUT" : "POST",
@@ -150,6 +160,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
           submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form)))) {
         ldapVerification.set(form, verification);
       }
+      showLDAPSteps(form, submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form))) ? stage : "");
       const messages: Record<string, string> = {
         success: ldapVerification.has(form)
           ? "连接、搜索账号绑定、员工查询和员工认证均成功，可以保存。"
@@ -182,13 +193,6 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       }
     }
     if (resource === "password") signedOut();
-    if (resource === "users") {
-      const list = form.closest("section")?.querySelector("ul");
-      const item = document.createElement("li");
-      item.textContent = `${data.get("username")} · ${data.get("groups") || "无组"}`;
-      list?.append(item);
-      form.reset();
-    }
   } catch {
     status.textContent = "无法保存，请检查输入或连接。";
   } finally {

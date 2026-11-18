@@ -59,8 +59,8 @@ export function handleResourceCatalogClick(event: MouseEvent): void {
     <div class="catalog-dialog-body">
       ${deleting ? `<p>确定删除「${escapeHtml(entryName)}」 <code>${escapeHtml(id)}</code>？</p>` : `
         <label>${name}名称<input name="name" value="${escapeHtml(entryName)}" required maxlength="128"></label>
-        <label>${name} ID<input name="id" value="${escapeHtml(id)}" required ${editing ? "readonly" : 'pattern="[a-z][a-z0-9-]*"'}></label>
-        <small>${editing ? "ID 创建后固定。" : "使用小写字母开头，可包含小写字母、数字或连字符。"}</small>`}
+        <label>${name} ID<input name="id" value="${escapeHtml(id)}" required maxlength="128" ${editing ? "" : 'pattern="[a-z][a-z0-9-]*"'}></label>
+        <small>${editing ? "修改 ID 会保留原有资源引用。新 ID 使用小写字母、数字或连字符，并以字母开头。" : "使用小写字母开头，可包含小写字母、数字或连字符。"}</small>`}
       <p role="status" aria-live="polite"></p>
     </div>
     <footer>
@@ -101,14 +101,14 @@ export async function submitResourceCatalog(form: HTMLFormElement, remove: boole
   if (!status || !kind || buttons.some((button) => button.disabled)) return;
   const editing = form.dataset.operation === "edit";
   const data = new FormData(form);
-  const id = remove || editing ? form.dataset.entryId : String(data.get("id") ?? "").trim();
+  const id = remove ? form.dataset.entryId : String(data.get("id") ?? "").trim();
   for (const button of buttons) button.disabled = true;
   status.textContent = remove ? "正在删除…" : "正在保存…";
   try {
     const response = await fetch(`/api/v1/admin/${kind}`, {
       method: remove ? "DELETE" : editing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(remove ? { id } : { id, name: String(data.get("name") ?? "").trim() }),
+      body: JSON.stringify(remove ? { id } : { id, name: String(data.get("name") ?? "").trim(), originalId: editing ? form.dataset.entryId : undefined }),
     });
     if (response.ok) {
       form.closest<HTMLDialogElement>("dialog")?.close();

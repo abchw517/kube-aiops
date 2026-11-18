@@ -33,6 +33,7 @@ import (
 type managedCluster struct {
 	AIEnabled       bool   `json:"aiEnabled,omitempty"`
 	ID              string `json:"id"`
+	ClusterType     string `json:"clusterType,omitempty"`
 	Name            string `json:"name"`
 	Environment     string `json:"environment"`
 	Business        string `json:"business"`
@@ -102,6 +103,9 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	}
 	if _, exists := o.registry.Targets[spec.ID]; exists {
 		return httpapi.ClusterTarget{}, errors.New("实例 ID 已在文件注册表中使用")
+	}
+	if spec.ClusterType != "" && spec.ClusterType != "shared" && spec.ClusterType != "dedicated" {
+		return httpapi.ClusterTarget{}, errors.New("集群类型无效")
 	}
 	if spec.Mode != "push" && spec.Mode != "pull" {
 		return httpapi.ClusterTarget{}, errors.New("接入方式无效")
@@ -291,6 +295,26 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if spec.ClusterType == "dedicated" {
+		key, err := catalogStableKey(ctx, o.store, businessKind, spec.Business)
+		if err != nil {
+			http.Error(w, "业务线目录暂不可用", 503)
+			return
+		}
+		if key == "" {
+			http.Error(w, "独立业务集群需要选择已登记的业务线", 400)
+			return
+		}
+		var other bool
+		if err := o.store.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM namespace_business WHERE cluster=? AND business<>?)", spec.ID, key).Scan(&other); err != nil {
+			http.Error(w, "归属暂不可用", 503)
+			return
+		}
+		if other {
+			http.Error(w, "请先解除命名空间中其他业务线的归属", 409)
+			return
+		}
+	}
 	raw, _ := json.Marshal(spec)
 	var token string
 	if r.Method == http.MethodPost {

@@ -1,3 +1,4 @@
+import { renderNamespaceOwnership } from "./namespace-ownership.ts";
 import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
@@ -75,6 +76,7 @@ function renderCollection(item: Entry): string {
 }
 
 export async function renderOnboarding(id?: string): Promise<string> {
+  if (id?.startsWith("ownership-")) return renderNamespaceOwnership(id.slice(10));
   const response = await fetch(endpoint);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("directory unavailable");
@@ -90,7 +92,8 @@ export async function renderOnboarding(id?: string): Promise<string> {
             <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "手动配置" : "采集上报"}</div></td>
           <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
           <td>${collectionStatus(item)}${renderCollection(item)}</td>
-          <td>${item.mode === "local" ? "—" : `<a href="${route}/edit-${encodeURIComponent(item.id)}">编辑</a>`}</td>
+          <td><div class="catalog-actions">${item.mode === "local" ? "" : `<a href="${route}/edit-${encodeURIComponent(item.id)}">编辑</a>`}
+          ${item.enabled ? `<a href="${route}/ownership-${encodeURIComponent(item.id)}">命名空间归属</a>` : ""}</div></td>
         </tr>`).join("") || '<tr><td colspan="4" class="catalog-empty">暂无集群。</td></tr>'}</tbody>
       </table></div>
       <div class="catalog-bottom"><span>共 ${items.length} 条</span>
@@ -128,6 +131,10 @@ export async function renderOnboarding(id?: string): Promise<string> {
         return `<label>${label}<input name="${name}" value="${escapeHtml(current)}" ${base ? "required" : ""}
           ${fixed ? "readonly" : ""}>${name === "environment" && locked ? "<small>首次采集已成功，环境已锁定。</small>" : ""}</label>`;
       }).join("")}
+      <label>集群类型<select name="clusterType">
+        <option value="shared">共用集群</option>
+        <option value="dedicated"${item?.clusterType === "dedicated" ? " selected" : ""}>独立业务集群</option>
+      </select></label>
       ${mode === "pull" ? `<label><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""} style="width:auto"> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
       <label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>
       <p>${mode === "pull" ? "只读 token 和 CA 使用该实例 ID 对应的部署挂载。配置共享观测源时使用实例 ID 作为集群标签。" :
@@ -156,7 +163,7 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean):
     const response = await fetch(endpoint + (testing ? "?test=true" : ""), {
       method: form.dataset.editing === "true" ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...values, mode: form.dataset.onboardingMode, enabled: data.has("enabled"), aiEnabled: data.has("aiEnabled") }),
+      body: JSON.stringify({ ...values, clusterType: data.get("clusterType"), mode: form.dataset.onboardingMode, enabled: data.has("enabled"), aiEnabled: data.has("aiEnabled") }),
     });
     if (!response.ok) {
       status.textContent = response.headers.get("Content-Type")?.includes("text/plain") ?
