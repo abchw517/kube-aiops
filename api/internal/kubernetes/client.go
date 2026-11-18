@@ -99,6 +99,43 @@ func (c *Client) Ready(ctx context.Context) error {
 	return c.getJSON(ctx, path, &payload)
 }
 
+type NodeStatus struct {
+	Name  string `json:"name"`
+	Ready string `json:"ready"`
+}
+
+func (c *Client) ListNodeStatuses(ctx context.Context) ([]NodeStatus, error) {
+	var payload struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	if err := c.getJSON(ctx, "/api/v1/nodes", &payload); err != nil {
+		return nil, err
+	}
+	nodes := make([]NodeStatus, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		if item.Metadata.Name == "" {
+			continue
+		}
+		for _, condition := range item.Status.Conditions {
+			if condition.Type == "Ready" && (condition.Status == "True" || condition.Status == "False" || condition.Status == "Unknown") {
+				nodes = append(nodes, NodeStatus{Name: item.Metadata.Name, Ready: condition.Status})
+				break
+			}
+		}
+	}
+	return nodes, nil
+}
+
 func (c *Client) ListNamespaces(ctx context.Context) ([]Namespace, error) {
 	var payload struct {
 		Items []struct {

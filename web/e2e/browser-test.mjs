@@ -299,6 +299,15 @@ try {
     await assertText(cdp, (text) => text.includes("验证仓库权限"), "Wiki detail did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
       (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
+    await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".collection-details summary").click()' });
+    await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/clusters/edit-dev-k8s",
+      (text) => text.includes("环境已锁定") && text.includes("重新校验"), "Cluster editor did not display lock and recheck");
+    const lockedEnvironment = await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-onboarding-mode] input[name=environment]").readOnly', returnByValue: true,
+    });
+    if (!lockedEnvironment.result?.value) throw new Error("A collected cluster must have a read-only environment");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
       (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="edit"]').click()` });
@@ -336,7 +345,7 @@ try {
         const form = document.querySelector("[data-onboarding-mode]");
         form.elements.id.value = "dev-yunfan-01";
         form.elements.name.value = "研发实例";
-        form.elements.environment.value = "研发";
+        form.elements.environment.value = "研发环境";
         form.elements.business.value = "云帆";
         form.elements.group.value = "应用集群";
         form.requestSubmit();

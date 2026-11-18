@@ -46,8 +46,18 @@ func TestClusterSnapshotIsolationAndReplacement(t *testing.T) {
 	}
 	const item = `[{"id":"same","cluster":"spoofed","problem":"image error","severity":"warning","source":"k8sgpt","resource":{"kind":"Pod","name":"app"}}]`
 	report("a", b, item, now, 401)
+	lock := func(want bool) {
+		t.Helper()
+		state, err := o.readCollection(t.Context(), "a")
+		if err != nil || (state.FirstAt > 0) != want {
+			t.Fatalf("first collection: %+v, %v", state, err)
+		}
+	}
+	report("a", a, "[]", now.Add(-time.Second), 204)
+	lock(false)
 	report("a", a, item, now, 204)
 	report("b", b, item, now, 204)
+	lock(true)
 	report("a", a, "[]", now.Add(-time.Second), 409)
 	at, _ := registry.Lookup("a")
 	bt, _ := registry.Lookup("b")
@@ -56,6 +66,7 @@ func TestClusterSnapshotIsolationAndReplacement(t *testing.T) {
 		t.Fatalf("wrong cluster: %+v %v", itemB, err)
 	}
 	report("a", a, "[]", now.Add(time.Second), 204)
+	lock(true)
 	if _, err := at.Backend.GetFinding(t.Context(), "same"); err == nil {
 		t.Fatal("snapshot did not remove old result")
 	}
