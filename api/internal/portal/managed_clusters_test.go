@@ -86,7 +86,7 @@ func TestManagedAIReviewUsesOnlySelectedPullInstance(t *testing.T) {
 	spec := managedCluster{ID: "remote", Name: "remote", Environment: "test", Business: "ops", Group: "apps",
 		Mode: "pull", Enabled: true, AIEnabled: true, APIURL: "https://remote.example",
 		EngineNamespace: "engine-ns", EngineName: "remote-engine"}
-	target, err := o.build(spec)
+	target, err := o.build(spec, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestManagedAIReviewUsesOnlySelectedPullInstance(t *testing.T) {
 		t.Fatal("missing instance must not fall back to another Engine")
 	}
 	spec.Mode = "push"
-	if _, err := o.build(spec); err == nil {
+	if _, err := o.build(spec, nil); err == nil {
 		t.Fatal("push-only cluster unexpectedly enabled Kubernetes Engine reading")
 	}
 }

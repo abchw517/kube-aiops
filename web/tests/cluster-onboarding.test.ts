@@ -28,4 +28,5 @@ test("shows the persisted first collection and protects an existing environment 
   const create = await renderOnboarding("pull");
   assert.match(create, /<select name="environment" required>/);
   assert.match(create, /<option value="研发">研发<\/option>/);
+  assert.match(create, /测试连接临时使用新填写的凭据。保存新凭据需要服务端配置集群凭据加密密钥。/);
 });
