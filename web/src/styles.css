@@ -411,3 +411,8 @@ td { overflow-wrap: anywhere; }
 .cluster-table td .catalog-actions { min-width: 210px; }
 .system-editor-body h3, .system-editor-body > [role="status"] { margin: 0; }
 .system-editor-body > [data-scope-add] { justify-self: start; }
+
+.audit-retention { margin-block-end: 1rem; }
+.audit-retention summary { cursor: pointer; }
+.audit-retention form { margin-block-start: 12px; }
+.audit-retention form p { margin: 0; }

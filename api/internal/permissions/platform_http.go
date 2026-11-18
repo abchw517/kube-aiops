@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
@@ -51,11 +52,14 @@ type changeResult struct {
 func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource string, actor identity.Principal) {
 	ctx := r.Context()
 	if resource == "operations" {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(405)
-			return
+		switch r.Method {
+		case http.MethodGet:
+			a.handleOperations(w, r)
+		case http.MethodPut:
+			a.updateAuditRetention(w, r, actor)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-		a.handleOperations(w, r)
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -76,8 +80,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 					Roles: account.Roles, Groups: account.Groups, Effective: state.effective(account),
 				})
 			}
-			rows, err := a.store.QueryContext(ctx, `SELECT actor, MAX(created_at) FROM operation_audit
-				WHERE action='登录' AND result='成功' AND actor<>'' GROUP BY actor`)
+			rows, err := a.store.QueryContext(ctx, `SELECT actor, created_at FROM account_last_login`)
 			if err != nil {
 				http.Error(w, "无法加载最近登录记录", 503)
 				return
@@ -535,9 +538,10 @@ func applyAccess(state platformState, input platformChange) changeResult {
 
 func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	now := time.Now().Unix()
 	rows, err := a.store.QueryContext(r.Context(), `SELECT id,created_at,actor,action,risk,target,result,reason,batch FROM operation_audit
-		WHERE (?='' OR action=?) AND (?='' OR risk=?) AND (?='' OR instr(lower(actor),lower(?))>0 OR instr(lower(target),lower(?))>0)
-		AND (?='' OR batch=?) AND (?='' OR id<CAST(? AS INTEGER)) ORDER BY id DESC LIMIT 101`, q.Get("action"), q.Get("action"), q.Get("risk"), q.Get("risk"),
+		WHERE NOT `+auditExpired+` AND (?='' OR action=?) AND (?='' OR risk=?) AND (?='' OR instr(lower(actor),lower(?))>0 OR instr(lower(target),lower(?))>0)
+		AND (?='' OR batch=?) AND (?='' OR id<CAST(? AS INTEGER)) ORDER BY id DESC LIMIT 101`, now, q.Get("action"), q.Get("action"), q.Get("risk"), q.Get("risk"),
 		q.Get("account"), q.Get("account"), q.Get("account"), q.Get("batch"), q.Get("batch"), q.Get("before"), q.Get("before"))
 	if err != nil {
 		http.Error(w, "审计记录暂不可用", 503)
@@ -565,7 +569,13 @@ func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 	payload := map[string]any{"items": items, "before": next}
 	if r.URL.RawQuery == "" {
-		actionRows, err := a.store.QueryContext(r.Context(), "SELECT DISTINCT action FROM operation_audit ORDER BY action")
+		retention, err := a.auditRetention(r.Context())
+		if err != nil {
+			http.Error(w, "无法加载审计保留策略", http.StatusServiceUnavailable)
+			return
+		}
+		payload["retention"] = retention
+		actionRows, err := a.store.QueryContext(r.Context(), "SELECT DISTINCT action FROM operation_audit WHERE NOT "+auditExpired+" ORDER BY action", now)
 		if err != nil {
 			http.Error(w, "审计记录暂不可用", 503)
 			return

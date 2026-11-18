@@ -233,6 +233,7 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 		admin.SetScopeResolvers(managed.clusterEnvironment, managed.namespaceBusiness)
 	}
 	go admin.RunDirectoryChecks(ctx)
+	go admin.RunAuditRetention(ctx)
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
 	wikis := wiki.New(store, admin, admin.Origin())
 	go wikis.RunSchedule(ctx)

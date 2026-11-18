@@ -1,5 +1,5 @@
 import { submitNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
-import { filterAccounts, handlePlatformClick, queryAudit, submitPlatform, updateScopeOptions } from "./views/permissions/platform-admin.ts";
+import { filterAccounts, handlePlatformClick, queryAudit, submitAuditRetention, submitPlatform, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, recheckCollection, submitClusterMaintenance, submitOnboarding, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
@@ -105,6 +105,11 @@ export class PortalApp {
         event.preventDefault();
         const action = event instanceof SubmitEvent ? event.submitter?.getAttribute("value") ?? "" : "";
         if (action) void submitPlatform(form, action, () => void this.route());
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.hasAttribute("data-audit-retention")) {
+        event.preventDefault();
+        void submitAuditRetention(form);
         return;
       }
       if (form instanceof HTMLFormElement && form.hasAttribute("data-audit-filter")) {

@@ -499,6 +499,16 @@ try {
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
+    await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && text.includes("低 3 天 / 中 5 天 / 高 7 天"), "Audit time or default retention did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector(".audit-retention").open = true;
+      const form = document.querySelector("[data-audit-retention]");
+      form.elements.low.value = "2";
+      form.elements.medium.value = "6";
+      form.elements.high.value = "9";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("已保存保留策略") && text.includes("低 2 天 / 中 6 天 / 高 9 天"), "Audit retention did not save");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
       (text) => text.includes("集群接入") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });

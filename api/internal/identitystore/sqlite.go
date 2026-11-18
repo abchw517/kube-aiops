@@ -67,6 +67,27 @@ func Open(path string) (*Store, error) {
 		CREATE INDEX IF NOT EXISTS operation_audit_successful_logins ON operation_audit(actor, created_at)
 			WHERE action='登录' AND result='成功' AND actor<>'';
 
+		CREATE INDEX IF NOT EXISTS operation_audit_risk_time ON operation_audit(risk, created_at);
+		CREATE TABLE IF NOT EXISTS operation_audit_retention (
+			risk TEXT PRIMARY KEY CHECK (risk IN ('低','中','高')),
+			days INTEGER NOT NULL CHECK (days BETWEEN 1 AND 106751991167300)
+		);
+		INSERT OR IGNORE INTO operation_audit_retention(risk,days) VALUES ('低',3),('中',5),('高',7);
+		CREATE TABLE IF NOT EXISTS account_last_login (
+			actor TEXT PRIMARY KEY,
+			created_at INTEGER NOT NULL
+		);
+		INSERT INTO account_last_login(actor,created_at)
+			SELECT actor,MAX(created_at) FROM operation_audit
+			WHERE action='登录' AND result='成功' AND actor<>'' GROUP BY actor
+			ON CONFLICT(actor) DO UPDATE SET created_at=MAX(account_last_login.created_at,excluded.created_at);
+		CREATE TRIGGER IF NOT EXISTS operation_audit_store_last_login AFTER INSERT ON operation_audit
+			WHEN NEW.action='登录' AND NEW.result='成功' AND NEW.actor<>''
+			BEGIN
+				INSERT INTO account_last_login(actor,created_at) VALUES (NEW.actor,NEW.created_at)
+				ON CONFLICT(actor) DO UPDATE SET created_at=MAX(account_last_login.created_at,excluded.created_at);
+			END;
+
 		CREATE TABLE IF NOT EXISTS resource_catalog_initialized (
 			id INTEGER PRIMARY KEY CHECK (id = 1)
 		);
