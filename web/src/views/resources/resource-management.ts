@@ -94,6 +94,7 @@ export async function renderResourceManagement(hash: string, access: ResourceAcc
 }
 
 export async function submitResourceCatalog(form: HTMLFormElement, remove: boolean, reload: () => void): Promise<void> {
+  remove = remove || form.dataset.operation === "delete";
   const status = form.querySelector<HTMLElement>('[role="status"]');
   const buttons = [...form.querySelectorAll<HTMLButtonElement>("button")];
   const kind = form.dataset.resourceCatalog;
