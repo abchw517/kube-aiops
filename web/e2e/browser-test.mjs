@@ -438,7 +438,16 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
       (text) => text.includes("LDAP 连接配置") && text.includes("测试待启用配置"), "LDAP editor panels did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
+    await assertText(cdp, (text) => text.includes("请输入 LDAP 测试员工账号"), "Missing LDAP employee credentials were not explained");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector('[data-identity-resource="ldap"]');
+      form.elements.testUsername.value = "fixture-employee";
+      form.elements.testPassword.value = "fixture-password";
+      form.querySelector('button[value="test"]').click();
+    })()` });
     await assertText(cdp, (text) => text.includes("均成功，可以保存"), "LDAP test did not update the verification panel");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[type="submit"]:not([value="test"])').click()` });
+    await assertText(cdp, (text) => text.includes("已保存") && text.includes("配置已启用"), "LDAP save did not show confirmation in its own panel");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="group:ops"]').click()` });

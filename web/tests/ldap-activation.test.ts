@@ -7,6 +7,7 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
     name: string;
     value: string;
     placeholder = "";
+    focus() {}
 
     constructor(name: string, value: string) {
       this.name = name;
@@ -34,13 +35,15 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
   const save = { disabled: true };
   const verify = { disabled: false };
   const status = { textContent: "" };
+  const hint = { textContent: "" };
   const form = {
     dataset: { identityResource: "ldap" },
     querySelectorAll: () => [save, verify],
     querySelector: (selector: string) => {
       if (selector.includes("testPassword")) return data.testPassword;
       if (selector.includes("bindPassword")) return data.bindPassword;
-      if (selector.includes("role=")) return status;
+      if (selector.includes("data-ldap-save-hint")) return hint;
+      if (selector.includes("data-ldap-test-status")) return status;
       return save;
     },
     closest: () => null,
@@ -55,10 +58,17 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
 
   await submitIdentityAdmin(form, () => {});
   assert.equal(requests.length, 0);
+  assert.match(hint.textContent, /四项验证全部通过后可保存/);
+  data.testPassword.value = "";
+  await submitIdentityAdmin(form, () => {}, true);
+  assert.equal(requests.length, 0);
+  assert.match(status.textContent, /请输入 LDAP 测试员工密码/);
+  data.testPassword.value = "fixture-employee";
   await submitIdentityAdmin(form, () => {}, true);
   assert.equal(requests[0]?.body.testPassword, "fixture-employee");
   assert.equal(data.testPassword.value, "");
   assert.equal(save.disabled, false);
+  assert.match(hint.textContent, /四项验证已通过/);
 
   data.url.value = "ldaps://changed.example.com";
   invalidateLDAPDraft(form, data.url as unknown as EventTarget);
@@ -74,5 +84,6 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
     url: "ldaps://changed.example.com", bindPassword: "fixture-bind", verification: "test-proof",
   });
   assert.equal(data.bindPassword.value, "");
+  assert.equal(hint.textContent, "已保存");
   assert.equal(save.disabled, true);
 });
