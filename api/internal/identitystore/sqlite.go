@@ -63,6 +63,9 @@ func Open(path string) (*Store, error) {
 			batch TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS operation_audit_batch ON operation_audit(batch);
+		CREATE INDEX IF NOT EXISTS operation_audit_action ON operation_audit(action, id);
+		CREATE INDEX IF NOT EXISTS operation_audit_successful_logins ON operation_audit(actor, created_at)
+			WHERE action='登录' AND result='成功' AND actor<>'';
 
 		CREATE TABLE IF NOT EXISTS resource_catalog_initialized (
 			id INTEGER PRIMARY KEY CHECK (id = 1)

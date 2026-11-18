@@ -6,6 +6,7 @@ type Group = { id: string; name: string; description?: string; roles: string[] |
 type Account = {
   id: string; username: string; kind: string; disabled: boolean; directoryDisabled: boolean;
   mustChangePassword: boolean; groups: string[] | null; roles: string[] | null;
+  lastLoginAt?: number;
   effective: (Scope & { sources: string[] })[] | null;
 };
 type Access = { groups: Group[]; roles: Role[] };
@@ -38,14 +39,21 @@ function scopeText(scope: Scope): string {
   return [environments[scope.environment] ?? scope.environment, scope.cluster, scope.business, scope.namespace].filter(Boolean).map(h).join(" / ");
 }
 
-function authTable(user: Account): string {
-  if (user.disabled || user.directoryDisabled || user.mustChangePassword) return "<p>账号当前无法访问诊断数据。</p>";
-  if (user.kind === "super" || user.kind === "administrator") return "<p>全局 · 系统管理员</p>";
-  if (!user.effective?.length) return "<p>暂无生效权限。</p>";
-  return `<div class="catalog-table-wrap"><table class="catalog-table">
-    <thead><tr><th>权限</th><th>资源范围</th><th>全部来源</th></tr></thead>
-    <tbody>${user.effective.map((scope) => `<tr><td>历史诊断查看</td><td>${scopeText(scope)}</td>
-      <td>${scope.sources.map(h).join("<br>")}</td></tr>`).join("")}</tbody></table></div>`;
+function effectivePermissions(user: Account): string {
+  if (user.disabled || user.directoryDisabled || user.mustChangePassword) {
+    return '<p class="system-notice">账号当前无法访问诊断数据。启用并完成所需的改密后，按关联角色生效。</p>';
+  }
+  if (user.kind === "super" || user.kind === "administrator") {
+    return '<div class="system-permission"><strong>全局管理与诊断查看</strong><p>直接授予 → 系统管理员</p></div>';
+  }
+  if (!user.effective?.length) return "<p>暂无生效权限。下次成功登录后恢复访客只读。</p>";
+  return `<div class="system-permissions">${user.effective.map((scope) => `<div class="system-permission">
+    <div class="system-card-heading"><strong>历史诊断查看</strong><span class="system-badge">${scope.sources.length} 条来源</span></div>
+    <p>${scopeText(scope)}</p><ul>${scope.sources.map((source) => `<li>${h(source)}</li>`).join("")}</ul></div>`).join("")}</div>`;
+}
+
+function accountAvatar(user: Account): string {
+  return `<span class="system-avatar" aria-hidden="true">${h(Array.from(user.username)[0]?.toUpperCase())}</span>`;
 }
 
 function statusOf(user: Account): string {
@@ -103,7 +111,7 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
   const action = user.kind === "administrator" ? "delete" : user.disabled ? "enable" : "disable";
   const label = user.kind === "administrator" ? "删除系统管理员" : user.disabled ? "重新启用" : "停用账号";
   return `<section class="system-card system-detail">
-    <header class="system-card-heading"><div><h3>${h(user.username)}</h3><code>${h(user.id)}</code></div>
+    <header class="system-card-heading"><div class="system-user-cell">${accountAvatar(user)}<div><h3>${h(user.username)}</h3><code>${h(user.id)}</code></div></div>
       <span class="system-badge">${h(statusOf(user))}</span></header>
     ${allowed ? `<div class="system-actions">${editButton(label, "account-action", true)}
       ${user.kind !== "ldap" ? editButton("重置密码", "reset", true) : ""}</div>
@@ -113,10 +121,10 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
     ` : ""}
     <nav class="identity-nav" aria-label="用户详情"><button type="button" data-system-tab="effective" aria-pressed="true">生效权限</button>
       <button type="button" data-system-tab="bindings" aria-pressed="false">关联关系</button></nav>
-    <div data-system-pane="effective"><h4>生效权限及来源</h4>${authTable(user)}</div>
+    <div data-system-pane="effective"><h4>生效权限及来源</h4>${effectivePermissions(user)}</div>
     <div data-system-pane="bindings" hidden><dl><dt>用户组</dt><dd>${names(user.groups, access.groups)}</dd>
       <dt>直接角色</dt><dd>${names(user.roles, access.roles)}</dd></dl>
-      ${user.kind === "ldap" ? editButton("分配或撤销", "assign") : ""}</div>
+      ${user.kind === "ldap" ? editButton("分配或撤销", "assign") : "<small>本地账号通过预置角色获得权限。</small>"}</div>
     ${user.kind === "ldap" ? assignmentEditor(access, user) : ""}
   </section>`;
 }
@@ -129,7 +137,7 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
     ${tempPassword()}<p>账号使用临时密码登录后需修改密码。</p>`, title, "create"));
   const stats = [["平台账号", users.length], ["LDAP 员工", users.filter((item) => item.kind === "ldap").length],
     ["本地访客", users.filter((item) => item.kind === "guest").length]];
-  return `<div class="platform-heading"><h2>用户管理</h2><div class="system-actions">
+  return `<div class="platform-heading"><div><h2>用户管理</h2><p>管理账号生命周期，并核对每项访问权限的来源。</p></div><div class="system-actions">
     ${editButton("＋ 创建访客", "guest")}${superAdmin ? editButton("创建系统管理员", "administrator", true) : ""}
     </div></div>
     <div class="system-stats">${stats.map(([label, count]) => `<div class="system-card"><span>${label}</span><strong>${count}</strong></div>`).join("")}</div>
@@ -143,12 +151,12 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       <button type="button" class="button" data-system-open="batch" data-platform-batch disabled>批量授权 / 撤销</button>
       <button type="button" class="button secondary" data-platform-clear disabled>取消选择</button></div>
     <div class="catalog-table-wrap"><table class="catalog-table">
-      <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th>账号</th><th>身份</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th>账号</th><th>类型</th><th>状态</th><th>最近登录</th></tr></thead>
       <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
-        <td><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></td>
+        <td><div class="system-user-cell">${accountAvatar(item)}<div><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
         <td>${h(kinds[item.kind])}</td><td><span class="system-badge">${h(statusOf(item))}</span></td>
-        <td><a href="#/admin/users/${encodeURIComponent(item.id)}">查看详情</a></td></tr>`).join("")}
-      <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div></section>
+        <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
+      <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div><div class="catalog-bottom" data-platform-count>共 ${users.length} 个账号</div></section>
       ${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}
     </div>
     ${assignmentEditor(access)}
@@ -162,21 +170,18 @@ function clusterScopeOptions(clusters: Entry[], current: string | undefined): st
     ${cluster.id === current ? " selected" : ""}>${h(cluster.name)}</option>`).join("");
 }
 
-function scopeInputs(scope: Scope | undefined, clusters: Entry[], businesses: Entry[]): string {
-  const env = scope?.environment ?? "development";
-  const restrictBusiness = env === "production" || env === "staging";
-  const selectedCluster = clusters.some((cluster) => cluster.id === scope?.cluster);
-  const selectedBusiness = businesses.some((business) => business.id === scope?.business);
-  return `<fieldset data-scope class="platform-scope">
-    <label>环境<select name="environment">${options(Object.entries(environments).map(([id, name]) => ({ id, name })), env)}</select></label>
-    <label>集群<select name="cluster"><option value="">${restrictBusiness ? "请选择" : "整个环境"}</option>${clusterScopeOptions(clusters, scope?.cluster)}
-      ${!selectedCluster && scope?.cluster ? options([{ id: scope.cluster, name: scope.cluster }], scope.cluster) : ""}</select></label>
-    <label data-scope-business${restrictBusiness ? "" : " hidden"}>业务线<select name="business"${restrictBusiness ? "" : " disabled"}><option value="">请选择</option>${options(businesses, scope?.business)}
-      ${!selectedBusiness && scope?.business ? options([{ id: scope.business, name: scope.business }], scope.business) : ""}</select></label>
-    <label>命名空间<select name="namespace" data-scope-namespace${scope?.cluster ? "" : " disabled"}><option value="">${restrictBusiness ? "请选择" : "全部"}</option>
-      ${scope?.namespace ? options([{ id: scope.namespace, name: scope.namespace }], scope.namespace) : ""}</select></label>
-    <button type="button" class="button secondary" data-scope-remove>移除此项</button>
+function scopeInputs(clusters: Entry[], businesses: Entry[]): string {
+  return `<fieldset data-scope class="platform-scope" aria-label="选择授权范围">
+    <label>环境<select name="environment">${options(Object.entries(environments).map(([id, name]) => ({ id, name })), "development")}</select></label>
+    <label>集群<select name="cluster"><option value="">整个环境</option>${clusterScopeOptions(clusters, undefined)}</select></label>
+    <label data-scope-business hidden>业务线<select name="business" disabled><option value="">请选择</option>${options(businesses)}</select></label>
+    <label>命名空间<select name="namespace" data-scope-namespace disabled><option value="">全部</option></select></label>
   </fieldset>`;
+}
+
+function scopeRow(scope: Scope): string {
+  return `<div class="system-scope-row" data-saved-scope="${h(JSON.stringify(scope))}">
+    <span>${scopeText(scope)}</span><button type="button" class="button secondary" data-scope-remove>移除</button></div>`;
 }
 
 async function renderAccess(tab?: string): Promise<string> {
@@ -192,10 +197,10 @@ async function renderAccess(tab?: string): Promise<string> {
   const roleEditor = (role?: Role) => editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
     operationForm("access", role?.id ?? "", `<label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
       <h3>历史诊断查看</h3>
-      <div data-scope-list>${(role?.scopes ?? []).map((scope) => scopeInputs(scope, clusters.items, businesses)).join("")}</div>
+      <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
       <p class="system-scope-empty">请添加至少一项授权范围。</p>
-      <template>${scopeInputs(undefined, clusters.items, businesses)}</template>
-      <button type="button" class="button secondary" data-scope-add>＋ 添加授权范围</button>`, "保存角色", "role-save"));
+      ${scopeInputs(clusters.items, businesses)}
+      <button type="button" class="button secondary" data-scope-add>＋ 添加范围</button>`, "保存角色", "role-save"));
   const remove = (item: Entry, kind: "group" | "role") => editor(`remove:${item.id}`, "确认删除",
     operationForm("access", item.id, `<p>确定删除「${h(item.name)}」？存在引用时会保留该条目。</p>`, "确认删除", `${kind}-delete`));
   const headers = groups ? ["用户组", "关联角色", "成员", "操作"] : ["角色", "范围", "引用", "操作"];
@@ -206,8 +211,8 @@ async function renderAccess(tab?: string): Promise<string> {
     <td>${role.id === "system-admin" ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断权限`}</td>
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
-    ${role.fixed ? "" : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
-  return `<div class="platform-heading"><h2>权限配置</h2>${groups ? editButton("＋ 新建用户组", "group:") : editButton("＋ 新建角色", "role:")}</div>
+    ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
+  return `<div class="platform-heading"><div><h2>权限配置</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div>${groups ? editButton("＋ 新建用户组", "group:") : editButton("＋ 新建角色", "role:")}</div>
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
       <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
@@ -216,7 +221,7 @@ async function renderAccess(tab?: string): Promise<string> {
       ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
     ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") :
       roleEditor() + access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
-        `<div class="system-editor-body">${role.scopes?.map((scope) => `<p>历史诊断查看 · ${scopeText(scope)}</p>`).join("") || "<p>管理系统与全局诊断</p>"}</div>`)
+        `<div class="system-editor-body"><p class="system-notice">预置角色的权限固定，始终禁止删除。</p>${role.scopes?.map((scope) => `<p>历史诊断查看 · ${scopeText(scope)}</p>`).join("") || "<p>管理系统与全局诊断</p>"}</div>`)
         : roleEditor(role) + remove(role, "role")).join("")}`;
 }
 
@@ -233,22 +238,23 @@ function auditDetail(item: Operation): string {
 function operationRows(items: Operation[]): string {
   if (items.length === 0) return '<tr><td colspan="7">暂无匹配记录。</td></tr>';
   return items.map((item) => `<tr><td>${h(new Date(item.at * 1000).toLocaleString("zh-CN"))}</td><td>${h(item.actor || "—")}</td>
-    <td>${h(item.action)}</td><td>${h(item.risk)}</td><td>${h(item.target)}</td><td>${h(item.result)}</td>
+    <td>${h(item.action)}</td><td><span class="system-badge" data-audit-risk="${h(item.risk)}">${h(item.risk)}</span></td>
+    <td>${h(item.target)}</td><td><span class="system-badge" data-audit-result="${h(item.result)}">${h(item.result)}</span></td>
     <td>${editButton("详情", `audit:${item.id}`, true)}${auditDetail(item)}</td></tr>`).join("");
 }
 
 async function renderOperations(): Promise<string> {
-  const { items, before } = await admin<{ items: Operation[]; before: number }>("operations");
-  return `<h2>操作审计</h2><form class="platform-audit-filter" data-audit-filter>
+  const { items, before, actions } = await admin<{ items: Operation[]; before: number; actions?: string[] }>("operations");
+  return `<div class="platform-heading"><div><h2>操作审计</h2><p>查询账号变更、认证事件和逐项批量结果。</p></div></div><section class="system-card"><form class="platform-audit-filter" data-audit-filter>
     <label>账号或目标<input name="account" type="search"></label>
-    <label>操作类型<input name="action" placeholder="例如：登录"></label>
+    <label>操作类型<select name="action"><option value="">所有操作</option>${options((actions ?? [...new Set(items.map((item) => item.action))]).map((name) => ({ id: name, name })))}</select></label>
     <label>风险等级<select name="risk"><option value="">全部</option><option>低</option><option>中</option><option>高</option></select></label>
     <input type="hidden" name="batch">
     ${submit("查询")}<button class="button secondary" type="submit" data-audit-next value="${before}"${before ? "" : " hidden"}>下一页</button>
     <p role="status"></p>
   </form><div class="catalog-table-wrap"><table class="catalog-table">
     <thead><tr><th>时间</th><th>操作者</th><th>操作类型</th><th>风险等级</th><th>目标</th><th>结果</th><th>操作</th></tr></thead>
-    <tbody data-audit-results>${operationRows(items)}</tbody></table></div>`;
+    <tbody data-audit-results>${operationRows(items)}</tbody></table></div><div class="catalog-bottom" data-audit-count>当前页 ${items.length} 条记录</div></section>`;
 }
 
 export function renderPlatform(resource: string, id: string | undefined, superAdmin: boolean): Promise<string> {
@@ -261,10 +267,6 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
   const status = form.querySelector<HTMLElement>('[role="status"]');
   const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]')];
   if (!status || buttons.some((button) => button.disabled)) return;
-  if (form.querySelector("[data-scope][aria-busy]")) {
-    status.textContent = "正在加载授权范围，请稍后提交。";
-    return;
-  }
   const data = new FormData(form);
   if (action === "assignment") {
     const group = form.querySelector<HTMLSelectElement>("[data-assignment-kind]")?.value === "groups";
@@ -278,9 +280,8 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     status.textContent = "请选择目标及授权项。";
     return;
   }
-  const scopes = [...form.querySelectorAll("[data-scope]")].map((row) => Object.fromEntries(
-    [...row.querySelectorAll<HTMLSelectElement>("select")].map((select) => [select.name, select.value]),
-  ));
+  const scopes = [...form.querySelectorAll<HTMLElement>("[data-saved-scope]")]
+    .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
   if (action === "role-save" && scopes.length === 0) {
     status.textContent = "请添加至少一项授权范围。";
     return;
@@ -289,7 +290,6 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
   const dialog = form.closest<HTMLDialogElement>("dialog");
   dialog?.setAttribute("aria-busy", "true");
   status.textContent = "正在保存…";
-  let completedBatch = false;
   try {
     const response = await fetch(`/api/v1/admin/${form.dataset.platform}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -302,18 +302,19 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       return;
     }
     const results = await response.json() as { id: string; reason?: string }[];
-    if (ids.length > 0 || action.startsWith("group-roles")) {
-      status.textContent = results.map(({ id, reason }) => `${id}：${reason || "成功"}`).join("；");
-      const refresh = document.createElement("button");
-      refresh.className = "button secondary";
-      refresh.type = "button";
-      completedBatch = true;
-      refresh.textContent = "完成并刷新";
-      if (dialog) {
-        dialog.addEventListener("close", reload, { once: true });
-        refresh.addEventListener("click", () => dialog.close(), { once: true });
-      } else refresh.addEventListener("click", reload, { once: true });
-      status.append(" ", refresh);
+    if (dialog && (ids.length > 0 || action.startsWith("group-roles"))) {
+      const title = dialog.querySelector("#system-dialog-title");
+      if (title) title.textContent = "授权操作结果";
+      form.outerHTML = `<div class="system-editor-body"><div class="catalog-table-wrap"><table class="catalog-table">
+        <thead><tr><th>账号或角色</th><th>结果</th><th>说明</th></tr></thead>
+        <tbody>${results.map(({ id, reason }) => `<tr><td>${h(id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
+          ${reason ? "失败" : "成功"}</span></td><td>${h(reason || "已更新关联关系")}</td></tr>`).join("")}</tbody>
+        </table></div></div><footer class="system-dialog-footer"><button class="button" type="button" data-system-close>完成并刷新</button></footer>`;
+      const hash = window.location.hash;
+      dialog.addEventListener("close", () => {
+        if (dialog.isConnected && window.location.hash === hash) reload();
+      }, { once: true });
+      dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
     } else if (action === "delete") window.location.hash = "#/admin/users";
     else { dialog?.close(); reload(); }
   } catch {
@@ -322,7 +323,7 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     const password = form.querySelector<HTMLInputElement>('[name="password"]');
     if (password) password.value = "";
     dialog?.removeAttribute("aria-busy");
-    for (const button of buttons) button.disabled = completedBatch;
+    for (const button of buttons) button.disabled = false;
   }
 }
 
@@ -348,6 +349,8 @@ export async function queryAudit(form: HTMLFormElement, before = "", batch = "")
   try {
     const page = await admin<{ items: Operation[]; before: number }>(`operations?${query}`);
     body.innerHTML = operationRows(page.items);
+    const count = form.parentElement?.querySelector("[data-audit-count]");
+    if (count) count.textContent = `当前页 ${page.items.length} 条记录`;
     next.value = String(page.before);
     next.hidden = !page.before;
     status.textContent = batchInput.value ? "正在查看同一批次的记录。" : "";
@@ -384,7 +387,7 @@ export function handlePlatformClick(event: MouseEvent): void {
       }
       dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
       dialog.showModal();
-      for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope, true);
+      for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
     }
     return;
   }
@@ -405,14 +408,40 @@ export function handlePlatformClick(event: MouseEvent): void {
   }
   if (target.closest("[data-scope-add]")) {
     const form = target.closest("form");
-    const template = form?.querySelector("template");
-    if (template) {
-      const list = form?.querySelector("[data-scope-list]");
-      list?.append(template.content.cloneNode(true));
-      if (list?.lastElementChild instanceof HTMLElement) void refreshScope(list.lastElementChild);
+    const list = form?.querySelector("[data-scope-list]");
+    const status = form?.querySelector('[role="status"]');
+    if (!form || !list || !status || dialog?.hasAttribute("aria-busy")) return;
+    if (form.querySelector("[data-scope][aria-busy]")) {
+      status.textContent = "正在加载命名空间，请稍候。";
+      return;
     }
+    const data = new FormData(form);
+    const scope = {
+      environment: String(data.get("environment") ?? ""),
+      cluster: String(data.get("cluster") ?? ""),
+      business: String(data.get("business") ?? ""),
+      namespace: String(data.get("namespace") ?? ""),
+    };
+    if ((scope.environment === "staging" || scope.environment === "production") &&
+        (!scope.cluster || !scope.business || !scope.namespace)) {
+      status.textContent = "请选择集群、业务线和命名空间。";
+      return;
+    }
+    const duplicate = [...list.querySelectorAll<HTMLElement>("[data-saved-scope]")].some((row) => {
+      const existing = JSON.parse(row.dataset.savedScope ?? "{}") as Scope;
+      return (["environment", "cluster", "business", "namespace"] as const).every((key) =>
+        (existing[key] ?? "") === scope[key]);
+    });
+    if (duplicate) {
+      status.textContent = "该授权范围已添加。";
+      return;
+    }
+    list.insertAdjacentHTML("beforeend", scopeRow(scope));
+    status.textContent = "";
   }
-  if (target.closest("[data-scope-remove]")) target.closest("[data-scope]")?.remove();
+  if (target.closest("[data-scope-remove]") && !dialog?.hasAttribute("aria-busy")) {
+    target.closest("[data-saved-scope]")?.remove();
+  }
   const batch = target.closest<HTMLButtonElement>("[data-audit-batch]")?.dataset.auditBatch;
   const filter = target.closest(".identity-panel")?.querySelector<HTMLFormElement>("[data-audit-filter]");
   if (batch && filter) {
@@ -454,6 +483,8 @@ export function filterAccounts(event: Event): void {
   if (count) count.textContent = `已选 ${selected} 项`;
   const empty = panel.querySelector<HTMLElement>("[data-platform-empty]");
   if (empty) empty.hidden = matching > 0;
+  const total = panel.querySelector("[data-platform-count]");
+  if (total) total.textContent = `共 ${matching} 个账号`;
 }
 
 const scopeRequests = new WeakMap<HTMLElement, AbortController>();
@@ -476,7 +507,7 @@ export async function updateScopeOptions(event: Event): Promise<void> {
   }
 }
 
-async function refreshScope(field: HTMLElement, preserve = false): Promise<void> {
+async function refreshScope(field: HTMLElement): Promise<void> {
   const cluster = field.querySelector<HTMLSelectElement>('[name="cluster"]');
   const business = field.querySelector<HTMLSelectElement>('[name="business"]');
   const namespace = field.querySelector<HTMLSelectElement>("[data-scope-namespace]");
@@ -485,7 +516,6 @@ async function refreshScope(field: HTMLElement, preserve = false): Promise<void>
   scopeRequests.get(field)?.abort();
   const controller = new AbortController();
   scopeRequests.set(field, controller);
-  const selectedNamespace = preserve ? namespace.value : "";
   const restricted = env.value === "production" || env.value === "staging";
   if (cluster.options[0]) cluster.options[0].text = restricted ? "请选择" : "整个环境";
   for (const option of cluster.options) {
@@ -511,15 +541,11 @@ async function refreshScope(field: HTMLElement, preserve = false): Promise<void>
     if (scopeRequests.get(field) !== controller) return;
     const names = (data.namespaces ?? []).filter(({ name }) => !restricted || data.assigned[name]?.includes(business.value));
     const entries = names.map(({ name }) => ({ id: name, name }));
-    if (selectedNamespace && !entries.some(({ id }) => id === selectedNamespace)) {
-      entries.push({ id: selectedNamespace, name: `${selectedNamespace}（原配置）` });
-    }
-    namespace.innerHTML += options(entries, selectedNamespace);
+    namespace.innerHTML += options(entries);
     namespace.disabled = false;
   } catch {
     if (controller.signal.aborted) return;
     namespace.innerHTML = '<option value="">命名空间暂不可用</option>';
-    if (selectedNamespace) namespace.innerHTML += options([{ id: selectedNamespace, name: selectedNamespace }], selectedNamespace);
   } finally {
     if (scopeRequests.get(field) === controller) field.removeAttribute("aria-busy");
   }

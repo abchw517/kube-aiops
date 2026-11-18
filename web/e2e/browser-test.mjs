@@ -300,8 +300,17 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
       (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
     await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".collection-details summary").click()' });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-cluster-details]").click()' });
     await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="ownership-dev-k8s"]').click()` });
+    await assertText(cdp, (text) => text.includes("payments") && text.includes("保存归属"), "Namespace ownership dialog did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] [data-namespace-ownership]");
+      form.querySelector('input[name="businesses"]').checked = true;
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => !text.includes("保存归属") && text.includes("集群接入"), "Namespace ownership did not save and close");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const search = document.querySelector('[data-cluster-filter="query"]');
       search.value = "本地可恢复集群";
@@ -322,14 +331,24 @@ try {
       document.querySelector('dialog[open] button[type="submit"]').click();
     })()` });
     await assertText(cdp, (text) => text.includes("本地可恢复集群") && !text.includes("重新连接"), "Reconnect did not restore the local row");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/clusters/edit-dev-k8s",
-      (text) => text.includes("环境已锁定") && text.includes("重新校验"), "Cluster editor did not display lock and recheck");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="edit-dev-k8s"]').click()` });
+    await assertText(cdp, (text) => text.includes("环境已锁定") && text.includes("取消"), "Cluster editor did not display the locked environment");
     const lockedEnvironment = await cdp.send("Runtime.evaluate", {
-      expression: 'document.querySelector("[data-onboarding-mode] input[name=environment]").readOnly', returnByValue: true,
+      expression: 'document.querySelector("dialog[open] [data-onboarding-mode] input[name=environment]").readOnly', returnByValue: true,
     });
     if (!lockedEnvironment.result?.value) throw new Error("A collected cluster must have a read-only environment");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
       (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="add"]').click()` });
+    const idPattern = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const id = document.querySelector('dialog[open] input[name="id"]');
+      id.value = "new-dev";
+      const valid = id.checkValidity();
+      id.value = "INVALID";
+      return valid && !id.checkValidity();
+    })()` });
+    if (!idPattern.result?.value) throw new Error("New catalog IDs must follow the browser ID pattern");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-catalog-action="close"]').click()` });
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="edit"]').click()` });
     const writable = await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-catalog-dialog] input[name=id]").readOnly', returnByValue: true,
@@ -366,10 +385,24 @@ try {
       form.requestSubmit();
     })()` });
     await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
-    const nav = await cdp.send("Runtime.evaluate", { expression: `Array.from(document.querySelectorAll(".workspace-nav a"), a => a.textContent)`, returnByValue: true });
-    if (nav.result?.value?.slice(0, 2).join("/") !== "诊断控制台/运维知识库") throw new Error("Wiki must appear below the diagnostics console");
+    const nav = await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const links = [...document.querySelectorAll(".workspace-nav > a")];
+      return {
+        labels: links.map((link) => link.textContent).join("/"),
+        indents: [...new Set(links.map((link) => getComputedStyle(link).paddingInlineStart))].length,
+        sidebar: getComputedStyle(links[0].parentElement).backgroundColor,
+        page: getComputedStyle(document.body).backgroundColor,
+      };
+    })()`, returnByValue: true });
+    const navigation = nav.result?.value;
+    if (navigation?.labels !== "诊断控制台/运维知识库/资源管理/系统管理" || navigation.indents !== 1) {
+      throw new Error("The four modules must be peers in the workspace navigation");
+    }
+    if (navigation.sidebar !== "rgb(18, 38, 55)" || navigation.page !== "rgb(241, 245, 249)") {
+      throw new Error("Workspace chrome must use the resource management prototype colors");
+    }
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
-      (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("reader"), "User filters did not render");
+      (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("最近登录") && text.includes("reader"), "User filters did not render");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-select-all]").click()' });
     await assertText(cdp, (text) => text.includes("已选 1 项"), "Select all did not update the selection count");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-batch]").click()' });
@@ -383,7 +416,14 @@ try {
         !dialog.querySelector('[data-assignment-options="roles"]').hidden;
     })()` });
     if (!integrated.result?.value) throw new Error("Authorization target did not switch to role checkboxes");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      form.querySelector('input[name="roles"]').checked = true;
+      form.requestSubmit(form.querySelector('button[value="assignment"]'));
+    })()` });
+    await assertText(cdp, (text) => text.includes("授权操作结果") && text.includes("已更新关联关系"), "Batch results did not display individual outcomes");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await assertText(cdp, (text) => text.includes("已选 0 项") && !text.includes("授权操作结果"), "Batch assignment should refresh the accounts");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-system-open=guest]").click()' });
     await assertText(cdp, (text) => text.includes("临时密码") && text.includes("取消"), "Create visitor dialog did not open");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
@@ -413,7 +453,6 @@ try {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
       form.elements.name.value = "浏览器检查";
-      form.querySelector("[data-scope-add]").click();
       const cluster = form.querySelector('[name="cluster"]');
       cluster.value = "local";
       cluster.dispatchEvent(new Event("change", { bubbles: true }));
@@ -426,12 +465,21 @@ try {
       await sleep(100);
     }
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
+    await assertText(cdp, (text) => text.includes("请添加至少一项授权范围"), "Saving used an uncommitted scope");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      form.elements.namespace.value = "payments";
+      form.querySelector("[data-scope-add]").click();
+      form.requestSubmit(form.querySelector('button[value="role-save"]'));
+    })()` });
     await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("保存角色"), "Role editor did not keep the form open on conflict");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
-      (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
+      (text) => text.includes("集群接入") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });
+    await assertText(cdp, (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment dialog did not render");
     await cdp.send("Runtime.evaluate", {
       expression: `(() => {
         const form = document.querySelector("[data-onboarding-mode]");
@@ -444,6 +492,8 @@ try {
       })()`,
     });
     await assertText(cdp, (text) => text.includes("请将上报凭据保存到采集端 Secret"), "Enrollment did not return credentials");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
+    await assertText(cdp, (text) => text.includes("集群接入") && !text.includes("上报凭据保存"), "Enrollment did not return to the cluster list");
 
 
   } finally {

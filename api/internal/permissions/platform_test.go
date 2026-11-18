@@ -3,6 +3,7 @@ package permissions
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http/httptest"
 	"path/filepath"
@@ -36,6 +37,16 @@ func TestPlatformRoleSourcesAndImmediateAccessChanges(t *testing.T) {
 	}
 	if len(p.Groups) != 0 {
 		t.Fatal("directory groups leaked into platform authorization")
+	}
+
+	a.RecordLogin(ctx, "alice", p.Subject, 204)
+	a.RecordLogin(ctx, "alice", p.Subject, 401)
+	accounts := httptest.NewRecorder()
+	a.handlePlatform(accounts, httptest.NewRequest("GET", "/", nil), "accounts", identity.Principal{Subject: superSubject, Provider: AdminProvider})
+	var users []accountView
+	if err := json.Unmarshal(accounts.Body.Bytes(), &users); err != nil || accounts.Code != 200 ||
+		len(users) != 1 || users[0].ID != p.Subject || users[0].LastLoginAt == 0 {
+		t.Fatalf("successful login missing from accounts: %d %s %v", accounts.Code, accounts.Body, err)
 	}
 
 	change := func(resource, body string, want int) string {

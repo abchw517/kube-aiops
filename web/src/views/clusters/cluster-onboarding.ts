@@ -61,25 +61,31 @@ function displayTime(seconds: number): string {
 
 function renderCollection(item: Entry): string {
   const data = item.collection;
-  return `<details class="collection-details"><summary>采集详情</summary>
+  return `<div class="collection-details">
     <p>${item.firstCollectedAt ? `首次采集成功 ${displayTime(item.firstCollectedAt)}` : "尚未收到有效采集数据"}</p>
     ${item.reportedAt ? `<p>最近上报 ${displayTime(item.reportedAt)}</p>` : ""}
     ${item.checkedAt ? `<p>最近检查 ${displayTime(item.checkedAt)}</p>` : ""}
     ${data?.nodeSampleAt ? `<p>节点更新时间 ${displayTime(data.nodeSampleAt)}</p>` : ""}
     ${(data?.nodeFailures ?? 0) >= 2 && data?.nodeSampleAt ? '<p role="status">节点数据已过期</p>' : ""}
     ${data?.nodeError ? `<p>${escapeHtml(data.nodeError)}</p>` : ""}
+    <h3>节点状态</h3>
     ${data?.nodes?.length ? `<ul aria-label="节点状态">${data.nodes.map((node) =>
-      `<li>${escapeHtml(node.name)} · <strong>${node.ready === "True" ? "Ready" : node.ready === "False" ? "NotReady" : "Unknown"}</strong></li>`).join("")}</ul>` : ""}
-    ${data?.namespaces?.length ? `<p>命名空间 · ${data.namespaces.map(({ name }) => escapeHtml(name)).join("、")}</p>` : ""}
-    ${data?.namespaceError ? "<p>命名空间采集异常</p>" : ""}
+      `<li>${escapeHtml(node.name)} · <strong>${node.ready === "True" ? "Ready" : node.ready === "False" ? "NotReady" : "Unknown"}</strong></li>`).join("")}</ul>` : "<p>尚未收到节点数据。</p>"}
+    <h3>命名空间</h3>
+    ${data?.namespaceError ? "<p>命名空间采集异常</p>" : data?.namespaces?.length ?
+      `<p>${data.namespaces.map(({ name }) => escapeHtml(name)).join("、")}</p>` : "<p>暂无数据。</p>"}
+    <h3>诊断采集</h3>
     ${data?.findingError ? "<p>诊断采集异常，请检查 K8sGPT 安装和 Result 读取权限</p>" :
-      data?.findingCount ? "<p>已收到 K8sGPT 诊断</p>" : ""}
+      data?.findingCount ? "<p>已收到 K8sGPT 诊断</p>" : "<p>尚未收到诊断。</p>"}
     ${!data?.findingError && data?.workloadFinding ? "<p>发现工作负载故障</p>" : ""}
-  </details>`;
+  </div>`;
 }
 
-export async function renderOnboarding(id?: string): Promise<string> {
-  if (id?.startsWith("ownership-")) return renderNamespaceOwnership(id.slice(10));
+export async function renderOnboarding(id?: string, modal = false): Promise<string> {
+  if (id?.startsWith("ownership-")) {
+    const body = await renderNamespaceOwnership(decodeURIComponent(id.slice(10)), modal);
+    return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回集群接入</a>${body}`;
+  }
   const response = await fetch(endpoint);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("directory unavailable");
@@ -88,8 +94,8 @@ export async function renderOnboarding(id?: string): Promise<string> {
   if (!id) {
     const states = [...new Set(items.map(collectionStatus))];
     return `<div class="catalog-section">
-      <div class="cluster-heading"><h2>集群接入</h2><div class="catalog-actions">
-        <a class="button secondary" href="${route}/push">采集上报</a><a class="button" href="${route}/pull">＋ 新增集群</a>
+      <div class="cluster-heading"><div><h2>集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
+        <button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>
       </div></div>
       <div class="cluster-filters">
         <label>搜索集群<input type="search" data-cluster-filter="query" placeholder="名称、ID、环境或业务线"></label>
@@ -103,14 +109,16 @@ export async function renderOnboarding(id?: string): Promise<string> {
             <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "外部直连" : "采集上报"}</div></td>
           <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
           <td>${item.clusterType === "dedicated" ? "独立业务集群" : "共用集群"}</td>
-          <td><span class="cluster-status">${collectionStatus(item)}</span>${item.deleted ? "" : renderCollection(item)}</td>
+          <td><span class="cluster-status">${collectionStatus(item)}</span></td>
           <td><div class="catalog-actions">
           ${item.deleted ? maintenanceButton(item, "reconnect", "重新连接") : `
-            <a href="${route}/edit-${encodeURIComponent(item.id)}">${item.mode === "local" ? "编辑归属" : "编辑配置"}</a>
-            ${item.enabled ? `<a href="${route}/ownership-${encodeURIComponent(item.id)}">命名空间归属</a>` : ""}
+            <button type="button" class="button secondary" data-cluster-details>采集详情</button>
+            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${collectionStatus(item)}</p>${renderCollection(item)}</template>
+            ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : "编辑配置")}
+            ${item.enabled ? editorButton(item, "ownership", "命名空间归属") : ""}
             ${item.enabled && item.mode === "pull" ? maintenanceButton(item, "recheck", "重新校验") : ""}
             ${item.mode === "push" ? maintenanceButton(item, "rotate-token", "轮换上报凭据") : ""}
-            ${item.mode === "pull" ? `<a href="${route}/rotate-${encodeURIComponent(item.id)}">轮换直连凭据</a>` : ""}
+            ${item.mode === "pull" ? editorButton(item, "rotate", "轮换直连凭据") : ""}
             ${maintenanceButton(item, "delete", "删除")}`}
           </div></td></tr>`).join("")}
           <tr data-cluster-empty${items.length ? " hidden" : ""}><td colspan="5" class="catalog-empty">暂无符合条件的集群。</td></tr></tbody>
@@ -121,10 +129,10 @@ export async function renderOnboarding(id?: string): Promise<string> {
   }
   const rotating = id.startsWith("rotate-");
   const editing = rotating || id.startsWith("edit-");
-  const item = editing ? items.find((entry) => entry.id === id.slice(rotating ? 7 : 5)) : undefined;
+  const item = editing ? items.find((entry) => entry.id === decodeURIComponent(id.slice(rotating ? 7 : 5))) : undefined;
   const mode = item?.mode ?? id;
   if ((editing && (!item || item.deleted)) || (rotating && mode !== "pull") || (mode === "local" && !editing) || (mode !== "pull" && mode !== "push" && mode !== "local")) {
-    return `<p>实例不存在。</p><a href="${route}">返回集群接入</a>`;
+    return modal ? clusterDialog("集群接入", "<p>实例不存在。</p>") : `<p>实例不存在。</p><a href="${route}">返回集群接入</a>`;
   }
   const catalogs = await Promise.all(["environments", "business-lines"].map(async (kind) => {
     const response = await fetch(`/api/v1/admin/${kind}`);
@@ -133,9 +141,9 @@ export async function renderOnboarding(id?: string): Promise<string> {
   }));
   const locked = Boolean(item?.firstCollectedAt && item.environment);
   const local = mode === "local";
-  const title = rotating ? "轮换直连凭据" : local ? "编辑本地集群归属" : mode === "pull" ? "外部直连接入" : "采集上报";
-  return `<h2>${title}</h2><a href="${route}">返回集群接入</a>
-    <form class="login-form identity-form cluster-editor" data-onboarding-mode="${mode}" data-editing="${editing}" data-rotating="${rotating}">
+  const title = rotating ? "轮换直连凭据" : local ? "编辑归属" : editing ? "编辑配置" : mode === "pull" ? "新增集群" : "采集上报";
+  const body = `<form class="login-form identity-form cluster-editor" data-onboarding-mode="${mode}" data-editing="${editing}" data-rotating="${rotating}">
+      <p>${local ? "本地自动采集" : mode === "pull" ? "外部直连" : "采集上报"}</p>
       <fieldset><legend>名称与归属</legend><div class="cluster-form-grid">
       ${fields.filter(([, , base]) => base).map(([name,label,base]) => {
         const current = String(item?.[name] ?? "");
@@ -168,9 +176,15 @@ export async function renderOnboarding(id?: string): Promise<string> {
         "保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。"} </p>
       <p role="status"></p>
       <textarea rows="3" readonly hidden aria-label="上报凭据" data-report-token></textarea>
-      <button type="submit" class="button">${rotating ? "校验并轮换" : "保存"}</button>
-      ${mode === "pull" ? '<button type="submit" value="test" class="button secondary">测试连接</button>' : ""}
-    </form>
+      <div class="cluster-editor-actions">
+        ${modal ? '<button type="button" class="button secondary" data-cluster-close>取消</button>' : ""}
+        ${mode === "pull" && !rotating ? '<button type="submit" value="test" class="button secondary">测试连接</button>' : ""}
+        <button type="submit" class="button">${rotating ? "校验并轮换" : local ? "保存归属" : "保存"}</button>
+      </div>
+    </form>`;
+  if (modal) return clusterDialog(title, body, false);
+  return `<h2>${title}</h2><a href="${route}">返回集群接入</a>${body}
+
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
     ${item?.mode === "pull" && item.enabled ? `<form data-collection-check="${escapeHtml(item.id)}">
       <button type="submit" class="button secondary">重新校验</button><p role="status"></p></form>` : ""}`;
@@ -210,11 +224,12 @@ export function updateClusterCredential(event: Event): void {
   }
 }
 
-export async function submitOnboarding(form: HTMLFormElement, testing: boolean): Promise<void> {
+export async function submitOnboarding(form: HTMLFormElement, testing: boolean, reload: () => void): Promise<void> {
   const status = form.querySelector<HTMLElement>('[role="status"]');
   const token = form.querySelector<HTMLTextAreaElement>("[data-report-token]");
   const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]')];
   if (!status || !token || buttons.some((button) => button.disabled)) return;
+  const dialog = form.closest("dialog");
   const data = new FormData(form);
   const values = Object.fromEntries(fields.map(([key]) => [key, String(data.get(key) ?? "").trim()]));
   const credentialKind = data.get("credentialKind");
@@ -226,6 +241,7 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean):
     ca: data.get("credentialCA") ?? "", certificate: data.get("credentialCertificate") ?? "",
     privateKey: data.get("credentialPrivateKey") ?? "", kubeconfig: data.get("credentialKubeconfig") ?? "" } : undefined;
   for (const button of buttons) button.disabled = true;
+  dialog?.setAttribute("aria-busy", "true");
   status.textContent = testing ? "正在测试连接…" : "正在保存…";
   let keepDisabled = false;
   try {
@@ -249,12 +265,21 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean):
       token.hidden = false;
       keepDisabled = true;
       status.textContent = "保存成功。请将上报凭据保存到采集端 Secret。";
+      const close = form.querySelector<HTMLButtonElement>("[data-cluster-close]");
+      if (close) {
+        close.textContent = "完成";
+      }
+      if (dialog) dialog.onclose = () => { if (form.isConnected && ["#/resources", route].includes(window.location.hash)) reload(); };
+    } else if (dialog) {
+      dialog.close();
+      if (form.isConnected && ["#/resources", route].includes(window.location.hash)) reload();
     } else {
       window.location.hash = route;
     }
   } catch {
     status.textContent = "集群接入请求失败。";
   } finally {
+    dialog?.removeAttribute("aria-busy");
     for (const button of buttons) button.disabled = keepDisabled;
   }
 }
@@ -305,7 +330,16 @@ const maintenance: Record<string, { title: string; description: string }> = {
   recheck: { title: "重新校验", description: "使用当前连接配置检查节点读取权限，并更新最近校验结果。" },
 };
 
-export function handleClusterMaintenanceClick(event: MouseEvent): void {
+function editorButton(item: Entry, action: string, label: string): string {
+  return `<button type="button" class="button secondary" data-cluster-editor="${action}-${encodeURIComponent(item.id)}">${label}</button>`;
+}
+
+function clusterDialog(title: string, body: string, showClose = true): string {
+  return `<header><h2 id="cluster-dialog-title" tabindex="-1">${title}</h2></header>
+    <div class="catalog-dialog-body">${body}</div>${showClose ? '<footer><button type="button" class="button secondary" data-cluster-close>关闭</button></footer>' : ""}`;
+}
+
+export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<void> {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   const section = target.closest(".catalog-section");
@@ -315,10 +349,40 @@ export function handleClusterMaintenanceClick(event: MouseEvent): void {
     if (!dialog.hasAttribute("aria-busy")) dialog.close();
     return;
   }
+  if (dialog.open) return;
+  dialog.onclose = null;
+  dialog.oncancel = (e) => { if (dialog.hasAttribute("aria-busy")) e.preventDefault(); };
+  const details = target.closest("[data-cluster-details]")?.parentElement?.querySelector<HTMLTemplateElement>("[data-collection-template]");
+  if (details) {
+    dialog.classList.add("cluster-dialog-wide");
+    dialog.innerHTML = clusterDialog("采集详情", details.innerHTML);
+    dialog.showModal();
+    return;
+  }
+  const editor = target.closest<HTMLButtonElement>("[data-cluster-editor]");
+  if (editor) {
+    dialog.classList.add("cluster-dialog-wide");
+    dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? "集群接入"), '<p role="status">正在加载…</p>');
+    dialog.showModal();
+    const loading = dialog.firstElementChild;
+    try {
+      const body = await renderOnboarding(editor.dataset.clusterEditor, true);
+      if (dialog.open && dialog.firstElementChild === loading) {
+        dialog.innerHTML = body;
+        dialog.querySelector<HTMLElement>("h2")?.focus();
+      }
+    } catch {
+      if (dialog.open && dialog.firstElementChild === loading) {
+        dialog.innerHTML = clusterDialog("集群接入", '<p role="alert">无法加载集群配置，请重试。</p>');
+      }
+    }
+    return;
+  }
+  dialog.classList.remove("cluster-dialog-wide");
   const button = target.closest<HTMLButtonElement>("[data-cluster-action]");
   const action = button?.dataset.clusterAction ?? "";
   const content = maintenance[action];
-  if (!button || !content || dialog.open) return;
+  if (!button || !content) return;
   dialog.innerHTML = `<form data-cluster-maintenance="${action}" data-id="${escapeHtml(button.dataset.id)}">
     <header><h2 id="cluster-dialog-title">${content.title}</h2></header>
     <div class="catalog-dialog-body"><p>${escapeHtml(button.dataset.label)}</p><p>${content.description}</p>
@@ -326,7 +390,6 @@ export function handleClusterMaintenanceClick(event: MouseEvent): void {
       <textarea aria-label="新上报凭据" readonly hidden data-cluster-token></textarea></div>
     <footer><button type="button" class="button secondary" data-cluster-close>取消</button>
       <button type="submit" class="button${action === "delete" ? " catalog-danger-fill" : ""}">确认</button></footer></form>`;
-  dialog.oncancel = (e) => { if (dialog.hasAttribute("aria-busy")) e.preventDefault(); };
   dialog.showModal();
 }
 

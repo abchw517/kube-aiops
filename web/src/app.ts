@@ -65,7 +65,7 @@ export class PortalApp {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
       handleResourceCatalogClick(event);
-      handleClusterMaintenanceClick(event);
+      void handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
     });
@@ -93,7 +93,7 @@ export class PortalApp {
       }
       if (form instanceof HTMLFormElement && form.dataset.onboardingMode) {
         event.preventDefault();
-        void submitOnboarding(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test");
+        void submitOnboarding(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "test", () => void this.route());
         return;
       }
       if (form instanceof HTMLFormElement && form.dataset.namespaceOwnership) {
@@ -342,7 +342,7 @@ export class PortalApp {
       <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
         ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
           <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : ' aria-current="page"'}>诊断控制台</a>
-          ${demoMode ? "" : `<a class="workspace-subnav" href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
+          ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
           ${Object.values(this.resourceAccess).some(Boolean) ? `<a href="#/resources"${resourcePage ? ' aria-current="page"' : ""}>资源管理</a>` : ""}
           ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
         </nav>`}
