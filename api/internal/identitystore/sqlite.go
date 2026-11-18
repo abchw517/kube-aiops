@@ -46,6 +46,24 @@ func Open(path string) (*Store, error) {
 			groups_json TEXT NOT NULL,
 			last_login TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS platform_identity (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			document TEXT NOT NULL
+		);
+		INSERT OR IGNORE INTO platform_identity VALUES (1, '{}');
+		CREATE TABLE IF NOT EXISTS operation_audit (
+			id INTEGER PRIMARY KEY,
+			created_at INTEGER NOT NULL,
+			actor TEXT NOT NULL,
+			action TEXT NOT NULL,
+			risk TEXT NOT NULL,
+			target TEXT NOT NULL,
+			result TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			batch TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS operation_audit_batch ON operation_audit(batch);
+
 		CREATE TABLE IF NOT EXISTS resource_catalog_initialized (
 			id INTEGER PRIMARY KEY CHECK (id = 1)
 		);
@@ -61,6 +79,23 @@ func Open(path string) (*Store, error) {
 			id TEXT NOT NULL,
 			PRIMARY KEY(kind, name)
 		);
+		CREATE TABLE IF NOT EXISTS resource_catalog_ids (
+			kind TEXT NOT NULL,
+			alias TEXT NOT NULL,
+			id TEXT NOT NULL,
+			stable_key TEXT NOT NULL,
+			PRIMARY KEY(kind, alias)
+		);
+		INSERT OR IGNORE INTO resource_catalog_ids(kind,alias,id,stable_key)
+		SELECT kind,id,id,id FROM resource_catalog;
+
+		CREATE TABLE IF NOT EXISTS namespace_business (
+			cluster TEXT NOT NULL,
+			namespace TEXT NOT NULL,
+			business TEXT NOT NULL,
+			PRIMARY KEY(cluster, namespace, business)
+		);
+
 		CREATE TABLE IF NOT EXISTS managed_clusters (
 			id TEXT PRIMARY KEY,
 			document TEXT NOT NULL,

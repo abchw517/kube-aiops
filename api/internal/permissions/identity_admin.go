@@ -39,18 +39,20 @@ type ldapSettings struct {
 }
 
 type Admin struct {
-	store            *identitystore.Store
-	origin           string
-	mu               sync.RWMutex
-	policy           *authorization.PolicyAuthorizer
-	basePolicy       authorization.Policy
-	roles            []authorization.Role
-	ldap             *identity.LDAPConfig
-	settings         ldapSettings
-	ldapIssue        string
-	ldapRevision     uint64
-	ldapVerification ldapVerification
-	ldapProbe        ldapLoginProbe
+	store              *identitystore.Store
+	origin             string
+	mu                 sync.RWMutex
+	policy             *authorization.PolicyAuthorizer
+	basePolicy         authorization.Policy
+	roles              []authorization.Role
+	ldap               *identity.LDAPConfig
+	settings           ldapSettings
+	ldapIssue          string
+	ldapRevision       uint64
+	ldapVerification   ldapVerification
+	ldapProbe          ldapLoginProbe
+	clusterEnvironment ClusterScopeResolver
+	namespaceBusiness  NamespaceBusinessResolver
 }
 
 func New(ctx context.Context, store *identitystore.Store) (*Admin, error) {
@@ -143,8 +145,10 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 
 func (a *Admin) Authorize(ctx context.Context, r authorization.DecisionRequest) (authorization.Decision, error) {
 	switch r.Principal.Provider {
-	case InitialAdminProvider:
+	case InitialAdminProvider, pendingProvider:
 		return authorization.Decision{}, nil
+	case guestProvider, employeeProvider:
+		return a.authorizePlatform(ctx, r)
 	case AdminProvider:
 		return authorization.Decision{Allowed: true}, nil
 	}
@@ -164,11 +168,14 @@ func (a *Admin) Local(ctx context.Context, user, pass string) (identity.Principa
 			if initial {
 				provider = InitialAdminProvider
 			}
-			return identity.Principal{Subject: "local:admin", Provider: provider}, nil
+			return identity.Principal{Subject: "local:admin", Provider: provider, SessionVersion: versionOf(hash)}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return identity.Principal{}, identity.ErrAuthenticationUnavailable
 		}
+	}
+	if principal, found, err := a.platformLocal(ctx, user, pass); found {
+		return principal, err
 	}
 	account, err := a.store.LocalAccount(ctx, user)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -194,10 +201,7 @@ func (a *Admin) Directory(ctx context.Context, user, pass string) (identity.Prin
 	if err != nil {
 		return principal, err
 	}
-	if err := a.store.RecordLDAPLogin(ctx, user, principal); err != nil {
-		return identity.Principal{}, identity.ErrAuthenticationUnavailable
-	}
-	return principal, nil
+	return a.registerEmployee(ctx, user, principal)
 }
 
 func validNewPassword(password string) bool {
@@ -207,11 +211,28 @@ func validNewPassword(password string) bool {
 func (a *Admin) Handle(w http.ResponseWriter, r *http.Request, resource string, sessions *identity.Sessions) {
 	ctx := r.Context()
 	var err error
+	actor, _ := identity.PrincipalFromContext(ctx)
 	switch {
+	case resource == "accounts" || resource == "access" || resource == "operations":
+		a.handlePlatform(w, r, resource, actor)
+		return
 	case resource == "password" && r.Method == http.MethodPost:
 		var input struct{ Current, Password string }
 		if !adminhttp.Decode(w, r, &input) || !validNewPassword(input.Password) || len(input.Current) > 72 {
 			http.Error(w, "invalid password", 400)
+			return
+		}
+		if actor.Subject != "" && actor.Subject != superSubject {
+			err = a.changePlatformPassword(ctx, actor, input.Current, input.Password)
+			if errors.Is(err, identity.ErrUnauthenticated) {
+				http.Error(w, "当前密码错误或会话已失效", 400)
+				return
+			}
+			if err != nil {
+				break
+			}
+			sessions.RevokeSubject(actor.Subject)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		hash, _, readErr := a.store.Admin(ctx)
@@ -219,7 +240,7 @@ func (a *Admin) Handle(w http.ResponseWriter, r *http.Request, resource string, 
 			err = readErr
 			break
 		}
-		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(input.Current)) != nil {
+		if (actor.SessionVersion != "" && versionOf(hash) != actor.SessionVersion) || bcrypt.CompareHashAndPassword([]byte(hash), []byte(input.Current)) != nil {
 			http.Error(w, "invalid current password", 400)
 			return
 		}
@@ -237,7 +258,8 @@ func (a *Admin) Handle(w http.ResponseWriter, r *http.Request, resource string, 
 			http.Error(w, "password already changed", 409)
 			return
 		}
-		sessions.RevokeSubject("local:admin")
+		sessions.RevokeSubject(superSubject)
+		a.RecordOperation(ctx, superSubject, "修改密码", "高", superSubject)
 	case resource == "users" && r.Method == http.MethodGet:
 		rows, queryErr := a.store.QueryContext(ctx, "SELECT username, groups_json FROM local_accounts ORDER BY username")
 		if queryErr != nil {

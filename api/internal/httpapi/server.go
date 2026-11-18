@@ -16,6 +16,7 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/finding"
 	"github.com/abchw517/kube-aiops/api/internal/kubernetes"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"github.com/abchw517/kube-aiops/api/internal/sanitizer"
 )
 
@@ -138,6 +139,24 @@ func (s *Server) namespaces(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("list namespaces failed", "error", err)
 		writeKubernetesError(w, err, "NAMESPACE_LIST_FAILED", "unable to list namespaces")
 		return
+	}
+	if s.authorizationEnabled {
+		principal, _ := identity.PrincipalFromContext(r.Context())
+		visible := make([]kubernetes.Namespace, 0, len(items))
+		for _, item := range items {
+			decision, err := s.authorizer.Authorize(r.Context(), authorization.DecisionRequest{
+				Principal: principal, Capability: authorization.CapabilityNamespacesList,
+				Scope: authorization.NamespaceScope(r.PathValue("cluster"), item.Name),
+			})
+			if err != nil {
+				writeError(w, 503, "AUTHORIZATION_UNAVAILABLE", "authorization unavailable")
+				return
+			}
+			if decision.Allowed {
+				visible = append(visible, item)
+			}
+		}
+		items = visible
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

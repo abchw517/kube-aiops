@@ -311,16 +311,17 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
       (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="edit"]').click()` });
-    const immutable = await cdp.send("Runtime.evaluate", {
+    const writable = await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-catalog-dialog] input[name=id]").readOnly', returnByValue: true,
     });
-    if (!immutable.result?.value) throw new Error("Existing catalog ID must be read-only");
+    if (writable.result?.value !== false) throw new Error("Existing catalog ID must be editable");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("[data-resource-catalog]");
       form.elements.name.value = "研发环境";
+      form.elements.id.value = "new-dev";
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => text.includes("研发环境") && !text.includes("保存"), "Catalog rename did not close the editor");
+    await assertText(cdp, (text) => text.includes("研发环境") && text.includes("new-dev") && !text.includes("保存"), "Catalog rename did not close the editor");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="delete"]').click()` });
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-resource-catalog]").requestSubmit()' });
     await assertText(cdp, (text) => text.includes("dev-k8s"), "Referenced catalog deletion did not explain the conflict");
@@ -338,6 +339,19 @@ try {
     await assertText(cdp, (text) => !text.includes("sandbox"), "Unreferenced catalog deletion failed");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/business-lines",
       (text) => text.includes("业务线 ID") && text.includes("云帆") && text.includes("新增业务线"), "Business catalog did not match the shared layout");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-catalog-action="edit"][data-entry-id="yunfan"]').click();
+      const form = document.querySelector("[data-resource-catalog]");
+      form.elements.id.value = "yunfan-app";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
+    const nav = await cdp.send("Runtime.evaluate", { expression: `Array.from(document.querySelectorAll(".workspace-nav a"), a => a.textContent)`, returnByValue: true });
+    if (nav.result?.value?.slice(0, 2).join("/") !== "诊断控制台/运维知识库") throw new Error("Wiki must appear below the diagnostics console");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users/ldap%3Areader",
+      (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") && text.includes("直接授予"), "User detail omitted permission origins");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
+      (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
       (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
     await cdp.send("Runtime.evaluate", {

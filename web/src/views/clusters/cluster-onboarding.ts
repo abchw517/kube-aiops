@@ -1,3 +1,4 @@
+import { renderNamespaceOwnership } from "./namespace-ownership.ts";
 import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
@@ -75,6 +76,7 @@ function renderCollection(item: Entry): string {
 }
 
 export async function renderOnboarding(id?: string): Promise<string> {
+  if (id?.startsWith("ownership-")) return renderNamespaceOwnership(id.slice(10));
   const response = await fetch(endpoint);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("directory unavailable");
@@ -90,7 +92,8 @@ export async function renderOnboarding(id?: string): Promise<string> {
             <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "手动配置" : "采集上报"}</div></td>
           <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
           <td>${collectionStatus(item)}${renderCollection(item)}</td>
-          <td>${item.mode === "local" ? "—" : `<a href="${route}/edit-${encodeURIComponent(item.id)}">编辑</a>`}</td>
+          <td><div class="catalog-actions">${item.mode === "local" ? "" : `<a href="${route}/edit-${encodeURIComponent(item.id)}">编辑</a>`}
+          ${item.enabled ? `<a href="${route}/ownership-${encodeURIComponent(item.id)}">命名空间归属</a>` : ""}</div></td>
         </tr>`).join("") || '<tr><td colspan="4" class="catalog-empty">暂无集群。</td></tr>'}</tbody>
       </table></div>
       <div class="catalog-bottom"><span>共 ${items.length} 条</span>

@@ -30,10 +30,12 @@ func Run() {
 		switch {
 		case len(os.Args) == 2 && os.Args[1] == "identity-import":
 			run = permissions.Import
+		case len(os.Args) == 2 && os.Args[1] == "admin-reset-password":
+			run = permissions.ResetSuperPassword
 		case len(os.Args) == 2 && os.Args[1] == "cluster-report":
 			run = clusterReport
 		default:
-			logger.Error("usage: kube-aiops-api [identity-import|cluster-report]")
+			logger.Error("usage: kube-aiops-api [identity-import|admin-reset-password|cluster-report]")
 			os.Exit(2)
 		}
 		if err := run(); err != nil {
@@ -223,6 +225,11 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	if err != nil {
 		return nil, err
 	}
+	sessions.ValidateSession, sessions.RecordLogin = admin.ValidateSession, admin.RecordLogin
+	if managed != nil {
+		admin.SetScopeResolvers(managed.clusterEnvironment, managed.namespaceBusiness)
+	}
+	go admin.RunDirectoryChecks(ctx)
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
 	wikis := wiki.New(store, admin, admin.Origin())
 	go wikis.RunSchedule(ctx)

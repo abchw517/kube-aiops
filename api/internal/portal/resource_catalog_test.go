@@ -83,3 +83,45 @@ func TestResourceCatalogLifecycle(t *testing.T) {
 	request(businessKind, http.MethodDelete, `{"id":"`+business.ID+`"}`, 204)
 	request(businessKind, http.MethodDelete, `{"id":"`+business.ID+`"}`, 404)
 }
+
+func TestCatalogIDChangesPreserveReferencesAndValidateConflicts(t *testing.T) {
+	ctx := t.Context()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "rename.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o, err := newOnboarding(store, &httpapi.ClusterBackends{Backend: testBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(kind, method, body string, want int) string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		o.catalog(w, httptest.NewRequest(method, "/", strings.NewReader(body)), kind)
+		if w.Code != want {
+			t.Fatalf("%s %s: got %d want %d: %s", kind, method, w.Code, want, w.Body)
+		}
+		return w.Body.String()
+	}
+	call(environmentKind, "PUT", `{"originalId":"development","id":"testing","name":"研发"}`, 409)
+	call(environmentKind, "PUT", `{"originalId":"development","id":"Dev","name":"研发"}`, 400)
+	call(environmentKind, "PUT", `{"originalId":"development","id":"new-dev","name":"研发"}`, 200)
+	call(environmentKind, "POST", `{"id":"development","name":"另一环境"}`, 409)
+	call(environmentKind, "PUT", `{"originalId":"new-dev","id":"development","name":"研发"}`, 200)
+	call(businessKind, "POST", `{"id":"yunfan","name":"云帆"}`, 200)
+	if _, err := store.ExecContext(ctx, "INSERT INTO namespace_business VALUES ('remote','platform','yunfan')"); err != nil {
+		t.Fatal(err)
+	}
+	call(businessKind, "PUT", `{"originalId":"yunfan","id":"yunfan-app","name":"云帆"}`, 200)
+	for _, id := range []string{"yunfan", "yunfan-app"} {
+		allowed, err := o.namespaceBusiness(ctx, "remote", "platform", id)
+		if err != nil || !allowed {
+			t.Fatalf("%s lost reference: %v, %v", id, allowed, err)
+		}
+	}
+	if result := call(businessKind, "DELETE", `{"id":"yunfan-app"}`, 409); !strings.Contains(result, "remote/platform") {
+		t.Fatal(result)
+	}
+	call(businessKind, "PUT", `{"originalId":"yunfan","id":"stale-write","name":"云帆"}`, 404)
+}

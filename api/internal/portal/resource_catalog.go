@@ -55,6 +55,9 @@ func writeCatalogEntry(ctx context.Context, tx *sql.Tx, kind string, entry catal
 		if _, err := tx.ExecContext(ctx, "INSERT INTO resource_catalog(kind,id,name) VALUES (?,?,?)", kind, entry.ID, entry.Name); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO resource_catalog_ids(kind,alias,id,stable_key) VALUES (?,?,?,?)", kind, entry.ID, entry.ID, entry.ID); err != nil {
+			return err
+		}
 	} else {
 		if _, err := tx.ExecContext(ctx, "UPDATE resource_catalog SET name=? WHERE kind=? AND id=?", entry.Name, kind, entry.ID); err != nil {
 			return err
@@ -104,14 +107,24 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	var entry catalogEntry
+	var entry struct {
+		catalogEntry
+		OriginalID string `json:"originalId"`
+	}
 	if !adminhttp.Decode(w, r, &entry) {
 		http.Error(w, "资源目录请求无效", http.StatusBadRequest)
 		return
 	}
 	entry.Name = strings.TrimSpace(entry.Name)
-	if (!remove && !validCatalogName(entry.Name)) || (create && !catalogIDPattern.MatchString(entry.ID)) || (!create && entry.ID == "") {
-		http.Error(w, "资源目录请求无效", http.StatusBadRequest)
+	original := entry.ID
+	if r.Method == http.MethodPut && entry.OriginalID != "" {
+		original = entry.OriginalID
+	}
+	renameID := !create && !remove && entry.ID != original
+	if (!remove && !validCatalogName(entry.Name)) ||
+		((create || renameID) && (len(entry.ID) > 128 || !catalogIDPattern.MatchString(entry.ID))) ||
+		(!create && original == "") || (r.Method != http.MethodPut && entry.OriginalID != "") {
+		http.Error(w, "资源目录请求无效。新 ID 须以小写字母开头，可包含小写字母、数字和连字符", http.StatusBadRequest)
 		return
 	}
 
@@ -127,7 +140,7 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 	fail := func() { http.Error(w, "资源目录暂不可用", http.StatusServiceUnavailable) }
 	if !create {
 		var existing string
-		err = tx.QueryRowContext(ctx, "SELECT name FROM resource_catalog WHERE kind=? AND id=?", kind, entry.ID).Scan(&existing)
+		err = tx.QueryRowContext(ctx, "SELECT name FROM resource_catalog WHERE kind=? AND id=?", kind, original).Scan(&existing)
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "条目不存在", http.StatusNotFound)
 			return
@@ -153,6 +166,10 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 			fail()
 			return
 		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM resource_catalog_ids WHERE kind=? AND id=?", kind, entry.ID); err != nil {
+			fail()
+			return
+		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM resource_catalog WHERE kind=? AND id=?", kind, entry.ID); err != nil {
 			fail()
 			return
@@ -165,20 +182,25 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		return
 	}
 
-	if create {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM resource_catalog WHERE kind=? AND id=?)", kind, entry.ID).Scan(&exists); err != nil {
+	if create || renameID {
+		var occupied bool
+		err := tx.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM resource_catalog WHERE kind=? AND id=?) OR
+			EXISTS(SELECT 1 FROM resource_catalog_ids WHERE kind=? AND alias=? AND id<>?)`,
+			kind, entry.ID, kind, entry.ID, original).Scan(&occupied)
+		if err != nil {
 			fail()
 			return
 		}
-		if exists {
-			http.Error(w, "ID 已存在", http.StatusConflict)
+		if occupied {
+			http.Error(w, "ID 已被使用或属于其他目录条目的历史 ID", http.StatusConflict)
 			return
 		}
 	}
+
 	var owner string
 	err = tx.QueryRowContext(ctx, "SELECT id FROM resource_catalog_names WHERE kind=? AND name=?", kind, entry.Name).Scan(&owner)
-	if err == nil && owner != entry.ID {
+	if err == nil && owner != original {
 		http.Error(w, "名称已被使用", http.StatusConflict)
 		return
 	}
@@ -186,7 +208,13 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		fail()
 		return
 	}
-	if err := writeCatalogEntry(ctx, tx, kind, entry, create); err != nil {
+	if renameID {
+		if err := renameCatalogID(ctx, tx, kind, original, entry.ID); err != nil {
+			fail()
+			return
+		}
+	}
+	if err := writeCatalogEntry(ctx, tx, kind, entry.catalogEntry, create); err != nil {
 		fail()
 		return
 	}
@@ -194,7 +222,25 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		fail()
 		return
 	}
-	adminhttp.WriteJSON(w, entry)
+	adminhttp.WriteJSON(w, entry.catalogEntry)
+}
+
+func renameCatalogID(ctx context.Context, tx *sql.Tx, kind, original, next string) error {
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO resource_catalog_ids(kind,alias,id,stable_key) VALUES (?,?,?,?)`, kind, original, original, original); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO resource_catalog_ids(kind,alias,id,stable_key)
+		SELECT kind,?,id,stable_key FROM resource_catalog_ids WHERE kind=? AND alias=?`, next, kind, original); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE resource_catalog_ids SET id=? WHERE kind=? AND id=?", next, kind, original); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE resource_catalog_names SET id=? WHERE kind=? AND id=?", next, kind, original); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE resource_catalog SET id=? WHERE kind=? AND id=?", next, kind, original)
+	return err
 }
 
 func (o *onboarding) catalogReferences(ctx context.Context, tx *sql.Tx, kind, id string) ([]string, error) {
@@ -205,7 +251,8 @@ func (o *onboarding) catalogReferences(ctx context.Context, tx *sql.Tx, kind, id
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id FROM managed_clusters
 		WHERE json_extract(document, '$.' || ?) IN
-			(SELECT name FROM resource_catalog_names WHERE kind=? AND id=?)`, field, kind, id)
+			(SELECT name FROM resource_catalog_names WHERE kind=? AND id=?
+			 UNION SELECT alias FROM resource_catalog_ids WHERE kind=? AND id=?)`, field, kind, id, kind, id)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +271,54 @@ func (o *onboarding) catalogReferences(ctx context.Context, tx *sql.Tx, kind, id
 	}
 	rows.Close()
 
-	aliases, err := tx.QueryContext(ctx, "SELECT name FROM resource_catalog_names WHERE kind=? AND id=?", kind, id)
+	if kind == businessKind {
+		bindings, err := tx.QueryContext(ctx, `SELECT cluster || '/' || namespace FROM namespace_business
+			WHERE business=COALESCE((SELECT stable_key FROM resource_catalog_ids WHERE kind='business-lines' AND alias=?),?)`, id, id)
+		if err != nil {
+			return nil, err
+		}
+		for bindings.Next() {
+			var ref string
+			if err := bindings.Scan(&ref); err != nil {
+				bindings.Close()
+				return nil, err
+			}
+			ids = append(ids, ref)
+		}
+		if err := bindings.Close(); err != nil {
+			return nil, err
+		}
+		if err := bindings.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	// Role scopes may refer to a current or previous directory ID.
+	attribute := "environment"
+	if kind == businessKind {
+		attribute = "business"
+	}
+	roleRows, err := tx.QueryContext(ctx, `SELECT DISTINCT '角色 ' || json_extract(role.value,'$.name')
+		FROM platform_identity p,json_each(p.document,'$.roles') role,json_each(json_extract(role.value,'$.scopes')) scope
+		WHERE json_extract(scope.value,'$.' || ?) IN (SELECT alias FROM resource_catalog_ids WHERE kind=? AND id=?)`, attribute, kind, id)
+	if err != nil {
+		return nil, err
+	}
+	for roleRows.Next() {
+		var ref string
+		if err := roleRows.Scan(&ref); err != nil {
+			roleRows.Close()
+			return nil, err
+		}
+		ids = append(ids, ref)
+	}
+	roleRows.Close()
+	if err := roleRows.Err(); err != nil {
+		return nil, err
+	}
+
+	aliases, err := tx.QueryContext(ctx, `SELECT name FROM resource_catalog_names WHERE kind=? AND id=?
+		UNION SELECT alias FROM resource_catalog_ids WHERE kind=? AND id=?`, kind, id, kind, id)
 	if err != nil {
 		return nil, err
 	}

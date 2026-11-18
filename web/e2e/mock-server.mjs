@@ -133,14 +133,14 @@ createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
-    const entry = items.find((item) => item.id === input.id);
+    const entry = items.find((item) => item.id === (input.originalId ?? input.id));
     if (request.method === "DELETE") {
-      if (input.id === "development") return json(response, 409, { message: "仍有集群引用", references: ["dev-k8s"] });
+      if (input.id === "new-dev") return json(response, 409, { message: "仍有集群引用", references: ["dev-k8s"] });
       catalogs[catalogKind] = items.filter((item) => item.id !== input.id);
       response.writeHead(204).end();
       return;
     }
-    if (request.method === "PUT" && entry) entry.name = input.name;
+    if (request.method === "PUT" && entry && !items.some((item) => item !== entry && item.id === input.id)) Object.assign(entry, { id: input.id, name: input.name });
     else if (request.method === "POST" && !entry) items.push(input);
     else return json(response, 409, { message: "ID 已存在" });
     return json(response, 200, input);
@@ -161,6 +161,20 @@ createServer(async (request, response) => {
       return json(response, 200, { token: "fixture-report-token" });
     }
     return json(response, 400, { error: "invalid onboarding fixture" });
+  }
+  if (url.pathname === "/api/v1/admin/accounts" && adminSession) {
+    return json(response, 200, [{
+      id: "ldap:reader", username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
+      effective: [{ environment: "development", sources: ["直接授予 → 访客只读", "用户组 运维 → 观察员"] }],
+    }]);
+  }
+  if (url.pathname === "/api/v1/admin/access" && adminSession) {
+    return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] }],
+      roles: [{ id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] }] });
+  }
+  if (url.pathname === "/api/v1/admin/operations" && adminSession) {
+    return json(response, 200, { items: [{ id: 1, at: 1700000000, actor: "local:admin", action: "创建账号", risk: "高",
+      target: "local:guest", result: "成功", reason: "", batch: "" }], before: 0 });
   }
   if (url.pathname === "/api/v1/admin/roles" && adminSession) {
     if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });

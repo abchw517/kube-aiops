@@ -26,10 +26,11 @@ var (
 // Principal is the provider-neutral authenticated identity carried through the Portal Backend.
 // It intentionally excludes credentials, tokens, cookies and authorization decisions.
 type Principal struct {
-	Subject     string   `json:"subject"`
-	Provider    string   `json:"provider"`
-	DisplayName string   `json:"displayName,omitempty"`
-	Groups      []string `json:"groups,omitempty"`
+	Subject        string   `json:"subject"`
+	Provider       string   `json:"provider"`
+	DisplayName    string   `json:"displayName,omitempty"`
+	Groups         []string `json:"groups,omitempty"`
+	SessionVersion string   `json:"-"`
 }
 
 // Validate applies bounded, provider-neutral invariants before a Principal enters request context.
