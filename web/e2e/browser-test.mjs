@@ -433,8 +433,18 @@ try {
       kind.dispatchEvent(new Event("change", { bubbles: true }));
     })()` });
     await assertText(cdp, (text) => text.includes("暂无符合条件的账号") && text.includes("已选 0 项"), "Filtering should clear hidden selections");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users/ldap%3Areader",
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") && text.includes("直接授予"), "User detail omitted permission origins");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="account-action"]').click()` });
+    await assertText(cdp, (text) => text.includes("确认停用") && text.includes("确认"), "Account disable did not open its confirmation");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-tab="bindings"]').click()` });
+    await assertText(cdp, (text) => text.includes("直接角色") && text.includes("访客只读") && text.includes("分配或撤销"), "Account associations did not render");
+    await assertAccountDetailLayout(cdp, 1440);
+    await assertAccountDetailLayout(cdp, 390);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="assign"]').click()` });
+    await assertText(cdp, (text) => text.includes("分配用户组或角色") && text.includes("授权对象"), "Account assignment did not open from associations");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
       (text) => text.includes("LDAP 连接配置") && text.includes("测试待启用配置"), "LDAP editor panels did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
@@ -517,6 +527,16 @@ try {
     await assertText(cdp, (text) => text.includes("共 0 个账号") && !text.includes("reader"), "Deleted account still appeared in the list");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
+    await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && text.includes("低 3 天 / 中 5 天 / 高 7 天"), "Audit time or default retention did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector(".audit-retention").open = true;
+      const form = document.querySelector("[data-audit-retention]");
+      form.elements.low.value = "2";
+      form.elements.medium.value = "6";
+      form.elements.high.value = "9";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("已保存保留策略") && text.includes("低 2 天 / 中 6 天 / 高 9 天"), "Audit retention did not save");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
       (text) => text.includes("集群接入") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });
@@ -646,6 +666,42 @@ async function assertDetailLayout(cdp, width, columns) {
   if (!layout || layout.columns !== columns || layout.overflow || layout.texts.length !== 2 ||
     layout.texts.some((text) => text.fontSize !== 16 || text.lineHeight < 24 || !text.keepsNewline || !text.safeWrap)) {
     throw new Error(`Finding text layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
+  }
+}
+
+async function assertAccountDetailLayout(cdp, width) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 560 });
+  const response = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const detail = document.querySelector(".system-detail");
+      const rect = (selector) => detail.querySelector(selector).getBoundingClientRect();
+      const status = rect(".account-status");
+      const action = rect('[data-system-open="account-action"]');
+      const bindings = rect(".account-bindings");
+      const bindingAction = rect('[data-system-open="assign"]');
+      const rows = [...detail.querySelectorAll(".account-binding")];
+      const identity = detail.querySelector(".account-identity");
+      const dn = document.createRange();
+      dn.selectNodeContents(identity.querySelector("code"));
+      const bounds = identity.getBoundingClientRect();
+      return {
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        aligned: Math.abs(status.top + status.height / 2 - action.top - action.height / 2) <= 1,
+        actionSeparated: action.left - status.right >= 10,
+        rowsFillPanel: rows.length === 2 && rows.every((row) => {
+          const label = row.querySelector("dt").getBoundingClientRect();
+          const value = row.querySelector("dd").getBoundingClientRect();
+          return Math.abs(row.getBoundingClientRect().right - bindings.right) <= 1 && value.left > label.right;
+        }),
+        footerAligned: Math.abs(bindingAction.right - bindings.right) <= 1,
+        wrapsDN: [...dn.getClientRects()].every((line) => line.right <= bounds.right + 1),
+      };
+    })()`,
+    returnByValue: true,
+  });
+  const layout = response.result?.value;
+  if (!layout || layout.overflow || !layout.aligned || !layout.actionSeparated || !layout.rowsFillPanel || !layout.footerAligned || !layout.wrapsDN) {
+    throw new Error(`Account detail layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
   }
 }
 

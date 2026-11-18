@@ -6,13 +6,13 @@
 
 以下状态按 2026-11-18 核对。原型用于演示已实现或待合并流程。
 
-| PR | 需求变更 | 分支状态 |
+| PR | 需求变更 | 纳入方式 |
 |---|---|---|
 | [#90](https://github.com/abchw517/kube-aiops/pull/90) | LDAP 传输模式、分阶段诊断、测试凭据与保存反馈 | 已合并 |
-| [#91](https://github.com/abchw517/kube-aiops/pull/91) | 风险分级审计保留与北京时间 | 待合并 |
+| [#91](https://github.com/abchw517/kube-aiops/pull/91) | 风险分级审计保留与北京时间 | 已合并 |
 | [#92](https://github.com/abchw517/kube-aiops/pull/92) | LDAP 配置与搜索密码默认直接保存到 SQLite | 已合并 |
-| [#93](https://github.com/abchw517/kube-aiops/pull/93) | 用户详情状态、账号操作和关联关系布局 | 待合并 |
-| [#94](https://github.com/abchw517/kube-aiops/pull/94) | 选中操作栏删除单个账号及会话撤销 | 待合并 |
+| [#93](https://github.com/abchw517/kube-aiops/pull/93) | 用户详情状态、账号操作和关联关系布局 | 已合并 |
+| [#94](https://github.com/abchw517/kube-aiops/pull/94) | 选中操作栏删除单个账号及会话撤销 | 本 PR |
 
 ## 1. 背景与目标
 

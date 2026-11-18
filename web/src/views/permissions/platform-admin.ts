@@ -15,6 +15,16 @@ type Operation = {
   id: number; at: number; actor: string; action: string; risk: string; target: string;
   result: string; reason: string; batch: string;
 };
+type AuditRetention = { low: number; medium: number; high: number };
+const auditLevels = [["low", "低"], ["medium", "中"], ["high", "高"]] as const;
+const auditClock = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+function auditTime(seconds: number): string {
+  return auditClock.format(seconds * 1000).replace(/\s/g, "");
+}
+
 const environments: Record<string, string> = { development: "研发", testing: "测试", staging: "预发布", production: "生产" };
 const kinds: Record<string, string> = { super: "超级管理员", administrator: "系统管理员", guest: "本地访客", ldap: "LDAP 员工" };
 
@@ -60,6 +70,11 @@ function statusOf(user: Account): string {
   if (user.disabled) return "平台已停用";
   if (user.directoryDisabled) return "目录已停用";
   return user.mustChangePassword ? "待改密" : "正常";
+}
+
+function accountStatus(user: Account): string {
+  const status = statusOf(user);
+  return `<span class="system-badge account-status" data-account-status="${h(status)}">${h(status)}</span>`;
 }
 
 function tempPassword(): string {
@@ -110,15 +125,25 @@ function canDeleteAccount(user: Account, superAdmin: boolean): boolean {
   return user.kind === "guest" || user.kind === "ldap" || (user.kind === "administrator" && superAdmin);
 }
 
+function accountBinding(label: string, ids: string[] | null, items: Entry[], empty: string): string {
+  return `<div class="account-binding"><dt>${label}</dt><dd>${ids?.length ?
+    ids.map((id) => `<span class="system-badge">${h(items.find((item) => item.id === id)?.name ?? id)}</span>`).join("") :
+    `<span class="account-binding-empty">${empty}</span>`}</dd></div>`;
+}
+
 function accountDetail(user: Account, access: Access, superAdmin: boolean): string {
   const allowed = user.kind !== "super" && (user.kind !== "administrator" || superAdmin);
   const action = user.kind === "administrator" ? "delete" : user.disabled ? "enable" : "disable";
   const label = user.kind === "administrator" ? "删除系统管理员" : user.disabled ? "重新启用" : "停用账号";
   return `<section class="system-card system-detail">
-    <header class="system-card-heading"><div class="system-user-cell">${accountAvatar(user)}<div><h3>${h(user.username)}</h3><code>${h(user.id)}</code></div></div>
-      <span class="system-badge">${h(statusOf(user))}</span></header>
-    ${allowed ? `<div class="system-actions">${editButton(label, "account-action", true)}
-      ${user.kind !== "ldap" ? editButton("重置密码", "reset", true) : ""}</div>
+    <header class="account-detail-header">
+      <div class="system-user-cell">${accountAvatar(user)}<div class="account-identity"><h3>${h(user.username)}</h3><code>${h(user.id)}</code></div></div>
+      <div class="account-detail-actions">${accountStatus(user)}
+        ${allowed ? `<div class="system-actions" data-destructive="${action !== "enable"}">${editButton(label, "account-action", true)}
+          ${user.kind !== "ldap" ? editButton("重置密码", "reset", true) : ""}</div>` : ""}
+      </div>
+    </header>
+    ${allowed ? `
       ${editor("account-action", label, operationForm("accounts", user.id,
         `<p>确认${label.replace("账号", "")}「${h(user.username)}」？</p>`, "确认", action))}
       ${user.kind !== "ldap" ? editor("reset", "重置密码", operationForm("accounts", user.id, tempPassword(), "重置为临时密码", "reset")) : ""}
@@ -126,9 +151,14 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
     <nav class="identity-nav" aria-label="用户详情"><button type="button" data-system-tab="effective" aria-pressed="true">生效权限</button>
       <button type="button" data-system-tab="bindings" aria-pressed="false">关联关系</button></nav>
     <div data-system-pane="effective"><h4>生效权限及来源</h4>${effectivePermissions(user)}</div>
-    <div data-system-pane="bindings" hidden><dl><dt>用户组</dt><dd>${names(user.groups, access.groups)}</dd>
-      <dt>直接角色</dt><dd>${names(user.roles, access.roles)}</dd></dl>
-      ${user.kind === "ldap" ? editButton("分配或撤销", "assign") : "<small>本地账号通过预置角色获得权限。</small>"}</div>
+    <div data-system-pane="bindings" hidden>
+      <dl class="account-bindings">
+        ${accountBinding("用户组", user.groups, access.groups, "未加入用户组")}
+        ${accountBinding("直接角色", user.roles, access.roles, "未分配直接角色")}
+      </dl>
+      <footer class="account-bindings-footer">${user.kind === "ldap" ? editButton("分配或撤销", "assign") :
+        "<small>本地账号通过预置角色获得权限。</small>"}</footer>
+    </div>
     ${user.kind === "ldap" ? assignmentEditor(access, user) : ""}
   </section>`;
 }
@@ -159,11 +189,11 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       <button type="button" class="button secondary catalog-danger" data-system-open="delete-account" data-platform-delete
         title="选择一个可删除的账号" disabled>删除用户</button>
     </div>
-    <div class="catalog-table-wrap"><table class="catalog-table">
+    <div class="catalog-table-wrap"><table class="catalog-table account-table">
       <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th>账号</th><th>类型</th><th>状态</th><th>最近登录</th></tr></thead>
       <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
-        <td><div class="system-user-cell">${accountAvatar(item)}<div><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
-        <td>${h(kinds[item.kind])}</td><td><span class="system-badge">${h(statusOf(item))}</span></td>
+        <td><div class="system-user-cell">${accountAvatar(item)}<div class="account-identity"><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
+        <td>${h(kinds[item.kind])}</td><td>${accountStatus(item)}</td>
         <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
       <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div><div class="catalog-bottom" data-platform-count>共 ${users.length} 个账号</div></section>
       ${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}
@@ -240,7 +270,7 @@ function auditDetail(item: Operation): string {
   return editor(`audit:${item.id}`, "审计详情", `<div class="system-editor-body">
     <h3>${h(item.action)}</h3><p>${h(item.risk)}风险 · ${h(item.result)}</p>
     <dl><dt>操作者</dt><dd>${h(item.actor || "—")}</dd><dt>目标</dt><dd>${h(item.target)}</dd>
-      <dt>时间</dt><dd>${h(new Date(item.at * 1000).toLocaleString("zh-CN"))}</dd>
+      <dt>时间（北京时间）</dt><dd>${auditTime(item.at)}</dd>
       ${item.reason ? `<dt>失败原因</dt><dd>${h(item.reason)}</dd>` : ""}</dl></div>
     <footer class="system-dialog-footer">${item.batch ? `<button class="button secondary" type="button" data-audit-batch="${h(item.batch)}">查看同批次</button>` : ""}
       <button class="button" type="button" data-system-close>关闭</button></footer>`);
@@ -248,15 +278,30 @@ function auditDetail(item: Operation): string {
 
 function operationRows(items: Operation[]): string {
   if (items.length === 0) return '<tr><td colspan="7">暂无匹配记录。</td></tr>';
-  return items.map((item) => `<tr><td>${h(new Date(item.at * 1000).toLocaleString("zh-CN"))}</td><td>${h(item.actor || "—")}</td>
+  return items.map((item) => `<tr><td>${auditTime(item.at)}</td><td>${h(item.actor || "—")}</td>
     <td>${h(item.action)}</td><td><span class="system-badge" data-audit-risk="${h(item.risk)}">${h(item.risk)}</span></td>
     <td>${h(item.target)}</td><td><span class="system-badge" data-audit-result="${h(item.result)}">${h(item.result)}</span></td>
     <td>${editButton("详情", `audit:${item.id}`, true)}${auditDetail(item)}</td></tr>`).join("");
 }
 
-async function renderOperations(): Promise<string> {
-  const { items, before, actions } = await admin<{ items: Operation[]; before: number; actions?: string[] }>("operations");
-  return `<div class="platform-heading"><div><h2>操作审计</h2><p>查询账号变更、认证事件和逐项批量结果。</p></div></div><section class="system-card"><form class="platform-audit-filter" data-audit-filter>
+function renderAuditRetention(retention: AuditRetention, canEdit: boolean): string {
+  const summary = auditLevels.map(([key, label]) => `${label} ${retention[key]} 天`).join(" / ");
+  if (!canEdit) return `<p>审计保留策略 · ${summary}</p>`;
+  return `<details class="system-card audit-retention"><summary>审计保留策略 · <span data-retention-summary>${summary}</span></summary>
+    <form class="system-form" data-audit-retention>
+      <p>按记录生成时间计算。缩短保留时间后，保存时会清理超期记录。</p>
+      <div class="system-field-grid">${auditLevels.map(([key, label]) =>
+        `<label>${label}风险保留天数<input name="${key}" type="number" min="1" step="1" required value="${retention[key]}"></label>`).join("")}</div>
+      ${submit("保存保留策略")}
+      <span role="status" aria-live="polite"></span>
+    </form>
+  </details>`;
+}
+
+async function renderOperations(superAdmin: boolean): Promise<string> {
+  const { items, before, actions, retention } = await admin<{ items: Operation[]; before: number; actions?: string[]; retention?: AuditRetention }>("operations");
+  return `<div class="platform-heading"><div><h2>操作审计</h2><p>查询账号变更、认证事件和逐项批量结果。</p></div></div>
+    ${retention ? renderAuditRetention(retention, superAdmin) : ""}<section class="system-card"><form class="platform-audit-filter" data-audit-filter>
     <label>账号或目标<input name="account" type="search"></label>
     <label>操作类型<select name="action"><option value="">所有操作</option>${options((actions ?? [...new Set(items.map((item) => item.action))]).map((name) => ({ id: name, name })))}</select></label>
     <label>风险等级<select name="risk"><option value="">全部</option><option>低</option><option>中</option><option>高</option></select></label>
@@ -264,14 +309,14 @@ async function renderOperations(): Promise<string> {
     ${submit("查询")}<button class="button secondary" type="submit" data-audit-next value="${before}"${before ? "" : " hidden"}>下一页</button>
     <p role="status"></p>
   </form><div class="catalog-table-wrap"><table class="catalog-table">
-    <thead><tr><th>时间</th><th>操作者</th><th>操作类型</th><th>风险等级</th><th>目标</th><th>结果</th><th>操作</th></tr></thead>
+    <thead><tr><th>时间（北京时间）</th><th>操作者</th><th>操作类型</th><th>风险等级</th><th>目标</th><th>结果</th><th>操作</th></tr></thead>
     <tbody data-audit-results>${operationRows(items)}</tbody></table></div><div class="catalog-bottom" data-audit-count>当前页 ${items.length} 条记录</div></section>`;
 }
 
 export function renderPlatform(resource: string, id: string | undefined, superAdmin: boolean): Promise<string> {
   if (resource === "users") return renderAccounts(id, superAdmin);
   if (resource === "access") return renderAccess(id);
-  return renderOperations();
+  return renderOperations(superAdmin);
 }
 
 export async function submitPlatform(form: HTMLFormElement, action: string, reload: () => void): Promise<void> {
@@ -337,6 +382,39 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     if (password) password.value = "";
     dialog?.removeAttribute("aria-busy");
     for (const button of buttons) button.disabled = false;
+  }
+}
+
+export async function submitAuditRetention(form: HTMLFormElement): Promise<void> {
+  const status = form.querySelector('[role="status"]');
+  const button = form.querySelector("button");
+  if (!status || !button || button.disabled) return;
+  const data = new FormData(form);
+  const days = Object.fromEntries(auditLevels.map(([key]) => [key, Number(data.get(key))])) as AuditRetention;
+  if (Object.values(days).some((value) => !Number.isSafeInteger(value) || value < 1)) {
+    status.textContent = "保留天数必须为正整数。";
+    return;
+  }
+  button.disabled = true;
+  status.textContent = "正在保存…";
+  try {
+    const response = await fetch("/api/v1/admin/operations", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(days),
+    });
+    if (response.status !== 204) {
+      status.textContent = response.headers.get("Content-Type")?.startsWith("text/plain") ?
+        (await response.text()).trim() : "保存失败，请重试。";
+      return;
+    }
+    const summary = form.parentElement?.querySelector("[data-retention-summary]");
+    if (summary) summary.textContent = auditLevels.map(([key, label]) => `${label} ${days[key]} 天`).join(" / ");
+    status.textContent = "已保存保留策略。";
+    const filter = form.closest(".identity-panel")?.querySelector<HTMLFormElement>("[data-audit-filter]");
+    if (filter) await queryAudit(filter, "", String(new FormData(filter).get("batch") ?? ""));
+  } catch {
+    status.textContent = "保存失败，请重试。";
+  } finally {
+    button.disabled = false;
   }
 }
 
