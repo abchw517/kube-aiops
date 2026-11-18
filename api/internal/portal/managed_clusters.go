@@ -31,21 +31,25 @@ import (
 )
 
 type managedCluster struct {
-	AIEnabled       bool   `json:"aiEnabled,omitempty"`
-	ID              string `json:"id"`
-	ClusterType     string `json:"clusterType,omitempty"`
-	Name            string `json:"name"`
-	Environment     string `json:"environment"`
-	Business        string `json:"business"`
-	Group           string `json:"group"`
-	Mode            string `json:"mode"`
-	Enabled         bool   `json:"enabled"`
-	APIURL          string `json:"apiURL,omitempty"`
-	EngineNamespace string `json:"engineNamespace,omitempty"`
-	EngineName      string `json:"engineName,omitempty"`
-	PrometheusURL   string `json:"prometheusURL,omitempty"`
-	VictoriaLogsURL string `json:"victoriaLogsURL,omitempty"`
-	AlertmanagerURL string `json:"alertmanagerURL,omitempty"`
+	CredentialKind   string `json:"credentialKind,omitempty"`
+	CredentialCipher string `json:"credentialCipher,omitempty"`
+	Deleted          bool   `json:"deleted,omitempty"`
+	Generation       string `json:"generation,omitempty"`
+	AIEnabled        bool   `json:"aiEnabled,omitempty"`
+	ID               string `json:"id"`
+	ClusterType      string `json:"clusterType,omitempty"`
+	Name             string `json:"name"`
+	Environment      string `json:"environment"`
+	Business         string `json:"business"`
+	Group            string `json:"group"`
+	Mode             string `json:"mode"`
+	Enabled          bool   `json:"enabled"`
+	APIURL           string `json:"apiURL,omitempty"`
+	EngineNamespace  string `json:"engineNamespace,omitempty"`
+	EngineName       string `json:"engineName,omitempty"`
+	PrometheusURL    string `json:"prometheusURL,omitempty"`
+	VictoriaLogsURL  string `json:"victoriaLogsURL,omitempty"`
+	AlertmanagerURL  string `json:"alertmanagerURL,omitempty"`
 }
 
 type onboarding struct {
@@ -80,6 +84,9 @@ func (o *onboarding) load(ctx context.Context) error {
 		}
 		if err := json.Unmarshal(raw, &spec); err != nil {
 			return err
+		}
+		if spec.ID == "local" {
+			continue
 		}
 		target, err := o.build(spec)
 		if err != nil {
@@ -125,8 +132,12 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 			return httpapi.ClusterTarget{}, errors.New("需要 HTTPS Kubernetes 地址、Engine 命名空间和实例名")
 		}
 		dir := filepath.Join("/etc/kube-aiops/clusters", spec.ID)
-		remote = kubernetes.NewClient(kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
-			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName})
+		cfg := kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
+			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName}
+		if err := spec.configureCredential(&cfg); err != nil {
+			return httpapi.ClusterTarget{}, err
+		}
+		remote = kubernetes.NewClient(cfg)
 		backend = remote
 		if spec.AIEnabled {
 			approvedEndpoint := strings.TrimSpace(os.Getenv("FINDING_AI_ALLOWED_ENDPOINT_" + strings.ToUpper(strings.ReplaceAll(spec.ID, "-", "_"))))
@@ -219,6 +230,7 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "集群目录暂不可用", 503)
 				return
 			}
+			entry.CredentialCipher = ""
 			entries = append(entries, entry)
 		}
 		if rows.Err() != nil {
@@ -226,20 +238,15 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows.Close()
-		if o.local != nil {
-			var local status
-			cluster := o.local.Clusters()[0]
-			local.managedCluster = managedCluster{ID: cluster.ID, Name: cluster.Name, Environment: cluster.Environment, Mode: "local", Enabled: true}
-			local.collectionState, err = o.readCollection(ctx, cluster.ID)
-			if err != nil {
-				http.Error(w, "集群目录暂不可用", 503)
-				return
-			}
-			entries = append([]status{local}, entries...)
-		}
 		adminhttp.WriteJSON(w, entries)
 		return
 	}
+	if r.Method == http.MethodDelete || (r.Method == http.MethodPost &&
+		(r.URL.Query().Get("action") == "reconnect" || r.URL.Query().Get("action") == "rotate-token")) {
+		o.maintain(w, r)
+		return
+	}
+
 	if r.Method == http.MethodPost && r.URL.Query().Get("action") == "recheck" {
 		id := r.URL.Query().Get("id")
 		var raw string
@@ -271,11 +278,37 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
-	var spec managedCluster
-	if !adminhttp.Decode(w, r, &spec) {
+	var input struct {
+		managedCluster
+		Credential *credentialInput `json:"credential"`
+	}
+	if !adminhttp.Decode(w, r, &input) {
 		http.Error(w, "集群配置无效", 400)
 		return
 	}
+	spec := input.managedCluster
+	if spec.Mode == "local" {
+		o.editLocal(w, r, spec)
+		return
+	}
+	var draftBase managedCluster
+	if r.Method == http.MethodPut {
+		var err error
+		draftBase, err = o.clusterSpec(ctx, spec.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "实例不存在", 404)
+			return
+		}
+		if err != nil {
+			http.Error(w, "目录暂不可用", 503)
+			return
+		}
+	}
+	if err := spec.useCredentials(input.Credential, draftBase); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	spec.Deleted = false
 	target, err := o.build(spec)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
@@ -292,6 +325,12 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(204)
 		return
+	}
+	if r.Method == http.MethodPut && input.Credential != nil {
+		if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
+			http.Error(w, "新凭据校验失败，原连接配置已保留。"+nodeCollectionError(err), 502)
+			return
+		}
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -315,7 +354,6 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	raw, _ := json.Marshal(spec)
 	var token string
 	if r.Method == http.MethodPost {
 		hash := ""
@@ -323,14 +361,16 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			token = rand.Text() + rand.Text()
 			hash = reportTokenHash(token)
 		}
-		result, err := o.store.ExecContext(ctx, "INSERT INTO managed_clusters(id,document,token_hash) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING", spec.ID, string(raw), hash)
+		spec.Generation = rand.Text()
+		raw, _ := json.Marshal(spec)
+		result, err := o.store.ExecContext(ctx, "INSERT INTO managed_clusters(id,document,token_hash) SELECT ?,?,? WHERE NOT EXISTS(SELECT 1 FROM retired_clusters WHERE id=?) ON CONFLICT(id) DO NOTHING", spec.ID, string(raw), hash, spec.ID)
 		if err != nil {
 			http.Error(w, "保存失败", 503)
 			return
 		}
 		n, err := result.RowsAffected()
 		if err != nil || n != 1 {
-			http.Error(w, "实例 ID 已存在", 409)
+			http.Error(w, "实例 ID 已存在或已退役，请使用新 ID", 409)
 			return
 		}
 	} else {
@@ -348,10 +388,16 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "目录暂不可用", 503)
 			return
 		}
+		if draftBase != previous {
+			http.Error(w, "集群配置已更新，请重试", 409)
+			return
+		}
 		if spec.Mode != previous.Mode {
 			http.Error(w, "接入方式需要使用新的实例 ID", 409)
 			return
 		}
+		spec.Generation = previous.Generation
+		raw, _ := json.Marshal(spec)
 		tx, err := o.store.BeginTx(ctx, nil)
 		if err != nil {
 			http.Error(w, "保存失败", 503)
@@ -370,7 +416,7 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if spec.Mode == "pull" && (spec.APIURL != previous.APIURL || spec.EngineNamespace != previous.EngineNamespace ||
-			spec.EngineName != previous.EngineName || spec.Enabled && !previous.Enabled) {
+			spec.EngineName != previous.EngineName || spec.CredentialCipher != previous.CredentialCipher || spec.Enabled && !previous.Enabled) {
 			if _, err := tx.ExecContext(ctx, "UPDATE cluster_collection SET checked_at=0,validated_at=0,document='{}' WHERE id=?", spec.ID); err != nil {
 				http.Error(w, "保存失败", 503)
 				return
@@ -383,6 +429,10 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !spec.Enabled {
 		target = httpapi.ClusterTarget{}
+	} else {
+		backend := target.Backend.(directoryBackend)
+		backend.spec = spec
+		target.Backend = backend
 	}
 	o.registry.SetManaged(spec.ID, target)
 	adminhttp.WriteJSON(w, map[string]string{"token": token})
@@ -450,8 +500,8 @@ func (o *onboarding) report(w http.ResponseWriter, r *http.Request) {
 		items[i] = safe
 	}
 	payload, _ := json.Marshal(items)
-	result, err := o.store.ExecContext(ctx, "UPDATE managed_clusters SET snapshot=?, reported_at=?, captured_at=? WHERE id=? AND document=? AND captured_at < ?",
-		string(payload), now.Unix(), captured.UnixNano(), id, string(raw), captured.UnixNano())
+	result, err := o.store.ExecContext(ctx, "UPDATE managed_clusters SET snapshot=?, reported_at=?, captured_at=? WHERE id=? AND document=? AND token_hash=? AND captured_at < ?",
+		string(payload), now.Unix(), captured.UnixNano(), id, string(raw), hash, captured.UnixNano())
 	if err != nil {
 		w.WriteHeader(503)
 		return
@@ -459,7 +509,7 @@ func (o *onboarding) report(w http.ResponseWriter, r *http.Request) {
 	n, err := result.RowsAffected()
 	if err != nil || n != 1 {
 		var last int64
-		if readErr := o.store.QueryRowContext(ctx, "SELECT captured_at FROM managed_clusters WHERE id=? AND document=?", id, string(raw)).Scan(&last); readErr != nil || last != captured.UnixNano() {
+		if readErr := o.store.QueryRowContext(ctx, "SELECT captured_at FROM managed_clusters WHERE id=? AND document=? AND token_hash=?", id, string(raw), hash).Scan(&last); readErr != nil || last != captured.UnixNano() {
 			w.WriteHeader(409)
 			return
 		}

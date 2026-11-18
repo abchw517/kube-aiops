@@ -21,14 +21,17 @@ const (
 )
 
 type Config struct {
-	ClusterID   string
-	ClusterName string
-	Environment string
-	APIURL      string
-	TokenFile   string
-	CAFile      string
-	K8sGPTNS    string
-	K8sGPTName  string
+	ClusterID         string
+	ClusterName       string
+	Environment       string
+	APIURL            string
+	TokenFile         string
+	Token             string
+	CAData            []byte
+	ClientCertificate *tls.Certificate
+	CAFile            string
+	K8sGPTNS          string
+	K8sGPTName        string
 }
 
 type Client struct {
@@ -213,35 +216,44 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		return fmt.Errorf("Kubernetes API URL is not configured")
 	}
 
-	tokenBytes, err := os.ReadFile(c.config.TokenFile)
-	if err != nil {
-		return fmt.Errorf("read service account token: %w", err)
+	token := strings.TrimSpace(c.config.Token)
+	if token == "" && c.config.ClientCertificate == nil {
+		raw, err := os.ReadFile(c.config.TokenFile)
+		if err != nil {
+			return fmt.Errorf("read service account token: %w", err)
+		}
+		token = strings.TrimSpace(string(raw))
+		if token == "" {
+			return fmt.Errorf("service account token is empty")
+		}
 	}
-	token := strings.TrimSpace(string(tokenBytes))
-	if token == "" {
-		return fmt.Errorf("service account token is empty")
-	}
-
-	caBytes, err := os.ReadFile(c.config.CAFile)
-	if err != nil {
-		return fmt.Errorf("read Kubernetes CA: %w", err)
+	ca := c.config.CAData
+	if len(ca) == 0 {
+		raw, err := os.ReadFile(c.config.CAFile)
+		if err != nil {
+			return fmt.Errorf("read Kubernetes CA: %w", err)
+		}
+		ca = raw
 	}
 	roots := x509.NewCertPool()
-	if ok := roots.AppendCertsFromPEM(caBytes); !ok {
+	if !roots.AppendCertsFromPEM(ca) {
 		return fmt.Errorf("parse Kubernetes CA")
 	}
-
-	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: &http.Transport{TLSClientConfig: &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    roots,
-	}}}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}
+	if c.config.ClientCertificate != nil {
+		tlsConfig.Certificates = []tls.Certificate{*c.config.ClientCertificate}
+	}
+	httpClient := &http.Client{Timeout: kubernetesRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	defer httpClient.CloseIdleConnections()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.config.APIURL, "/")+path, nil)
 	if err != nil {
 		return fmt.Errorf("build Kubernetes request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := httpClient.Do(req)

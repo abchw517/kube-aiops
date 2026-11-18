@@ -4,6 +4,9 @@
 开发规范 [kube-aiops 模块开发规范](../development-standard.md)<br>
 模块文档 [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [单元测试用例](05-unit-test-cases.md)
 
+
+集群接入交互参见 [资源管理原型](prototype.html)。直连凭据支持内嵌 CA 与静态 Token 或客户端证书的 kubeconfig、单独提交 Token 或客户端证书，以及原有部署挂载模式。持久化凭据使用 `CLUSTER_CREDENTIAL_KEY_FILE`，可复用已挂载的 `AUTH_LDAP_ENCRYPTION_KEY_FILE`，两者均读取 Base64 编码的 32 字节随机密钥。轮换候选凭据通过节点读取验证后才替换原连接。外部删除后的实例 ID 退役，本地重新连接沿用原归属并重新采集。
+
 ## 集群接入当前实现
 
 - 系统管理员在「资源管理 → 集群接入」查看本地、手动接入和采集上报实例，从环境及业务线目录选择新实例归属。原环境、业务线及集群名称继续保留。资源管理三个页面统一由系统管理员操作。

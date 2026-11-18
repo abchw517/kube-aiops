@@ -2,7 +2,7 @@ import { submitNamespaceOwnership } from "./views/clusters/namespace-ownership.t
 import { filterAccounts, handlePlatformClick, queryAudit, submitPlatform, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
-import { recheckCollection, submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
+import { filterClusterRows, handleClusterMaintenanceClick, recheckCollection, submitClusterMaintenance, submitOnboarding, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import {
   ApiError,
   type Cluster,
@@ -65,6 +65,7 @@ export class PortalApp {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
       handleResourceCatalogClick(event);
+      handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
     });
@@ -78,6 +79,11 @@ export class PortalApp {
       if (form instanceof HTMLFormElement && form.dataset.resourceCatalog) {
         event.preventDefault();
         void submitResourceCatalog(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete", () => void this.route());
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.dataset.clusterMaintenance) {
+        event.preventDefault();
+        void submitClusterMaintenance(form, () => void this.route());
         return;
       }
       if (form instanceof HTMLFormElement && form.dataset.collectionCheck) {
@@ -125,6 +131,9 @@ export class PortalApp {
       const form = target.closest<HTMLFormElement>('form[data-identity-resource="ldap"]');
       if (form) invalidateLDAPDraft(form, target);
     };
+    this.root.addEventListener("input", filterClusterRows);
+    this.root.addEventListener("change", filterClusterRows);
+    this.root.addEventListener("change", updateClusterCredential);
     this.root.addEventListener("input", updateLDAP);
     this.root.addEventListener("input", filterAccounts);
     this.root.addEventListener("change", filterAccounts);

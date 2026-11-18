@@ -302,6 +302,26 @@ try {
     await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".collection-details summary").click()' });
     await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const search = document.querySelector('[data-cluster-filter="query"]');
+      search.value = "本地可恢复集群";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    })()` });
+    await assertText(cdp, (text) => text.includes("共 1 个集群") && !text.includes("dev-k8s"), "Cluster search did not filter the directory");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-action="delete"][data-id="local"]').click()` });
+    await assertText(cdp, (text) => text.includes("删除集群连接") && text.includes("清理 kube-aiops"), "Cluster deletion confirmation did not render");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-cluster-close]').click()` });
+    await assertText(cdp, (text) => text.includes("本地可恢复集群") && !text.includes("已删除"), "Canceling deletion changed the local connection");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-cluster-action="delete"][data-id="local"]').click();
+      document.querySelector('dialog[open] button[type="submit"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("已删除") && text.includes("重新连接"), "Deleted local connection did not expose reconnect");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-cluster-action="reconnect"][data-id="local"]').click();
+      document.querySelector('dialog[open] button[type="submit"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("本地可恢复集群") && !text.includes("重新连接"), "Reconnect did not restore the local row");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/clusters/edit-dev-k8s",
       (text) => text.includes("环境已锁定") && text.includes("重新校验"), "Cluster editor did not display lock and recheck");
     const lockedEnvironment = await cdp.send("Runtime.evaluate", {

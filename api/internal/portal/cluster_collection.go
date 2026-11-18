@@ -155,11 +155,23 @@ func (o *onboarding) collect(ctx context.Context, id, configuration string, sour
 }
 
 func (o *onboarding) pollCollections(ctx context.Context) error {
+
 	if o.local != nil {
-		if err := o.collect(ctx, o.local.Clusters()[0].ID, "", o.local, time.Now(), false); err != nil {
+		var raw string
+		var spec managedCluster
+		if err := o.store.QueryRowContext(ctx, "SELECT document FROM managed_clusters WHERE id='local'").Scan(&raw); err != nil {
 			return err
 		}
+		if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+			return err
+		}
+		if spec.Enabled && !spec.Deleted {
+			if err := o.collect(ctx, spec.ID, raw, o.local, time.Now(), false); err != nil {
+				return err
+			}
+		}
 	}
+
 	rows, err := o.store.QueryContext(ctx, "SELECT document FROM managed_clusters WHERE json_extract(document,'$.mode')='pull' AND json_extract(document,'$.enabled')")
 	if err != nil {
 		return err
