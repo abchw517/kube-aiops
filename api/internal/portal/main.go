@@ -158,7 +158,10 @@ func Run() {
 	}
 	if managed != nil {
 		handler = managed.reporting(handler)
-		managed.local = backend
+		if err := managed.initLocal(ctx, backend); err != nil {
+			logger.Error("load local cluster configuration failed", "error", err)
+			os.Exit(1)
+		}
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()

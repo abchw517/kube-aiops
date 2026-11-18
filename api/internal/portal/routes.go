@@ -56,6 +56,11 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 		if resource == "finding-analysis" {
 			instance := r.URL.Query().Get("cluster")
 			selected := review
+			if managed != nil && (instance == "" || instance == "local") && managed.local != nil {
+				if _, ok := managed.registry.Local(); !ok {
+					selected = nil
+				}
+			}
 			if instance != "" && instance != "local" {
 				selected = nil
 				if managed != nil {

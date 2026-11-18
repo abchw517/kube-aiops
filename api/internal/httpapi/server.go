@@ -107,6 +107,12 @@ func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
+	if registry, ok := s.backend.(*ClusterBackends); ok {
+		if _, active := registry.Local(); !active {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), s.readyTimeout)
 	defer cancel()
 

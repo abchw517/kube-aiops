@@ -17,8 +17,8 @@ func (o *onboarding) scopedCluster(id string) (httpapi.ClusterTarget, bool) {
 	if o.registry == nil {
 		return httpapi.ClusterTarget{}, false
 	}
-	if id == "local" && o.registry.Backend != nil {
-		return httpapi.ClusterTarget{Backend: o.registry.Backend}, true
+	if id == "local" {
+		return o.registry.Local()
 	}
 	return o.registry.Lookup(id)
 }

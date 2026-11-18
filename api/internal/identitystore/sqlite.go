@@ -104,6 +104,8 @@ func Open(path string) (*Store, error) {
 			reported_at INTEGER NOT NULL DEFAULT 0,
 			captured_at INTEGER NOT NULL DEFAULT 0
 		);
+		CREATE TABLE IF NOT EXISTS retired_clusters (id TEXT PRIMARY KEY);
+
 		CREATE TABLE IF NOT EXISTS cluster_collection (
 			id TEXT PRIMARY KEY,
 			first_at INTEGER NOT NULL DEFAULT 0,

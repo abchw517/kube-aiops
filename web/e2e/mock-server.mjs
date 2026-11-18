@@ -40,6 +40,7 @@ let authenticated = false;
 let adminSession = false;
 let role;
 
+let localConnectionDeleted = false;
 const catalogs = {
   environments: [{ id: "development", name: "研发" }],
   "business-lines": [{ id: "yunfan", name: "云帆" }],
@@ -146,11 +147,20 @@ createServer(async (request, response) => {
     return json(response, 200, input);
   }
   if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
+    if (url.searchParams.get("id") === "local" &&
+      (request.method === "DELETE" || url.searchParams.get("action") === "reconnect")) {
+      localConnectionDeleted = request.method === "DELETE";
+      response.writeHead(204).end();
+      return;
+    }
     if (request.method === "GET") {
       return json(response, 200, [{
         id: "dev-k8s", name: "研发集群", group: "应用集群", mode: "pull", enabled: true,
         environment: "研发", business: "云帆", firstCollectedAt: 1700000000,
         collection: { nodes: [{ name: "test-worker", ready: "False" }], namespaces: [{ name: "dev-app" }] },
+      }, {
+        id: "local", name: "本地可恢复集群", mode: "local", enabled: !localConnectionDeleted,
+        deleted: localConnectionDeleted, environment: "研发", business: "云帆",
       }]);
     }
     const chunks = [];
