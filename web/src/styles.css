@@ -317,7 +317,8 @@ td { overflow-wrap: anywhere; }
 .system-actions, .system-card-heading, .system-validation-steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .system-card-heading, .system-validation-steps li { justify-content: space-between; }
 .system-card-heading h3 { margin: 0 0 4px; }
-.system-selection { margin: 12px 0; }
+.account-selection { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; margin: 12px 0; }
+.account-selection > [data-platform-delete] { margin-inline-start: auto; }
 .system-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; background: #edf3f8; color: #355367; font-size: .85rem; }
 .system-current-row { background: #edf7f6; }
 .system-detail .identity-nav button { background: transparent; border: 0; padding: 8px 0; cursor: pointer; }

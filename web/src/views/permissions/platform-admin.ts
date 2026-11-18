@@ -106,6 +106,10 @@ function assignmentEditor(access: Access, account?: Account): string {
     `, "提交", "assignment"));
 }
 
+function canDeleteAccount(user: Account, superAdmin: boolean): boolean {
+  return user.kind === "guest" || user.kind === "ldap" || (user.kind === "administrator" && superAdmin);
+}
+
 function accountDetail(user: Account, access: Access, superAdmin: boolean): string {
   const allowed = user.kind !== "super" && (user.kind !== "administrator" || superAdmin);
   const action = user.kind === "administrator" ? "delete" : user.disabled ? "enable" : "disable";
@@ -147,12 +151,17 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       <label>账号类型<select data-platform-filter="kind"><option value="">全部类型</option>${options(Object.entries(kinds).map(([id,name]) => ({ id,name })))}</select></label>
       <label>账号状态<select data-platform-filter="status"><option value="">全部状态</option><option>正常</option><option>待改密</option><option>平台已停用</option><option>目录已停用</option></select></label>
     </div>
-    <div class="system-actions system-selection"><span aria-live="polite" data-platform-selected>已选 0 项</span>
-      <button type="button" class="button" data-system-open="batch" data-platform-batch disabled>批量授权 / 撤销</button>
-      <button type="button" class="button secondary" data-platform-clear disabled>取消选择</button></div>
+    <div class="account-selection" role="group" aria-label="选中账号操作">
+      <div class="system-actions"><span aria-live="polite" data-platform-selected>已选 0 项</span>
+        <button type="button" class="button" data-system-open="batch" data-platform-batch disabled>批量授权 / 撤销</button>
+        <button type="button" class="button secondary" data-platform-clear disabled>取消选择</button>
+      </div>
+      <button type="button" class="button secondary catalog-danger" data-system-open="delete-account" data-platform-delete
+        title="选择一个可删除的账号" disabled>删除用户</button>
+    </div>
     <div class="catalog-table-wrap"><table class="catalog-table">
       <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th>账号</th><th>类型</th><th>状态</th><th>最近登录</th></tr></thead>
-      <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
+      <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
         <td><div class="system-user-cell">${accountAvatar(item)}<div><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
         <td>${h(kinds[item.kind])}</td><td><span class="system-badge">${h(statusOf(item))}</span></td>
         <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
@@ -160,6 +169,8 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       ${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}
     </div>
     ${assignmentEditor(access)}
+    ${editor("delete-account", "删除用户", operationForm("accounts", "",
+      '<p>确定删除<strong data-delete-name></strong>？</p><p class="system-notice" data-delete-impact></p>', "确认删除", "delete"))}
     ${create("guest", "创建访客")}${superAdmin ? create("administrator", "创建系统管理员") : ""}`;
 }
 
@@ -315,8 +326,10 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
         if (dialog.isConnected && window.location.hash === hash) reload();
       }, { once: true });
       dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
-    } else if (action === "delete") window.location.hash = "#/admin/users";
-    else { dialog?.close(); reload(); }
+    } else if (action === "delete" && window.location.hash !== "#/admin/users") {
+      dialog?.close();
+      window.location.hash = "#/admin/users";
+    } else { dialog?.close(); reload(); }
   } catch {
     status.textContent = "请求失败，请重试。";
   } finally {
@@ -385,8 +398,23 @@ export function handlePlatformClick(event: MouseEvent): void {
         const status = form.querySelector("[data-assignment-target]");
         if (status) status.textContent = `已选 ${selected.length} 个账号`;
       }
+      if (key === "delete-account") {
+        const row = selectedAccountForDeletion(panel);
+        const form = dialog.querySelector("form");
+        const label = form?.querySelector("[data-delete-name]");
+        const impact = form?.querySelector("[data-delete-impact]");
+        const box = row?.querySelector<HTMLInputElement>('input[name="ids"]');
+        if (!row || !form || !label || !impact || !box) return;
+        form.dataset.id = box.value;
+        label.textContent = `「${row.dataset.accountName}」`;
+        impact.textContent = row.dataset.kind === "ldap" ?
+          "删除后会立即结束已有会话并收回平台权限。该员工将无法通过原 LDAP 身份再次登录本系统，公司目录账号不受影响。" :
+          "删除后会立即结束已有会话并移除该账号及其权限关联。此操作不可撤销。";
+        form.querySelector('button[type="submit"]')?.classList.add("catalog-danger-fill");
+      }
       dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
       dialog.showModal();
+      if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
       for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
     }
     return;
@@ -450,6 +478,12 @@ export function handlePlatformClick(event: MouseEvent): void {
   }
 }
 
+function selectedAccountForDeletion(panel: Element): HTMLElement | undefined {
+  const selected = [...panel.querySelectorAll<HTMLInputElement>('[data-platform-row]:not([hidden]) input[name="ids"]:checked:not(:disabled)')];
+  const row = selected[0]?.closest<HTMLElement>('[data-account-deletable="true"]');
+  if (selected.length === 1 && row) return row;
+}
+
 export function filterAccounts(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
@@ -479,6 +513,8 @@ export function filterAccounts(event: Event): void {
     all.indeterminate = selected > 0 && selected < visible.length;
   }
   for (const button of panel.querySelectorAll<HTMLButtonElement>("[data-platform-batch], [data-platform-clear]")) button.disabled = selected === 0;
+  const remove = panel.querySelector<HTMLButtonElement>("[data-platform-delete]");
+  if (remove) remove.disabled = !selectedAccountForDeletion(panel);
   const count = panel.querySelector("[data-platform-selected]");
   if (count) count.textContent = `已选 ${selected} 项`;
   const empty = panel.querySelector<HTMLElement>("[data-platform-empty]");

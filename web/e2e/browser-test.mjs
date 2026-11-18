@@ -497,6 +497,24 @@ try {
     })()` });
     await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("保存角色"), "Role editor did not keep the form open on conflict");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
+      (text) => text.includes("reader") && text.includes("删除用户"), "User deletion is missing from the selection bar");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const button = document.querySelector("[data-platform-delete]");
+      if (!button.disabled) throw new Error("Deletion was enabled without a selection");
+      document.querySelector('[data-platform-row] input[name="ids"]').click();
+      button.click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("确定删除「reader」") && text.includes("无法通过原 LDAP 身份再次登录"), "Deletion confirmation did not show the selected account or impact");
+    const cancelFocused = await cdp.send("Runtime.evaluate", { expression: 'document.activeElement.textContent === "取消"', returnByValue: true });
+    if (!cancelFocused.result?.value) throw new Error("Deletion dialog must focus Cancel");
+    await cdp.send("Runtime.evaluate", { expression: 'document.activeElement.click()' });
+    await assertText(cdp, (text) => text.includes("reader") && !text.includes("确定删除"), "Cancelling deletion did not keep the account");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector("[data-platform-delete]").click();
+      document.querySelector('dialog[open] button[value="delete"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("共 0 个账号") && !text.includes("reader"), "Deleted account still appeared in the list");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
