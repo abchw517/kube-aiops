@@ -445,7 +445,7 @@ try {
       form.elements.testPassword.value = "fixture-password";
       form.querySelector('button[value="test"]').click();
     })()` });
-    await assertText(cdp, (text) => text.includes("连接失败，请检查"), "LDAP connection failure did not render");
+    await assertText(cdp, (text) => text.includes("TCP 已连通，但 StartTLS 升级失败"), "LDAP StartTLS failure did not render");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector('[data-identity-resource="ldap"]');
       form.elements.baseDN.value = "dc=fixed,dc=test";

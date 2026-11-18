@@ -162,9 +162,9 @@ func probeLDAPLogin(ctx context.Context, cfg LDAPConfig, username, password stri
 	if cfg.Validate() != nil {
 		return Principal{}, "configuration", ErrAuthenticationUnavailable
 	}
-	conn, closeConnection, err := dialLDAP(ctx, cfg)
-	if err != nil {
-		return Principal{}, "connection", ErrAuthenticationUnavailable
+	conn, closeConnection, stage := dialLDAP(ctx, cfg)
+	if stage != "" {
+		return Principal{}, stage, ErrAuthenticationUnavailable
 	}
 	defer closeConnection()
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
@@ -370,7 +370,7 @@ func (cfg LDAPConfig) searchScope() int {
 	}
 }
 
-func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
+func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), string) {
 	endpoint, _ := url.Parse(cfg.URL)
 	port := endpoint.Port()
 	if port == "" {
@@ -388,18 +388,31 @@ func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 
 	address := net.JoinHostPort(endpoint.Hostname(), port)
-	var socket net.Conn
-	var err error
-	if endpoint.Scheme == "ldap" {
-		socket, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
-	} else {
-		socket, err = (&tls.Dialer{Config: tlsConfig}).DialContext(ctx, "tcp", address)
-	}
+	socket, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	if err != nil {
 		cancel()
-		return nil, nil, err
+		var dns *net.DNSError
+		if errors.As(err, &dns) {
+			return nil, nil, "connection_dns"
+		}
+		return nil, nil, "connection_tcp"
 	}
-	stop := context.AfterFunc(ctx, func() { _ = socket.Close() })
+	raw := socket
+	stop := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	if endpoint.Scheme == "ldaps" {
+		encrypted := tls.Client(socket, tlsConfig)
+		if err := encrypted.HandshakeContext(ctx); err != nil {
+			stop()
+			_ = socket.Close()
+			cancel()
+			var certificate *tls.CertificateVerificationError
+			if errors.As(err, &certificate) {
+				return nil, nil, "connection_certificate"
+			}
+			return nil, nil, "connection_ldaps"
+		}
+		socket = encrypted
+	}
 	conn := ldap.NewConn(socket, endpoint.Scheme == "ldaps")
 	conn.SetTimeout(5 * time.Second)
 	conn.Start()
@@ -409,10 +422,10 @@ func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), error) {
 			_ = socket.Close()
 			conn.Close()
 			cancel()
-			return nil, nil, err
+			return nil, nil, "connection_starttls"
 		}
 	}
-	return conn, func() { stop(); conn.Close(); cancel() }, nil
+	return conn, func() { stop(); conn.Close(); cancel() }, ""
 }
 
 // TestLDAP checks TLS, service-account bind and base DN search. If a username
@@ -421,9 +434,9 @@ func TestLDAP(ctx context.Context, cfg LDAPConfig, username string) (stage strin
 	if cfg.Validate() != nil {
 		return "configuration", 0
 	}
-	conn, closeConnection, err := dialLDAP(ctx, cfg)
-	if err != nil {
-		return "connection", 0
+	conn, closeConnection, connectionStage := dialLDAP(ctx, cfg)
+	if connectionStage != "" {
+		return connectionStage, 0
 	}
 	defer closeConnection()
 	if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {

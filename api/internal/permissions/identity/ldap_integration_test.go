@@ -146,6 +146,9 @@ func TestAuthenticateLDAPOverTLS(t *testing.T) {
 		t.Errorf("invalid bind returned %q", stage)
 	}
 	cfg.TLSConfig = nil
+	if stage := VerifyLDAPLogin(t.Context(), cfg, "alice", "fixture-user"); stage != "connection_certificate" {
+		t.Fatalf("untrusted certificate reported as %q", stage)
+	}
 	if _, err := AuthenticateLDAP(cfg, "alice", "fixture-user"); !errors.Is(err, ErrAuthenticationUnavailable) {
 		t.Fatalf("untrusted CA: %v", err)
 	}
@@ -200,7 +203,7 @@ func TestLDAPStartTLSRefusalStopsBeforeBind(t *testing.T) {
 	if got := cfg.filterTemplate(); got != "(&(sAMAccountName=%s)(objectClass=user))" {
 		t.Fatalf("unexpected user filter: %s", got)
 	}
-	if stage, _ := TestLDAP(t.Context(), cfg, "alice"); stage != "connection" {
+	if stage, _ := TestLDAP(t.Context(), cfg, "alice"); stage != "connection_starttls" {
 		t.Fatalf("unexpected test stage: %s", stage)
 	}
 	if !<-finished {

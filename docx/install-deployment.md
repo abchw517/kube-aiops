@@ -664,6 +664,20 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码、**LDAP 测试员工账号**和该员工的密码，再点 **测试 LDAP 服务器**。测试依次检查目录连接、搜索账号绑定、唯一员工查询和员工本人认证。通过后在 5 分钟内点击 **保存配置**。修改草稿后须重新验证。测试不创建用户或会话，测试失败时当前配置继续生效。
 
+若其他应用可以连接同一目录，但 kube-aiops 的「目录连接」失败，请从 API Pod 的网络环境验证对应的 TLS 模式。设置 `ldap_host` 为 URL 中的域名，`ldap_ca` 为 API 配置所用的签发 CA 链文件。使用系统受信任的 CA 时，可省略 `-CAfile`。
+
+```bash
+# ldap:// 对应 StartTLS
+openssl s_client -connect "${ldap_host}:389" -starttls ldap -servername "$ldap_host" \
+  -verify_hostname "$ldap_host" -verify_return_error -CAfile "$ldap_ca" </dev/null
+
+# ldaps:// 对应直接 TLS
+openssl s_client -connect "${ldap_host}:636" -servername "$ldap_host" \
+  -verify_hostname "$ldap_host" -verify_return_error -CAfile "$ldap_ca" </dev/null
+```
+
+如果 StartTLS 不可用且 LDAPS 校验通过，使用 `ldaps://` 和证书匹配的域名配置 kube-aiops。TLS 校验通过后，测试才会执行搜索账号绑定。
+
 搜索密码由 API 加密后写入 SQLite。修改 URL 或搜索 DN 时需重新填写密码。备份时将密钥和 SQLite 备份分别保管。已有 SQLite 升级前先挂载密钥，API 首次启动会迁移旧版明文密码。若证书或密钥配置错误，可用本地管理员登录查看 LDAP 状态并修复。旧快照和备份可能含明文，升级后应轮换域控搜索账号密码，并按现有保留策略处置旧备份。
 
 | 字段 | AD 示例 |

@@ -86,7 +86,8 @@ function passwordField(): string {
 const ldapSteps = ["目录连接", "搜索账号绑定", "测试员工查询", "测试员工认证"] as const;
 
 function showLDAPSteps(form: HTMLFormElement, stage = ""): void {
-  const failureIndex: Record<string, number> = { connection: 0, bind: 1, search: 2, user_search: 2,
+  const failureIndex: Record<string, number> = { connection: 0, connection_dns: 0, connection_tcp: 0,
+    connection_starttls: 0, connection_ldaps: 0, connection_certificate: 0, bind: 1, search: 2, user_search: 2,
     user_match: 2, user_auth: 3, group_search: 3, group_query: 3, identity_mapping: 3 };
   const failed = failureIndex[stage];
   const items = form.querySelectorAll<HTMLElement>("[data-ldap-step]");
@@ -212,6 +213,11 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
           : "验证未能用于当前配置，请重新测试。",
         user_auth: "测试员工认证失败，请检查员工密码和目录账号状态。",
         connection: "连接失败，请检查域名、端口和 TLS 证书。",
+        connection_dns: "API Pod 无法解析 LDAP 域名，请检查 Pod 的 DNS 配置和域名。",
+        connection_tcp: "API Pod 无法建立到 LDAP 端口的 TCP 连接，请检查端口、网络策略和防火墙。",
+        connection_starttls: "TCP 已连通，但 StartTLS 升级失败。请确认目录端口支持 StartTLS，并检查证书和 CA 信任。域控已启用 LDAPS 时，可使用与证书匹配的域名和 LDAPS 端口。",
+        connection_ldaps: "TCP 已连通，但 LDAPS 握手失败。请确认端口提供 LDAPS，并检查 TLS 版本。",
+        connection_certificate: "LDAPS 证书校验失败。请检查 URL 域名是否匹配证书、证书是否过期，以及 API Pod 是否信任签发 CA。",
         bind: "搜索账号绑定失败，请检查搜索 DN 和密码。",
         search: "搜索失败，请检查基础 DN 和账号读取权限。",
         group_search: "组基础 DN 搜索失败，请检查组基础 DN 和搜索账号的读取权限。",
