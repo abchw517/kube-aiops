@@ -162,6 +162,15 @@ createServer(async (request, response) => {
     }
     return json(response, 400, { error: "invalid onboarding fixture" });
   }
+  if (url.pathname === "/api/v1/admin/ldap" && adminSession && request.method === "GET") {
+    return json(response, 200, { url: "ldaps://example.test", baseDN: "dc=example,dc=test" });
+  }
+  if (url.pathname === "/api/v1/admin/ldap-test" && adminSession && request.method === "POST") {
+    return json(response, 200, { stage: "success", verification: "fixture-verification" });
+  }
+  if (url.pathname === "/api/v1/admin/namespace-business" && adminSession) {
+    return json(response, 200, { namespaces: [{ name: "payments" }], assigned: {} });
+  }
   if (url.pathname === "/api/v1/admin/accounts" && adminSession) {
     return json(response, 200, [{
       id: "ldap:reader", username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
@@ -169,6 +178,19 @@ createServer(async (request, response) => {
     }]);
   }
   if (url.pathname === "/api/v1/admin/access" && adminSession) {
+    if (request.method === "POST") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const change = JSON.parse(Buffer.concat(chunks).toString());
+      if (change.action === "group-save" && change.id === "ops" && change.roleIds?.[0] === "guest-readonly") {
+        return json(response, 200, [{ id: "ops" }]);
+      }
+      if (change.action === "role-save" && change.name === "浏览器检查") {
+        response.writeHead(409, { "Content-Type": "text/plain" }).end("角色名称已使用");
+        return;
+      }
+      return json(response, 400, { error: "unexpected system editor change" });
+    }
     return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] }],
       roles: [{ id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] }] });
   }

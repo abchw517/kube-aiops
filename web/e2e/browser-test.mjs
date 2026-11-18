@@ -352,6 +352,21 @@ try {
       (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("reader"), "User filters did not render");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-select-all]").click()' });
     await assertText(cdp, (text) => text.includes("已选 1 项"), "Select all did not update the selection count");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-batch]").click()' });
+    await assertText(cdp, (text) => text.includes("已选 1 个账号") && text.includes("选择用户组"), "Batch assignment dialog did not open");
+    const integrated = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const dialog = document.querySelector("dialog[open]");
+      const select = dialog.querySelector("[data-assignment-kind]");
+      select.value = "roles";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return dialog.querySelector('[data-assignment-options="groups"]').hidden &&
+        !dialog.querySelector('[data-assignment-options="roles"]').hidden;
+    })()` });
+    if (!integrated.result?.value) throw new Error("Authorization target did not switch to role checkboxes");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-system-open=guest]").click()' });
+    await assertText(cdp, (text) => text.includes("临时密码") && text.includes("取消"), "Create visitor dialog did not open");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const kind = document.querySelector('[data-platform-filter="kind"]');
       kind.value = "guest";
@@ -360,6 +375,38 @@ try {
     await assertText(cdp, (text) => text.includes("暂无符合条件的账号") && text.includes("已选 0 项"), "Filtering should clear hidden selections");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users/ldap%3Areader",
       (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") && text.includes("直接授予"), "User detail omitted permission origins");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
+      (text) => text.includes("LDAP 连接配置") && text.includes("测试待启用配置"), "LDAP editor panels did not render");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
+    await assertText(cdp, (text) => text.includes("均成功，可以保存"), "LDAP test did not update the verification panel");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",
+      (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="group:ops"]').click()` });
+    const rolePreselected = await cdp.send("Runtime.evaluate", { returnByValue: true,
+      expression: `document.querySelector('dialog[open] input[name="roles"]').checked` });
+    if (!rolePreselected.result?.value) throw new Error("Group editor did not preload existing role associations");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="group-save"]').click()` });
+    await assertText(cdp, (text) => !text.includes("保存用户组") && text.includes("新建用户组"), "Group save did not close the editor");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
+      (text) => text.includes("新建角色") && text.includes("访客只读"), "Role tab did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-system-open="role:"]').click();
+      const form = document.querySelector("dialog[open] form");
+      form.elements.name.value = "浏览器检查";
+      const cluster = form.querySelector('[name="cluster"]');
+      cluster.value = "local";
+      cluster.dispatchEvent(new Event("change", { bubbles: true }));
+    })()` });
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const loaded = await cdp.send("Runtime.evaluate", { returnByValue: true,
+        expression: `Boolean(document.querySelector('dialog[open] select[name="namespace"] option[value="payments"]'))` });
+      if (loaded.result?.value) break;
+      if (attempt === 39) throw new Error("Role editor did not populate namespaces");
+      await sleep(100);
+    }
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
+    await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("保存角色"), "Role editor did not keep the form open on conflict");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",

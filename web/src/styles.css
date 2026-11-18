@@ -293,13 +293,48 @@ td { overflow-wrap: anywhere; }
 .platform-heading, .platform-audit-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-bottom: 16px; }
 .platform-heading { justify-content: space-between; }
 .platform-heading label, .platform-audit-filter label { display: grid; gap: 4px; }
-.platform-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 16px; }
-.platform-columns > section { border: 1px solid #dce4f0; border-radius: 9px; padding: 14px; }
-.platform-columns details, .platform-form details, .identity-panel > details { margin: 12px 0; }
-.platform-columns summary, .platform-form summary, .identity-panel > details > summary { cursor: pointer; color: #00664f; font-weight: 600; }
 .platform-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 8px; margin: 0 0 10px; border: 1px solid #dce4f0; border-radius: 6px; }
-.platform-operations { display: grid; gap: 12px; margin-top: 20px; }
 
 .platform-assignment { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 8px; }
 
 .platform-filters { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.system-management .system-card { min-width: 0; padding: 16px; border: 1px solid #dce4f0; border-radius: 9px; }
+.system-management .system-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.system-stats strong { display: block; margin-top: 4px; font-size: 1.5rem; }
+.system-user-layout, .system-ldap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; gap: 16px; }
+.system-ldap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.system-management .system-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; }
+.system-actions, .system-card-heading, .system-validation-steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.system-card-heading, .system-validation-steps li { justify-content: space-between; }
+.system-card-heading h3 { margin: 0 0 4px; }
+.system-selection { margin: 12px 0; }
+.system-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; background: #edf3f8; color: #355367; font-size: .85rem; }
+.system-current-row { background: #edf7f6; }
+.system-detail .identity-nav button { background: transparent; border: 0; padding: 8px 0; cursor: pointer; }
+.system-detail .identity-nav button[aria-pressed="true"] { border-bottom: 2px solid #177b78; color: #126762; }
+.system-management .system-form, .system-editor-body { display: grid; gap: 14px; }
+.system-management .system-password { max-width: 34rem; }
+.system-management .system-form > .button { justify-self: start; }
+.system-management label:has(input:not([type="checkbox"]):not([type="hidden"])), .system-management label:has(select) { display: grid; gap: 5px; min-width: 0; }
+.system-management input:not([type="checkbox"]):not([type="hidden"]), .system-management select {
+  width: 100%; min-width: 0; min-height: 40px; padding: 7px 10px; border: 1px solid #aebed0;
+  border-radius: 6px; font: inherit; color: inherit; background: #fff;
+}
+.system-management input:disabled, .system-management select:disabled { background: #f2f5f9; color: #596c82; }
+.system-management input[type="checkbox"] { width: 16px; height: 16px; accent-color: #126762; }
+.system-dialog { width: min(680px, calc(100% - 24px)); max-height: calc(100% - 24px); padding: 0; border: 1px solid #dce4f0; border-radius: 12px; color: inherit; }
+.system-dialog::backdrop { background: #10233588; }
+.system-dialog-header, .system-dialog-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px 18px; }
+.system-dialog-header { justify-content: space-between; border-bottom: 1px solid #dce4f0; }
+.system-dialog-header h2 { margin: 0; }
+.system-dialog-footer { justify-content: flex-end; border-top: 1px solid #dce4f0; }
+.system-editor-body { padding: 16px 18px; }
+.system-form:has(.system-editor-body) { gap: 0; }
+.system-dialog [role="status"]:empty { display: none; }
+.system-choice-group { min-width: 0; border: 1px solid #dce4f0; border-radius: 6px; padding: 10px; margin: 0; }
+.system-choice-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 8px; }
+.system-choice-list label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.system-choice-list span { overflow-wrap: anywhere; }
+.system-validation-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+@media (max-width: 1040px) { .system-user-layout, .system-ldap { grid-template-columns: minmax(0, 1fr); } }
