@@ -333,7 +333,7 @@ export class PortalApp {
       <div class="portal-layout${signedOut ? " portal-signed-out" : ""}">
         ${signedOut || this.mustChangePassword ? "" : `<nav class="workspace-nav" aria-label="工作台导航">
           <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : ' aria-current="page"'}>诊断控制台</a>
-          ${demoMode ? "" : `<a class="workspace-subnav" href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
+          ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? ' aria-current="page"' : ""}>运维知识库</a>`}
           ${Object.values(this.resourceAccess).some(Boolean) ? `<a href="#/resources"${resourcePage ? ' aria-current="page"' : ""}>资源管理</a>` : ""}
           ${this.identityAdmin ? `<a href="#/admin/ldap"${adminPage ? ' aria-current="page"' : ""}>系统管理</a>` : ""}
         </nav>`}

@@ -346,8 +346,18 @@ try {
       form.requestSubmit();
     })()` });
     await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
-    const nav = await cdp.send("Runtime.evaluate", { expression: `Array.from(document.querySelectorAll(".workspace-nav a"), a => a.textContent)`, returnByValue: true });
-    if (nav.result?.value?.slice(0, 2).join("/") !== "诊断控制台/运维知识库") throw new Error("Wiki must appear below the diagnostics console");
+    const nav = await cdp.send("Runtime.evaluate", {
+      expression: `Array.from(document.querySelectorAll(".workspace-nav > a"), link => ({
+        label: link.textContent,
+        inset: getComputedStyle(link).paddingInlineStart,
+      }))`,
+      returnByValue: true,
+    });
+    const links = nav.result?.value ?? [];
+    if (links.map(({ label }) => label).join("/") !== "诊断控制台/运维知识库/资源管理/系统管理" ||
+        new Set(links.map(({ inset }) => inset)).size !== 1) {
+      throw new Error("Workspace navigation must show four equally aligned top-level entries");
+    }
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("reader"), "User filters did not render");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-select-all]").click()' });
