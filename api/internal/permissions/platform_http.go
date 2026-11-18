@@ -30,6 +30,7 @@ type accountView struct {
 }
 
 type platformChange struct {
+	RoleIDs     *[]string
 	Description string
 	Action      string
 	ID          string
@@ -92,7 +93,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		return
 	}
 	var input platformChange
-	if !adminhttp.Decode(w, r, &input) || len(input.IDs) > 100 || len(input.Values) > 50 || len(input.Scopes) > 100 {
+	if !adminhttp.Decode(w, r, &input) || len(input.IDs) > 100 || len(input.Values) > 50 || len(input.Scopes) > 100 || (input.RoleIDs != nil && len(*input.RoleIDs) > 50) {
 		http.Error(w, "请求无效或超出批量上限", 400)
 		return
 	}
@@ -447,6 +448,15 @@ func applyAccess(state platformState, input platformChange) changeResult {
 			description := strings.TrimSpace(input.Description)
 			if len([]rune(description)) > 256 {
 				return fail("用途最多可填写 256 个字符")
+			}
+			if input.RoleIDs != nil {
+				roleIDs := uniqueStrings(*input.RoleIDs)
+				for _, role := range roleIDs {
+					if role == adminRole || state.role(role).ID == "" {
+						return fail("存在不可分配的角色")
+					}
+				}
+				group.Roles = roleIDs
 			}
 			group.ID, group.Name, group.Description = result.ID, name, description
 			state.Groups[group.ID] = group

@@ -112,3 +112,20 @@ func TestPlatformRoleSourcesAndImmediateAccessChanges(t *testing.T) {
 		t.Fatalf("missing partial batch audit: %d, %v", failures, err)
 	}
 }
+
+func TestGroupEditorSavesMetadataAndRoleAssociationsTogether(t *testing.T) {
+	state := platformState{Groups: map[string]platformGroup{
+		"ops": {ID: "ops", Name: "旧名称", Roles: []string{guestRole}},
+	}}
+	roles := []string{adminRole}
+	result := applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", RoleIDs: &roles})
+	if result.Reason == "" || state.Groups["ops"].Name != "旧名称" {
+		t.Fatalf("invalid role changed the group: %+v", state.Groups["ops"])
+	}
+	roles = []string{}
+	result = applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", Description: "用途", RoleIDs: &roles})
+	group := state.Groups["ops"]
+	if result.Reason != "" || group.Name != "新名称" || group.Description != "用途" || len(group.Roles) != 0 {
+		t.Fatalf("group edit not saved together: %+v, %+v", result, group)
+	}
+}
