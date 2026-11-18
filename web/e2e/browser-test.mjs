@@ -301,6 +301,34 @@ try {
       (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
       (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="edit"]').click()` });
+    const immutable = await cdp.send("Runtime.evaluate", {
+      expression: 'document.querySelector("[data-catalog-dialog] input[name=id]").readOnly', returnByValue: true,
+    });
+    if (!immutable.result?.value) throw new Error("Existing catalog ID must be read-only");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("[data-resource-catalog]");
+      form.elements.name.value = "研发环境";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("研发环境") && !text.includes("保存"), "Catalog rename did not close the editor");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="delete"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-resource-catalog]").requestSubmit()' });
+    await assertText(cdp, (text) => text.includes("dev-k8s"), "Referenced catalog deletion did not explain the conflict");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="close"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="add"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("[data-resource-catalog]");
+      form.elements.id.value = "sandbox";
+      form.elements.name.value = "沙盒";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("沙盒") && text.includes("sandbox"), "Catalog creation did not preserve the entered ID");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="delete"][data-entry-id="sandbox"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-resource-catalog]").requestSubmit()' });
+    await assertText(cdp, (text) => !text.includes("sandbox"), "Unreferenced catalog deletion failed");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/business-lines",
+      (text) => text.includes("业务线 ID") && text.includes("云帆") && text.includes("新增业务线"), "Business catalog did not match the shared layout");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters/push",
       (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment form did not render");
     await cdp.send("Runtime.evaluate", {

@@ -250,3 +250,36 @@ td { overflow-wrap: anywhere; }
 
 .button[hidden] { display: none; }
 .button:disabled { opacity: .55; cursor: not-allowed; }
+
+.catalog-section { padding-top: 1rem; }
+.catalog-section h2 { margin-bottom: 1rem; }
+.catalog-table-wrap { overflow-x: auto; border: 1px solid #dce4f0; border-radius: 9px; }
+.catalog-table { width: 100%; min-width: 380px; border-collapse: collapse; text-align: left; }
+.catalog-table th, .catalog-table td { padding: 12px 15px; border-bottom: 1px solid #e0e7ef; }
+.catalog-table th { background: #f6f8fc; color: #496077; font-size: 0.8rem; }
+.catalog-table td:first-child { font-weight: 600; }
+.catalog-table th:last-child, .catalog-table td:last-child { text-align: right; }
+.catalog-table tr:last-child td { border-bottom: 0; }
+.catalog-table code { background: #edf2f8; padding: 4px 7px; border-radius: 5px; color: #3e5c77; }
+.catalog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.catalog-actions .button { padding: 6px 12px; }
+.catalog-table .catalog-empty { text-align: center; color: #566c82; padding: 24px; }
+.catalog-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 15px; color: #566c82; }
+.catalog-dialog { padding: 0; width: min(480px, calc(100% - 24px)); max-height: calc(100vh - 32px); border: 1px solid #dce4f0; border-radius: 14px; color: #152840; box-shadow: 0 18px 65px #10233642; }
+.catalog-dialog::backdrop { background: #13243c91; }
+.catalog-dialog header, .catalog-dialog-body, .catalog-dialog footer { padding: 16px 20px; }
+.catalog-dialog header { border-bottom: 1px solid #e0e7ef; }
+.catalog-dialog h2 { margin: 0; font-size: 1.2rem; }
+.catalog-dialog label { display: grid; gap: 5px; font-weight: 600; margin-bottom: 13px; }
+.catalog-dialog input { width: 100%; padding: 8px 10px; font: inherit; border: 1px solid #c9d8e6; border-radius: 7px; }
+.catalog-dialog input[readonly] { background: #f0f4f9; color: #566c82; }
+.catalog-dialog footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; border-top: 1px solid #e0e7ef; }
+.catalog-dialog [role="status"] { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 0; }
+.catalog-delete { margin-right: auto; }
+.button.catalog-danger { color: #a9273d; border-color: #ecd3d8; }
+.button.catalog-danger-fill { background: #a9273d; border-color: #a9273d; }
+@media (max-width: 600px) {
+  .catalog-table th, .catalog-table td { padding: 8px; }
+  .catalog-actions { gap: 4px; }
+  .catalog-actions .button { padding: 5px 8px; }
+}

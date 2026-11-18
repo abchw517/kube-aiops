@@ -2,10 +2,10 @@ package portal
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"errors"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -65,7 +65,7 @@ func writeCatalogEntry(ctx context.Context, tx *sql.Tx, kind string, entry catal
 }
 
 func readCatalog(ctx context.Context, store *identitystore.Store, kind string) ([]catalogEntry, error) {
-	rows, err := store.QueryContext(ctx, "SELECT id,name FROM resource_catalog WHERE kind=? ORDER BY name,id", kind)
+	rows, err := store.QueryContext(ctx, "SELECT id,name FROM resource_catalog WHERE kind=? ORDER BY rowid", kind)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +80,8 @@ func readCatalog(ctx context.Context, store *identitystore.Store, kind string) (
 	}
 	return entries, rows.Err()
 }
+
+var catalogIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 func validCatalogName(name string) bool {
 	return name != "" && utf8.RuneCountInString(name) <= 128 && !strings.ContainsFunc(name, unicode.IsControl)
@@ -108,7 +110,7 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		return
 	}
 	entry.Name = strings.TrimSpace(entry.Name)
-	if (!remove && !validCatalogName(entry.Name)) || (create && entry.ID != "") || (!create && entry.ID == "") {
+	if (!remove && !validCatalogName(entry.Name)) || (create && !catalogIDPattern.MatchString(entry.ID)) || (!create && entry.ID == "") {
 		http.Error(w, "资源目录请求无效", http.StatusBadRequest)
 		return
 	}
@@ -163,6 +165,17 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 		return
 	}
 
+	if create {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM resource_catalog WHERE kind=? AND id=?)", kind, entry.ID).Scan(&exists); err != nil {
+			fail()
+			return
+		}
+		if exists {
+			http.Error(w, "ID 已存在", http.StatusConflict)
+			return
+		}
+	}
 	var owner string
 	err = tx.QueryRowContext(ctx, "SELECT id FROM resource_catalog_names WHERE kind=? AND name=?", kind, entry.Name).Scan(&owner)
 	if err == nil && owner != entry.ID {
@@ -172,9 +185,6 @@ func (o *onboarding) catalog(w http.ResponseWriter, r *http.Request, kind string
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		fail()
 		return
-	}
-	if create {
-		entry.ID = rand.Text()
 	}
 	if err := writeCatalogEntry(ctx, tx, kind, entry, create); err != nil {
 		fail()
