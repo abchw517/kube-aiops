@@ -128,7 +128,7 @@ func ldapConfiguration(endpoint string) (identity.LDAPConfig, error) {
 	cfg := identity.LDAPConfig{
 		URL: endpoint, BaseDN: os.Getenv("AUTH_LDAP_BASE_DN"),
 		BindDN: os.Getenv("AUTH_LDAP_BIND_DN"), UserFilter: os.Getenv("AUTH_LDAP_USER_FILTER"),
-		GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"),
+		GroupAttr: os.Getenv("AUTH_LDAP_GROUP_ATTRIBUTE"), AllowPlainLDAP: os.Getenv("AUTH_LDAP_ALLOW_PLAIN") == "true",
 	}
 	err := applyLDAPCredentials(&cfg, "")
 	return cfg, err
@@ -145,7 +145,7 @@ func applyLDAPCredentials(cfg *identity.LDAPConfig, password string) error {
 		}
 	}
 	cfg.BindPassword = password
-	if path := os.Getenv("AUTH_LDAP_CA_FILE"); path != "" {
+	if path := os.Getenv("AUTH_LDAP_CA_FILE"); path != "" && strings.HasPrefix(strings.ToLower(cfg.URL), "ldaps://") {
 		pem, err := os.ReadFile(path)
 		pool := x509.NewCertPool()
 		if err != nil || !pool.AppendCertsFromPEM(pem) {

@@ -45,20 +45,21 @@ func AuthenticateLocal(accounts []LocalAccount, username, password string) (Prin
 	return Principal{}, ErrUnauthenticated
 }
 
-// LDAPConfig describes a TLS-protected LDAP directory, including Active Directory.
+// LDAPConfig describes LDAP or Active Directory connection and bind settings.
 type LDAPConfig struct {
-	URL          string
-	BaseDN       string
-	BindDN       string
-	BindPassword string
-	UserFilter   string // Exactly one %s placeholder, escaped as an LDAP filter value.
-	UserUID      string
-	SearchScope  string
-	GroupBaseDN  string
-	GroupFilter  string
-	GroupScope   string
-	GroupAttr    string
-	TLSConfig    *tls.Config
+	URL            string
+	BaseDN         string
+	BindDN         string
+	BindPassword   string
+	UserFilter     string // Exactly one %s placeholder, escaped as an LDAP filter value.
+	UserUID        string
+	SearchScope    string
+	GroupBaseDN    string
+	GroupFilter    string
+	GroupScope     string
+	GroupAttr      string
+	TLSConfig      *tls.Config
+	AllowPlainLDAP bool
 }
 
 var ldapAttribute = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
@@ -85,7 +86,10 @@ func (cfg LDAPConfig) Validate() error {
 	endpoint, err := url.Parse(cfg.URL)
 	if err != nil || (endpoint.Scheme != "ldaps" && endpoint.Scheme != "ldap") || endpoint.Hostname() == "" ||
 		endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-		return errors.New("LDAP URL 请使用 ldaps://域控域名:636 或 ldap://域控域名:389（StartTLS），且不能包含路径或凭据")
+		return errors.New("LDAP URL 请使用 ldaps://域控域名:636 或 ldap://域控域名:389，且不能包含路径或凭据")
+	}
+	if endpoint.Scheme == "ldap" && !cfg.AllowPlainLDAP {
+		return errors.New("ldap:// 使用明文连接。请明确启用明文 LDAP 后重新测试并保存，或改用 ldaps://")
 	}
 	if _, err := ldap.ParseDN(cfg.BaseDN); err != nil || strings.TrimSpace(cfg.BaseDN) == "" {
 		return errors.New("LDAP 基础 DN 无效")
@@ -416,15 +420,7 @@ func dialLDAP(ctx context.Context, cfg LDAPConfig) (*ldap.Conn, func(), string) 
 	conn := ldap.NewConn(socket, endpoint.Scheme == "ldaps")
 	conn.SetTimeout(5 * time.Second)
 	conn.Start()
-	if endpoint.Scheme == "ldap" {
-		if err := conn.StartTLS(tlsConfig); err != nil {
-			stop()
-			_ = socket.Close()
-			conn.Close()
-			cancel()
-			return nil, nil, "connection_starttls"
-		}
-	}
+
 	return conn, func() { stop(); conn.Close(); cancel() }, ""
 }
 

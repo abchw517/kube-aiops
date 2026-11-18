@@ -445,9 +445,11 @@ try {
       form.elements.testPassword.value = "fixture-password";
       form.querySelector('button[value="test"]').click();
     })()` });
-    await assertText(cdp, (text) => text.includes("TCP 已连通，但 StartTLS 升级失败"), "LDAP StartTLS failure did not render");
+    await assertText(cdp, (text) => text.includes("API Pod 无法建立到 LDAP 端口的 TCP 连接"), "LDAP TCP connection failure did not render");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector('[data-identity-resource="ldap"]');
+      form.elements.url.value = "ldap://example.test";
+      form.elements.allowPlainLDAP.click();
       form.elements.baseDN.value = "dc=fixed,dc=test";
       form.elements.baseDN.dispatchEvent(new Event("input", { bubbles: true }));
       form.querySelector('button[value="test"]').click();
