@@ -69,6 +69,25 @@ func Open(path string) (*Store, error) {
 			reported_at INTEGER NOT NULL DEFAULT 0,
 			captured_at INTEGER NOT NULL DEFAULT 0
 		);
+		CREATE TABLE IF NOT EXISTS cluster_collection (
+			id TEXT PRIMARY KEY,
+			first_at INTEGER NOT NULL DEFAULT 0,
+			validated_at INTEGER NOT NULL DEFAULT 0,
+			checked_at INTEGER NOT NULL DEFAULT 0,
+			document TEXT NOT NULL DEFAULT '{}'
+		);
+		INSERT OR IGNORE INTO cluster_collection(id, first_at)
+		SELECT id, reported_at FROM managed_clusters
+		WHERE reported_at > 0 AND EXISTS (
+			SELECT 1 FROM json_each(snapshot) WHERE json_extract(value, '$.source') = 'k8sgpt'
+		);
+		CREATE TRIGGER IF NOT EXISTS cluster_snapshot_collected AFTER UPDATE OF snapshot ON managed_clusters
+		WHEN EXISTS (SELECT 1 FROM json_each(NEW.snapshot) WHERE json_extract(value, '$.source') = 'k8sgpt')
+		BEGIN
+			INSERT INTO cluster_collection(id, first_at) VALUES (NEW.id, NEW.reported_at)
+			ON CONFLICT(id) DO UPDATE SET first_at = excluded.first_at WHERE cluster_collection.first_at = 0;
+		END;
+
 		CREATE TABLE IF NOT EXISTS finding_reviews (
 			finding_key TEXT NOT NULL,
 			revision INTEGER NOT NULL,

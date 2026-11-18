@@ -51,6 +51,7 @@ type onboarding struct {
 	store    *identitystore.Store
 	registry *httpapi.ClusterBackends
 	mu       sync.Mutex
+	local    *kubernetes.Client
 }
 
 func newOnboarding(store *identitystore.Store, registry *httpapi.ClusterBackends) (*onboarding, error) {
@@ -114,12 +115,13 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	var backend httpapi.Backend
 	var engineAI func(context.Context) (kubernetes.EngineAIConfig, error)
 	var reports *reportBackend
+	var remote *kubernetes.Client
 	if spec.Mode == "pull" {
 		if !remoteHTTPS(spec.APIURL) || !clusterIDPattern.MatchString(spec.EngineNamespace) || !clusterIDPattern.MatchString(spec.EngineName) {
 			return httpapi.ClusterTarget{}, errors.New("需要 HTTPS Kubernetes 地址、Engine 命名空间和实例名")
 		}
 		dir := filepath.Join("/etc/kube-aiops/clusters", spec.ID)
-		remote := kubernetes.NewClient(kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
+		remote = kubernetes.NewClient(kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
 			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName})
 		backend = remote
 		if spec.AIEnabled {
@@ -162,13 +164,15 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 	backend = review
 	cluster.ReviewEnabled = engineAI != nil
 
-	return httpapi.ClusterTarget{Backend: directoryBackend{Backend: backend, cluster: cluster, reports: reports}, Correlator: evidence}, nil
+	return httpapi.ClusterTarget{Backend: directoryBackend{Backend: backend, cluster: cluster, reports: reports, remote: remote, spec: spec}, Correlator: evidence}, nil
 }
 
 type directoryBackend struct {
 	httpapi.Backend
 	cluster kubernetes.Cluster
 	reports *reportBackend
+	remote  *kubernetes.Client
+	spec    managedCluster
 }
 
 func (b directoryBackend) Clusters() []kubernetes.Cluster {
@@ -192,7 +196,7 @@ func (b directoryBackend) Clusters() []kubernetes.Cluster {
 func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if r.Method == http.MethodGet {
-		rows, err := o.store.QueryContext(ctx, "SELECT document, reported_at FROM managed_clusters ORDER BY id")
+		rows, err := o.store.QueryContext(ctx, "SELECT m.document, m.reported_at, COALESCE(c.first_at,0), COALESCE(c.validated_at,0), COALESCE(c.checked_at,0), COALESCE(c.document,'{}') FROM managed_clusters m LEFT JOIN cluster_collection c ON c.id=m.id ORDER BY m.id")
 		if err != nil {
 			http.Error(w, "集群目录暂不可用", 503)
 			return
@@ -201,12 +205,13 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		type status struct {
 			managedCluster
 			ReportedAt int64 `json:"reportedAt"`
+			collectionState
 		}
 		entries := make([]status, 0)
 		for rows.Next() {
-			var raw []byte
+			var raw, collection []byte
 			var entry status
-			if rows.Scan(&raw, &entry.ReportedAt) != nil || json.Unmarshal(raw, &entry.managedCluster) != nil {
+			if rows.Scan(&raw, &entry.ReportedAt, &entry.FirstAt, &entry.ValidatedAt, &entry.CheckedAt, &collection) != nil || json.Unmarshal(raw, &entry.managedCluster) != nil || json.Unmarshal(collection, &entry.Data) != nil {
 				http.Error(w, "集群目录暂不可用", 503)
 				return
 			}
@@ -216,9 +221,48 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "集群目录暂不可用", 503)
 			return
 		}
+		rows.Close()
+		if o.local != nil {
+			var local status
+			cluster := o.local.Clusters()[0]
+			local.managedCluster = managedCluster{ID: cluster.ID, Name: cluster.Name, Environment: cluster.Environment, Mode: "local", Enabled: true}
+			local.collectionState, err = o.readCollection(ctx, cluster.ID)
+			if err != nil {
+				http.Error(w, "集群目录暂不可用", 503)
+				return
+			}
+			entries = append([]status{local}, entries...)
+		}
 		adminhttp.WriteJSON(w, entries)
 		return
 	}
+	if r.Method == http.MethodPost && r.URL.Query().Get("action") == "recheck" {
+		id := r.URL.Query().Get("id")
+		var raw string
+		err := o.store.QueryRowContext(ctx, "SELECT document FROM managed_clusters WHERE id=?", id).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "实例不存在", 404)
+			return
+		}
+		target, _ := o.registry.Lookup(id)
+		directory, _ := target.Backend.(directoryBackend)
+		if err != nil || directory.remote == nil {
+			http.Error(w, "仅已启用的手动接入实例支持重新校验", 409)
+			return
+		}
+		var spec managedCluster
+		if json.Unmarshal([]byte(raw), &spec) != nil || directory.spec != spec {
+			http.Error(w, "集群配置已更新，请重试", 409)
+			return
+		}
+		if err := o.collect(ctx, id, raw, directory.remote, time.Now(), true); err != nil {
+			http.Error(w, "重新校验失败", 503)
+			return
+		}
+		w.WriteHeader(204)
+		return
+	}
+
 	if r.Method != http.MethodPost && r.Method != http.MethodPut {
 		w.WriteHeader(405)
 		return
@@ -238,8 +282,8 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "仅手动接入需要测试连接", 400)
 			return
 		}
-		if err := target.Backend.Ready(ctx); err != nil {
-			http.Error(w, "连接或 Result 读取失败，请检查 TLS、只读凭据与 Engine", 502)
+		if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
+			http.Error(w, nodeCollectionError(err), 502)
 			return
 		}
 		w.WriteHeader(204)
@@ -284,7 +328,31 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "接入方式需要使用新的实例 ID", 409)
 			return
 		}
-		if _, err := o.store.ExecContext(ctx, "UPDATE managed_clusters SET document=? WHERE id=?", string(raw), spec.ID); err != nil {
+		tx, err := o.store.BeginTx(ctx, nil)
+		if err != nil {
+			http.Error(w, "保存失败", 503)
+			return
+		}
+		defer tx.Rollback()
+		result, err := tx.ExecContext(ctx, `UPDATE managed_clusters SET document=? WHERE id=? AND
+			(? OR NOT EXISTS (SELECT 1 FROM cluster_collection WHERE id=? AND first_at > 0))`,
+			string(raw), spec.ID, spec.Environment == previous.Environment, spec.ID)
+		if err != nil {
+			http.Error(w, "保存失败", 503)
+			return
+		}
+		if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+			http.Error(w, "首次采集已成功，集群环境已锁定", 409)
+			return
+		}
+		if spec.Mode == "pull" && (spec.APIURL != previous.APIURL || spec.EngineNamespace != previous.EngineNamespace ||
+			spec.EngineName != previous.EngineName || spec.Enabled && !previous.Enabled) {
+			if _, err := tx.ExecContext(ctx, "UPDATE cluster_collection SET checked_at=0,validated_at=0,document='{}' WHERE id=?", spec.ID); err != nil {
+				http.Error(w, "保存失败", 503)
+				return
+			}
+		}
+		if err := tx.Commit(); err != nil {
 			http.Error(w, "保存失败", 503)
 			return
 		}

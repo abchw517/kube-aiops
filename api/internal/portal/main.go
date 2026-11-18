@@ -156,6 +156,21 @@ func Run() {
 	}
 	if managed != nil {
 		handler = managed.reporting(handler)
+		managed.local = backend
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for ctx.Err() == nil {
+				if err := managed.pollCollections(ctx); err != nil && ctx.Err() == nil {
+					logger.Warn("cluster collection failed", "error", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
 	}
 
 	server := &http.Server{

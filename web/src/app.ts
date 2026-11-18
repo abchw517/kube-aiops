@@ -1,6 +1,6 @@
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
-import { submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
+import { recheckCollection, submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
 import {
   ApiError,
   type Cluster,
@@ -73,6 +73,11 @@ export class PortalApp {
       if (form instanceof HTMLFormElement && form.dataset.resourceCatalog) {
         event.preventDefault();
         void submitResourceCatalog(form, event instanceof SubmitEvent && event.submitter?.getAttribute("value") === "delete", () => void this.route());
+        return;
+      }
+      if (form instanceof HTMLFormElement && form.dataset.collectionCheck) {
+        event.preventDefault();
+        void recheckCollection(form, () => void this.route());
         return;
       }
       if (form instanceof HTMLFormElement && form.dataset.onboardingMode) {

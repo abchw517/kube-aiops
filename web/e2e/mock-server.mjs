@@ -146,11 +146,17 @@ createServer(async (request, response) => {
     return json(response, 200, input);
   }
   if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
-    if (request.method === "GET") return json(response, 200, []);
+    if (request.method === "GET") {
+      return json(response, 200, [{
+        id: "dev-k8s", name: "研发集群", group: "应用集群", mode: "pull", enabled: true,
+        environment: "研发", business: "云帆", firstCollectedAt: 1700000000,
+        collection: { nodes: [{ name: "test-worker", ready: "False" }], namespaces: [{ name: "dev-app" }] },
+      }]);
+    }
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
-    if (input.id === "dev-yunfan-01" && input.environment === "研发" && input.business === "云帆" &&
+    if (input.id === "dev-yunfan-01" && input.environment === "研发环境" && input.business === "云帆" &&
         input.group === "应用集群" && input.mode === "push" && input.enabled) {
       return json(response, 200, { token: "fixture-report-token" });
     }
