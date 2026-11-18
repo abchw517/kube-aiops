@@ -39,6 +39,7 @@ let authenticationRequired = false;
 let authenticated = false;
 const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
 let adminSession = false;
+let auditRetention = { low: 3, medium: 5, high: 7 };
 let role;
 
 let localConnectionDeleted = false;
@@ -99,7 +100,7 @@ createServer(async (request, response) => {
   if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
     return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
   }
-  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true });
+  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, superAdministrator: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: [] });
     const chunks = [];
@@ -242,8 +243,19 @@ createServer(async (request, response) => {
       roles: [{ id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] }] });
   }
   if (url.pathname === "/api/v1/admin/operations" && adminSession) {
-    return json(response, 200, { items: [{ id: 1, at: 1700000000, actor: "local:admin", action: "创建账号", risk: "高",
-      target: "local:guest", result: "成功", reason: "", batch: "" }], before: 0 });
+    if (request.method === "PUT") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const { low, medium, high } = JSON.parse(Buffer.concat(chunks).toString());
+      if (low === 2 && medium === 6 && high === 9) {
+        auditRetention = { low, medium, high };
+        response.writeHead(204).end();
+        return;
+      }
+      return json(response, 400, { error: "unexpected audit retention configuration" });
+    }
+    return json(response, 200, { items: [{ id: 1, at: Date.parse("2026-11-18T07:43:19Z") / 1000, actor: "local:admin", action: "创建账号", risk: "高",
+      target: "local:guest", result: "成功", reason: "", batch: "" }], before: 0, retention: auditRetention });
   }
   if (url.pathname === "/api/v1/admin/roles" && adminSession) {
     if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });
