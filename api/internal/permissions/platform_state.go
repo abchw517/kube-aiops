@@ -40,9 +40,10 @@ type platformRole struct {
 }
 
 type platformGroup struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Roles []string `json:"roles"`
+	Description string   `json:"description,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Roles       []string `json:"roles"`
 }
 
 type platformAccount struct {

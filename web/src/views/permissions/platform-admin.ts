@@ -2,7 +2,7 @@ import { escapeHtml as h } from "../../components/html.ts";
 
 type Scope = { environment: string; cluster?: string; namespace?: string; business?: string };
 type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null };
-type Group = { id: string; name: string; roles: string[] | null };
+type Group = { id: string; name: string; description?: string; roles: string[] | null };
 type Account = {
   id: string; username: string; kind: string; disabled: boolean; directoryDisabled: boolean;
   mustChangePassword: boolean; groups: string[] | null; roles: string[] | null;
@@ -90,16 +90,22 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
       </div>` : ""}`;
   }
   return `<div class="platform-heading"><h2>用户管理</h2>
-    <label>搜索账号<input type="search" data-platform-search placeholder="输入账号名或身份"></label></div>
+    <div class="platform-filters">
+    <label>搜索账号<input type="search" data-platform-filter="query" placeholder="输入账号名或身份"></label>
+    <label>账号类型<select data-platform-filter="kind"><option value="">全部类型</option>${options(Object.entries(kinds).map(([id,name]) => ({ id,name })))}</select></label>
+    <label>账号状态<select data-platform-filter="status"><option value="">全部状态</option><option>正常</option><option>待改密</option><option>平台已停用</option><option>目录已停用</option></select></label>
+    </div></div>
     <form class="platform-form" data-platform="accounts">
       <div class="catalog-table-wrap"><table class="catalog-table">
-        <thead><tr><th>选择</th><th>账号</th><th>身份</th><th>状态</th><th>用户组</th><th>直接角色</th><th>操作</th></tr></thead><tbody>
-        ${users.map((item) => `<tr data-platform-row><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
+        <thead><tr><th><input type="checkbox" data-platform-select-all aria-label="选择当前结果"></th><th>账号</th><th>身份</th><th>状态</th><th>用户组</th><th>直接角色</th><th>操作</th></tr></thead><tbody>
+        ${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-status="${h(statusOf(item))}"><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
           <td>${h(item.username)}</td><td>${h(kinds[item.kind])}</td><td>${h(statusOf(item))}</td>
           <td>${names(item.groups, access.groups)}</td><td>${names(item.roles, access.roles)}</td>
           <td><a href="#/admin/users/${encodeURIComponent(item.id)}">查看详情</a></td></tr>`).join("")}
+        <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="7">暂无符合条件的账号。</td></tr>
         </tbody></table></div>
-      <details><summary>批量授权</summary><div class="identity-form">${selection}</div></details><p role="status"></p>
+      <p aria-live="polite" data-platform-selected>已选 0 项</p>
+      <details><summary>批量授权 / 撤销</summary><div class="identity-form">${selection}</div></details><p role="status"></p>
     </form>
     <details><summary>＋ 创建本地账号</summary>
       <form class="identity-form" data-platform="accounts">
@@ -136,9 +142,10 @@ async function renderAccess(): Promise<string> {
   const groupList = access.groups.map((group) => `<details><summary>${h(group.name)} · ${names(group.roles, access.roles)}</summary>
     <form class="identity-form" data-platform="access" data-id="${h(group.id)}">
       <label>用户组名称<input name="name" required value="${h(group.name)}"></label>
+      <label>用途<input name="description" maxlength="256" value="${h(group.description ?? "")}"></label>
       <label>角色<select name="roles" multiple>${options(available)}</select></label>
       <div class="catalog-actions">${submit("添加角色", "group-roles-add")}${submit("移除角色", "group-roles-remove", true)}
-      ${submit("保存名称", "group-save", true)}${submit("删除用户组", "group-delete", true)}</div><p role="status"></p>
+      ${submit("保存用户组", "group-save", true)}${submit("删除用户组", "group-delete", true)}</div><p role="status"></p>
     </form></details>`).join("");
   const roleForm = (role?: Role) => `<form class="identity-form platform-role" data-platform="access" data-id="${h(role?.id ?? "")}">
     <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name ?? "")}"></label>
@@ -153,6 +160,7 @@ async function renderAccess(): Promise<string> {
       <details><summary>＋ 新建用户组</summary>
         <form class="identity-form" data-platform="access">
           <label>用户组名称<input name="name" required maxlength="128"></label>
+          <label>用途<input name="description" maxlength="256"></label>
           ${submit("创建用户组", "group-save")}<p role="status"></p>
         </form></details>
     </section>
@@ -213,7 +221,7 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     const response = await fetch(`/api/v1/admin/${form.dataset.platform}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, id: form.dataset.id, ids, values, scopes,
-        name: data.get("name") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
+        name: data.get("name") ?? "", description: data.get("description") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
     });
     if (!response.ok) {
       status.textContent = (await response.text()).trim() || "操作失败。";
@@ -284,11 +292,36 @@ export function handlePlatformClick(event: MouseEvent): void {
 }
 
 export function filterAccounts(event: Event): void {
-  if (!(event.target instanceof HTMLInputElement) || !event.target.hasAttribute("data-platform-search")) return;
-  const search = event.target.value.trim().toLowerCase();
-  for (const row of event.target.closest(".identity-panel")?.querySelectorAll<HTMLElement>("[data-platform-row]") ?? []) {
-    row.hidden = !row.textContent?.toLowerCase().includes(search);
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
+      !target.matches('[data-platform-filter], [data-platform-select-all], input[name="ids"]')) return;
+  const panel = target.closest(".identity-panel");
+  if (!panel) return;
+  const field = (key: string) => panel.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-platform-filter="${key}"]`)?.value ?? "";
+  const search = field("query").trim().toLowerCase();
+  const kind = field("kind");
+  const status = field("status");
+  const visible: HTMLInputElement[] = [];
+  let matching = 0;
+  for (const row of panel.querySelectorAll<HTMLElement>("[data-platform-row]")) {
+    row.hidden = Boolean((kind && row.dataset.kind !== kind) || (status && row.dataset.status !== status) ||
+      !row.textContent?.toLowerCase().includes(search));
+    if (!row.hidden) matching++;
+    const box = row.querySelector<HTMLInputElement>('input[name="ids"]');
+    if (box?.checked && row.hidden) box.checked = false;
+    if (box && !box.disabled && !row.hidden) visible.push(box);
   }
+  const all = panel.querySelector<HTMLInputElement>("[data-platform-select-all]");
+  if (all && target === all) for (const item of visible) item.checked = all.checked;
+  const selected = visible.filter((item) => item.checked).length;
+  if (all) {
+    all.checked = visible.length > 0 && selected === visible.length;
+    all.indeterminate = selected > 0 && selected < visible.length;
+  }
+  const count = panel.querySelector("[data-platform-selected]");
+  if (count) count.textContent = `已选 ${selected} 项`;
+  const empty = panel.querySelector<HTMLElement>("[data-platform-empty]");
+  if (empty) empty.hidden = matching > 0;
 }
 
 export async function updateScopeOptions(event: Event): Promise<void> {

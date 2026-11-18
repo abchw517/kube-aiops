@@ -348,6 +348,16 @@ try {
     await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
     const nav = await cdp.send("Runtime.evaluate", { expression: `Array.from(document.querySelectorAll(".workspace-nav a"), a => a.textContent)`, returnByValue: true });
     if (nav.result?.value?.slice(0, 2).join("/") !== "诊断控制台/运维知识库") throw new Error("Wiki must appear below the diagnostics console");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
+      (text) => text.includes("账号类型") && text.includes("账号状态") && text.includes("reader"), "User filters did not render");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-platform-select-all]").click()' });
+    await assertText(cdp, (text) => text.includes("已选 1 项"), "Select all did not update the selection count");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const kind = document.querySelector('[data-platform-filter="kind"]');
+      kind.value = "guest";
+      kind.dispatchEvent(new Event("change", { bubbles: true }));
+    })()` });
+    await assertText(cdp, (text) => text.includes("暂无符合条件的账号") && text.includes("已选 0 项"), "Filtering should clear hidden selections");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users/ldap%3Areader",
       (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") && text.includes("直接授予"), "User detail omitted permission origins");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",

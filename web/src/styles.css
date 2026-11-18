@@ -301,3 +301,5 @@ td { overflow-wrap: anywhere; }
 .platform-operations { display: grid; gap: 12px; margin-top: 20px; }
 
 .platform-assignment { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 8px; }
+
+.platform-filters { display: flex; flex-wrap: wrap; gap: 12px; }

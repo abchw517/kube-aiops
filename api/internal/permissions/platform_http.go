@@ -30,14 +30,15 @@ type accountView struct {
 }
 
 type platformChange struct {
-	Action   string
-	ID       string
-	IDs      []string
-	Values   []string
-	Name     string
-	Kind     string
-	Password string
-	Scopes   []accessScope
+	Description string
+	Action      string
+	ID          string
+	IDs         []string
+	Values      []string
+	Name        string
+	Kind        string
+	Password    string
+	Scopes      []accessScope
 }
 
 type changeResult struct {
@@ -443,7 +444,11 @@ func applyAccess(state platformState, input platformChange) changeResult {
 					return fail("用户组名称已使用")
 				}
 			}
-			group.ID, group.Name = result.ID, name
+			description := strings.TrimSpace(input.Description)
+			if len([]rune(description)) > 256 {
+				return fail("用途最多可填写 256 个字符")
+			}
+			group.ID, group.Name, group.Description = result.ID, name, description
 			state.Groups[group.ID] = group
 		}
 	case "role-delete":

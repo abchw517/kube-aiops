@@ -65,13 +65,28 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
 
 function form(resource: string, fields: string, label: string): string {
   return `<form class="login-form identity-form" data-identity-resource="${resource}">
-    ${fields}<p role="status"></p><button class="button" type="submit"${resource === "ldap" ? " disabled" : ""}>${label}</button>
+    ${fields}${resource === "ldap" ? `<fieldset><legend>验证步骤</legend><ol>
+      ${ldapSteps.map((step) => `<li>${step} · <span data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>` : ""}
+    <p role="status"></p><button class="button" type="submit"${resource === "ldap" ? " disabled" : ""}>${label}</button>
     ${resource === "ldap" ? '<button class="button secondary" type="submit" value="test">测试 LDAP 服务器</button>' : ""}
   </form>`;
 }
 
 function passwordField(): string {
   return '<label>新密码<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="72"></label>';
+}
+
+const ldapSteps = ["目录连接", "搜索账号绑定", "测试员工查询", "测试员工认证"] as const;
+
+function showLDAPSteps(form: HTMLFormElement, stage = ""): void {
+  const failureIndex: Record<string, number> = { connection: 0, bind: 1, search: 2, user_search: 2,
+    user_match: 2, user_auth: 3, group_search: 3, group_query: 3, identity_mapping: 3 };
+  const failed = failureIndex[stage];
+  const items = form.querySelectorAll<HTMLElement>("[data-ldap-step]");
+  items.forEach((item, index) => {
+    item.textContent = stage === "success" || (failed !== undefined && index < failed) ? "通过" :
+      index === failed ? "失败" : "待验证";
+  });
 }
 
 const ldapVerification = new WeakMap<HTMLFormElement, string>();
@@ -88,6 +103,7 @@ export function invalidateLDAPDraft(form: HTMLFormElement, target: EventTarget |
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
       target.name === "testUsername" || target.name === "testPassword") return;
   ldapVerification.delete(form);
+  showLDAPSteps(form);
   const save = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="test"])');
   if (save) save.disabled = true;
   const status = form.querySelector('[role="status"]');
@@ -101,7 +117,10 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   if (!status || !button || (ldap ? pendingLDAP.has(form) || (!testingLDAP && !ldapVerification.has(form)) : button.disabled)) return;
   if (ldap) {
     pendingLDAP.add(form);
-    if (testingLDAP) ldapVerification.delete(form);
+    if (testingLDAP) {
+      ldapVerification.delete(form);
+      showLDAPSteps(form);
+    }
   }
   const buttons = form.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
   for (const control of buttons) control.disabled = true;
@@ -141,6 +160,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
           submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form)))) {
         ldapVerification.set(form, verification);
       }
+      showLDAPSteps(form, submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form))) ? stage : "");
       const messages: Record<string, string> = {
         success: ldapVerification.has(form)
           ? "连接、搜索账号绑定、员工查询和员工认证均成功，可以保存。"

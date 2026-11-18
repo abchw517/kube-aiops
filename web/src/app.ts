@@ -127,6 +127,7 @@ export class PortalApp {
     };
     this.root.addEventListener("input", updateLDAP);
     this.root.addEventListener("input", filterAccounts);
+    this.root.addEventListener("change", filterAccounts);
     this.root.addEventListener("change", (event) => void updateScopeOptions(event));
     this.root.addEventListener("change", updateLDAP);
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
