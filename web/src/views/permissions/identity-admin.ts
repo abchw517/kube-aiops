@@ -67,7 +67,7 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
     <section class="system-card system-form"><h3>测试待启用配置</h3>
       <label>LDAP 测试员工账号<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
       <label>LDAP 测试员工密码<input name="testPassword" type="password" maxlength="1024" autocomplete="off" aria-describedby="ldap-test-hint"></label>
-      <small id="ldap-test-hint">请使用测试员工自己的 LDAP 密码。</small>
+      <small id="ldap-test-hint">请使用测试员工自己的 LDAP 密码。测试失败时，当前表单会保留账号和密码，方便重试。</small>
       <button class="button secondary" type="submit" value="test">运行测试</button>
       <fieldset><legend>验证步骤</legend><ol class="system-validation-steps">
       ${ldapSteps.map((step) => `<li><span>${step}</span><span class="system-badge" data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>
@@ -198,6 +198,12 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       if (stage === "success" && typeof verification === "string" && verification.length > 0 &&
           submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form)))) {
         ldapVerification.set(form, { token: verification, draft: submittedDraft });
+        const username = form.querySelector<HTMLInputElement>('[name="testUsername"]');
+        const password = form.querySelector<HTMLInputElement>('[name="testPassword"]');
+        if (username && password && username.value === data.get("testUsername") && password.value === data.get("testPassword")) {
+          username.value = "";
+          password.value = "";
+        }
       }
       showLDAPSteps(form, submittedDraft === JSON.stringify(Object.fromEntries(ldapDraft(form))) ? stage : "");
       const messages: Record<string, string> = {
@@ -249,8 +255,6 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
       pendingLDAP.delete(form);
       if (testingLDAP && hint) hint.textContent = ldapVerification.has(form) ?
         "四项验证已通过。请点击「保存并启用」。" : "验证未通过。请查看右侧测试结果，处理后重新运行测试。";
-      const testPassword = form.querySelector<HTMLInputElement>('[name="testPassword"]');
-      if (testPassword) testPassword.value = "";
     }
     for (const control of buttons) control.disabled = ldap && control === button && !ldapVerification.has(form);
   }

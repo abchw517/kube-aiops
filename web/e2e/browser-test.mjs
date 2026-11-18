@@ -445,7 +445,19 @@ try {
       form.elements.testPassword.value = "fixture-password";
       form.querySelector('button[value="test"]').click();
     })()` });
+    await assertText(cdp, (text) => text.includes("连接失败，请检查"), "LDAP connection failure did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector('[data-identity-resource="ldap"]');
+      form.elements.baseDN.value = "dc=fixed,dc=test";
+      form.elements.baseDN.dispatchEvent(new Event("input", { bubbles: true }));
+      form.querySelector('button[value="test"]').click();
+    })()` });
     await assertText(cdp, (text) => text.includes("均成功，可以保存"), "LDAP test did not update the verification panel");
+    const ldapFieldsCleared = await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector('[data-identity-resource="ldap"]');
+      return form.elements.testUsername.value === "" && form.elements.testPassword.value === "";
+    })()`, returnByValue: true });
+    if (!ldapFieldsCleared.result?.value) throw new Error("Successful LDAP test did not clear employee credentials");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[type="submit"]:not([value="test"])').click()` });
     await assertText(cdp, (text) => text.includes("已保存") && text.includes("配置已启用"), "LDAP save did not show confirmation in its own panel");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",

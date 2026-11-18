@@ -181,6 +181,7 @@ createServer(async (request, response) => {
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
     if (request.method === "POST" && input.testUsername === "fixture-employee" && input.testPassword === "fixture-password") {
+      if (input.baseDN === "dc=example,dc=test") return json(response, 200, { stage: "connection" });
       return json(response, 200, { stage: "success", verification: "fixture-verification" });
     }
     if (request.method === "PUT" && input.verification === "fixture-verification" &&
