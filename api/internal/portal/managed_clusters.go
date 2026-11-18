@@ -88,7 +88,7 @@ func (o *onboarding) load(ctx context.Context) error {
 		if spec.ID == "local" {
 			continue
 		}
-		target, err := o.build(spec)
+		target, err := o.build(spec, nil)
 		if err != nil {
 			return err
 		}
@@ -104,7 +104,8 @@ func remoteHTTPS(raw string) bool {
 	return err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
 }
 
-func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
+// build 构建集群客户端；新凭据优先从当前请求传入，其余连接沿用已保存或挂载的凭据。
+func (o *onboarding) build(spec managedCluster, draft *clusterCredential) (httpapi.ClusterTarget, error) {
 	if !clusterIDPattern.MatchString(spec.ID) || spec.ID == "local" {
 		return httpapi.ClusterTarget{}, errors.New("实例 ID 无效或被保留")
 	}
@@ -134,7 +135,11 @@ func (o *onboarding) build(spec managedCluster) (httpapi.ClusterTarget, error) {
 		dir := filepath.Join("/etc/kube-aiops/clusters", spec.ID)
 		cfg := kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
 			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName}
-		if err := spec.configureCredential(&cfg); err != nil {
+		if draft != nil {
+			if err := draft.apply(&cfg); err != nil {
+				return httpapi.ClusterTarget{}, err
+			}
+		} else if err := spec.configureCredential(&cfg); err != nil {
 			return httpapi.ClusterTarget{}, err
 		}
 		remote = kubernetes.NewClient(cfg)
@@ -304,12 +309,13 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := spec.useCredentials(input.Credential, draftBase); err != nil {
+	draft, err := spec.prepareCredentials(input.Credential, draftBase)
+	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
 	spec.Deleted = false
-	target, err := o.build(spec)
+	target, err := o.build(spec, draft)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
@@ -326,10 +332,16 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		return
 	}
-	if r.Method == http.MethodPut && input.Credential != nil {
-		if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
-			http.Error(w, "新凭据校验失败，原连接配置已保留。"+nodeCollectionError(err), 502)
+	if draft != nil {
+		if err := spec.encryptCredential(input.Credential.Kind, draft); err != nil {
+			http.Error(w, err.Error(), 400)
 			return
+		}
+		if r.Method == http.MethodPut {
+			if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
+				http.Error(w, "新凭据校验失败，原连接配置已保留。"+nodeCollectionError(err), 502)
+				return
+			}
 		}
 	}
 	o.mu.Lock()

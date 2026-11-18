@@ -56,16 +56,17 @@ func clusterCredentialContext(spec managedCluster) []byte {
 	return raw
 }
 
-func (spec *managedCluster) useCredentials(draft *credentialInput, previous managedCluster) error {
+// prepareCredentials 解析新凭据草稿，未提交草稿时沿用原有加密凭据。
+func (spec *managedCluster) prepareCredentials(draft *credentialInput, previous managedCluster) (*clusterCredential, error) {
 	spec.CredentialKind, spec.CredentialCipher = previous.CredentialKind, previous.CredentialCipher
 	if draft == nil {
 		if spec.CredentialCipher != "" && spec.APIURL != previous.APIURL {
-			return errors.New("修改直连地址时必须提供新的凭据")
+			return nil, errors.New("修改直连地址时必须提供新的凭据")
 		}
-		return nil
+		return nil, nil
 	}
 	if spec.Mode != "pull" {
-		return errors.New("直连凭据仅适用于外部直连")
+		return nil, errors.New("直连凭据仅适用于外部直连")
 	}
 	entry := clusterCredential{Token: strings.TrimSpace(draft.Token), CA: []byte(draft.CA), Certificate: []byte(draft.Certificate), Key: []byte(draft.PrivateKey)}
 	switch draft.Kind {
@@ -76,24 +77,26 @@ func (spec *managedCluster) useCredentials(draft *credentialInput, previous mana
 	case "kubeconfig":
 		endpoint, credential, err := decodeKubeconfig(draft.Kubeconfig)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		spec.APIURL, entry = endpoint, credential
 	default:
-		return errors.New("不支持该直连凭据方式")
+		return nil, errors.New("不支持该直连凭据方式")
 	}
 	if !remoteHTTPS(spec.APIURL) {
-		return errors.New("必须使用 HTTPS Kubernetes API 地址")
+		return nil, errors.New("必须使用 HTTPS Kubernetes API 地址")
 	}
-	if err := entry.apply(new(kubernetes.Config)); err != nil {
-		return err
-	}
+	return &entry, nil
+}
+
+// encryptCredential 仅在保存或轮换时生成绑定到实例 ID 和 API 地址的密文。
+func (spec *managedCluster) encryptCredential(kind string, entry *clusterCredential) error {
 	aead, err := clusterCipher()
 	if err != nil {
 		return err
 	}
 	raw, _ := json.Marshal(entry)
-	spec.CredentialKind = draft.Kind
+	spec.CredentialKind = kind
 	spec.CredentialCipher = base64.StdEncoding.EncodeToString(aead.Seal(nil, nil, raw, clusterCredentialContext(*spec)))
 	return nil
 }

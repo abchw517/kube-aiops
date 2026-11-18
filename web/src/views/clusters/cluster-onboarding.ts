@@ -174,6 +174,7 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
       ${local ? "" : `<label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>`}
       <p>${local ? "本地采集使用部署内的服务账号。" : mode === "pull" ? "部署挂载方式使用实例 ID 对应的 Token 和 CA。轮换直连凭据须校验节点读取通过后才会切换。" :
         "保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。"} </p>
+      ${mode === "pull" && !rotating ? "<p>测试连接临时使用新填写的凭据。保存新凭据需要服务端配置集群凭据加密密钥。</p>" : ""}
       <p role="status"></p>
       <textarea rows="3" readonly hidden aria-label="上报凭据" data-report-token></textarea>
       <div class="cluster-editor-actions">

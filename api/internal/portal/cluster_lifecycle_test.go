@@ -113,13 +113,23 @@ func TestClusterConnectionMaintenance(t *testing.T) {
 	lifecycleRequest(t, o, "POST", "/", push, 409)
 }
 
+// TestExternalCredentialsAreRedactedAndRollbackOnFailure 覆盖凭据测试、加密存储和失败轮换。
 func TestExternalCredentialsAreRedactedAndRollbackOnFailure(t *testing.T) {
 	keyPath := filepath.Join(t.TempDir(), "key")
 	if err := os.WriteFile(keyPath, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", keyPath)
+	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", "")
+	t.Setenv("AUTH_LDAP_ENCRYPTION_KEY_FILE", "")
 	api := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/nodes" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") == "Bearer fixture-no-node-access" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer fixture-valid-cluster" && len(r.TLS.PeerCertificates) == 0 {
 			w.WriteHeader(401)
 			return
@@ -142,27 +152,16 @@ func TestExternalCredentialsAreRedactedAndRollbackOnFailure(t *testing.T) {
 	}
 	spec := managedCluster{ID: "remote", Name: "远程", Mode: "pull", Enabled: true, Environment: "测试", Business: "云帆", Group: "应用",
 		APIURL: api.URL, EngineNamespace: "engine", EngineName: "engine"}
-	body := func(token string) string {
+	body := func(spec managedCluster, credential *credentialInput) string {
+		t.Helper()
 		raw, err := json.Marshal(struct {
 			managedCluster
-			Credential credentialInput `json:"credential"`
-		}{spec, credentialInput{Kind: "token", Token: token, CA: ca}})
+			Credential *credentialInput `json:"credential,omitempty"`
+		}{spec, credential})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return string(raw)
-	}
-	lifecycleRequest(t, o, "POST", "/?test=true", body("fixture-valid-cluster"), 204)
-	lifecycleRequest(t, o, "POST", "/", body("fixture-valid-cluster"), 200)
-	lifecycleRequest(t, o, "PUT", "/", body("fixture-invalid-cluster"), 502)
-	old, err := o.clusterSpec(t.Context(), "remote")
-	var config kubernetes.Config
-	if err != nil || old.configureCredential(&config) != nil || config.Token != "fixture-valid-cluster" || strings.Contains(old.CredentialCipher, config.Token) {
-		t.Fatal("rotation did not keep encrypted original credentials")
-	}
-	list := lifecycleRequest(t, o, "GET", "/", "", 200)
-	if strings.Contains(list, "credentialCipher") || strings.Contains(list, config.Token) || !strings.Contains(list, `"credentialKind":"token"`) {
-		t.Fatal("cluster directory exposed credentials or omitted kind")
 	}
 	kubeconfig := fmt.Sprintf(`apiVersion: v1
 kind: Config
@@ -179,21 +178,67 @@ users:
 - name: readonly
   user: { token: fixture-valid-cluster }
 `, api.URL, base64.StdEncoding.EncodeToString([]byte(ca)))
-	raw, _ := json.Marshal(struct {
-		managedCluster
-		Credential credentialInput `json:"credential"`
-	}{spec, credentialInput{Kind: "kubeconfig", Kubeconfig: kubeconfig}})
-	lifecycleRequest(t, o, "PUT", "/", string(raw), 200)
+	kubeconfigDraft := &credentialInput{Kind: "kubeconfig", Kubeconfig: kubeconfig}
+	withKubeconfig := spec
+	withKubeconfig.APIURL = ""
+
 	key, err := x509.MarshalPKCS8PrivateKey(api.TLS.Certificates[0].PrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	certificateBody, _ := json.Marshal(struct {
-		managedCluster
-		Credential credentialInput `json:"credential"`
-	}{
-		spec, credentialInput{Kind: "certificate", CA: ca, Certificate: ca, PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}))}})
-	lifecycleRequest(t, o, "PUT", "/", string(certificateBody), 200)
+	certificate := &credentialInput{Kind: "certificate", CA: ca, Certificate: ca, PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}))}
+	token := &credentialInput{Kind: "token", Token: "fixture-valid-cluster", CA: ca}
+	for _, fixture := range []struct {
+		credential *credentialInput
+		spec       managedCluster
+	}{{kubeconfigDraft, withKubeconfig}, {token, spec}, {certificate, spec}} {
+		t.Run("test without key/"+fixture.credential.Kind, func(t *testing.T) {
+			lifecycleRequest(t, o, "POST", "/?test=true", body(fixture.spec, fixture.credential), http.StatusNoContent)
+		})
+	}
+	denied := *kubeconfigDraft
+	denied.Kubeconfig = strings.Replace(kubeconfig, "fixture-valid-cluster", "fixture-no-node-access", 1)
+	if message := lifecycleRequest(t, o, "POST", "/?test=true", body(withKubeconfig, &denied), http.StatusBadGateway); !strings.Contains(message, "节点读取权限不足") {
+		t.Fatalf("expected remote node permission failure, got %q", message)
+	}
+	if message := lifecycleRequest(t, o, "POST", "/", body(withKubeconfig, kubeconfigDraft), http.StatusBadRequest); !strings.Contains(message, "请配置集群凭据加密密钥") {
+		t.Fatalf("expected missing storage key failure, got %q", message)
+	}
+	if list := lifecycleRequest(t, o, "GET", "/", "", http.StatusOK); strings.TrimSpace(list) != "[]" {
+		t.Fatalf("test or rejected save persisted a cluster: %s", list)
+	}
+	if _, ok := o.registry.Lookup(spec.ID); ok {
+		t.Fatal("test or rejected save registered a cluster")
+	}
+
+	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", keyPath)
+	lifecycleRequest(t, o, "POST", "/", body(withKubeconfig, kubeconfigDraft), http.StatusOK)
+	saved, err := o.clusterSpec(t.Context(), spec.ID)
+	var config kubernetes.Config
+	if err != nil || saved.APIURL != api.URL || saved.CredentialKind != "kubeconfig" || saved.CredentialCipher == "" ||
+		saved.configureCredential(&config) != nil || config.Token != token.Token || strings.Contains(saved.CredentialCipher, token.Token) {
+		t.Fatal("kubeconfig was not saved as usable encrypted credentials")
+	}
+	list := lifecycleRequest(t, o, "GET", "/", "", http.StatusOK)
+	if strings.Contains(list, "credentialCipher") || strings.Contains(list, config.Token) || !strings.Contains(list, `"credentialKind":"kubeconfig"`) {
+		t.Fatal("cluster directory exposed credentials or omitted kind")
+	}
+
+	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", "")
+	lifecycleRequest(t, o, "PUT", "/?test=true", body(withKubeconfig, kubeconfigDraft), http.StatusNoContent)
+	lifecycleRequest(t, o, "PUT", "/?test=true", body(spec, nil), http.StatusBadRequest)
+	lifecycleRequest(t, o, "PUT", "/", body(spec, token), http.StatusBadRequest)
+	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", keyPath)
+	invalidToken := *token
+	invalidToken.Token = "fixture-invalid-cluster"
+	lifecycleRequest(t, o, "PUT", "/", body(spec, &invalidToken), http.StatusBadGateway)
+	preserved, err := o.clusterSpec(t.Context(), spec.ID)
+	target, ok := o.registry.Lookup(spec.ID)
+	if err != nil || preserved != saved || !ok || target.Backend.(directoryBackend).spec != saved {
+		t.Fatal("a test or failed rotation changed the stored or active connection")
+	}
+	lifecycleRequest(t, o, "PUT", "/", body(spec, token), http.StatusOK)
+	lifecycleRequest(t, o, "PUT", "/", body(spec, certificate), http.StatusOK)
 
 	if _, _, err := decodeKubeconfig(strings.Replace(kubeconfig, "user: { token: fixture-valid-cluster }", "user: { exec: { command: unsupported } }", 1)); err == nil {
 		t.Fatal("executable kubeconfig credential accepted")
