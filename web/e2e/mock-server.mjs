@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, normalize } from "node:path";
+import { extname, posix } from "node:path";
 
 const port = Number(process.env.PORT ?? "4173");
 const root = new URL("../dist/", import.meta.url);
@@ -296,7 +296,8 @@ createServer(async (request, response) => {
   }
 
   try {
-    const requested = url.pathname === "/" ? "index.html" : normalize(url.pathname).replace(/^\/+/, "");
+    // HTTP 路径始终使用斜线，避免在 Windows 上把资源请求解析成文件系统根路径。
+    const requested = url.pathname === "/" ? "index.html" : posix.normalize(url.pathname).replace(/^\/+/, "");
     const fileUrl = new URL(requested, root);
     const body = await readFile(fileUrl);
     response.writeHead(200, { "Content-Type": contentType(extname(requested)) });
