@@ -338,3 +338,6 @@ td { overflow-wrap: anywhere; }
 .system-choice-list span { overflow-wrap: anywhere; }
 .system-validation-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 @media (max-width: 1040px) { .system-user-layout, .system-ldap { grid-template-columns: minmax(0, 1fr); } }
+
+.system-management [hidden] { display: none !important; }
+[data-scope-list]:not(:empty) + .system-scope-empty { display: none; }

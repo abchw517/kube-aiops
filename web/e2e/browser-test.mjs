@@ -393,6 +393,7 @@ try {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
       form.elements.name.value = "浏览器检查";
+      form.querySelector("[data-scope-add]").click();
       const cluster = form.querySelector('[name="cluster"]');
       cluster.value = "local";
       cluster.dispatchEvent(new Event("change", { bubbles: true }));

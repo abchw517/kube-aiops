@@ -39,8 +39,8 @@ function scopeText(scope: Scope): string {
 }
 
 function authTable(user: Account): string {
-  if (user.kind === "super" || user.kind === "administrator") return "<p>全局 · 系统管理员</p>";
   if (user.disabled || user.directoryDisabled || user.mustChangePassword) return "<p>账号当前无法访问诊断数据。</p>";
+  if (user.kind === "super" || user.kind === "administrator") return "<p>全局 · 系统管理员</p>";
   if (!user.effective?.length) return "<p>暂无生效权限。</p>";
   return `<div class="catalog-table-wrap"><table class="catalog-table">
     <thead><tr><th>权限</th><th>资源范围</th><th>全部来源</th></tr></thead>
@@ -171,7 +171,7 @@ function scopeInputs(scope: Scope | undefined, clusters: Entry[], businesses: En
     <label>环境<select name="environment">${options(Object.entries(environments).map(([id, name]) => ({ id, name })), env)}</select></label>
     <label>集群<select name="cluster"><option value="">${restrictBusiness ? "请选择" : "整个环境"}</option>${clusterScopeOptions(clusters, scope?.cluster)}
       ${!selectedCluster && scope?.cluster ? options([{ id: scope.cluster, name: scope.cluster }], scope.cluster) : ""}</select></label>
-    <label>业务线<select name="business"${restrictBusiness ? "" : " disabled"}><option value="">请选择</option>${options(businesses, scope?.business)}
+    <label data-scope-business${restrictBusiness ? "" : " hidden"}>业务线<select name="business"${restrictBusiness ? "" : " disabled"}><option value="">请选择</option>${options(businesses, scope?.business)}
       ${!selectedBusiness && scope?.business ? options([{ id: scope.business, name: scope.business }], scope.business) : ""}</select></label>
     <label>命名空间<select name="namespace" data-scope-namespace${scope?.cluster ? "" : " disabled"}><option value="">${restrictBusiness ? "请选择" : "全部"}</option>
       ${scope?.namespace ? options([{ id: scope.namespace, name: scope.namespace }], scope.namespace) : ""}</select></label>
@@ -192,7 +192,8 @@ async function renderAccess(tab?: string): Promise<string> {
   const roleEditor = (role?: Role) => editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
     operationForm("access", role?.id ?? "", `<label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
       <h3>历史诊断查看</h3>
-      <div data-scope-list>${(role?.scopes ?? [undefined]).map((scope) => scopeInputs(scope, clusters.items, businesses)).join("")}</div>
+      <div data-scope-list>${(role?.scopes ?? []).map((scope) => scopeInputs(scope, clusters.items, businesses)).join("")}</div>
+      <p class="system-scope-empty">请添加至少一项授权范围。</p>
       <template>${scopeInputs(undefined, clusters.items, businesses)}</template>
       <button type="button" class="button secondary" data-scope-add>＋ 添加授权范围</button>`, "保存角色", "role-save"));
   const remove = (item: Entry, kind: "group" | "role") => editor(`remove:${item.id}`, "确认删除",
@@ -280,6 +281,10 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
   const scopes = [...form.querySelectorAll("[data-scope]")].map((row) => Object.fromEntries(
     [...row.querySelectorAll<HTMLSelectElement>("select")].map((select) => [select.name, select.value]),
   ));
+  if (action === "role-save" && scopes.length === 0) {
+    status.textContent = "请添加至少一项授权范围。";
+    return;
+  }
   for (const button of buttons) button.disabled = true;
   const dialog = form.closest<HTMLDialogElement>("dialog");
   dialog?.setAttribute("aria-busy", "true");
@@ -487,6 +492,8 @@ async function refreshScope(field: HTMLElement, preserve = false): Promise<void>
     option.hidden = Boolean(option.dataset.scopeEnv && option.dataset.scopeEnv !== env.value);
     option.disabled = option.hidden;
   }
+  const businessField = business.closest<HTMLElement>("[data-scope-business]");
+  if (businessField) businessField.hidden = !restricted;
   business.disabled = !restricted || !cluster.value;
   if (!restricted) business.value = "";
   const placeholder = `<option value="">${restricted ? "请选择" : "全部"}</option>`;
