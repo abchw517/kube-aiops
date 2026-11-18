@@ -379,7 +379,26 @@ td { overflow-wrap: anywhere; }
 .system-scope-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
 .system-scope-empty { margin: 0; color: var(--muted); }
 [data-scope-list]:not(:empty) + .system-scope-empty { display: none; }
-.system-management .system-detail .identity-nav { margin-top: 12px; }
+.account-identity { min-width: 0; overflow-wrap: anywhere; }
+.account-identity h3 { margin: 0 0 4px; }
+.account-identity code, .account-identity small { color: var(--muted); font-size: .8rem; line-height: 1.45; }
+.account-detail-header { display: grid; gap: 12px; }
+.account-detail-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+.account-detail-actions .system-actions { margin-inline-start: auto; }
+.account-status { flex: none; white-space: nowrap; font-weight: 650; }
+.account-status[data-account-status="正常"] { background: #e9f5ee; color: #215c43; }
+.account-status[data-account-status="待改密"] { background: #fff2d8; color: #805300; }
+.account-status:is([data-account-status="平台已停用"], [data-account-status="目录已停用"]) { background: #fff1f2; color: var(--red); }
+.account-detail-actions [data-destructive="true"] [data-system-open="account-action"] { color: var(--red); border-color: #ecd3d8; }
+.account-detail-actions [data-destructive="true"] [data-system-open="account-action"]:hover { background: #fff1f2; }
+.system-management .system-detail .identity-nav { margin: 12px 0; }
+.account-bindings { margin: 0; }
+.account-binding { display: grid; grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr); align-items: baseline; gap: 8px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.account-binding dt { color: var(--muted); font-size: .875rem; font-weight: 650; }
+.account-binding dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.account-binding-empty, .account-bindings-footer small { color: var(--muted); font-size: .875rem; }
+.account-bindings-footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+.account-table :is(th, td):nth-child(3), .account-table :is(th, td):nth-child(4) { white-space: nowrap; }
 
 .namespace-ownership-list { display: grid; gap: 10px; }
 .namespace-ownership-form .system-choice-list label { display: flex; margin: 0; }
