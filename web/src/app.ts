@@ -1,4 +1,4 @@
-import { renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
+import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess, submitResourceCatalog } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
 import { submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
 import {
@@ -59,7 +59,10 @@ export class PortalApp {
 
   start(): void {
     window.addEventListener("hashchange", () => void this.route());
-    this.root.addEventListener("click", (event) => this.handleClick(event));
+    this.root.addEventListener("click", (event) => {
+      handleResourceCatalogClick(event);
+      this.handleClick(event);
+    });
     this.root.addEventListener("submit", (event) => {
       const form = event.target;
       if (form instanceof HTMLFormElement && form.hasAttribute("data-role-form")) {

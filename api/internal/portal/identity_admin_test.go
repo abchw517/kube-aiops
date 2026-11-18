@@ -87,7 +87,7 @@ func TestManagedIdentityBootstrap(t *testing.T) {
 	request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[{"effect":"allow","groups":["local:ops"],"capabilities":["clusters:list","environments:manage"],"scopes":[{"cluster":"*"}]}]}`, admin, 204)
 	request("GET", "/api/v1/clusters", "", alice, 200)
 	request("GET", "/api/v1/admin/environments", "", alice, 200)
-	request("POST", "/api/v1/admin/environments", `{"name":"联调"}`, alice, 200)
+	request("POST", "/api/v1/admin/environments", `{"id":"integration","name":"联调"}`, alice, 200)
 	request("GET", "/api/v1/admin/business-lines", "", alice, 403)
 	t.Setenv("AUTH_LDAP_BIND_PASSWORD_FILE", "")
 	const rolesPath = "/api/v1/admin/roles"

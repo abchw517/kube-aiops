@@ -17,3 +17,16 @@ test("resource catalog renders an empty state and escapes stored names", () => {
   assert.match(content, /data-entry-id="development"/);
   assert.match(content, /新增环境/);
 });
+
+
+test("catalog shows compact rows with IDs and one add action after the table", () => {
+  const content = renderCatalog("environments", [
+    { id: "development", name: "研发" }, { id: "Legacy_ID-7", name: "旧环境" },
+  ]);
+  assert.match(content, /环境 ID/);
+  assert.match(content, /<code>Legacy_ID-7<\/code>/);
+  assert.equal((content.match(/data-catalog-action="edit"/g) ?? []).length, 2);
+  assert.equal((content.match(/data-catalog-action="add"/g) ?? []).length, 1);
+  assert.ok(content.indexOf("</table>") < content.indexOf('data-catalog-action="add"'));
+  assert.doesNotMatch(content, /<input/);
+});

@@ -33,12 +33,19 @@ func TestResourceCatalogLifecycle(t *testing.T) {
 		}
 		return w
 	}
+	for _, id := range []string{"", "Upper", "a_b", "a b", "1sandbox"} {
+		request(environmentKind, http.MethodPost, `{"id":"`+id+`","name":"沙盒"}`, 400)
+	}
+	request(environmentKind, http.MethodPost, `{"id":"sandbox","name":"沙盒"}`, 200)
+	request(environmentKind, http.MethodPost, `{"id":"sandbox","name":"另一个沙盒"}`, 409)
+	request(businessKind, http.MethodPost, `{"id":"sandbox","name":"业务沙盒"}`, 200)
+	request(environmentKind, http.MethodDelete, `{"id":"sandbox"}`, 204)
 	request(environmentKind, http.MethodPost, `{"name":" "}`, 400)
 	request(environmentKind, http.MethodPut, `{"id":"development","name":"开发"}`, 200)
-	request(environmentKind, http.MethodPost, `{"name":"研发"}`, 409)
+	request(environmentKind, http.MethodPost, `{"id":"duplicate-name","name":"研发"}`, 409)
 	request(environmentKind, http.MethodDelete, `{"id":"staging"}`, 204)
 
-	w := request(businessKind, http.MethodPost, `{"name":"平台"}`, 200)
+	w := request(businessKind, http.MethodPost, `{"id":"platform","name":"平台"}`, 200)
 	var business catalogEntry
 	if err := json.Unmarshal(w.Body.Bytes(), &business); err != nil || business.ID == "" {
 		t.Fatalf("invalid entry: %s", w.Body)
@@ -53,6 +60,11 @@ func TestResourceCatalogLifecycle(t *testing.T) {
 			t.Fatalf("expected cluster reference: %s", w.Body)
 		}
 	}
+	if _, err := store.ExecContext(ctx, "INSERT INTO resource_catalog(kind,id,name) VALUES(?,?,?)", businessKind, "Legacy_ID-7", "旧业务"); err != nil {
+		t.Fatal(err)
+	}
+	request(businessKind, http.MethodPut, `{"id":"Legacy_ID-7","name":"旧业务改名"}`, 200)
+	request(businessKind, http.MethodDelete, `{"id":"Legacy_ID-7"}`, 204)
 	if err := initResourceCatalog(ctx, store); err != nil {
 		t.Fatal(err)
 	}

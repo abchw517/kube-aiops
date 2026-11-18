@@ -40,6 +40,11 @@ let authenticated = false;
 let adminSession = false;
 let role;
 
+const catalogs = {
+  environments: [{ id: "development", name: "研发" }],
+  "business-lines": [{ id: "yunfan", name: "云帆" }],
+};
+
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/test/admin-session") {
@@ -121,8 +126,24 @@ createServer(async (request, response) => {
     }
     return json(response, 400, { error: "invalid fixture evidence" });
   }
-  if (url.pathname === "/api/v1/admin/environments" && adminSession && request.method === "GET") {
-    return json(response, 200, [{ id: "development", name: "研发" }]);
+  const catalogKind = url.pathname.split("/").at(-1);
+  if (catalogKind in catalogs && adminSession) {
+    const items = catalogs[catalogKind];
+    if (request.method === "GET") return json(response, 200, items);
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    const entry = items.find((item) => item.id === input.id);
+    if (request.method === "DELETE") {
+      if (input.id === "development") return json(response, 409, { message: "仍有集群引用", references: ["dev-k8s"] });
+      catalogs[catalogKind] = items.filter((item) => item.id !== input.id);
+      response.writeHead(204).end();
+      return;
+    }
+    if (request.method === "PUT" && entry) entry.name = input.name;
+    else if (request.method === "POST" && !entry) items.push(input);
+    else return json(response, 409, { message: "ID 已存在" });
+    return json(response, 200, input);
   }
   if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
     if (request.method === "GET") return json(response, 200, []);
