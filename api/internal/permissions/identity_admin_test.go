@@ -46,7 +46,10 @@ func TestLDAPConfigurationFailurePreservesLocalAdminAndMigratesPassword(t *testi
 			t.Fatalf("LDAP failure=%v", err)
 		}
 	}
-	assertLocalRecovery()
+	admin, err := New(t.Context(), store)
+	if err != nil || admin.ldap == nil || admin.ldap.BindPassword != "fixture-legacy-password" {
+		t.Fatalf("existing SQLite LDAP configuration should load without a key: %v", err)
+	}
 
 	writeIdentityTestFile(t, "AUTH_LDAP_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("AUTH_LDAP_CA_FILE", filepath.Join(t.TempDir(), "missing-ca.pem"))
@@ -60,7 +63,7 @@ func TestLDAPConfigurationFailurePreservesLocalAdminAndMigratesPassword(t *testi
 	}
 
 	t.Setenv("AUTH_LDAP_CA_FILE", "")
-	admin, err := New(t.Context(), store)
+	admin, err = New(t.Context(), store)
 	if err != nil || admin.ldap == nil || admin.ldap.BindPassword != "fixture-legacy-password" {
 		t.Fatalf("LDAP setup did not recover after CA repair: %v", err)
 	}
@@ -68,6 +71,12 @@ func TestLDAPConfigurationFailurePreservesLocalAdminAndMigratesPassword(t *testi
 	replacementKey[0] = 1
 	writeIdentityTestFile(t, "AUTH_LDAP_ENCRYPTION_KEY_FILE", base64.StdEncoding.EncodeToString(replacementKey))
 	assertLocalRecovery()
+	t.Setenv("AUTH_LDAP_ENCRYPTION_KEY_FILE", "")
+	assertLocalRecovery()
+	var lockedDocument string
+	if err := store.QueryRowContext(t.Context(), "SELECT document FROM ldap_settings").Scan(&lockedDocument); err != nil || lockedDocument != document {
+		t.Fatal("an encrypted LDAP configuration must remain intact when its key is unavailable")
+	}
 }
 
 func writeIdentityTestFile(t *testing.T, variable, contents string) {

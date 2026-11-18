@@ -613,13 +613,7 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 #### 5. 按需接入 LDAP / Active Directory
 
-准备域控的 LDAPS 域名、只读搜索账号和密码。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（明文 LDAP）。首次从 Portal 保存搜索密码前，创建一个用于加密 SQLite 密码字段的密钥。后续部署和恢复沿用同一密钥。
-
-```bash
-(umask 077; openssl rand -base64 32 > /secure/kube-aiops-ldap-encryption-key)
-kubectl -n kube-aiops-system create secret generic kube-aiops-ldap-encryption \
-  --from-file=key=/secure/kube-aiops-ldap-encryption-key
-```
+准备域控的 LDAPS 域名、只读搜索账号和密码。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（明文 LDAP）。网页验证并保存后，LDAP 配置和搜索密码写入身份 SQLite 数据库。
 
 使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。
 
@@ -628,7 +622,7 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
   --from-file=ca.crt=/secure/ad-ca.crt
 ```
 
-向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可省略 `AUTH_LDAP_CA_FILE`、`ldap` 卷及挂载。保留加密密钥配置。
+向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可省略 `AUTH_LDAP_CA_FILE`、`ldap` 卷及挂载。
 
 ```yaml
 spec:
@@ -637,21 +631,13 @@ spec:
       containers:
         - name: api
           env:
-            - name: AUTH_LDAP_ENCRYPTION_KEY_FILE
-              value: /etc/kube-aiops/ldap-encryption/key
             - name: AUTH_LDAP_CA_FILE
               value: /etc/kube-aiops/ldap/ca.crt
           volumeMounts:
-            - name: ldap-encryption
-              mountPath: /etc/kube-aiops/ldap-encryption
-              readOnly: true
             - name: ldap
               mountPath: /etc/kube-aiops/ldap
               readOnly: true
       volumes:
-        - name: ldap-encryption
-          secret:
-            secretName: kube-aiops-ldap-encryption
         - name: ldap
           secret:
             secretName: kube-aiops-ldap
@@ -662,7 +648,7 @@ kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
 
-管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码、**LDAP 测试员工账号**和该员工的密码，再点 **测试 LDAP 服务器**。测试依次检查目录连接、搜索账号绑定、唯一员工查询和员工本人认证。通过后在 5 分钟内点击 **保存配置**。修改草稿后须重新验证。测试不创建用户或会话，测试失败时当前配置继续生效。
+管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码、**LDAP 测试员工账号**和该员工的密码，再点 **运行测试**。测试依次检查目录连接、搜索账号绑定、唯一员工查询和员工本人认证。通过后在 5 分钟内点击 **保存并启用**。修改草稿后须重新验证。测试不创建用户或会话，测试失败时当前配置继续生效。
 
 连接模式由 URL 决定。使用 `ldap://` 时需在页面勾选「允许明文 LDAP」，搜索账号和员工凭据会以明文传输。原来使用 `ldap://` 的已保存配置在升级后需要用本地管理员重新测试并保存。采用环境变量配置时，使用 `AUTH_LDAP_ALLOW_PLAIN=true` 显式启用明文 LDAP。
 
@@ -673,7 +659,9 @@ openssl s_client -connect "${ldap_host}:636" -servername "$ldap_host" \
   -verify_hostname "$ldap_host" -verify_return_error -CAfile "$ldap_ca" </dev/null
 ```
 
-搜索密码由 API 加密后写入 SQLite。修改 URL 或搜索 DN 时需重新填写密码。备份时将密钥和 SQLite 备份分别保管。已有 SQLite 升级前先挂载密钥，API 首次启动会迁移旧版明文密码。若证书或密钥配置错误，可用本地管理员登录查看 LDAP 状态并修复。旧快照和备份可能含明文，升级后应轮换域控搜索账号密码，并按现有保留策略处置旧备份。
+默认无需配置 `AUTH_LDAP_ENCRYPTION_KEY_FILE`，搜索密码直接保存在 SQLite 中。数据库及备份包含可读取的搜索密码，应限制文件访问权限。测试员工密码只用于当次验证。修改 URL 或搜索 DN 时需重新填写搜索密码。
+
+已有加密配置仍可使用原密钥。移除原密钥后，本地管理员可重新填写搜索密码，运行测试并保存，以恢复 LDAP 登录。部署显式提供密钥时，API 仍可对 SQLite 中的搜索密码加密。若外部集群凭据也在复用该密钥，变更挂载前需确保 `CLUSTER_CREDENTIAL_KEY_FILE` 指向相同密钥。
 
 | 字段 | AD 示例 |
 | --- | --- |

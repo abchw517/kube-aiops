@@ -64,7 +64,7 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
       </div><label><input type="checkbox" name="allowPlainLDAP"${data.allowPlainLDAP === true ? " checked" : ""}> 允许明文 LDAP（仅用于 ldap://）</label>
       <button class="button" type="submit" aria-describedby="ldap-save-hint" disabled>保存并启用</button>
       <p id="ldap-save-hint" data-ldap-save-hint role="status">${ldapSaveNeedsTest}</p>
-      <details><summary>LDAP 配置说明</summary><p>ldaps:// 使用 TLS 并校验证书。ldap:// 直接连接，搜索账号和员工凭据会以明文传输。AD 通常使用 sAMAccountName。已有 %s 模板时请留空 UID。私有 CA 和密码加密密钥通过部署 Secret 挂载。</p></details></section>
+      <details><summary>LDAP 配置说明</summary><p>ldaps:// 使用 TLS 并校验证书。ldap:// 直接连接，搜索账号和员工凭据会以明文传输。AD 通常使用 sAMAccountName。已有 %s 模板时请留空 UID。LDAP 配置及搜索密码保存到 SQLite。使用私有 CA 时可通过部署 Secret 提供 CA 证书。</p></details></section>
     <section class="system-card system-form"><h3>测试待启用配置</h3>
       <label>LDAP 测试员工账号<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
       <label>LDAP 测试员工密码<input name="testPassword" type="password" maxlength="1024" autocomplete="off" aria-describedby="ldap-test-hint"></label>
