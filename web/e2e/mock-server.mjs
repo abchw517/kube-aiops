@@ -39,6 +39,7 @@ let authenticationRequired = false;
 let authenticated = false;
 const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
 let adminSession = false;
+let fixtureAccountDeleted = false;
 let auditRetention = { low: 3, medium: 5, high: 7 };
 let role;
 
@@ -214,12 +215,16 @@ createServer(async (request, response) => {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const change = JSON.parse(Buffer.concat(chunks).toString());
+      if (change.action === "delete" && change.id === ldapReaderId && !fixtureAccountDeleted) {
+        fixtureAccountDeleted = true;
+        return json(response, 200, [{ id: ldapReaderId }]);
+      }
       if (change.action === "grant" && change.ids?.[0] === ldapReaderId && change.values?.[0] === "guest-readonly") {
         return json(response, 200, [{ id: ldapReaderId }]);
       }
       return json(response, 400, { error: "unexpected account assignment" });
     }
-    return json(response, 200, [{
+    return json(response, 200, fixtureAccountDeleted ? [] : [{
       id: ldapReaderId, username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
       effective: [{ environment: "development", sources: ["直接授予 → 访客只读", "用户组 运维 → 观察员"] }],
     }]);

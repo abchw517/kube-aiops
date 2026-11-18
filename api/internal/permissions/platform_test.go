@@ -140,3 +140,57 @@ func TestGroupEditorSavesMetadataAndRoleAssociationsTogether(t *testing.T) {
 		t.Fatalf("group edit not saved together: %+v, %+v", result, group)
 	}
 }
+
+func TestDeleteSelectedAccountsRevokesSessionsAndPreventsLDAPRegistration(t *testing.T) {
+	ctx := t.Context()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "auth.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a := &Admin{store: store}
+	directory := identity.Principal{Subject: "ldap:uid=employee,dc=example", Provider: "ldap"}
+	employee, err := a.registerEmployee(ctx, "employee", directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := platformAccount{ID: "local:operator", Kind: "administrator", Generation: "operator-session"}
+	guest := platformAccount{ID: "local:visitor", Kind: "guest", Generation: "visitor-session", Roles: []string{guestRole}}
+	if err := a.editPlatform(ctx, func(s *platformState, _ *sql.Tx) error {
+		s.Accounts[admin.ID], s.Accounts[guest.ID] = admin, guest
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remove := func(actor identity.Principal, body string, want int) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		a.handlePlatform(w, httptest.NewRequest("POST", "/", strings.NewReader(body)), "accounts", actor)
+		if w.Code != want {
+			t.Fatalf("got %d want %d: %s", w.Code, want, w.Body)
+		}
+	}
+	super := identity.Principal{Subject: superSubject, Provider: AdminProvider}
+	remove(super, `{"action":"delete","id":"local:admin"}`, 409)
+	remove(admin.principal(), `{"action":"delete","id":"local:operator"}`, 409)
+	remove(super, `{"action":"delete","ids":["local:visitor"]}`, 400)
+	remove(admin.principal(), `{"action":"delete","id":"local:visitor"}`, 200)
+	remove(admin.principal(), `{"action":"delete","id":"ldap:uid=employee,dc=example"}`, 200)
+	remove(super, `{"action":"delete","id":"local:operator"}`, 200)
+	for _, p := range []identity.Principal{guest.principal(), employee, admin.principal()} {
+		if err := a.ValidateSession(ctx, p); !errors.Is(err, identity.ErrUnauthenticated) {
+			t.Fatalf("deleted account %s retained a session: %v", p.Subject, err)
+		}
+	}
+	if _, err := a.registerEmployee(ctx, "employee", directory); !errors.Is(err, identity.ErrUnauthenticated) {
+		t.Fatalf("deleted LDAP account could register again: %v", err)
+	}
+	state, err := a.platform(ctx)
+	if err != nil || len(state.Accounts) != 0 {
+		t.Fatalf("deleted accounts still in platform state: %v %v", state.Accounts, err)
+	}
+	var count int
+	if err := store.QueryRowContext(ctx, "SELECT COUNT(*) FROM operation_audit WHERE action='删除账号' AND risk='高'").Scan(&count); err != nil || count != 3 {
+		t.Fatalf("expected three high-risk deletion events, got %d, %v", count, err)
+	}
+}

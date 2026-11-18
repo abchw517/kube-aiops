@@ -232,6 +232,11 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 				result := changeResult{ID: id}
 				if resource == "accounts" {
 					result = applyAccount(*state, input, hash, actor.Subject == superSubject)
+					if input.Action == "delete" && result.Reason == "" && state.DeletedLDAP[id] {
+						if _, err := tx.ExecContext(ctx, "DELETE FROM ldap_accounts WHERE subject=?", id); err != nil {
+							return err
+						}
+					}
 				} else {
 					result = applyAccess(*state, input)
 				}
@@ -284,7 +289,7 @@ func labelChange(action string) (string, string) {
 	case "create":
 		return "创建账号", "高"
 	case "delete":
-		return "删除管理员", "高"
+		return "删除账号", "高"
 	case "reset":
 		return "重置密码", "高"
 	case "disable":
@@ -333,6 +338,9 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 		state.Accounts[result.ID] = platformAccount{ID: result.ID, Username: input.Name, Kind: input.Kind, PasswordHash: hash, MustChange: true, Generation: rand.Text(), Roles: []string{role}}
 		return result
 	}
+	if input.Action == "delete" && input.ID == superSubject {
+		return fail("超级管理员不可删除")
+	}
 	account, exists := state.Accounts[input.ID]
 	if !exists {
 		return fail("账号不可修改或不存在")
@@ -342,8 +350,8 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 	}
 	switch input.Action {
 	case "delete":
-		if account.Kind != "administrator" {
-			return fail("仅普通系统管理员可以删除")
+		if account.Kind == "ldap" {
+			state.DeletedLDAP[input.ID] = true
 		}
 		delete(state.Accounts, input.ID)
 		return result

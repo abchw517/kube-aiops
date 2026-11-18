@@ -60,13 +60,14 @@ type platformAccount struct {
 }
 
 type platformState struct {
-	Accounts map[string]platformAccount `json:"accounts"`
-	Roles    map[string]platformRole    `json:"roles"`
-	Groups   map[string]platformGroup   `json:"groups"`
+	Accounts    map[string]platformAccount `json:"accounts"`
+	DeletedLDAP map[string]bool            `json:"deletedLDAP,omitempty"`
+	Roles       map[string]platformRole    `json:"roles"`
+	Groups      map[string]platformGroup   `json:"groups"`
 }
 
 func readPlatform(row *sql.Row) (platformState, error) {
-	state := platformState{Accounts: map[string]platformAccount{}, Roles: map[string]platformRole{}, Groups: map[string]platformGroup{}}
+	state := platformState{Accounts: map[string]platformAccount{}, DeletedLDAP: map[string]bool{}, Roles: map[string]platformRole{}, Groups: map[string]platformGroup{}}
 	var raw []byte
 	if err := row.Scan(&raw); err != nil {
 		return state, err
@@ -162,7 +163,7 @@ func (a *Admin) registerEmployee(ctx context.Context, username string, p identit
 	var account platformAccount
 	err := a.editPlatform(ctx, func(state *platformState, _ *sql.Tx) error {
 		account = state.Accounts[p.Subject]
-		if account.Disabled {
+		if state.DeletedLDAP[p.Subject] || account.Disabled {
 			return identity.ErrUnauthenticated
 		}
 		if account.ID == "" {
