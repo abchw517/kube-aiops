@@ -57,6 +57,21 @@ func (o *onboarding) clusterEnvironment(ctx context.Context, id string) (string,
 	return "", nil
 }
 
+type catalogQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func catalogStableKey(ctx context.Context, db catalogQueryer, kind, label string) (string, error) {
+	var key string
+	err := db.QueryRowContext(ctx, `SELECT stable_key FROM resource_catalog_ids
+			WHERE kind=? AND (alias=? OR alias=(SELECT id FROM resource_catalog_names WHERE kind=? AND name=?))
+			ORDER BY alias=? DESC LIMIT 1`, kind, label, kind, label, label).Scan(&key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return key, err
+}
+
 func (o *onboarding) namespaceBusiness(ctx context.Context, cluster, namespace, business string) (bool, error) {
 	var allowed bool
 	err := o.store.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM namespace_business WHERE cluster=? AND namespace=? AND
@@ -135,6 +150,15 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer tx.Rollback()
+	directory, _ := target.Backend.(directoryBackend)
+	dedicatedBusiness := ""
+	if directory.spec.ClusterType == "dedicated" {
+		dedicatedBusiness, err = catalogStableKey(ctx, tx, businessKind, directory.spec.Business)
+		if err != nil || dedicatedBusiness == "" {
+			http.Error(w, "独立业务集群归属不可用", 409)
+			return
+		}
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=?", cluster, input.Namespace); err != nil {
 		http.Error(w, "保存失败", 503)
 		return
@@ -148,6 +172,10 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 		}
 		if err != nil {
 			http.Error(w, "保存失败", 503)
+			return
+		}
+		if dedicatedBusiness != "" && key != dedicatedBusiness {
+			http.Error(w, "独立业务集群只能分配到所属业务线", 409)
 			return
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, input.Namespace, key); err != nil {

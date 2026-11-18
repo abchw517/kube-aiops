@@ -131,6 +131,10 @@ export async function renderOnboarding(id?: string): Promise<string> {
         return `<label>${label}<input name="${name}" value="${escapeHtml(current)}" ${base ? "required" : ""}
           ${fixed ? "readonly" : ""}>${name === "environment" && locked ? "<small>首次采集已成功，环境已锁定。</small>" : ""}</label>`;
       }).join("")}
+      <label>集群类型<select name="clusterType">
+        <option value="shared">共用集群</option>
+        <option value="dedicated"${item?.clusterType === "dedicated" ? " selected" : ""}>独立业务集群</option>
+      </select></label>
       ${mode === "pull" ? `<label><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""} style="width:auto"> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
       <label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>
       <p>${mode === "pull" ? "只读 token 和 CA 使用该实例 ID 对应的部署挂载。配置共享观测源时使用实例 ID 作为集群标签。" :
@@ -159,7 +163,7 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean):
     const response = await fetch(endpoint + (testing ? "?test=true" : ""), {
       method: form.dataset.editing === "true" ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...values, mode: form.dataset.onboardingMode, enabled: data.has("enabled"), aiEnabled: data.has("aiEnabled") }),
+      body: JSON.stringify({ ...values, clusterType: data.get("clusterType"), mode: form.dataset.onboardingMode, enabled: data.has("enabled"), aiEnabled: data.has("aiEnabled") }),
     });
     if (!response.ok) {
       status.textContent = response.headers.get("Content-Type")?.includes("text/plain") ?

@@ -125,3 +125,37 @@ func TestCatalogIDChangesPreserveReferencesAndValidateConflicts(t *testing.T) {
 	}
 	call(businessKind, "PUT", `{"originalId":"yunfan","id":"stale-write","name":"云帆"}`, 404)
 }
+
+func TestDedicatedClusterOnlyAllowsItsOwnBusiness(t *testing.T) {
+	ctx := t.Context()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "dedicated.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o, err := newOnboarding(store, &httpapi.ClusterBackends{Backend: testBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(handler http.HandlerFunc, method, path, body string, want int) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+		if w.Code != want {
+			t.Fatalf("%s %s: got %d want %d %s", method, path, w.Code, want, w.Body)
+		}
+	}
+	catalog := func(w http.ResponseWriter, r *http.Request) { o.catalog(w, r, businessKind) }
+	request(catalog, "POST", "/", `{"id":"yunfan","name":"云帆"}`, 200)
+	request(catalog, "POST", "/", `{"id":"youshu","name":"有数"}`, 200)
+	request(o.admin, "POST", "/", `{"id":"dedicated","name":"独立集群","environment":"生产","business":"云帆","group":"apps","mode":"push","enabled":true,"clusterType":"dedicated"}`, 200)
+	if _, err := store.ExecContext(ctx, `UPDATE managed_clusters SET snapshot='[{"namespace":"shared-app"}]' WHERE id='dedicated'`); err != nil {
+		t.Fatal(err)
+	}
+	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"namespace":"shared-app","businesses":["yunfan"]}`, 204)
+	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"namespace":"shared-app","businesses":["youshu"]}`, 409)
+	has, err := o.namespaceBusiness(ctx, "dedicated", "shared-app", "yunfan")
+	if err != nil || !has {
+		t.Fatalf("failed assignment changed valid business: %v %v", has, err)
+	}
+}

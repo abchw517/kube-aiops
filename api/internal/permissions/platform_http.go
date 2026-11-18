@@ -95,6 +95,45 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		http.Error(w, "请求无效或超出批量上限", 400)
 		return
 	}
+	if resource == "access" && input.Action == "role-save" {
+		for _, scope := range input.Scopes {
+			if !validAccessScope(scope) {
+				http.Error(w, "授权范围无效。生产和预发布须指定集群、业务线和命名空间", 400)
+				return
+			}
+			if scope.Cluster == "" {
+				continue
+			}
+			if a.clusterEnvironment == nil {
+				http.Error(w, "集群目录暂不可用", 503)
+				return
+			}
+			environment, err := a.clusterEnvironment(ctx, scope.Cluster)
+			if err != nil {
+				http.Error(w, "集群目录暂不可用", 503)
+				return
+			}
+			if environment != scope.Environment {
+				http.Error(w, "所选集群不属于该环境", 409)
+				return
+			}
+			if scope.Business != "" {
+				if a.namespaceBusiness == nil {
+					http.Error(w, "命名空间归属暂不可用", 503)
+					return
+				}
+				assigned, err := a.namespaceBusiness(ctx, scope.Cluster, scope.Namespace, scope.Business)
+				if err != nil {
+					http.Error(w, "命名空间归属暂不可用", 503)
+					return
+				}
+				if !assigned {
+					http.Error(w, "所选命名空间未分配给该业务线", 409)
+					return
+				}
+			}
+		}
+	}
 	var hash string
 	if resource == "accounts" && (input.Action == "create" || input.Action == "reset") {
 		if !validNewPassword(input.Password) {
@@ -128,6 +167,17 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 			current := state.Accounts[actor.Subject]
 			if current.Kind != "administrator" || current.Disabled || current.MustChange || current.Generation != actor.SessionVersion {
 				return identity.ErrUnauthenticated
+			}
+		}
+		if resource == "accounts" && input.Action == "create" {
+			var legacy bool
+			err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM local_accounts WHERE lower(username)=lower(?))", input.Name).Scan(&legacy)
+			if err != nil {
+				return err
+			}
+			if legacy {
+				results = append(results, changeResult{ID: "local:" + input.Name, Reason: "账号已存在"})
+				return nil
 			}
 		}
 		if batch != "" && resource == "access" {
