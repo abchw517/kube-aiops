@@ -44,9 +44,10 @@ let auditRetention = { low: 3, medium: 5, high: 7 };
 let role;
 
 let localConnectionDeleted = false;
+let localCheckedAt = 0;
 const catalogs = {
   environments: [{ id: "development", name: "研发" }],
-  "business-lines": [{ id: "yunfan", name: "云帆" }],
+  "business-lines": [{ id: "yunfan", name: "云帆" }, { id: "platform", name: "平台" }],
 };
 
 createServer(async (request, response) => {
@@ -150,6 +151,12 @@ createServer(async (request, response) => {
     return json(response, 200, input);
   }
   if (url.pathname === "/api/v1/admin/cluster-onboarding" && adminSession) {
+    if (!localConnectionDeleted && request.method === "POST" && url.searchParams.get("action") === "recheck" &&
+      url.searchParams.get("id") === "local") {
+      localCheckedAt = 1700000000;
+      response.writeHead(204).end();
+      return;
+    }
     if (url.searchParams.get("id") === "local" &&
       (request.method === "DELETE" || url.searchParams.get("action") === "reconnect")) {
       localConnectionDeleted = request.method === "DELETE";
@@ -163,7 +170,7 @@ createServer(async (request, response) => {
         collection: { nodes: [{ name: "test-worker", ready: "False" }], namespaces: [{ name: "dev-app" }] },
       }, {
         id: "local", name: "本地可恢复集群", mode: "local", enabled: !localConnectionDeleted,
-        deleted: localConnectionDeleted, environment: "研发", business: "云帆",
+        deleted: localConnectionDeleted, checkedAt: localCheckedAt, environment: "研发", business: "云帆",
       }]);
     }
     const chunks = [];
@@ -201,14 +208,19 @@ createServer(async (request, response) => {
     if (request.method === "PUT") {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
-      const { assignments } = JSON.parse(Buffer.concat(chunks).toString());
-      if (assignments?.length === 1 && assignments[0].namespace === "payments" && assignments[0].businesses[0] === "yunfan") {
+      const delta = Buffer.concat(chunks).toString();
+      if (url.searchParams.get("cluster") === "dev-k8s" &&
+        (delta === '{"businessId":"yunfan","add":["payments"],"remove":["monitoring"]}' ||
+          delta === '{"businessId":"platform","add":[],"remove":["payments"]}')) {
         response.writeHead(204).end();
         return;
       }
       return json(response, 400, { error: "unexpected namespace assignments" });
     }
-    return json(response, 200, { namespaces: [{ name: "payments" }], assigned: {} });
+    return json(response, 200, {
+      namespaces: ["payments", "monitoring", ...Array.from({ length: 30 }, (_, index) => `team-${index}`)].map((name) => ({ name })),
+      assigned: { payments: ["platform"], monitoring: ["yunfan"], "retired-ns": ["yunfan"] },
+    });
   }
   if (url.pathname === "/api/v1/admin/accounts" && adminSession) {
     if (request.method === "POST") {

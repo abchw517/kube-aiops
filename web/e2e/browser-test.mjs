@@ -306,14 +306,64 @@ try {
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-cluster-details]").click()' });
     await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-action="recheck"][data-id="local"]')
+      .closest("tr").querySelector("[data-cluster-details]").click()` });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'dialog[open] [data-collection-check="local"]\').requestSubmit()' });
+    await assertText(cdp, (text) => text.includes("本地可恢复集群") && text.includes("待接入") && !text.includes("尚未收到有效采集数据"),
+      "Local cluster could not refresh collection from details");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="ownership-dev-k8s"]').click()` });
-    await assertText(cdp, (text) => text.includes("payments") && text.includes("保存归属"), "Namespace ownership dialog did not render");
+    await assertText(cdp, (text) => text.includes("请选择业务线后勾选命名空间。") && text.includes("保存归属"),
+      "Namespace ownership did not start with business-line selection");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 720, deviceScaleFactor: 1, mobile: true });
+    const ownershipSetup = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const form = document.querySelector("dialog[open] [data-namespace-ownership]");
+      const select = form.elements.businessId;
+      const button = form.querySelector('button[type="submit"]');
+      const choose = (id) => {
+        select.value = id;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const startsHidden = button.disabled && form.querySelector("[data-ownership-choices]").hidden;
+      choose("yunfan");
+      const list = form.querySelector('[aria-label="命名空间列表"]');
+      const payments = form.querySelector('input[value="payments"]');
+      const monitoring = form.querySelector('input[value="monitoring"]');
+      const prefilled = monitoring.checked && !payments.checked;
+      list.focus();
+      list.scrollTop = list.scrollHeight;
+      const scrollable = document.activeElement === list && list.scrollTop > 0 &&
+        !list.contains(button) && button.getBoundingClientRect().bottom <= innerHeight;
+      payments.checked = true;
+      monitoring.checked = false;
+      choose("platform");
+      const otherLinePrefilled = payments.checked && !monitoring.checked;
+      payments.checked = false;
+      choose("yunfan");
+      const draftPreserved = payments.checked && !monitoring.checked;
+      form.requestSubmit();
+      return startsHidden && prefilled && scrollable && otherLinePrefilled && draftPreserved &&
+        !form.querySelector('input[value="retired-ns"]');
+    })()` });
+    if (!ownershipSetup.result?.value) throw new Error("Ownership choices, scroll region, or draft preservation failed");
+    await assertText(cdp, (text) => text.includes("已保存当前业务线。其他业务线仍有未保存的勾选。"),
+      "Business-scoped save should keep other drafts open");
+    const actionsAreVisible = await cdp.send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `(() => {
+        const dialog = document.querySelector("dialog[open]");
+        const button = dialog.querySelector('button[type="submit"]');
+        return button.getBoundingClientRect().bottom <= dialog.getBoundingClientRect().bottom;
+      })()`,
+    });
+    if (!actionsAreVisible.result?.value) throw new Error("Ownership actions were clipped after the save status appeared");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("dialog[open] [data-namespace-ownership]");
-      form.querySelector('input[name="businesses"]').checked = true;
+      form.elements.businessId.value = "platform";
+      form.elements.businessId.dispatchEvent(new Event("change", { bubbles: true }));
       form.requestSubmit();
     })()` });
     await assertText(cdp, (text) => !text.includes("保存归属") && text.includes("集群接入"), "Namespace ownership did not save and close");
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const search = document.querySelector('[data-cluster-filter="query"]');
       search.value = "本地可恢复集群";

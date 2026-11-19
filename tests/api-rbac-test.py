@@ -3,8 +3,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import pathlib
+import runpy
+import subprocess
 import sys
+from unittest import mock
 
 import yaml
 
@@ -48,6 +54,44 @@ def allows(rules: list[dict], api_group: str, resource: str, verb: str) -> bool:
     )
 
 
+def verify_node_repair() -> None:
+    """验证修复只绑定指定 Deployment 的服务账号，保留只读范围。"""
+    check = runpy.run_path(str(ROOT / "scripts" / "check-api-node-rbac.py"))["check"]
+
+    def result(code: int, output: str, error: str = "") -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess([], code, output, error)
+
+    with mock.patch("subprocess.run", side_effect=[
+        result(0, "api-runtime"), result(1, "no"), result(0, ""), result(0, "yes"),
+    ]) as kubectl, contextlib.redirect_stdout(io.StringIO()):
+        assert check("test-context", "portal", "api", True) == 0
+        assert all(call.args[0][:3] == ["kubectl", "--context", "test-context"] for call in kubectl.call_args_list)
+        assert "--as=system:serviceaccount:portal:api-runtime" in kubectl.call_args_list[1].args[0]
+        assert kubectl.call_args_list[3].args == kubectl.call_args_list[1].args
+        applied = kubectl.call_args_list[2]
+        assert applied.args[0][-3:] == ["apply", "-f", "-"]
+        role, binding = json.loads(applied.kwargs["input"])["items"]
+        assert role["kind"] == "ClusterRole"
+        assert role["rules"] == [{"apiGroups": [""], "resources": ["nodes"], "verbs": ["list"]}]
+        assert binding["kind"] == "ClusterRoleBinding"
+        assert binding["roleRef"]["name"] == role["metadata"]["name"]
+        assert binding["subjects"] == [{"kind": "ServiceAccount", "name": "api-runtime", "namespace": "portal"}]
+
+    for account, answer, repair, message in (
+        ("api-runtime", result(1, "no"), False, "缺少"),
+        ("", result(1, "no"), True, "专用 ServiceAccount"),
+        ("api-runtime", result(1, "", "cannot impersonate"), True, "cannot impersonate"),
+    ):
+        with mock.patch("subprocess.run", side_effect=[result(0, account), answer]) as kubectl:
+            try:
+                check("test-context", "portal", "api", repair)
+            except RuntimeError as error:
+                assert message in str(error)
+            else:
+                raise AssertionError("Expected local node authorization check to fail")
+            assert kubectl.call_count == 2
+
+
 def main() -> int:
     role = yaml.safe_load(ROLE_PATH.read_text(encoding="utf-8"))
     rules = role.get("rules") or []
@@ -68,7 +112,8 @@ def main() -> int:
         print(f"[api-rbac][ERROR] 禁止权限被意外放开: {unexpected}", file=sys.stderr)
         return 1
 
-    print("[api-rbac] 精确只读权限基线通过（Nodes、Namespaces 仅 list）")
+    verify_node_repair()
+    print("[api-rbac] 精确只读权限基线和节点权限修复验证通过（Nodes、Namespaces 仅 list）")
     return 0
 
 

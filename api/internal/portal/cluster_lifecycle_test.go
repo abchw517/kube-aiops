@@ -317,4 +317,29 @@ func TestNamespaceAssignmentsCommitTogether(t *testing.T) {
 	if err != nil || !platform {
 		t.Fatalf("platform assignment missing: %v %v", platform, err)
 	}
+	if _, err := store.ExecContext(ctx, `INSERT INTO resource_catalog_ids VALUES ('business-lines','ops','ops','ops');
+		INSERT INTO namespace_business VALUES ('local','payments','ops'),('local','stale','cloud'),('other','platform','cloud')`); err != nil {
+		t.Fatal(err)
+	}
+	save(`{"businessId":"cloud","add":["payments"],"remove":["platform"]}`, 204)
+	save(`{"businessId":"cloud","add":["payments"],"remove":["platform"]}`, 204)
+	save(`{"businessId":"cloud","add":["platform"],"remove":["missing"]}`, 404)
+	save(`{"businessId":"cloud","add":["platform"],"remove":["platform"]}`, 400)
+	save(`{"businessId":"cloud","add":["platform"],"assignments":[{"namespace":"payments","businesses":[]}]}`, 400)
+	save(`{"businessId":"missing","add":["platform"]}`, 409)
+	for _, relation := range []struct {
+		cluster, namespace, business string
+		want                         bool
+	}{
+		{"local", "payments", "cloud", true},
+		{"local", "payments", "ops", true},
+		{"local", "platform", "cloud", false},
+		{"local", "stale", "cloud", true},
+		{"other", "platform", "cloud", true},
+	} {
+		got, err := o.namespaceBusiness(ctx, relation.cluster, relation.namespace, relation.business)
+		if err != nil || got != relation.want {
+			t.Fatalf("unexpected association %+v: %v, %v", relation, got, err)
+		}
+	}
 }

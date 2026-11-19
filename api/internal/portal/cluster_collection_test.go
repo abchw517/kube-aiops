@@ -5,9 +5,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -105,5 +107,53 @@ func TestPullCollectionLocksEnvironmentAndKeepsLastValidNodeSample(t *testing.T)
 	state = sample(current, nodes, 20*time.Minute)
 	if state.Data.NodeFailures != 0 || state.FirstAt != start.Add(time.Second).Unix() {
 		t.Fatalf("recovery altered the first collection or retained failures: %+v", state)
+	}
+}
+
+// TestLocalNodeRecheckAfterRBACRepair 验证本地 403 会提示对应权限，权限恢复后可立即重查。
+func TestLocalNodeRecheckAfterRBACRepair(t *testing.T) {
+	var permitted atomic.Bool
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/nodes":
+			if !permitted.Load() {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			fmt.Fprint(w, `{"items":[{"metadata":{"name":"worker"},"status":{"conditions":[{"type":"Ready","status":"True"}]}}]}`)
+		default:
+			fmt.Fprint(w, `{"items":[]}`)
+		}
+	}))
+	defer api.Close()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "clusters.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o, err := newOnboarding(store, &httpapi.ClusterBackends{Backend: testBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	client := kubernetes.NewClient(kubernetes.Config{APIURL: api.URL, Token: "fixture",
+		CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: api.Certificate().Raw})})
+	if err := o.initLocal(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.collect(ctx, "local", "", client, time.Now().Add(-time.Minute), true); err != nil {
+		t.Fatal(err)
+	}
+	denied, err := o.readCollection(ctx, "local")
+	if err != nil || !strings.Contains(denied.Data.NodeError, "ServiceAccount") || !strings.Contains(denied.Data.NodeError, "list nodes") {
+		t.Fatalf("local RBAC guidance missing: %+v (%v)", denied.Data, err)
+	}
+	permitted.Store(true)
+	lifecycleRequest(t, o, "POST", "/?id=local&action=recheck", "", http.StatusNoContent)
+	recovered, err := o.readCollection(ctx, "local")
+	if err != nil || recovered.Data.NodeError != "" || recovered.Data.NodeFailures != 0 ||
+		len(recovered.Data.Nodes) != 1 || recovered.Data.Nodes[0].Ready != "True" {
+		t.Fatalf("recheck did not record recovered node data: %+v (%v)", recovered.Data, err)
 	}
 }

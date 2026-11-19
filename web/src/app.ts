@@ -3,6 +3,7 @@ import { filterAccounts, handlePlatformClick, updateScopeOptions } from "./views
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
+import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
 import {
   ApiError,
   type Cluster,
@@ -81,6 +82,7 @@ export class PortalApp {
     this.root.addEventListener("input", filterClusterRows);
     this.root.addEventListener("change", filterClusterRows);
     this.root.addEventListener("change", updateClusterCredential);
+    this.root.addEventListener("change", changeNamespaceOwnership);
     this.root.addEventListener("input", updateLDAP);
     this.root.addEventListener("input", filterAccounts);
     this.root.addEventListener("change", filterAccounts);
