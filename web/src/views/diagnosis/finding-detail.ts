@@ -1,7 +1,9 @@
 import type { Finding } from "../../api/generated.ts";
 import { escapeHtml, formatSeverity, formatTimestamp } from "../../components/html.ts";
 
-import { findingReviewControls } from "./finding-review.ts";
+import { findingReviewPanel, findingReviewTrigger } from "./finding-review.ts";
+
+const reviewPrefix = "AI 复核结论\n\n";
 
 export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null): string {
   const query = returnQuery ?? new URLSearchParams({ cluster: finding.cluster }).toString();
@@ -25,8 +27,12 @@ export function renderFindingDetail(finding: Finding, reviewEnabled = false, ret
         </dl>
       </section>
       <section class="panel detail-copy">
-        <div class="detail-heading"><h2>诊断说明</h2>${reviewEnabled ? findingReviewControls() : ""}</div>
-        <p class="detail-text" data-finding-explanation aria-live="polite">${escapeHtml(finding.details ?? "暂无补充诊断说明。")}</p>
+        <div class="detail-heading"><h2>诊断说明</h2>${reviewEnabled ? findingReviewTrigger() : ""}</div>
+        <h3>K8sGPT 原始说明</h3>
+        <p class="detail-text" data-finding-explanation tabindex="-1">${escapeHtml((finding.originalDetails ?? finding.details) || "暂无补充诊断说明。")}</p>
+        <div data-review-saved aria-live="polite"${finding.originalDetails === undefined ? " hidden" : ""}>${finding.originalDetails === undefined ? "" :
+          `<h3>已保存复核结论${finding.reviewRevision ? ` <small>v${finding.reviewRevision}</small>` : ""}</h3><p class="detail-text">${escapeHtml(finding.details?.replace(reviewPrefix, "") ?? "")}</p>`}</div>
+        ${reviewEnabled ? findingReviewPanel() : ""}
       </section>
     </article>`;
 }

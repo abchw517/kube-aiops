@@ -548,6 +548,12 @@ components:
           $ref: '#/components/schemas/ResourceRef'
         problem:
           type: string
+        reviewRevision:
+          type: integer
+          minimum: 1
+        originalDetails:
+          type: string
+          description: Original explanation when details contains a saved review.
         details:
           type: string
         source:

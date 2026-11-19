@@ -69,6 +69,16 @@
     .details h1 { margin-top: .9rem; }
     .details dl { grid-template-columns: 7rem minmax(0, 1fr); }
     .details p { margin-top: .8rem; }
+    .review-layout { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 24rem),1fr)); gap: 1rem; margin-top: 1rem; }
+    .review-card { padding: 1rem; }
+    .review-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; }
+    .review-panel { border-top: 1px solid #d8e3eb; margin-top: 1rem; padding-top: 1rem; }
+    .review-panel h3 { margin: .85rem 0 .25rem; }
+    .review-panel textarea { display: block; width: 100%; min-height: 5rem; margin: .5rem 0; font: inherit; }
+    .review-panel details { margin: 1rem 0; }
+    .review-panel button { margin: .25rem .25rem .25rem 0; }
+    .review-state { color: #775018; font-weight: 700; }
+    #demo-evidence:focus { outline: 2px solid #17687c; }
     @media (max-width: 900px) { .results { grid-template-columns: minmax(0, 1fr); } .distribution { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; } .distribution section + section { border: 0; padding: 0; margin: 0; } }
     @media (max-width: 680px) { .controls, .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric { padding-inline: .6rem; } .metric:first-child, .metric:last-child { border-radius: 0; } .metric:nth-child(2) { border-right: 0; } .metric:nth-child(even) .tooltip { inset-inline: auto .2rem; } .metric:nth-child(odd) .tooltip { inset-inline: .2rem auto; } .tooltip { width: min(19rem, calc(100vw - 2.3rem)); } }
   </style>
@@ -140,7 +150,30 @@
     <section class="panel details" id="details" aria-labelledby="detail-title" hidden>
       <a id="back" href="#/findings">返回诊断列表</a>
       <h1 id="detail-title" tabindex="-1"></h1>
-      <dl id="detail-fields"></dl>
+      <div class="review-layout">
+        <section class="panel review-card"><h2>故障信息</h2><dl id="detail-fields"></dl></section>
+        <section class="panel review-card">
+          <div class="review-heading"><h2>诊断说明</h2><button type="button" id="demo-start" aria-expanded="false" aria-controls="demo-review">AI 复核</button></div>
+          <p><strong>K8sGPT 原始说明</strong></p><p id="demo-original"></p>
+          <p id="demo-saved" hidden></p>
+          <section class="review-panel" id="demo-review" aria-label="AI 证据复核" hidden>
+            <details><summary>证据来源状态</summary><p>Kubernetes 事件 · 可用<br>Prometheus · 暂不可用<br>VictoriaLogs · 已禁用<br>Alertmanager · 已禁用</p></details>
+            <p role="status" id="demo-status"></p>
+            <div id="demo-result" hidden>
+              <h3>当前判断</h3><p class="review-state">证据不足</p><p id="demo-judgment"></p>
+              <h3>证据依据</h3><p><button type="button" id="demo-jump">查看 Kubernetes 事件 · 历史记录</button></p>
+              <h3>待验证项</h3><p id="demo-gap"></p>
+              <h3>下一步</h3><p id="demo-next"></p>
+              <details><summary>Wiki 参考</summary><p>历史案例可提供排查路径。</p></details>
+              <details><summary>补充观察或追问</summary><label>现场观察（选填）<textarea id="demo-observation"></textarea></label><button type="button" id="demo-retry">重新复核</button></details>
+              <label>复核结论<textarea id="demo-conclusion"></textarea></label><button type="button" id="demo-save">保存复核结论</button>
+            </div>
+            <button type="button" id="demo-preview" hidden>预览知识发布</button>
+            <div id="demo-publish-panel" hidden><h3>知识发布预览</h3><p id="demo-wiki"></p><button type="button" id="demo-publish">确认发布到知识库</button></div>
+          </section>
+        </section>
+      </div>
+      <section class="panel review-card" style="margin-top:1rem"><h2>关联证据</h2><p id="demo-evidence" tabindex="-1"></p></section>
     </section>
   </main>
   <script>
@@ -158,7 +191,7 @@
       { id: "probe", cluster: "test-k8s", severity: "warning", problem: "买家服务启动探针失败", kind: "Pod", resource: "buyer-api-57ff664c4c-zk8lc", namespace: "test-base", time: "2026-11-19T02:54:00Z" },
       { id: "restart", cluster: "prod-west", severity: "warning", problem: "结算服务副本频繁重启", kind: "Pod", resource: "checkout-api-7c846k", namespace: "checkout", time: "2026-11-19T02:41:00Z" },
       { id: "quota", cluster: "prod-east", severity: "info", problem: "建议评估队列工作负载的 CPU 请求值", kind: "Deployment", resource: "settlement-worker", namespace: "settlement", time: "2026-11-19T02:33:00Z" },
-      { id: "volume", cluster: "local", severity: "info", problem: "临时卷已绑定，建议确认存储类型", kind: "PersistentVolumeClaim", resource: "artifacts", namespace: "k8sgpt-demo", time: "2026-11-19T02:15:00Z" },
+      { id: "volume", cluster: "local", severity: "warning", problem: "PVC 引用的 StorageClass 不存在", kind: "PersistentVolumeClaim", resource: "artifacts", namespace: "k8sgpt-demo", time: "2026-11-19T02:15:00Z" },
     ];
     const severityLabels = { critical: "严重", warning: "警告", info: "信息" };
     const ranges = ["environment", "business", "group", "cluster"];
@@ -254,8 +287,75 @@
       find("first").href = listingUrl(first);
       find("first").hidden = page === 1;
     }
+    let demoRecord;
+    let demoVersion = 0;
+    let demoRun = 0;
+    const demoHistory = new Map();
+    function runDemoReview() {
+      if (!demoRecord) return;
+      const run = ++demoRun;
+      find("demo-review").hidden = false;
+      find("demo-start").setAttribute("aria-expanded", "true");
+      find("demo-result").hidden = true;
+      find("demo-status").textContent = "正在复核关联证据…";
+      setTimeout(() => {
+        if (run !== demoRun) return;
+        const pvc = demoRecord.id === "volume";
+        const observation = find("demo-observation").value.trim();
+        const judgment = pvc ? "发现时 PVC 引用了不存在的 StorageClass，当前状态仍待验证。" : "原始诊断与历史事件方向一致，资源当前状态仍待验证。";
+        find("demo-judgment").textContent = judgment + (observation ? " 已纳入待核实的人工观察。" : "");
+        find("demo-gap").textContent = pvc ? "PVC 实际引用的 storageClassName 和当前集群中同名存储类。" : "当前工作负载状态与最新事件。";
+        find("demo-next").textContent = pvc ? "核对 PVC 的 spec.storageClassName，再查询同名 StorageClass。" : "在原集群查看资源状态与近期事件。";
+        find("demo-conclusion").value = judgment;
+        find("demo-status").textContent = "";
+        find("demo-result").hidden = false;
+      }, 450);
+    }
+    find("demo-start").addEventListener("click", () => {
+      if (!find("demo-review").hidden) {
+        demoRun++;
+        find("demo-review").hidden = true;
+        find("demo-start").setAttribute("aria-expanded", "false");
+      } else runDemoReview();
+    });
+    find("demo-retry").addEventListener("click", runDemoReview);
+    find("demo-jump").addEventListener("click", () => find("demo-evidence").focus());
+    function showDemoSaved() {
+      const saved = demoRecord && demoHistory.get(demoRecord.cluster + "/" + demoRecord.id);
+      demoVersion = saved?.version || 0;
+      find("demo-saved").hidden = !saved;
+      find("demo-preview").hidden = !saved;
+      find("demo-saved").textContent = saved ? "已保存复核结论 · v" + demoVersion + " · " + saved.conclusion : "";
+    }
+    find("demo-save").addEventListener("click", () => {
+      const conclusion = find("demo-conclusion").value.trim();
+      if (!conclusion) return;
+      demoHistory.set(demoRecord.cluster + "/" + demoRecord.id, { version: demoVersion + 1, conclusion });
+      showDemoSaved();
+      find("demo-publish-panel").hidden = true;
+      find("demo-status").textContent = "已保存复核结论";
+    });
+    find("demo-preview").addEventListener("click", () => {
+      const saved = demoHistory.get(demoRecord.cluster + "/" + demoRecord.id);
+      find("demo-wiki").textContent = demoRecord.namespace + " · " + saved.conclusion;
+      find("demo-publish-panel").hidden = false;
+    });
+    find("demo-publish").addEventListener("click", () => {
+      find("demo-publish-panel").hidden = true;
+      find("demo-status").textContent = "已发布到知识库";
+    });
     function renderDetail(id, cluster) {
       const record = findings.find((item) => item.id === id && item.cluster === cluster);
+      demoRecord = record;
+      demoRun++;
+      find("demo-start").hidden = !record;
+      find("demo-start").setAttribute("aria-expanded", "false");
+      find("demo-review").hidden = true;
+      find("demo-publish-panel").hidden = true;
+      find("demo-observation").value = "";
+      find("demo-original").textContent = record?.problem || "暂无诊断说明";
+      find("demo-evidence").textContent = record ? "Kubernetes 事件 · " + formatDate.format(new Date(record.time)) + " · " + record.problem : "暂无证据";
+      showDemoSaved();
       find("back").href = listHash;
       find("detail-title").textContent = record?.problem || "未找到该诊断结果";
       find("detail-fields").replaceChildren();

@@ -26,7 +26,7 @@ flowchart TD
 ## 接入位置与最小改动
 
 - 保留 K8sGPT Operator、Engine 和 Result CR。Portal API 在现有 Finding 映射与证据关联之后增加诊断说明生成服务，从 Wiki 检索结果、K8sGPT 原始说明以及现有 Kubernetes 事件和观测证据构造模型输入。
-- 当前 `api/internal/diagnosis/finding_review.go` 使用 SQLite 的 `finding_reviews` 保存复核结论。沿用已有结论历史，新增草稿、人工确认元数据和同步任务表。接入 #73 后，`总结并更新结论` 调整为生成草稿，用户预览后使用 `确认并发布知识`。
+- 当前 `api/internal/diagnosis/finding_review.go` 使用 SQLite 的 `finding_reviews` 保存复核结论。诊断详情使用「AI 复核」在页内呈现结构化结果。保存创建诊断结论版本，知识发布独立读取已保存版本并要求预览确认。参见[诊断控制台 PRD](diagnosis-console/00-prd.md#诊断详情内的证据复核)。
 - 保持详情查询可用。首次读取时返回原始 Finding 及增强说明状态，后台生成完成后再展示增强说明。列表、统计和健康检查沿用现有路径。页面优先展示已确认的最终结论，并提供初步诊断和增强说明供回看。后台生成不能覆盖已确认结论。
 - Wiki 模块在 Portal API 进程内运行。诊断服务和发布任务通过 Go 接口调用模块，浏览器使用现有同源 API 和身份授权查看结论、知识引用及同步状态。现有 Engine 模型连接继续复用。
 - Portal 是首期增强说明的出口。如果消费方直接读取 `kubectl get results` 或其它 Result CR 客户端，仍看到 Engine 生成的原始诊断。若这些消费者也需要检索增强结果，可复用 Portal API 的说明接口，或在后续评估能否在 Engine 调用模型前加入检索钩子。
@@ -51,11 +51,11 @@ flowchart TD
 | Wiki 模块 `UpsertRevision(ctx, entry)` | 接收脱敏条目和内容哈希。相同编号、版本与哈希重送时返回同一对象，版本相同但哈希不同返回冲突错误。旧版本重试不能覆盖新版。返回写入状态、当前索引版本与可用链接。 |
 | Wiki 模块 `GetRevisionStatus(ctx, id, revision)` | 返回该版本的写入与索引状态。供任务恢复时核对版本和索引是否已生效。 |
 | Portal `GET /api/v1/wiki/knowledge/{knowledgeId}/revisions/{revision}` | 供诊断引用链接使用，返回经授权的知识版本。撤回内容退出检索，历史保留供有权限的审计操作。 |
-| Portal `GET /api/v1/findings/{id}/diagnostic-explanation` | 按 Finding 的现有资源授权分字段返回 K8sGPT 初步诊断、增强说明、已确认的最终结论，以及 Wiki 引用和检索状态。多集群目标沿用现有集群选择方式。 |
-| Portal `POST /api/v1/findings/{id}/knowledge-publications` | 接收 `draftId`、`expectedRevision` 和用户选定的发布范围。确认成功返回 `202`、结论版本和同步任务编号。已确认的同一草稿重试返回原任务，并发旧版本返回 `409`。 |
-| Portal `GET /api/v1/findings/{id}/knowledge-publications/{publicationId}` | 返回当前同步状态、Wiki 编号及版本、最后更新时间和可公开的错误分类。服务端核对任务与 Finding 的归属关系。 |
+| Portal `GET /api/v1/findings/{id}` | 保留原有 `details`，有复核时额外返回 `originalDetails` 和 `reviewRevision`。 |
+| Portal `GET /api/v1/admin/finding-analysis` | 使用 `id`、`cluster` 定位诊断，返回原始说明、复核历史和该作用域的发布资格。 |
+| Portal `POST /api/v1/admin/finding-analysis` | `assess` 返回结构化复核和可定位的来源。 `save` 保存指定基线版本上的人工结论。 `preview-publication` 返回版本对应的脱敏知识及预览编号。 `publish` 校验预览编号、复核版本及知识发布权限后提交。 |
 
-上线前更新 OpenAPI 与生成客户端。需要新增按资源作用域授予的知识发布能力，知识发布和增强说明读取沿用项目的认证、授权和审计体系。
+诊断详情的新增返回字段列入 OpenAPI 与生成客户端。发布使用现有 `wiki:publish` 能力与命名空间范围。
 
 ## 运维知识库页面与 AI 问答
 

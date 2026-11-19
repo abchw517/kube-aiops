@@ -35,6 +35,24 @@ type wikiLookupKey struct{}
 type wikiEvidenceKey struct{}
 type wikiLookup func(context.Context, finding.Finding) []Citation
 
+type findingPublishKey struct{}
+type findingPublishCheck func(context.Context, finding.Finding) bool
+
+func (a *Service) WithFindingPublish(ctx context.Context, principal identity.Principal) context.Context {
+	return context.WithValue(ctx, findingPublishKey{}, findingPublishCheck(func(ctx context.Context, item finding.Finding) bool {
+		decision, err := a.Authorize(ctx, authorization.DecisionRequest{
+			Principal: principal, Capability: authorization.CapabilityWikiPublish,
+			Scope: authorization.NamespaceScope(item.Cluster, item.Namespace),
+		})
+		return err == nil && decision.Allowed
+	}))
+}
+
+func CanPublishFinding(ctx context.Context, item finding.Finding) bool {
+	check, ok := ctx.Value(findingPublishKey{}).(findingPublishCheck)
+	return item.Namespace != "" && ok && check(ctx, item)
+}
+
 func (a *Service) WithFindingLookup(ctx context.Context, p identity.Principal) context.Context {
 	return context.WithValue(ctx, wikiLookupKey{}, wikiLookup(func(ctx context.Context, item finding.Finding) []Citation {
 		docs, _ := a.searchWiki(ctx, p, Document{Cluster: item.Cluster, Namespace: item.Namespace}, item.Problem+" "+item.Resource.Kind)
