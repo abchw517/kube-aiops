@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: a48dc706 6263ca44 614a4419 64835214 8a71a8dc 9a6e4cf7 8ffc39e2 08dd1f77
+// Contract source SHA-256 groups: fcc1e7e3 de059255 2190905b 3bae2e6f 613dfeea faab7ebe 0885ec66 87626c45
 
 export interface StatusResponse {
   "status": string;
@@ -68,6 +68,8 @@ export interface Finding {
   "severity": Severity;
   "resource": ResourceRef;
   "problem": string;
+  "reviewRevision"?: number;
+  "originalDetails"?: string;
   "details"?: string;
   "source": "k8sgpt";
   "createdAt"?: string;

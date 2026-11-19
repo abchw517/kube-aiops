@@ -44,7 +44,7 @@ const alertSummaries = new Map([
 export function renderCorrelationSection(id: string): string {
   return `
     <section class="panel correlation-panel" aria-labelledby="correlation-heading">
-      <h2 id="correlation-heading">关联证据</h2>
+      <h2 id="correlation-heading" tabindex="-1">关联证据</h2>
       <div data-correlation-finding="${escapeHtml(id)}" aria-live="polite" aria-busy="true">
         ${renderCorrelationLoading()}
       </div>
@@ -107,7 +107,7 @@ function renderSignal(signal: CorrelationSignal): string {
     : signal.summary;
 
   return `
-    <li class="evidence-signal">
+    <li class="evidence-signal" tabindex="-1" data-evidence-signal="${escapeHtml(signal.id)}" data-evidence-source="${escapeHtml(signal.source)}">
       <div class="evidence-signal-heading">
         <strong>${escapeHtml(signal.name ?? signal.id)}</strong>
         ${signal.severity ? `<span class="severity severity-${escapeHtml(signal.severity)}">${escapeHtml(formatSeverity(signal.severity))}</span>` : ""}

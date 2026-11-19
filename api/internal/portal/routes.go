@@ -69,7 +69,8 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 				}
 			}
 			if selected.Enabled() {
-				selected.ServeHTTP(w, r.WithContext(wikis.WithFindingLookup(identity.WithPrincipal(r.Context(), p), p)))
+				ctx := wikis.WithFindingLookup(identity.WithPrincipal(r.Context(), p), p)
+				selected.ServeHTTP(w, r.WithContext(wikis.WithFindingPublish(ctx, p)))
 				return
 			}
 			http.Error(w, "该集群实例尚未启用 AI 复核", 404)
