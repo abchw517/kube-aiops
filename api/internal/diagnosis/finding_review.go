@@ -23,7 +23,7 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/sanitizer"
 )
 
-const Timeout = 45 * time.Second
+const Timeout = 50 * time.Second
 
 type reviewMessage struct {
 	Role string `json:"role"`
@@ -54,8 +54,14 @@ func New(backend httpapi.Backend, store *identitystore.Store, engineAI func(cont
 	if store == nil {
 		return nil, errors.New("finding AI requires AUTH_SQLITE_PATH")
 	}
-	return &Review{Backend: backend, store: store, engineAI: engineAI,
-		slots: make(chan struct{}, 2), client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	timeout, err := readProviderTimeout()
+	if err != nil {
+		return nil, err
+	}
+	return &Review{
+		Backend: backend, store: store, engineAI: engineAI, slots: make(chan struct{}, 2),
+		client: &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+	}, nil
 }
 
 func reviewKey(item finding.Finding) string {
@@ -274,8 +280,12 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				code = failure.code
 			}
 		}
+		status := http.StatusBadGateway
+		if code == "AI_PROVIDER_TIMEOUT" {
+			status = http.StatusGatewayTimeout
+		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(502)
+		w.WriteHeader(status)
 		adminhttp.WriteJSON(w, map[string]string{"code": code})
 		return
 	}

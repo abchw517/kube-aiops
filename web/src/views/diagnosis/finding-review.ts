@@ -163,8 +163,9 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
         status.textContent = "其他复核已更新诊断，请关闭后重新打开窗口。";
         return;
       }
-      if (response.status === 502 && response.headers.get("Content-Type")?.includes("application/json")) {
-        const { code } = await response.json() as { code?: string };
+      if ((response.status === 502 || response.status === 504) &&
+          response.headers.get("Content-Type")?.includes("application/json")) {
+        const { code } = await response.json().catch(() => ({})) as { code?: string };
         if (signal.aborted) return;
         const messages: Record<string, string> = {
           AI_ENGINE_PERMISSION_DENIED: "API 无权读取 Engine 或 Secret，请检查 RBAC。",
@@ -174,13 +175,23 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster = "loca
           AI_ENGINE_SECRET_UNAVAILABLE: "无法读取 Secret 或指定密钥项，请检查 Engine 的 Secret 引用。",
           AI_PROVIDER_ACCESS_DENIED: "模型服务拒绝访问，请检查 API Key 和模型授权。",
           AI_PROVIDER_RATE_LIMITED: "模型服务触发限流，请稍后重试并检查配额。",
-          AI_PROVIDER_TIMEOUT: "模型响应超时，请重试并检查服务延迟。",
+          AI_PROVIDER_TIMEOUT: "模型响应超时。输入已保留，可以重新发送。",
           AI_PROVIDER_CONNECT_FAILED: "无法连接模型服务，请检查 API Pod 的出口、DNS 和 TLS。",
           AI_PROVIDER_REQUEST_REJECTED: "模型服务拒绝请求，请核对模型名称和接口地址。",
           AI_PROVIDER_RESPONSE_INVALID: "模型未返回完整正文，请检查模型接口兼容性。",
           AI_PROVIDER_UNAVAILABLE: "模型服务暂不可用，请稍后重试。",
         };
-        status.textContent = code && Object.hasOwn(messages, code) ? messages[code] ?? "" : "AI 分析失败。";
+        if (code && Object.hasOwn(messages, code)) {
+          status.textContent = messages[code] ?? "";
+          return;
+        }
+        if (response.status === 502) {
+          status.textContent = "AI 分析失败。";
+          return;
+        }
+      }
+      if (response.status === 504 && !publishing) {
+        status.textContent = "网关等待超时。请重试，若仍失败请检查入口代理和 API 的超时配置。";
         return;
       }
       if (!response.ok) throw new Error("analysis failed");

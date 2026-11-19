@@ -1,44 +1,56 @@
 import { ApiError } from "../../api/generated.ts";
-import { fetchAuditPage, saveAuditRetention } from "./audit-api.ts";
+import { fetchAuditList, fetchAuditPage, saveAuditRetention } from "./audit-api.ts";
 import {
-  auditLocation, newlyDisabledAuditLevels, readAuditFilters, readAuditRetention,
-  type AuditFilters, type AuditOperation, type AuditPage, type AuditRetention,
+  auditLocation, auditPageCount, defaultAuditLimit, newlyDisabledAuditLevels, readAuditFilters, readAuditLimit, readAuditRetention,
+  type AuditFilters, type AuditListPage, type AuditOperation, type AuditRetention,
 } from "./audit-data.ts";
 import {
   renderAuditActionOptions, renderAuditBatch, renderAuditDetail, renderAuditRows, renderAuditWorkspace, renderRetentionConfirmation,
   renderRetentionEditor, renderRetentionValues,
 } from "./audit-view.ts";
 
-/** 加载首屏及未筛选的策略和操作类型。 */
-export async function loadAudit(filters: AuditFilters, canEdit: boolean) {
-  const metadata = await fetchAuditPage({});
-  const page = Object.keys(filters).length ? await fetchAuditPage(filters) : metadata;
-  return { filters, page, retention: metadata.retention, canEdit, content: renderAuditWorkspace(page, metadata, filters, canEdit) };
+/** 有筛选或深链接时，单独读取全局操作类型及保留设置。 */
+function needsAuditMetadata(filters: AuditFilters): boolean {
+  return Boolean(filters.account || filters.action || filters.risk || filters.batch || (filters.page ?? 1) > 1);
 }
 
-/** 审计页拥有本页查询、游标、弹窗和草稿，路由负责权限失效后的去向。 */
+/** 使用服务端实际页码，避免已被清理的页在刷新时反复请求。 */
+function resolveAuditFilters(filters: AuditFilters, page: AuditListPage): AuditFilters {
+  return { ...filters, page: page.page > 1 ? page.page : undefined, limit: page.limit === defaultAuditLimit ? undefined : page.limit };
+}
+
+/** 加载当前页及未筛选的策略和操作类型。 */
+export async function loadAudit(filters: AuditFilters, canEdit: boolean) {
+  const [page, metadata] = await Promise.all([fetchAuditList(filters), needsAuditMetadata(filters) ? fetchAuditList({}) : undefined]);
+  const active = resolveAuditFilters(filters, page);
+  return { filters: active, page, retention: (metadata ?? page).retention, canEdit, content: renderAuditWorkspace(page, metadata ?? page, active, canEdit) };
+}
+
+/** 审计页管理筛选和分页，路由负责权限失效后的去向。 */
 export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof loadAudit>>, onAccessError: (status: number) => void): void {
   const workspace = root.querySelector<HTMLElement>("[data-audit-workspace]");
   const form = workspace?.querySelector<HTMLFormElement>("[data-audit-filter]");
   const dialog = workspace?.querySelector<HTMLDialogElement>("[data-audit-dialog]");
   const results = workspace?.querySelector<HTMLElement>("[data-audit-results]");
   const count = workspace?.querySelector<HTMLElement>("[data-audit-count]");
+  const pageNumber = workspace?.querySelector<HTMLElement>("[data-audit-page]");
+  const limitField = workspace?.querySelector<HTMLSelectElement>("[data-audit-limit]");
   const previous = workspace?.querySelector<HTMLButtonElement>("[data-audit-previous]");
   const next = workspace?.querySelector<HTMLButtonElement>("[data-audit-next]");
   const activeBatch = workspace?.querySelector<HTMLElement>("[data-audit-active-batch]");
   const batchID = activeBatch?.querySelector("[data-audit-batch-id]");
   const queryStatus = workspace?.querySelector<HTMLElement>("[data-audit-query-status]");
   const actionField = form?.querySelector<HTMLSelectElement>('select[name="action"]');
-  if (!workspace || !form || !dialog || !results || !count || !previous || !next || !activeBatch || !batchID || !queryStatus) return;
+  if (!workspace || !form || !dialog || !results || !count || !pageNumber || !limitField ||
+      !previous || !next || !activeBatch || !batchID || !queryStatus) return;
 
   const retentionValues = workspace.querySelector("[data-audit-retention-values]");
   const retentionStatus = workspace.querySelector("[data-audit-retention-status]");
   const recordsHeading = workspace.querySelector<HTMLElement>("#audit-records-heading");
-  const listButtons = [...workspace.querySelectorAll<HTMLButtonElement>("[data-audit-filter] button, [data-audit-clear-batch], [data-audit-next], [data-audit-previous]")];
+  const queryButtons = workspace.querySelectorAll<HTMLButtonElement>("[data-audit-filter] button, [data-audit-clear-batch]");
   let page = initial.page;
   let filters = initial.filters;
   let retention = initial.retention;
-  let cursors: (string | undefined)[] = [];
   let busy = false;
   let saving = false;
   let draft: AuditRetention | undefined;
@@ -46,6 +58,19 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
   let trigger: HTMLButtonElement | null = null;
   let location = window.location.hash;
   const isCurrent = () => workspace.isConnected && window.location.hash === location;
+  const updateLocation = () => {
+    const nextLocation = auditLocation(filters);
+    if (location !== nextLocation) window.history.replaceState(window.history.state, "", nextLocation);
+    location = nextLocation;
+  };
+  updateLocation();
+
+  const updateControls = () => {
+    for (const button of queryButtons) button.disabled = busy;
+    limitField.disabled = busy;
+    previous.disabled = busy || page.page <= 1;
+    next.disabled = busy || page.page >= auditPageCount(page.total, page.limit);
+  };
 
   // 先确认结果仍属于本次渲染，过期请求无权改变另一个页面的会话界面。
   const handleAccessError = (error: unknown): boolean => {
@@ -54,14 +79,13 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     return true;
   };
 
-  const setPage = (view: AuditPage, active: AuditFilters, trail: (string | undefined)[]): void => {
+  const setPage = (view: AuditListPage, active: AuditFilters): void => {
     page = view;
-    filters = active;
-    cursors = trail;
+    filters = resolveAuditFilters(active, page);
     results.innerHTML = renderAuditRows(page.items);
-    count.textContent = `当前页 ${page.items.length} 条记录`;
-    previous.hidden = !filters.before;
-    next.hidden = !page.before;
+    count.textContent = `共 ${page.total} 条`;
+    pageNumber.textContent = `第 ${page.page} / ${auditPageCount(page.total, page.limit)} 页`;
+    limitField.value = String(page.limit);
     activeBatch.hidden = !filters.batch;
     batchID.textContent = filters.batch ?? "";
     const visibleFilters = ["account", "action", "risk"] as const;
@@ -69,32 +93,32 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
       const field = form.elements.namedItem(name);
       if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) field.value = filters[name] ?? "";
     }
-    location = auditLocation(filters);
-    window.history.replaceState(window.history.state, "", location);
+    updateLocation();
   };
 
-  const query = async (active: AuditFilters, trail: (string | undefined)[], afterSave = false): Promise<void> => {
+  const query = async (active: AuditFilters, afterSave = false): Promise<void> => {
     if (busy) return;
     busy = true;
-    for (const button of listButtons) button.disabled = true;
+    updateControls();
     results.setAttribute("aria-busy", "true");
     queryStatus.textContent = "正在查询…";
     try {
-      const viewRequest = fetchAuditPage(active);
-      const [view, metadata] = afterSave && Object.values(active).some(Boolean)
-        ? await Promise.all([viewRequest, fetchAuditPage({})]) : [await viewRequest, undefined];
+      const [view, metadata] = await Promise.all([
+        fetchAuditList(active), afterSave && needsAuditMetadata(active) ? fetchAuditList({}) : undefined,
+      ]);
       if (!isCurrent()) return;
-      setPage(view, active, trail);
+      setPage(view, active);
       const actionCatalog = metadata ?? (view.actions ? view : undefined);
       if (actionField && actionCatalog) actionField.innerHTML = renderAuditActionOptions(actionCatalog, actionField.value);
       queryStatus.textContent = "";
       if (!afterSave) recordsHeading?.focus();
     } catch (error) {
+      limitField.value = String(page.limit);
       if (!handleAccessError(error)) queryStatus.textContent = "审计记录查询失败，请重试。";
     } finally {
       results.removeAttribute("aria-busy");
-      for (const button of listButtons) button.disabled = false;
       busy = false;
+      updateControls();
     }
   };
 
@@ -133,9 +157,9 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
       if (retentionStatus) retentionStatus.textContent = "已保存保留策略。";
       dialog.close();
       // 保存后旧行可能已被清理，刷新失败时也不继续显示旧结果。
-      const active = { ...filters, before: undefined };
-      setPage({ items: [], before: 0 }, active, []);
-      await query(active, [], true);
+      const active = { ...filters, page: undefined };
+      setPage({ items: [], before: 0, page: 1, total: 0, limit: page.limit }, active);
+      await query(active, true);
     } catch (error) {
       if (!handleAccessError(error)) status.textContent = error instanceof ApiError && typeof error.body === "string" && error.body
         ? error.body : "保存失败，请重试。";
@@ -152,7 +176,7 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     event.preventDefault();
     if (!isCurrent()) return;
     if (target === form) {
-      void query(readAuditFilters(new FormData(form)), []);
+      void query({ ...readAuditFilters(new FormData(form)), limit: filters.limit });
     } else if (target.hasAttribute("data-audit-retention") && initial.canEdit && retention) {
       const days = readAuditRetention(new FormData(target));
       if (!days) {
@@ -169,18 +193,23 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     } else if (target.hasAttribute("data-audit-confirm") && draft) void save(draft);
   });
 
+  limitField.addEventListener("change", () => {
+    const limit = readAuditLimit(limitField.value);
+    if (limit && isCurrent()) void query({ ...filters, page: undefined, limit });
+  });
+
   workspace.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || saving || !isCurrent()) return;
     const button = target.closest<HTMLButtonElement>("button");
     if (!button || busy) return;
-    if (button.hasAttribute("data-audit-next")) void query({ ...filters, before: String(page.before) }, [...cursors, filters.before]);
-    else if (button.hasAttribute("data-audit-previous")) void query({ ...filters, before: cursors.at(-1) }, cursors.slice(0, -1));
-    else if (button.hasAttribute("data-audit-clear-batch")) void query({ ...filters, batch: undefined, before: undefined }, []);
+    if (button.hasAttribute("data-audit-next")) void query({ ...filters, page: page.page + 1 });
+    else if (button.hasAttribute("data-audit-previous")) void query({ ...filters, page: page.page - 1 });
+    else if (button.hasAttribute("data-audit-clear-batch")) void query({ ...filters, batch: undefined, page: undefined });
     else if (button.hasAttribute("data-audit-show-batch") && selected?.batch) {
       const batch = selected.batch;
       dialog.close();
-      void query({ batch }, []);
+      void query({ batch, limit: filters.limit });
     } else if (button.hasAttribute("data-audit-close")) dialog.close();
     else if (button.hasAttribute("data-audit-back") && draft) showDialog(renderRetentionEditor(draft));
     else if (button.hasAttribute("data-audit-edit") && initial.canEdit && retention) {

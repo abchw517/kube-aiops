@@ -53,9 +53,18 @@
 .audit-table :is(td:nth-child(4), td:nth-child(6), td:last-child:not([colspan])) { white-space: nowrap; }
 .audit-table td:last-child:not([colspan]) { width: 1%; }
 .audit-table :where(td:last-child) .button { min-height: 36px; }
-.audit-list-footer { min-height: 56px; padding-block: 8px; color: var(--muted); font-size: .875rem; }
-.audit-pagination { display: flex; flex-wrap: wrap; gap: 8px; }
-.audit-list-footer .button { min-height: 38px; }
+.audit-list-footer { justify-content: flex-end; min-height: 56px; padding-block: 8px; color: var(--muted); font-size: .875rem; }
+.audit-pagination { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; font-variant-numeric: tabular-nums; }
+.audit-pagination .button { width: 36px; min-height: 36px; padding: 0; font-size: 1.25rem; line-height: 1; }
+.audit-pagination select {
+  min-height: 36px;
+  padding-inline: 8px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.audit-page-number { min-width: 5.5em; color: var(--ink); text-align: center; white-space: nowrap; }
 
 .audit-dialog {
   width: min(680px, calc(100% - 28px));

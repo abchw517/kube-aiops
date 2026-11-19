@@ -271,6 +271,20 @@ try {
           form.requestSubmit();
         })()`,
       });
+      if (message === "Pod 事件显示镜像仓库拒绝访问") {
+        await assertText(cdp, (text) => text.includes("模型响应超时。输入已保留，可以重新发送。"),
+          "Provider timeout did not show the retry message");
+        const pending = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+          const form = document.querySelector(".finding-review-form");
+          const field = form.elements.message;
+          const send = form.querySelector('button[type="submit"]');
+          if (field.value !== ${JSON.stringify(message)} || field.readOnly || send.disabled ||
+              form.querySelector("[data-review-conversation]").children.length) return false;
+          form.requestSubmit(send);
+          return true;
+        })()` });
+        if (!pending.result?.value) throw new Error("Provider timeout lost the draft or prevented retry");
+      }
       await assertText(cdp, (text) => text.includes(message) && text.includes(reply) && !text.includes("更新结论：镜像仓库拒绝访问"),
         "AI review did not display the conversation without updating the diagnosis");
     }
@@ -642,6 +656,25 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
     await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && ["3 天", "5 天", "7 天"].every((label) => text.includes(label)), "Audit time or default retention did not render");
+    await assertText(cdp, (text) => text.includes("共 76 条") && text.includes("第 1 / 4 页"), "Audit did not default to 20 rows per page");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-next]").click()' });
+    await assertText(cdp, (text) => text.includes("第 2 / 4 页") && !text.includes("local:guest"), "Audit next page kept first-page results");
+    await assertPage(cdp, "about:blank", (text) => text === "", "Audit document was not cleared");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations?page=2",
+      (text) => text.includes("第 2 / 4 页"), "Audit page number did not survive a fresh load");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-previous]").click()' });
+    await assertText(cdp, (text) => text.includes("第 1 / 4 页") && text.includes("local:guest"), "Audit previous page failed after refresh");
+    for (const [size, pages, rows] of [[50, 2, 50], [100, 1, 76], [20, 4, 20]]) {
+      await cdp.send("Runtime.evaluate", { expression: `(() => {
+        const select = document.querySelector("[data-audit-limit]");
+        select.value = "${size}";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      })()` });
+      await assertText(cdp, (text) => text.includes("共 76 条") && text.includes(`第 1 / ${pages} 页`), "Audit page size change did not recalculate pages");
+      const count = await cdp.send("Runtime.evaluate", { returnByValue: true,
+        expression: 'document.querySelectorAll("[data-audit-detail]").length' });
+      if (count.result?.value !== rows) throw new Error(`Audit page size ${size} returned ${count.result?.value} rows`);
+    }
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 820, deviceScaleFactor: 1, mobile: false });
     const auditLayout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const table = document.querySelector('.audit-records [role="region"]');
@@ -654,18 +687,18 @@ try {
       form.elements.account.value = "批量操作";
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => text.includes("当前页 1 条记录") && text.includes("批量加入用户组") && !text.includes("local:guest"),
+    await assertText(cdp, (text) => text.includes("共 1 条") && text.includes("批量加入用户组") && !text.includes("local:guest"),
       "Audit account search did not narrow the list before opening the batch");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="3"]\').click()' });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="75"]\').click()' });
     await assertText(cdp, (text) => text.includes("批次结果") && text.includes("ldap:alice") && text.includes("查看同批次"), "Audit batch detail did not render per-target outcomes");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-show-batch]").click()' });
     await assertText(cdp, (text) => text.includes("清除批次") && text.includes("ldap:alice") && !text.includes("local:guest"), "Batch filter did not exclude unrelated records");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-next]").click()' });
-    await assertText(cdp, (text) => text.includes("ldap:bob") && text.includes("上一页") && !text.includes("ldap:alice"), "Audit cursor did not advance within the batch");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="1"]\').click()' });
+    await assertText(cdp, (text) => text.includes("ldap:bob") && text.includes("第 2 / 2 页") && !text.includes("ldap:alice"), "Audit paging did not advance within the batch");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="54"]\').click()' });
     await assertText(cdp, (text) => text.includes("失败原因") && text.includes("账号已停用"), "Audit details omitted a per-target failure reason");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-close]").click(); document.querySelector("[data-audit-previous]").click();' });
-    await assertText(cdp, (text) => text.includes("ldap:alice") && !text.includes("ldap:bob"), "Audit cursor did not return to the first batch page");
+    await assertText(cdp, (text) => text.includes("ldap:alice") && !text.includes("ldap:bob"), "Audit paging did not return to the first batch page");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-clear-batch]").click()' });
     await assertText(cdp, (text) => text.includes("local:guest") && !text.includes("清除批次"), "Clearing the audit batch failed");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
