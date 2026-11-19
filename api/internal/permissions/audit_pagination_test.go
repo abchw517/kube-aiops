@@ -94,7 +94,10 @@ func TestAuditOperationsPagination(t *testing.T) {
 		rows               int
 		first, last        int64
 	}{
-		{"?page=1", 1, 20, 123, 20, 123, 104},
+		{"?page=1", 1, 10, 123, 10, 123, 114},
+		{"?page=2", 2, 10, 123, 10, 113, 104},
+		{"?limit=1", 1, 1, 123, 1, 123, 123},
+		{"?page=2&limit=25", 2, 25, 123, 25, 98, 74},
 		{"?page=2&limit=20", 2, 20, 123, 20, 103, 84},
 		{"?limit=50", 1, 50, 123, 50, 123, 74},
 		{"?page=2&limit=50", 2, 50, 123, 50, 73, 24},
@@ -122,7 +125,7 @@ func TestAuditOperationsPagination(t *testing.T) {
 		})
 	}
 
-	first := get("?page=1&limit=20", http.StatusOK)
+	first := get("?page=1&limit=10", http.StatusOK)
 	if first.Retention == nil || first.Retention.Low != 0 || len(first.Actions) != 2 {
 		t.Fatalf("missing first-page metadata: retention=%+v actions=%v", first.Retention, first.Actions)
 	}
@@ -134,7 +137,10 @@ func TestAuditOperationsPagination(t *testing.T) {
 	if len(legacy.Items) != 23 || legacy.Items[0].ID != 23 || legacy.Before != 0 || legacy.Retention != nil {
 		t.Fatalf("legacy cursor did not advance: rows=%d before=%d retention=%v", len(legacy.Items), legacy.Before, legacy.Retention)
 	}
-	for _, query := range []string{"?page=0", "?page=-2", "?page=z", "?page=", "?page=9223372036854775808", "?limit=25", "?limit=", "?before=50&page=1"} {
+	for _, query := range []string{
+		"?page=0", "?page=-2", "?page=z", "?page=", "?page=9223372036854775808",
+		"?limit=0", "?limit=-1", "?limit=101", "?limit=10.5", "?limit=1e1", "?limit=", "?before=50&page=1",
+	} {
 		get(query, http.StatusBadRequest)
 	}
 }

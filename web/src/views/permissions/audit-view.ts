@@ -1,6 +1,6 @@
 import { escapeHtml as h } from "../../components/html.ts";
 import {
-  auditLevels, auditPageCount, auditPageSizes, maxRetentionDays, type AuditFilters, type AuditListPage,
+  auditLevels, auditPageCount, auditPageSizes, maxAuditLimit, maxRetentionDays, type AuditFilters, type AuditListPage,
   type AuditOperation, type AuditPage, type AuditRetention,
 } from "./audit-data.ts";
 
@@ -45,6 +45,12 @@ export function renderAuditRows(items: AuditOperation[]): string {
       aria-label="查看 ${h(item.action)} ${h(item.target || "")} 的详情">查看详情</button></td></tr>`).join("");
 }
 
+/** 自定义值显示为当前选项，并保留入口供再次修改。 */
+export function renderAuditLimitOptions(limit: number): string {
+  const sizes = auditPageSizes.includes(limit) ? auditPageSizes : [...auditPageSizes, limit];
+  return `${options(sizes.map(String), String(limit), " 条/页")}<option value="custom">自定义…</option>`;
+}
+
 /** 分开呈现保留策略、检索工具和事件清单。 */
 export function renderAuditWorkspace(page: AuditListPage, metadata: AuditPage, filters: AuditFilters, canEdit: boolean): string {
   const pages = auditPageCount(page.total, page.limit);
@@ -82,8 +88,16 @@ export function renderAuditWorkspace(page: AuditListPage, metadata: AuditPage, f
           <button class="button secondary" type="button" aria-label="上一页" data-audit-previous${page.page <= 1 ? " disabled" : ""}>‹</button>
           <span class="audit-page-number" data-audit-page aria-live="polite">第 ${page.page} / ${pages} 页</span>
           <button class="button secondary" type="button" aria-label="下一页" data-audit-next${page.page >= pages ? " disabled" : ""}>›</button>
-          <select data-audit-limit aria-label="每页条数">${options(auditPageSizes.map(String), String(page.limit), " 条/页")}</select>
+          <select data-audit-limit aria-label="每页条数" aria-controls="audit-custom-page-size">${renderAuditLimitOptions(page.limit)}</select>
         </nav>
+        <form class="audit-limit-editor" id="audit-custom-page-size" data-audit-limit-form hidden>
+          <label>自定义每页条数
+            <input type="number" name="customLimit" min="1" max="${maxAuditLimit}" step="1" required aria-describedby="audit-limit-range">
+          </label>
+          <small id="audit-limit-range">1–${maxAuditLimit} 条</small>
+          <button class="button" type="submit">应用</button>
+          <button class="button secondary" type="button" data-audit-limit-cancel>取消</button>
+        </form>
       </footer>
     </section>
     <dialog class="audit-dialog" data-audit-dialog aria-labelledby="audit-dialog-heading"></dialog>

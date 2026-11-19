@@ -1,5 +1,5 @@
 import { ApiError } from "../../api/generated.ts";
-import { auditQuery, defaultAuditLimit, type AuditFilters, type AuditListPage, type AuditPage, auditPageSizes, type AuditRetention } from "./audit-data.ts";
+import { auditQuery, defaultAuditLimit, readAuditLimit, type AuditFilters, type AuditListPage, type AuditPage, type AuditRetention } from "./audit-data.ts";
 
 const operationsPath = "/api/v1/admin/operations";
 
@@ -15,7 +15,7 @@ export async function fetchAuditList(filters: AuditFilters): Promise<AuditListPa
   const data = await fetchAuditPage({ ...filters, page: filters.page ?? 1, limit: filters.limit ?? defaultAuditLimit });
   if (!("page" in data && typeof data.page === "number" && Number.isSafeInteger(data.page) && data.page > 0 &&
         "total" in data && typeof data.total === "number" && Number.isSafeInteger(data.total) && data.total >= 0 &&
-        "limit" in data && auditPageSizes.some((size) => size === data.limit))) {
+        "limit" in data && typeof data.limit === "number" && readAuditLimit(String(data.limit)))) {
     throw new Error("Invalid audit pagination response");
   }
   return data as AuditListPage;

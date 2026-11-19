@@ -65,6 +65,17 @@
   color: var(--ink);
 }
 .audit-page-number { min-width: 5.5em; color: var(--ink); text-align: center; white-space: nowrap; }
+.audit-limit-editor { display: flex; flex-basis: 100%; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.audit-limit-editor[hidden] { display: none; }
+.audit-limit-editor label { display: flex; gap: 6px; align-items: center; }
+.audit-limit-editor input {
+  width: 4.5rem;
+  min-height: 36px;
+  padding-inline: 6px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  color: var(--ink);
+}
 
 .audit-dialog {
   width: min(680px, calc(100% - 28px));

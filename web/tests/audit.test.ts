@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  auditLocation, auditPageCount, maxRetentionDays, newlyDisabledAuditLevels, parseAuditRoute, readAuditRetention,
+  auditLocation, auditPageCount, maxRetentionDays, newlyDisabledAuditLevels, parseAuditRoute, readAuditLimit, readAuditRetention,
   type AuditOperation,
 } from "../src/views/permissions/audit-data.ts";
 import { renderAuditBatch, renderAuditDetail, renderAuditWorkspace } from "../src/views/permissions/audit-view.ts";
@@ -11,10 +11,13 @@ test("audit return locations accept only the fixed route and supported filters",
   assert.deepEqual(parseAuditRoute(auditLocation(filters)), filters);
   assert.equal(parseAuditRoute("#/admin/operations/https://example.com"), undefined);
   assert.equal(parseAuditRoute("https://example.com/#/admin/operations"), undefined);
-  assert.deepEqual(parseAuditRoute("#/admin/operations?page=-1&limit=25&before=42&risk=未知&redirect=https://example.com"), {});
+  assert.deepEqual(parseAuditRoute("#/admin/operations?page=-1&limit=101&before=42&risk=未知&redirect=https://example.com"), {});
   assert.equal(auditLocation({ ...filters, page: undefined, batch: undefined }).includes("undefined"), false);
   assert.equal(auditPageCount(76, 20), 4);
   assert.equal(auditPageCount(0, 100), 1);
+  assert.equal(readAuditLimit("13"), 13);
+  assert.deepEqual(parseAuditRoute("#/admin/operations?limit=13"), { limit: 13 });
+  for (const limit of ["", "0", "-2", "1.5", "101"]) assert.equal(readAuditLimit(limit), undefined);
 });
 
 test("audit retention accepts zero and requires confirmation only for newly disabled tiers", () => {
@@ -39,7 +42,8 @@ test("audit views keep retention read-only for administrators and escape event d
   assert.match(view, /data-audit-count>共 76 条/);
   assert.match(view, /第 4 \/ 4 页/);
   assert.match(view, /data-audit-next disabled/);
-  assert.match(view, /<option value="20" selected>20 条\/页<\/option><option value="50">50 条\/页<\/option><option value="100">100 条\/页<\/option>/);
+  assert.match(view, /<option value="10">10 条\/页<\/option><option value="20" selected>20 条\/页<\/option><option value="50">50 条\/页<\/option><option value="custom">自定义…<\/option>/);
+  assert.match(renderAuditWorkspace({ ...page, limit: 13 }, page, {}, false), /<option value="13" selected>13 条\/页<\/option>/);
   assert.doesNotMatch(view, /data-audit-edit|<admin>|<employee>/);
   assert.match(renderAuditWorkspace(page, page, {}, true), /data-audit-edit/);
   assert.match(renderAuditDetail(item), /2026年11月18日15:43:19/);

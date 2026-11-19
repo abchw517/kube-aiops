@@ -609,7 +609,7 @@ func auditPagination(q url.Values) (page int64, limit int64, err error) {
 	if q.Get("before") != "" {
 		return 0, 0, errors.New("页码分页不能同时指定游标")
 	}
-	page, limit = 1, 20
+	page, limit = 1, 10
 	if q.Has("page") {
 		page, err = strconv.ParseInt(q.Get("page"), 10, 64)
 		if err != nil || page < 1 {
@@ -617,14 +617,9 @@ func auditPagination(q url.Values) (page int64, limit int64, err error) {
 		}
 	}
 	if q.Has("limit") {
-		switch q.Get("limit") {
-		case "20":
-		case "50":
-			limit = 50
-		case "100":
-			limit = 100
-		default:
-			return 0, 0, errors.New("每页只能显示 20、50 或 100 条记录")
+		limit, err = strconv.ParseInt(q.Get("limit"), 10, 64)
+		if err != nil || limit < 1 || limit > 100 {
+			return 0, 0, errors.New("每页条数必须为 1 到 100 的整数")
 		}
 	}
 	return page, limit, nil

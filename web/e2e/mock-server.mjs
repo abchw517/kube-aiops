@@ -332,7 +332,7 @@ createServer(async (request, response) => {
     const metadata = { retention: auditRetention, actions: [...new Set(active.map((item) => item.action))] };
     if (url.searchParams.has("page")) {
       const limit = Number(url.searchParams.get("limit"));
-      if (![20, 50, 100].includes(limit)) return json(response, 400, { error: "invalid audit page size" });
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) return json(response, 400, { error: "invalid audit page size" });
       const page = Math.min(Number(url.searchParams.get("page")), Math.max(1, Math.ceil(items.length / limit)));
       const start = (page - 1) * limit;
       return json(response, 200, { items: items.slice(start, start + limit), total: items.length, page, limit, before: 0,

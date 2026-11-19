@@ -5,7 +5,7 @@ import {
   type AuditFilters, type AuditListPage, type AuditOperation, type AuditRetention,
 } from "./audit-data.ts";
 import {
-  renderAuditActionOptions, renderAuditBatch, renderAuditDetail, renderAuditRows, renderAuditWorkspace, renderRetentionConfirmation,
+  renderAuditActionOptions, renderAuditBatch, renderAuditDetail, renderAuditLimitOptions, renderAuditRows, renderAuditWorkspace, renderRetentionConfirmation,
   renderRetentionEditor, renderRetentionValues,
 } from "./audit-view.ts";
 
@@ -35,13 +35,15 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
   const count = workspace?.querySelector<HTMLElement>("[data-audit-count]");
   const pageNumber = workspace?.querySelector<HTMLElement>("[data-audit-page]");
   const limitField = workspace?.querySelector<HTMLSelectElement>("[data-audit-limit]");
+  const limitForm = workspace?.querySelector<HTMLFormElement>("[data-audit-limit-form]");
+  const customLimit = limitForm?.querySelector<HTMLInputElement>('[name="customLimit"]');
   const previous = workspace?.querySelector<HTMLButtonElement>("[data-audit-previous]");
   const next = workspace?.querySelector<HTMLButtonElement>("[data-audit-next]");
   const activeBatch = workspace?.querySelector<HTMLElement>("[data-audit-active-batch]");
   const batchID = activeBatch?.querySelector("[data-audit-batch-id]");
   const queryStatus = workspace?.querySelector<HTMLElement>("[data-audit-query-status]");
   const actionField = form?.querySelector<HTMLSelectElement>('select[name="action"]');
-  if (!workspace || !form || !dialog || !results || !count || !pageNumber || !limitField ||
+  if (!workspace || !form || !dialog || !results || !count || !pageNumber || !limitField || !limitForm || !customLimit ||
       !previous || !next || !activeBatch || !batchID || !queryStatus) return;
 
   const retentionValues = workspace.querySelector("[data-audit-retention-values]");
@@ -85,7 +87,7 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     results.innerHTML = renderAuditRows(page.items);
     count.textContent = `共 ${page.total} 条`;
     pageNumber.textContent = `第 ${page.page} / ${auditPageCount(page.total, page.limit)} 页`;
-    limitField.value = String(page.limit);
+    limitField.innerHTML = renderAuditLimitOptions(page.limit);
     activeBatch.hidden = !filters.batch;
     batchID.textContent = filters.batch ?? "";
     const visibleFilters = ["account", "action", "risk"] as const;
@@ -99,6 +101,7 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
   const query = async (active: AuditFilters, afterSave = false): Promise<void> => {
     if (busy) return;
     busy = true;
+    limitForm.hidden = true;
     updateControls();
     results.setAttribute("aria-busy", "true");
     queryStatus.textContent = "正在查询…";
@@ -177,6 +180,9 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     if (!isCurrent()) return;
     if (target === form) {
       void query({ ...readAuditFilters(new FormData(form)), limit: filters.limit });
+    } else if (target === limitForm) {
+      const limit = readAuditLimit(String(customLimit.valueAsNumber));
+      if (limit) void query({ ...filters, page: undefined, limit });
     } else if (target.hasAttribute("data-audit-retention") && initial.canEdit && retention) {
       const days = readAuditRetention(new FormData(target));
       if (!days) {
@@ -194,8 +200,17 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
   });
 
   limitField.addEventListener("change", () => {
+    if (!isCurrent()) return;
+    if (limitField.value === "custom") {
+      limitForm.hidden = false;
+      customLimit.value = String(page.limit);
+      customLimit.select();
+      customLimit.focus();
+      return;
+    }
+    limitForm.hidden = true;
     const limit = readAuditLimit(limitField.value);
-    if (limit && isCurrent()) void query({ ...filters, page: undefined, limit });
+    if (limit) void query({ ...filters, page: undefined, limit });
   });
 
   workspace.addEventListener("click", (event) => {
@@ -205,7 +220,11 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     if (!button || busy) return;
     if (button.hasAttribute("data-audit-next")) void query({ ...filters, page: page.page + 1 });
     else if (button.hasAttribute("data-audit-previous")) void query({ ...filters, page: page.page - 1 });
-    else if (button.hasAttribute("data-audit-clear-batch")) void query({ ...filters, batch: undefined, page: undefined });
+    else if (button.hasAttribute("data-audit-limit-cancel")) {
+      limitForm.hidden = true;
+      limitField.value = String(page.limit);
+      limitField.focus();
+    } else if (button.hasAttribute("data-audit-clear-batch")) void query({ ...filters, batch: undefined, page: undefined });
     else if (button.hasAttribute("data-audit-show-batch") && selected?.batch) {
       const batch = selected.batch;
       dialog.close();

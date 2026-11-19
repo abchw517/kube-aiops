@@ -656,15 +656,32 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
     await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && ["3 天", "5 天", "7 天"].every((label) => text.includes(label)), "Audit time or default retention did not render");
-    await assertText(cdp, (text) => text.includes("共 76 条") && text.includes("第 1 / 4 页"), "Audit did not default to 20 rows per page");
+    await assertText(cdp, (text) => text.includes("共 76 条") && text.includes("第 1 / 8 页"), "Audit did not default to 10 rows per page");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-next]").click()' });
-    await assertText(cdp, (text) => text.includes("第 2 / 4 页") && !text.includes("local:guest"), "Audit next page kept first-page results");
+    await assertText(cdp, (text) => text.includes("第 2 / 8 页") && !text.includes("local:guest"), "Audit next page kept first-page results");
     await assertPage(cdp, "about:blank", (text) => text === "", "Audit document was not cleared");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations?page=2",
-      (text) => text.includes("第 2 / 4 页"), "Audit page number did not survive a fresh load");
+      (text) => text.includes("第 2 / 8 页"), "Audit page number did not survive a fresh load");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-previous]").click()' });
-    await assertText(cdp, (text) => text.includes("第 1 / 4 页") && text.includes("local:guest"), "Audit previous page failed after refresh");
-    for (const [size, pages, rows] of [[50, 2, 50], [100, 1, 76], [20, 4, 20]]) {
+    await assertText(cdp, (text) => text.includes("第 1 / 8 页") && text.includes("local:guest"), "Audit previous page failed after refresh");
+    await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const select = document.querySelector("[data-audit-limit]");
+      select.value = "custom";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      const form = document.querySelector("[data-audit-limit-form]");
+      form.elements.customLimit.value = "13";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("第 1 / 6 页"), "Custom audit page size did not recalculate pages");
+    const customPage = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
+      size: document.querySelector("[data-audit-limit]").value,
+      rows: document.querySelectorAll("[data-audit-detail]").length,
+      saved: new URLSearchParams(location.hash.split("?")[1]).get("limit"),
+    })` });
+    if (customPage.result?.value?.size !== "13" || customPage.result?.value?.rows !== 13 || customPage.result?.value?.saved !== "13") {
+      throw new Error("Custom audit page size was not applied or retained in the URL");
+    }
+    for (const [size, pages, rows] of [[50, 2, 50], [20, 4, 20]]) {
       await cdp.send("Runtime.evaluate", { expression: `(() => {
         const select = document.querySelector("[data-audit-limit]");
         select.value = "${size}";

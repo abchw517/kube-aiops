@@ -36,6 +36,8 @@
 .audit-list-foot { min-height:56px; justify-content:flex-end }
 .audit-demo-pager { justify-content:flex-end; flex-wrap:wrap }
 .audit-demo-pager select { min-height:40px }
+.audit-demo-size { flex-basis:100%; justify-content:flex-end; flex-wrap:wrap }
+.audit-demo-size input { width:4.5rem }
 .audit-detail { display:grid; grid-template-rows:auto minmax(0,1fr) auto; max-height:calc(100dvh - 38px) }
 .audit-detail h2 { font-size:clamp(18px,3vw,22px); overflow-wrap:anywhere }
 .audit-detail h2:focus-visible { outline:2px solid #149b7c; outline-offset:3px }
@@ -73,7 +75,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;",
 const systemAdminRole = "system-admin";
 const state = {
   page:"users", actor:"super", detail:"liwei", tab:"effective", q:"", filter:"", status:"", checked:new Set(), permissionTab:"roles",
-  auditFilter:{q:"",type:"",level:"",batch:""}, auditPage:0, auditPageSize:20, auditAccess:"", retention:{"低":3,"中":5,"高":7},
+  auditFilter:{q:"",type:"",level:"",batch:""}, auditPage:0, auditPageSize:10, auditCustomSize:false, auditAccess:"", retention:{"低":3,"中":5,"高":7},
   tested:false, ldapSteps:[], ldapTest:{account:"",password:"",failure:"tcp",message:""},
   ldap:{address:"ldaps://directory.example.internal:636",bind:"CN=svc-aiops,OU=Service Accounts,DC=example,DC=internal",base:"OU=Employees,DC=example,DC=internal",attribute:"sAMAccountName",range:"整个子树",allowPlain:false,passwordConfigured:true},
   groups:[{id:"g1",name:"云帆生产观察组",roles:["r1"],desc:"生产业务命名空间历史诊断"},{id:"g2",name:"研测运维组",roles:["r2"],desc:"研发、测试环境诊断查看"}],
@@ -102,7 +104,7 @@ const auditClock = new Intl.DateTimeFormat("zh-CN", {timeZone:"Asia/Shanghai",ye
 const auditTime = at => auditClock.format(at).replace(/\s/g,"");
 const auditDay = 86_400_000;
 const auditLevels = ["低","中","高"];
-const auditPageSizes = [20,50,100];
+const auditPageSizes = [10,20,50];
 const maxAuditDays = 106_751_991_167_300;
 const sampleAuditBase = Date.parse("2026-11-17T14:28:12+08:00");
 const sampleAuditNow = Date.now();
@@ -272,14 +274,18 @@ function auditPage(){
  const list=table(["时间（北京时间）","操作者","操作类型","风险等级","目标","结果","操作"],pageRows.map(([a,i])=>
   '<tr><td class="mono">'+auditTime(a.at)+'</td><td>'+esc(a.who)+'</td><td>'+esc(a.type)+'</td><td>'+riskBadge(a.level)+'</td><td>'+esc(a.target)+'</td><td>'+outcomeBadge(a.result)+'</td><td>'+btn("查看详情","audit-detail",i)+'</td></tr>'),
   "暂无符合条件的审计记录。","audit-heading");
+ const sizes=auditPageSizes.includes(auditPageSize)?auditPageSizes:[...auditPageSizes,auditPageSize];
  const paging='<nav class="row audit-demo-pager" aria-label="审计记录分页"><span>共 '+rows.length+' 条</span>'+
   '<button type="button" class="btn" aria-label="上一页" data-action="audit-page" data-value="'+(page-1)+'" '+(page===0?"disabled":"")+'>‹</button>'+
   '<span>第 '+(page+1)+' / '+pages+' 页</span>'+
   '<button type="button" class="btn" aria-label="下一页" data-action="audit-page" data-value="'+(page+1)+'" '+(page+1>=pages?"disabled":"")+'>›</button>'+
-  '<select id="audit-page-size" aria-label="每页条数">'+choices(auditPageSizes.map(size=>[String(size),size+" 条/页"]),String(auditPageSize))+'</select></nav>';
+  '<select id="audit-page-size" aria-label="每页条数">'+choices([...sizes.map(size=>[String(size),size+" 条/页"]),["custom","自定义…"]],state.auditCustomSize?"custom":String(auditPageSize))+'</select></nav>';
+ const customSize=state.auditCustomSize?'<form id="audit-custom-size" class="row audit-demo-size"><label>自定义每页条数 '+
+  '<input type="number" name="size" min="1" max="100" step="1" value="'+auditPageSize+'" required></label><small>1–100 条</small>'+
+  '<button class="btn primary" type="submit">应用</button>'+btn("取消","audit-size-cancel")+'</form>':"";
  return header("操作审计","查询账号变更、认证事件和逐项批量结果。")+policy+
   '<section class="panel" aria-labelledby="audit-heading"><header class="audit-list-heading"><h2 id="audit-heading" tabindex="-1">审计记录</h2></header>'+filter+batch+list+
-  '<footer class="row foot audit-list-foot">'+paging+'</footer></section>';
+  '<footer class="row foot audit-list-foot">'+paging+customSize+'</footer></section>';
 }
 function passwordPage(){
  const temp=state.actor==="temporary";
@@ -502,7 +508,9 @@ document.addEventListener("click",event=>{
   render();$("#audit-heading")?.focus();break;
  case "audit-page":
   if(!admin()||state.auditAccess)break;
-  state.auditPage=Number(v);render();$("#audit-heading")?.focus();break;
+  state.auditCustomSize=false;state.auditPage=Number(v);render();$("#audit-heading")?.focus();break;
+ case "audit-size-cancel":
+  state.auditCustomSize=false;render();$("#audit-page-size")?.focus();break;
  case "audit-sign-in":
   state.auditAccess="";$("#actor").value=state.actor;
   navigate(admin()?"audit":"diagnosis");break;
@@ -561,9 +569,12 @@ document.addEventListener("change",event=>{
   state.page=admin()?"users":state.actor==="temporary"?"password":"diagnosis";navigate(state.page);return;
  }
  if(e.id==="audit-page-size"){
+  if(e.value==="custom"){
+   state.auditCustomSize=true;render();$("#audit-custom-size input")?.focus();return;
+  }
   const size=Number(e.value);
-  if(!auditPageSizes.includes(size))return;
-  state.auditPageSize=size;state.auditPage=0;
+  if(!Number.isInteger(size)||size<1||size>100)return;
+  state.auditCustomSize=false;state.auditPageSize=size;state.auditPage=0;
  }
  else if(e.id==="user-type")state.filter=e.value;
  else if(e.id==="user-status")state.status=e.value;
@@ -577,6 +588,14 @@ document.addEventListener("change",event=>{
 document.addEventListener("submit",event=>{
  const f=event.target;
  if(f.id==="dialog-form"){event.preventDefault();onSubmit?.(new FormData(f));}
+ if(f.id==="audit-custom-size"){
+  event.preventDefault();
+  if(!admin()||state.auditAccess)return;
+  const size=Number(new FormData(f).get("size"));
+  if(!Number.isInteger(size)||size<1||size>100)return;
+  state.auditCustomSize=false;state.auditPageSize=size;state.auditPage=0;
+  render();$("#audit-heading")?.focus();
+ }
  if(f.id==="audit-filter"){
   event.preventDefault();
   if(!admin()||state.auditAccess)return;
