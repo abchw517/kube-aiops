@@ -87,7 +87,20 @@ func (s *Server) protectRoute(pattern string, next http.HandlerFunc) http.Handle
 	if route.deferredScope {
 		return s.authorizationPrerequisiteMiddleware(s.authorizer, route.capability, next).ServeHTTP
 	}
-	return s.authorizationMiddleware(s.authorizer, route.capability, route.resolveScope, next).ServeHTTP
+	scoped := s.authorizationMiddleware(s.authorizer, route.capability, route.resolveScope, next).ServeHTTP
+	if route.capability != authorization.CapabilityFindingsList && route.capability != authorization.CapabilityFindingsSummary {
+		return scoped
+	}
+	// 聚合查询逐实例授权，避免要求仅管理部分环境的用户具备全局权限。
+	aggregate := s.authorizationPrerequisiteMiddleware(s.authorizer, route.capability, next).ServeHTTP
+	return func(w http.ResponseWriter, r *http.Request) {
+		if queryCluster(r) == allFindingClusters {
+			setAuditScope(r, findingQueryScope(r))
+			aggregate(w, r)
+			return
+		}
+		scoped(w, r)
+	}
 }
 
 func (s *Server) authorizationPrerequisiteMiddleware(

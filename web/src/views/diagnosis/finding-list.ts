@@ -8,7 +8,14 @@ import type {
 } from "../../api/generated.ts";
 import { escapeHtml, formatSeverity, formatTimestamp } from "../../components/html.ts";
 import { emptyState } from "../../components/states.ts";
-import { type FindingFilters, serializeFindingFilters } from "../../domain/filters.ts";
+import {
+  allClusters,
+  displayFindingScope,
+  type FindingFilters,
+  scopeValue,
+  serializeFindingFilters,
+} from "../../domain/filters.ts";
+import { renderSeverityHelp } from "./severity-help.ts";
 
 interface FindingWorkspace {
   clusters: Cluster[];
@@ -17,24 +24,26 @@ interface FindingWorkspace {
   filters: FindingFilters;
   page: FindingPage;
   summary: FindingSummary;
-  hasCursor: boolean;
+  cursor?: string;
 }
 
 /** 组织诊断列表、筛选、汇总和沿用当前筛选条件的分页链接。 */
 export function renderFindingWorkspace(workspace: FindingWorkspace): string {
-  const { clusters, namespaces, knownKinds, filters, page, summary, hasCursor } = workspace;
+  const { clusters, namespaces, knownKinds, filters, page, summary, cursor } = workspace;
   const query = serializeFindingFilters(filters);
   const nextCursor = page.pagination.continue;
   const nextQuery = new URLSearchParams(query);
   if (nextCursor) nextQuery.set("continue", nextCursor);
+  const returnQuery = new URLSearchParams(query);
+  if (cursor) returnQuery.set("continue", cursor);
   return `
     ${renderFilters(clusters, namespaces, knownKinds, filters)}
     ${renderSummary(summary)}
     <div class="finding-workspace">
       <div class="finding-results">
-        ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, summary.total)}
-        ${hasCursor || nextCursor ? `<nav class="pagination" aria-label="诊断结果分页">
-          ${hasCursor ? `<a class="button secondary" href="#/findings?${escapeHtml(query)}">返回首页</a>` : ""}
+        ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, summary.total, clusters, returnQuery.toString())}
+        ${cursor || nextCursor ? `<nav class="pagination" aria-label="诊断结果分页">
+          ${cursor ? `<a class="button secondary" href="#/findings?${escapeHtml(query)}">返回首页</a>` : ""}
           ${nextCursor ? `<a class="button" href="#/findings?${escapeHtml(nextQuery.toString())}">下一页</a>` : ""}
         </nav>` : ""}
       </div>
@@ -49,7 +58,7 @@ function renderFilters(
   knownKinds: string[],
   filters: FindingFilters,
 ): string {
-  const instance = clusters.find((item) => item.id === (filters.cluster ?? "local"));
+  const instance = clusters.find((item) => item.id === filters.cluster);
   const freshness = instance?.status === "waiting" ? "采集端尚未上报。" :
     instance?.status === "offline" && instance.lastReportAt ?
       `采集离线，显示最近一次上报的数据（${new Date(instance.lastReportAt * 1000).toLocaleString()}）。` : "";
@@ -57,7 +66,7 @@ function renderFilters(
     <section class="panel filters" aria-label="诊断结果筛选">
       <fieldset>
         <legend>集群范围</legend>
-        ${renderClusterSelect(clusters, filters.cluster ?? "local")}
+        ${renderClusterSelect(clusters, filters)}
       </fieldset>
       <fieldset>
         <legend>结果筛选</legend>
@@ -75,10 +84,10 @@ function renderSummary(summary: FindingSummary): string {
   const severity = summary.bySeverity;
   return `
     <section class="summary-grid" aria-label="诊断结果汇总" data-testid="finding-summary">
-      ${metricCard("总数", summary.total, "total")}
-      ${metricCard(formatSeverity("critical"), severity.critical ?? 0, "critical")}
-      ${metricCard(formatSeverity("warning"), severity.warning ?? 0, "warning")}
-      ${metricCard(formatSeverity("info"), severity.info ?? 0, "info")}
+      ${metricCard(summary.total, "total")}
+      ${metricCard(severity.critical ?? 0, "critical")}
+      ${metricCard(severity.warning ?? 0, "warning")}
+      ${metricCard(severity.info ?? 0, "info")}
     </section>`;
 }
 
@@ -98,7 +107,8 @@ function renderSummaryBreakdown(summary: FindingSummary): string {
 }
 
 /** 渲染可通过键盘横向滚动的诊断结果表格。 */
-function renderFindingTable(findings: Finding[], total: number): string {
+function renderFindingTable(findings: Finding[], total: number, clusters: Cluster[], returnQuery: string): string {
+  const clusterNames = new Map(clusters.map(({ id, name }) => [id, name]));
   return `
     <section class="panel table-panel" data-testid="finding-list">
       <div class="section-heading">
@@ -113,27 +123,30 @@ function renderFindingTable(findings: Finding[], total: number): string {
               <th scope="col">严重级别</th>
               <th scope="col">问题</th>
               <th scope="col">资源</th>
+              <th scope="col">集群实例</th>
               <th scope="col">命名空间</th>
               <th scope="col">发现时间</th>
             </tr>
           </thead>
           <tbody>
-            ${findings.map(renderFindingRow).join("")}
+            ${findings.map((finding) => renderFindingRow(finding, clusterNames, returnQuery)).join("")}
           </tbody>
         </table>
       </div>
     </section>`;
 }
 
-function renderFindingRow(finding: Finding): string {
+function renderFindingRow(finding: Finding, clusterNames: Map<string, string>, returnQuery: string): string {
   const resource = [finding.resource.kind, finding.resource.name]
     .filter(Boolean)
     .join("/");
+  const detailQuery = new URLSearchParams({ cluster: finding.cluster, return: returnQuery });
   return `
     <tr>
       <td><span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span></td>
-      <td class="finding-problem"><a href="#/findings/${encodeURIComponent(finding.id)}${finding.cluster === "local" ? "" : `?cluster=${encodeURIComponent(finding.cluster)}`}" title="${escapeHtml(finding.problem)}">${escapeHtml(finding.problem)}</a></td>
+      <td class="finding-problem"><a href="#/findings/${encodeURIComponent(finding.id)}?${escapeHtml(detailQuery.toString())}" title="${escapeHtml(finding.problem)}">${escapeHtml(finding.problem)}</a></td>
       <td translate="no">${escapeHtml(resource || "—")}</td>
+      <td class="finding-cluster" translate="no">${escapeHtml(clusterNames.get(finding.cluster) ?? finding.cluster)}</td>
       <td translate="no">${escapeHtml(finding.namespace ?? finding.resource.namespace ?? "—")}</td>
       <td class="finding-time">${formatTimestamp(finding.createdAt)}</td>
     </tr>`;
@@ -145,14 +158,17 @@ function renderSelect<Value extends string>(
   values: Value[],
   selected?: string,
   formatValue: (value: Value) => string = (value) => value,
+  allLabel = "全部",
 ): string {
-  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  const allOption = name === "cluster" ? "" : '<option value="">全部</option>';
+  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => formatValue(a).localeCompare(formatValue(b), "zh-CN"));
+  const missing = selected && !unique.some((value) => value === selected) ?
+    `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` : "";
   return `
     <label>
       <span>${escapeHtml(label)}</span>
       <select name="${escapeHtml(name)}" data-filter="${escapeHtml(name)}">
-        ${allOption}
+        <option value="">${allLabel}</option>
+        ${missing}
         ${unique
           .map(
             (value) =>
@@ -163,8 +179,8 @@ function renderSelect<Value extends string>(
     </label>`;
 }
 
-function metricCard(label: string, value: number, tone: Severity | "total"): string {
-  return `<div class="metric-card metric-${tone}"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
+function metricCard(value: number, tone: Severity | "total"): string {
+  return `<div class="metric-card metric-${tone}">${tone === "total" ? "<span>总数</span>" : renderSeverityHelp(tone)}<strong>${value}</strong></div>`;
 }
 
 function renderBreakdown(values: Record<string, number>): string {
@@ -178,20 +194,21 @@ function renderBreakdown(values: Record<string, number>): string {
     .join("")}</ul>`;
 }
 
-function renderClusterSelect(clusters: Cluster[], selected: string): string {
-  const current = clusters.find((cluster) => cluster.id === selected) ?? clusters[0];
-  if (!current) return "";
-  const dimensions = [["environment", "环境"], ["business", "业务"], ["group", "集群名称"]] as const;
+function renderClusterSelect(clusters: Cluster[], filters: FindingFilters): string {
+  const selected = displayFindingScope(clusters, filters);
+  const dimensions = [
+    ["environment", "环境", "全部环境（ALL）"],
+    ["business", "业务", "全部业务"],
+    ["group", "集群名称", "全部集群名称"],
+  ] as const;
   let available = clusters;
-  const selectors = dimensions.map(([key, label]) => {
-    const value = current[key] || "未分组";
-    const choices = [...new Set(available.map((item) => item[key] || "未分组"))];
-    available = available.filter((item) => (item[key] || "未分组") === value);
-    return `<label><span>${label}</span><select name="${key}" data-filter="${key}">
-      ${choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === value ? " selected" : ""}>${escapeHtml(choice)}</option>`).join("")}
-    </select></label>`;
+  const selectors = dimensions.map(([key, label, all]) => {
+    const value = selected[key];
+    const choices = available.map((item) => scopeValue(item, key));
+    if (value) available = available.filter((item) => scopeValue(item, key) === value);
+    return renderSelect(key, label, choices, value, undefined, all);
   });
-  return `${selectors.join("")}<label><span>集群实例</span><select name="cluster" data-filter="cluster">
-    ${available.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === current.id ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
-    </select></label>`;
+  const instances = new Map(available.map(({ id, name }) => [id, name]));
+  return selectors.join("") + renderSelect("cluster", "集群实例", [...instances.keys()],
+    selected.cluster === allClusters ? undefined : selected.cluster, (id) => instances.get(id) ?? id, "全部集群实例");
 }

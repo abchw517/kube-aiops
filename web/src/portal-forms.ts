@@ -1,7 +1,7 @@
 import { recheckCollection, submitClusterMaintenance, submitOnboarding } from "./views/clusters/cluster-onboarding.ts";
 import { submitNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
 import { submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
-import { queryAudit, submitAuditRetention, submitPlatform } from "./views/permissions/platform-admin.ts";
+import { submitPlatform } from "./views/permissions/platform-admin.ts";
 import { submitRole } from "./views/permissions/roles.ts";
 import { submitResourceCatalog } from "./views/resources/resource-management.ts";
 
@@ -51,16 +51,6 @@ export function bindPortalForms(root: HTMLElement, actions: PortalFormActions): 
     if (form.dataset.platform) {
       event.preventDefault();
       if (action) void submitPlatform(form, action, actions.refresh);
-      return;
-    }
-    if (form.hasAttribute("data-audit-retention")) {
-      event.preventDefault();
-      void submitAuditRetention(form);
-      return;
-    }
-    if (form.hasAttribute("data-audit-filter")) {
-      event.preventDefault();
-      void queryAudit(form, submitter?.hasAttribute("data-audit-next") ? action : "");
       return;
     }
     if (form.dataset.identityResource) {

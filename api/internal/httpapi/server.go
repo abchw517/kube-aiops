@@ -201,11 +201,15 @@ func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
 func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	filter := parseFindingFilter(r)
 
-	target, ok := s.target(w, r, filter.Cluster)
-	if !ok {
-		return
+	var target ClusterTarget
+	if filter.Cluster != allFindingClusters {
+		var ok bool
+		target, ok = s.target(w, r, filter.Cluster)
+		if !ok {
+			return
+		}
+		s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsList)
 	}
-	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsList)
 
 	limit := 0
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
@@ -217,11 +221,20 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 		limit = value
 	}
 
-	page, err := target.Backend.ListFindings(r.Context(), finding.Query{
-		Filter:   filter,
-		Limit:    limit,
-		Continue: strings.TrimSpace(r.URL.Query().Get("continue")),
-	})
+	query := finding.Query{
+		Filter: filter, Limit: limit, Continue: strings.TrimSpace(r.URL.Query().Get("continue")),
+	}
+	var page finding.Page
+	var err error
+	if filter.Cluster == allFindingClusters {
+		var ok bool
+		page, err, ok = s.aggregateFindingPage(w, r, query)
+		if !ok {
+			return
+		}
+	} else {
+		page, err = target.Backend.ListFindings(r.Context(), query)
+	}
 	if err != nil {
 		s.writeFindingBackendError(w, err, "FINDING_LIST_FAILED", "unable to list findings")
 		return
@@ -237,12 +250,22 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) findingSummary(w http.ResponseWriter, r *http.Request) {
 	filter := parseFindingFilter(r)
 
-	target, ok := s.target(w, r, filter.Cluster)
-	if !ok {
-		return
+	var summary finding.Summary
+	var err error
+	if filter.Cluster == allFindingClusters {
+		var ok bool
+		summary, err, ok = s.aggregateFindingSummary(w, r, filter)
+		if !ok {
+			return
+		}
+	} else {
+		target, ok := s.target(w, r, filter.Cluster)
+		if !ok {
+			return
+		}
+		s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsSummary)
+		summary, err = target.Backend.SummarizeFindings(r.Context(), filter)
 	}
-	s.scopeFindingResults(r, &filter, authorization.CapabilityFindingsSummary)
-	summary, err := target.Backend.SummarizeFindings(r.Context(), filter)
 	if err != nil {
 		s.writeFindingBackendError(w, err, "FINDING_SUMMARY_FAILED", "unable to summarize findings")
 		return

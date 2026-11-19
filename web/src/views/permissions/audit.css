@@ -1,0 +1,107 @@
+/* 审计页把策略、筛选、记录和明细放在各自的视觉层级。 */
+.audit-workspace { min-width: 0; }
+.audit-workspace :where(.platform-heading) p { margin: 6px 0 0; color: var(--muted); }
+.audit-retention { display: grid; gap: 12px; margin-block-end: 16px; }
+.audit-section-heading, .audit-list-footer, .audit-batch-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.audit-section-heading h3, .audit-dialog h2, .audit-dialog h3 { margin: 0; }
+.audit-retention-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.audit-retention-value {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f6f8fc;
+}
+.audit-retention-value strong { font-size: 1.25rem; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.system-management .audit-records { padding: 0; }
+.audit-records > :is(header, form, footer, .audit-status, .audit-batch-filter) { padding-inline: clamp(12px, 2vw, 18px); }
+.audit-records > header { padding-block: 16px 0; }
+.audit-filters { display: grid; grid-template-columns: minmax(0, 1.45fr) repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 10px; padding-block: 12px; }
+.audit-filters label, .audit-dialog label { display: grid; min-width: 0; gap: 5px; font-size: .875rem; font-weight: 650; }
+.audit-filters :is(input, select), .audit-dialog input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px 9px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 400;
+}
+.audit-status { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.audit-records .audit-status:not(:empty) { margin-block-end: 10px; }
+.audit-batch-filter { padding-block: 0 12px; }
+.audit-batch-filter[hidden] { display: none; }
+.audit-batch-filter p { margin: 0; overflow-wrap: anywhere; }
+.audit-table-wrap { min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
+.audit-table-wrap:focus-visible { outline-offset: -3px; }
+.audit-records .audit-table-wrap { border-block: 1px solid var(--line); }
+.audit-table { min-width: 740px; }
+.audit-table :is(td:nth-child(2), td:nth-child(3), td:nth-child(5)) { max-width: 13rem; overflow-wrap: anywhere; }
+.audit-table :is(td:first-child, th:first-child) { width: 10.5rem; font-variant-numeric: tabular-nums; }
+.audit-table :is(td:nth-child(4), td:nth-child(6), td:last-child:not([colspan])) { white-space: nowrap; }
+.audit-table td:last-child:not([colspan]) { width: 1%; }
+.audit-table :where(td:last-child) .button { min-height: 36px; }
+.audit-list-footer { min-height: 56px; padding-block: 8px; color: var(--muted); font-size: .875rem; }
+.audit-pagination { display: flex; flex-wrap: wrap; gap: 8px; }
+.audit-list-footer .button { min-height: 38px; }
+
+.audit-dialog {
+  width: min(680px, calc(100% - 28px));
+  max-height: calc(100dvh - 36px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 14px 42px #142b3c26;
+  color: var(--ink);
+}
+.audit-dialog::backdrop { background: #10233588; }
+.audit-dialog[open], .audit-dialog > form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.audit-dialog:has(> form) { grid-template-rows: minmax(0, 1fr); }
+.audit-dialog :is(.audit-dialog-header, .audit-dialog-body, .audit-dialog-footer) { padding: 14px clamp(12px, 3vw, 20px); }
+.audit-dialog-header { border-bottom: 1px solid var(--line); }
+.audit-dialog h2 { font-size: clamp(1.125rem, 3vw, 1.375rem); overflow-wrap: anywhere; }
+.audit-event-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.audit-dialog-body { display: grid; gap: 14px; overflow: auto; overscroll-behavior: contain; }
+.audit-dialog-body > p { margin: 0; }
+.audit-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); }
+.audit-event-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
+.audit-event-meta > div { padding-block: 6px; border-bottom: 1px solid var(--line); }
+.audit-event-meta dt { color: var(--muted); font-size: .8rem; font-weight: 650; }
+.audit-event-meta dd { margin: 4px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.audit-reason { padding: 10px 12px; border: 1px solid #efdbb6; border-radius: 7px; background: #fff8eb; overflow-wrap: anywhere; }
+.audit-reason p { margin: 4px 0 0; white-space: pre-wrap; }
+.audit-batch-results { min-width: 0; }
+.audit-batch-results h3 { margin-block-end: 8px; }
+.audit-batch-results .audit-table-wrap { border: 1px solid var(--line); border-radius: 6px; }
+.audit-batch-table { min-width: 21rem; }
+.audit-batch-table td { max-width: 16rem; overflow-wrap: anywhere; }
+.audit-batch-table td:nth-child(2) { white-space: nowrap; }
+.audit-batch-table :is(th, td):last-child { text-align: start; }
+.system-badge[data-audit-risk="低"] { background: var(--accent-soft); color: var(--blue); }
+.system-badge[data-audit-risk="中"], .system-badge[data-audit-result="部分成功"] { background: #fff2d8; color: #865a16; }
+.system-badge[data-audit-risk="高"] { background: #fff1f2; color: var(--red); }
+
+@media (max-width: 980px) {
+  .audit-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audit-search { grid-column: 1 / -1; }
+  .audit-filters .button { justify-self: start; }
+}
+@media (max-width: 480px) {
+  .audit-retention-grid { gap: 6px; }
+  .audit-retention-value { padding: 8px; }
+  .audit-retention-value strong { font-size: 1rem; }
+  .audit-event-meta { grid-template-columns: minmax(0, 1fr); }
+}

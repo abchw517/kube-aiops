@@ -66,3 +66,35 @@ test("dedicated ownership fixes the business line and only checks its collected 
   assert.match(editor, /role="region" aria-label="命名空间列表" tabindex="0"/);
   assert.match(editor, /type="submit">保存归属/);
 });
+
+test("shows failed rechecks before cached Ready nodes and restores health after a successful sample", async (t) => {
+  const collection = {
+    nodes: [{ name: "worker-1", ready: "True" }],
+    nodeSampleAt: 1700000000,
+    nodeFailures: 0,
+    nodeError: "",
+  };
+  t.mock.method(globalThis, "fetch", async () => Response.json([{
+    id: "dev-k8s", name: "开发集群", mode: "pull", enabled: true, credentialKind: "kubeconfig",
+    firstCollectedAt: 1700000000, checkedAt: 1700000030, collection,
+  }]));
+
+  assert.match(await renderOnboarding(), /data-status="已接入 · 当前集群正常"/);
+  collection.nodeError = "节点读取失败，请检查网络、TLS 和只读凭据";
+  const failed = await renderOnboarding();
+  assert.match(failed, /data-status="已接入 · 节点校验失败"/);
+  assert.doesNotMatch(failed, /当前集群正常/);
+  assert.match(failed, /节点读取失败，请检查网络、TLS 和只读凭据/);
+  assert.match(failed, /上次成功采样时间/);
+  assert.match(failed, /aria-label="历史节点快照"[^>]*><li>worker-1 · <strong>Ready<\/strong>/);
+
+  collection.nodeFailures = 2;
+  assert.match(await renderOnboarding(), /data-status="已接入 · 节点数据已过期"/);
+
+  collection.nodeSampleAt = 1700000060;
+  collection.nodeFailures = 0;
+  collection.nodeError = "";
+  const recovered = await renderOnboarding();
+  assert.match(recovered, /data-status="已接入 · 当前集群正常"/);
+  assert.doesNotMatch(recovered, /节点校验失败|节点数据已过期|历史节点快照/);
+});

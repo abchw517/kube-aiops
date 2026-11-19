@@ -64,7 +64,7 @@ func (a *Service) wikiSessionHandler(s *identity.Sessions, handle func(http.Resp
 // Sources are immutable in this implementation. A different remote URL gets a
 // new ID, so previously stored credentials cannot follow a changed endpoint.
 func (a *Service) handleWikiSource(w http.ResponseWriter, r *http.Request, principal identity.Principal, id string) {
-	if principal.Provider != permissions.AdminProvider {
+	if !permissions.IsAdministrator(principal) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

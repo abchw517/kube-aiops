@@ -199,7 +199,8 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	err := a.editPlatform(ctx, func(state *platformState, tx *sql.Tx) error {
 		if actor.Subject != superSubject {
 			current := state.Accounts[actor.Subject]
-			if current.Kind != "administrator" || current.Disabled || current.MustChange || current.Generation != actor.SessionVersion {
+			if !current.isAdministrator() || !IsAdministrator(actor) || current.Disabled ||
+				current.DirectoryDisabled || current.MustChange || current.Generation != actor.SessionVersion {
 				return identity.ErrUnauthenticated
 			}
 		}
@@ -345,7 +346,7 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 	if !exists {
 		return fail("账号不可修改或不存在")
 	}
-	if account.Kind == "administrator" && !super {
+	if account.isAdministrator() && !super {
 		return fail("仅超级管理员可维护其他管理员")
 	}
 	switch input.Action {
@@ -382,8 +383,13 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 		if isGroup {
 			targets = account.Groups
 		}
-		for _, value := range uniqueStrings(input.Values) {
-			if isGroup && state.Groups[value].ID == "" || !isGroup && (value == adminRole || state.role(value).ID == "") {
+		wasAdministrator := account.isAdministrator()
+		values := uniqueStrings(input.Values)
+		for _, value := range values {
+			if !isGroup && value == adminRole && !super {
+				return fail("仅超级管理员可授予或撤销系统管理员角色")
+			}
+			if isGroup && state.Groups[value].ID == "" || !isGroup && state.role(value).ID == "" {
 				return fail("目标用户组或角色不可分配")
 			}
 			if !adding && !slices.Contains(targets, value) {
@@ -391,7 +397,7 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 			}
 		}
 		targets = slices.Clone(targets)
-		for _, value := range uniqueStrings(input.Values) {
+		for _, value := range values {
 			if adding {
 				if !slices.Contains(targets, value) {
 					targets = append(targets, value)
@@ -407,6 +413,10 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 		}
 		if input.Action == "revoke" && slices.Contains(input.Values, guestRole) && len(state.roleSources(account)) == 0 {
 			return fail("须保留其他直接或继承角色")
+		}
+		// 系统管理员角色变更必须使已有会话失效，普通数据角色继续即时生效。
+		if wasAdministrator != account.isAdministrator() {
+			account.Generation = rand.Text()
 		}
 	default:
 		return fail("不支持该操作")

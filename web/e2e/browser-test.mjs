@@ -38,26 +38,32 @@ try {
       (text) =>
         text.includes("诊断控制台") &&
         text.includes("清除筛选") &&
-        text.includes("共 2 条诊断结果") &&
+        text.includes("共 3 条诊断结果") &&
         text.includes("CrashLoopBackOff detected") &&
-        text.includes("Replica availability degraded"),
-      "Finding List did not render both normalized findings",
+        text.includes("Replica availability degraded") &&
+        text.includes("测试集群容量建议"),
+      "Default ALL scope did not show findings from both environments",
     );
 
     const localeEvaluation = await cdp.send("Runtime.evaluate", {
       expression: `({
         language: document.documentElement.lang,
-        severity: document.querySelector('select[name="severity"] option[value="critical"]')?.textContent
+        severity: document.querySelector('select[name="severity"] option[value="critical"]')?.textContent,
+        environment: document.querySelector('select[name="environment"]').selectedOptions[0].textContent,
+        cluster: document.querySelector('select[name="cluster"]').value
       })`,
       returnByValue: true,
     });
     const locale = localeEvaluation.result?.value;
-    if (locale?.language !== "zh-CN" || locale?.severity !== "严重") {
+    if (locale?.language !== "zh-CN" || locale?.severity !== "严重" ||
+        locale?.environment !== "全部环境（ALL）" || locale?.cluster !== "") {
       throw new Error(`Chinese locale or severity label missing: ${JSON.stringify(locale)}`);
     }
     await assertFindingWorkspaceLayout(cdp, 1440, 2);
     await assertFindingWorkspaceLayout(cdp, 390, 1);
+    await assertSeverityDescriptions(cdp);
     await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await assertFindingEnvironment(cdp);
 
     await assertPage(
       cdp,
@@ -163,7 +169,7 @@ try {
     );
     for (const [password, expected] of [
       ["incorrect", "登录失败，请核对登录方式和账号密码。"],
-      ["fixture-password", "共 2 条诊断结果"],
+      ["fixture-password", "共 3 条诊断结果"],
     ]) {
       await cdp.send("Runtime.evaluate", {
         expression: `(() => {
@@ -190,7 +196,7 @@ try {
         form.requestSubmit();
       })()`,
     });
-    await assertText(cdp, (text) => text.includes("共 2 条诊断结果"), "Checked LDAP option did not log in");
+    await assertText(cdp, (text) => text.includes("共 3 条诊断结果"), "Checked LDAP option did not log in");
     await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-action=logout]").click()',
     });
@@ -468,17 +474,70 @@ try {
       select.value = "roles";
       select.dispatchEvent(new Event("change", { bubbles: true }));
       return dialog.querySelector('[data-assignment-options="groups"]').hidden &&
-        !dialog.querySelector('[data-assignment-options="roles"]').hidden;
+        !dialog.querySelector('[data-assignment-options="roles"]').hidden &&
+        dialog.innerText.includes("管理员角色发生变更时，目标账号需重新登录");
     })()` });
     if (!integrated.result?.value) throw new Error("Authorization target did not switch to role checkboxes");
+    const assignmentRoleIds = ["diagnosis-reader", "namespace-auditor", "system-admin"];
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("dialog[open] form");
-      form.querySelector('input[name="roles"]').checked = true;
+      for (const id of ${JSON.stringify(assignmentRoleIds)}) form.querySelector('input[value="' + id + '"]').checked = true;
       form.requestSubmit(form.querySelector('button[value="assignment"]'));
     })()` });
     await assertText(cdp, (text) => text.includes("授权操作结果") && text.includes("已更新关联关系"), "Batch results did not display individual outcomes");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
-    await assertText(cdp, (text) => text.includes("已选 0 项") && !text.includes("授权操作结果"), "Batch assignment should refresh the accounts");
+    await assertText(cdp, (text) => text.includes("已选 0 项") && text.includes("LDAP 员工") && text.includes("全局管理与诊断查看"),
+      "Batch grant did not show full administrator permissions while retaining the LDAP account type");
+    await cdp.send("Runtime.evaluate", {
+      awaitPromise: true,
+      expression: `fetch("/test/admin-session?super=false").then(() => {
+        location.hash = document.querySelector("[data-platform-row] a").hash;
+      })`,
+    });
+    await assertText(cdp, (text) => text.includes("全局管理与诊断查看") && !text.includes("创建系统管理员"),
+      "Ordinary administrator session did not load the account detail");
+    const protectedLDAP = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const roles = document.querySelector('template[data-system-editor="batch"]').content;
+      return document.querySelector('[data-platform-row] input[name="ids"]').disabled &&
+        document.querySelector("[data-platform-delete]").disabled &&
+        !document.querySelector('[data-system-open="assign"], [data-system-open="account-action"], [data-system-open="reset"]') &&
+        !document.querySelector('a[href="#/admin/password"]') &&
+        !roles.querySelector('input[value="system-admin"]') &&
+        roles.querySelector('input[value="diagnosis-reader"]') && roles.querySelector('input[value="namespace-auditor"]') !== null;
+    })()` });
+    if (!protectedLDAP.result?.value) throw new Error("Ordinary administrator saw restricted account or password controls");
+    const guardedPassword = await cdp.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 2000);
+      function onRedirect() {
+        if (location.hash !== "#/admin/users") return;
+        window.removeEventListener("hashchange", onRedirect);
+        clearTimeout(timer);
+        resolve(!document.querySelector('[data-identity-resource="password"]'));
+      }
+      window.addEventListener("hashchange", onRedirect);
+      location.hash = "#/admin/password";
+    })` });
+    if (!guardedPassword.result?.value) throw new Error("LDAP administrator could open the local password route");
+    await cdp.send("Runtime.evaluate", {
+      awaitPromise: true, expression: `fetch("/test/admin-session").then(() => { location.hash = "#/admin/password"; })`,
+    });
+    await assertText(cdp, (text) => text.includes("为当前本地账号设置新密码"), "Local administrator lost the password route");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
+      (text) => text.includes("全局管理与诊断查看") && text.includes("创建系统管理员"),
+      "Super administrator session did not restore account maintenance");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-system-tab="bindings"]').click();
+      document.querySelector('[data-system-open="assign"]').click();
+      const form = document.querySelector("dialog[open] form");
+      const kind = form.querySelector("[data-assignment-kind]");
+      kind.value = "roles";
+      kind.dispatchEvent(new Event("change", { bubbles: true }));
+      form.querySelector("[data-assignment-mode]").value = "remove";
+      for (const id of ${JSON.stringify(assignmentRoleIds)}) form.querySelector('input[value="' + id + '"]').checked = true;
+      form.requestSubmit(form.querySelector('button[value="assignment"]'));
+    })()` });
+    await assertText(cdp, (text) => text.includes("用户组 运维") && !text.includes("全局管理与诊断查看"),
+      "Revoking multiple roles did not restore scoped LDAP permissions");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-system-open=guest]").click()' });
     await assertText(cdp, (text) => text.includes("临时密码") && text.includes("取消"), "Create visitor dialog did not open");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
@@ -582,16 +641,99 @@ try {
     await assertText(cdp, (text) => text.includes("共 0 个账号") && !text.includes("reader"), "Deleted account still appeared in the list");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
       (text) => text.includes("操作审计") && text.includes("创建账号") && text.includes("local:guest"), "Operation audit did not render");
-    await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && text.includes("低 3 天 / 中 5 天 / 高 7 天"), "Audit time or default retention did not render");
+    await assertText(cdp, (text) => text.includes("2026年11月18日15:43:19") && ["3 天", "5 天", "7 天"].every((label) => text.includes(label)), "Audit time or default retention did not render");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 820, deviceScaleFactor: 1, mobile: false });
+    const auditLayout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const table = document.querySelector('.audit-records [role="region"]');
+      return table.tabIndex === 0 && table.scrollWidth > table.clientWidth && document.documentElement.scrollWidth <= innerWidth;
+    })()` });
+    if (!auditLayout.result?.value) throw new Error("Audit table must scroll within the mobile layout and support keyboard focus");
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
-      document.querySelector(".audit-retention").open = true;
+      const form = document.querySelector("[data-audit-filter]");
+      form.elements.account.value = "批量操作";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("当前页 1 条记录") && text.includes("批量加入用户组") && !text.includes("local:guest"),
+      "Audit account search did not narrow the list before opening the batch");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="3"]\').click()' });
+    await assertText(cdp, (text) => text.includes("批次结果") && text.includes("ldap:alice") && text.includes("查看同批次"), "Audit batch detail did not render per-target outcomes");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-show-batch]").click()' });
+    await assertText(cdp, (text) => text.includes("清除批次") && text.includes("ldap:alice") && !text.includes("local:guest"), "Batch filter did not exclude unrelated records");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-next]").click()' });
+    await assertText(cdp, (text) => text.includes("ldap:bob") && text.includes("上一页") && !text.includes("ldap:alice"), "Audit cursor did not advance within the batch");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'[data-audit-detail="1"]\').click()' });
+    await assertText(cdp, (text) => text.includes("失败原因") && text.includes("账号已停用"), "Audit details omitted a per-target failure reason");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-close]").click(); document.querySelector("[data-audit-previous]").click();' });
+    await assertText(cdp, (text) => text.includes("ldap:alice") && !text.includes("ldap:bob"), "Audit cursor did not return to the first batch page");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-clear-batch]").click()' });
+    await assertText(cdp, (text) => text.includes("local:guest") && !text.includes("清除批次"), "Clearing the audit batch failed");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector("[data-audit-edit]").click();
       const form = document.querySelector("[data-audit-retention]");
       form.elements.low.value = "2";
       form.elements.medium.value = "6";
       form.elements.high.value = "9";
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => text.includes("已保存保留策略") && text.includes("低 2 天 / 中 6 天 / 高 9 天"), "Audit retention did not save");
+    await assertText(cdp, (text) => text.includes("已保存保留策略") && text.includes("local:guest") && ["2 天", "6 天", "9 天"].every((label) => text.includes(label)), "Audit retention did not save");
+    const zeroMedium = `(() => {
+      document.querySelector("[data-audit-edit]").click();
+      const form = document.querySelector("[data-audit-retention]");
+      form.elements.medium.value = "0";
+      form.requestSubmit();
+    })()`;
+    await cdp.send("Runtime.evaluate", { expression: zeroMedium });
+    await assertText(cdp, (text) => text.includes("确认不保留审计记录") && text.includes("清除中风险"), "Disabling a retention tier did not show an explicit confirmation");
+    const auditCancel = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.activeElement.matches("[data-audit-back]")' });
+    if (!auditCancel.result?.value) throw new Error("Audit purge confirmation must focus Cancel");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-back]").click(); document.querySelector("[data-audit-close]").click()' });
+    if (await fetch("http://127.0.0.1:4173/test/audit-saves").then((response) => response.json()) !== 1) throw new Error("Cancelling audit purge still saved the policy");
+    await cdp.send("Runtime.evaluate", { expression: zeroMedium });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-confirm]").requestSubmit()' });
+    await assertText(cdp, (text) => text.includes("不保留") && text.includes("local:guest") && !text.includes("批量加入用户组"), "Disabling audit retention did not remove affected records");
+
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations?risk=%E9%AB%98",
+      (text) => text.includes("local:guest") && text.includes("编辑保留策略"), "Audit filter deep link did not load");
+    const filterReady = await cdp.send("Runtime.evaluate", { returnByValue: true, awaitPromise: true, expression: `new Promise(resolve => {
+      const ready = () => document.querySelector('[data-audit-filter] select[name=risk]')?.value === "高";
+      if (ready()) { resolve(true); return; }
+      const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); resolve(true); } });
+      observer.observe(document.querySelector("#app"), { childList: true, subtree: true });
+      setTimeout(() => { observer.disconnect(); resolve(false); }, 3000);
+    })` });
+    if (!filterReady.result?.value) throw new Error("Audit view was not initialized with the deep link filter");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-audit-edit]").click()' });
+    await fetch("http://127.0.0.1:4173/test/require-auth");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("[data-audit-retention]");
+      form.elements.low.value = "4";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("登录后可继续使用操作审计") && !text.includes("local:guest"), "Expired audit session did not clear the page and request sign-in");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const login = document.querySelector("[data-login]");
+      login.elements.username.value = "portal-test";
+      login.elements.password.value = "fixture-password";
+      login.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("local:guest") && text.includes("2 天") && !text.includes("4 天"), "Audit login did not return to a read-only refresh of the current route");
+    const auditFilterState = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.querySelector("[data-audit-filter] select[name=risk]").value' });
+    if (auditFilterState.result?.value !== "高" || await fetch("http://127.0.0.1:4173/test/audit-saves").then((response) => response.json()) !== 2) {
+      throw new Error("Audit sign-in lost the filter or replayed the unsaved PUT");
+    }
+    await fetch("http://127.0.0.1:4173/test/admin-session?super=false");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector("[data-audit-edit]").click();
+      const form = document.querySelector("[data-audit-retention]");
+      form.elements.low.value = "4";
+      form.requestSubmit();
+    })()` });
+    await assertText(cdp, (text) => text.includes("无访问权限") && !text.includes("需要身份认证"),
+      "Audit retention permission denial incorrectly prompted sign-in");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/operations",
+      (text) => text.includes("审计保留策略") && text.includes("local:guest") && !text.includes("编辑保留策略"), "Ordinary administrators should only read audit retention");
+    await fetch("http://127.0.0.1:4173/test/admin-session");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
       (text) => text.includes("集群接入") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });
@@ -686,6 +828,60 @@ async function createCdpClient(webSocketUrl) {
       socket.close();
     },
   };
+}
+
+// 验证说明可通过悬停、聚焦和点按阅读，关闭不改变筛选。
+async function assertSeverityDescriptions(cdp) {
+  const initial = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const { x, y } = document.querySelector(".metric-critical button").getBoundingClientRect();
+      return { x: x + 3, y: y + 3 };
+    })()`,
+    returnByValue: true,
+  });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...initial.result.value });
+  await assertText(cdp, (text) => text.includes("关键工作负载无可用副本"), "Critical definition did not open on hover");
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1, y: 1 });
+  const response = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const hash = location.hash;
+      const warning = document.querySelector(".metric-warning button");
+      warning.focus();
+      const warningHelp = document.getElementById(warning.getAttribute("aria-controls"));
+      const focused = !warningHelp.hidden && warningHelp.textContent.includes("工作负载反复重启");
+      warning.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      const dismissed = warningHelp.hidden && document.activeElement === warning;
+      const info = document.querySelector(".metric-info button");
+      info.click();
+      const infoHelp = document.getElementById(info.getAttribute("aria-controls"));
+      const bounds = infoHelp.getBoundingClientRect();
+      const opened = !infoHelp.hidden && infoHelp.textContent.includes("暂未观察到直接服务影响") &&
+        bounds.left >= 0 && bounds.right <= innerWidth;
+      info.click();
+      return focused && dismissed && opened && infoHelp.hidden && location.hash === hash;
+    })()`,
+    returnByValue: true,
+  });
+  if (response.result?.value !== true) throw new Error("Severity help focus, dismissal, or mobile positioning failed");
+}
+
+// 验证环境缩小查询范围，以及同名诊断的实例路由和返回链接。
+async function assertFindingEnvironment(cdp) {
+  await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const environment = document.querySelector('select[name="environment"]');
+      environment.value = "测试";
+      environment.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`,
+  });
+  await assertText(cdp, (text) => text.includes("共 1 条诊断结果") &&
+    text.includes("测试集群容量建议") && !text.includes("Replica availability degraded"),
+  "Environment selection did not limit the aggregate list and summary");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".finding-problem a").click()' });
+  await assertText(cdp, (text) => text.includes("测试环境容器资源建议"), "Duplicate finding ID opened the wrong cluster");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
+  await assertText(cdp, (text) => text.includes("共 1 条诊断结果") &&
+    text.includes("测试集群容量建议"), "Returning from finding detail lost the environment filter");
 }
 
 // 验证分组筛选、响应式统计栏和窄屏表格焦点。

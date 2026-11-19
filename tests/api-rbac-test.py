@@ -20,7 +20,8 @@ ROLE_PATH = ROOT / "deploy" / "api" / "clusterrole.yaml"
 
 EXPECTED = {
     (("core.k8sgpt.ai",), ("results",), ("get", "list", "watch")),
-    (("",), ("namespaces", "nodes"), ("list",)),
+    (("",), ("namespaces",), ("list",)),
+    (("",), ("nodes",), ("get", "list", "watch")),
     (("",), ("pods",), ("get",)),
     (("",), ("events",), ("get", "list", "watch")),
     (("apps",), ("deployments",), ("get",)),
@@ -113,7 +114,7 @@ def main() -> int:
         return 1
 
     verify_node_repair()
-    print("[api-rbac] 精确只读权限基线和节点权限修复验证通过（Nodes、Namespaces 仅 list）")
+    print("[api-rbac] 精确只读权限基线和节点权限修复验证通过（Nodes 支持 get、list、watch，Namespaces 仅 list）")
     return 0
 
 

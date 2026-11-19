@@ -22,7 +22,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
-  overflow: hidden;
+  position: relative;
   margin-block: 16px;
   border: 1px solid var(--line);
   border-radius: var(--panel-radius);
@@ -42,6 +42,51 @@
 .metric-info { --metric-tone: var(--teal); }
 .metric-card span { color: var(--muted); font-size: .8125rem; }
 .metric-card strong { color: var(--metric-tone); font-size: clamp(1.375rem, 2.7vw, 1.875rem); line-height: 1.12; }
+.metric-total { border-start-start-radius: inherit; }
+.metric-info { border-end-end-radius: inherit; }
+.metric-warning, .metric-info { justify-items: start; }
+.severity-help { position: relative; width: max-content; }
+.severity-help-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: .8125rem;
+  cursor: help;
+}
+.severity-help-trigger span {
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--metric-tone);
+  font-size: .6875rem;
+  line-height: 1;
+}
+.severity-help-description {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  width: min(16rem, 75vw);
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgb(19 37 66 / 14%);
+  color: var(--ink);
+  font-size: .8125rem;
+  line-height: 1.6;
+}
+.metric-info .severity-help-description { inset-inline: auto 0; }
 
 .finding-workspace {
   display: grid;
@@ -62,6 +107,7 @@
   font-weight: 650;
 }
 .finding-time { color: var(--muted); }
+.finding-cluster { overflow-wrap: anywhere; }
 .section-heading { padding: 15px 18px 12px; }
 .section-heading h2 { margin: 0; font-size: 1rem; }
 .summary-breakdown { display: grid; gap: 14px; padding: 16px; }
@@ -106,6 +152,7 @@
 }
 @media (max-width: 560px) {
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric-critical .severity-help-description, .metric-info .severity-help-description { inset-inline: auto -2rem; }
   .detail-list div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .summary-breakdown { grid-template-columns: minmax(0, 1fr); }
   .summary-breakdown > section + section { padding-top: 14px; padding-inline-start: 0; border-top: 1px solid var(--line); border-inline-start: 0; }

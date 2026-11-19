@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	_ "modernc.org/sqlite"
@@ -19,6 +20,11 @@ type Store struct {
 
 // Path 返回服务端 SQLite 数据文件的绝对路径。
 func (s *Store) Path() string { return s.path }
+
+const auditRetentionColumns = `(
+	risk TEXT PRIMARY KEY CHECK (risk IN ('低','中','高')),
+	days INTEGER NOT NULL CHECK (days BETWEEN 0 AND 106751991167300)
+)`
 
 func Open(path string) (*Store, error) {
 	absolute, err := filepath.Abs(path)
@@ -74,10 +80,7 @@ func Open(path string) (*Store, error) {
 			WHERE action='登录' AND result='成功' AND actor<>'';
 
 		CREATE INDEX IF NOT EXISTS operation_audit_risk_time ON operation_audit(risk, created_at);
-		CREATE TABLE IF NOT EXISTS operation_audit_retention (
-			risk TEXT PRIMARY KEY CHECK (risk IN ('低','中','高')),
-			days INTEGER NOT NULL CHECK (days BETWEEN 1 AND 106751991167300)
-		);
+		CREATE TABLE IF NOT EXISTS operation_audit_retention ` + auditRetentionColumns + `;
 		INSERT OR IGNORE INTO operation_audit_retention(risk,days) VALUES ('低',3),('中',5),('高',7);
 		CREATE TABLE IF NOT EXISTS account_last_login (
 			actor TEXT PRIMARY KEY,
@@ -233,7 +236,34 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrateAuditRetention(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{DB: db, path: absolute}, nil
+}
+
+// migrateAuditRetention 将旧版正整数约束升级为允许 0，保留已配置的各档天数。
+func migrateAuditRetention(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var schema string
+	if err := tx.QueryRow("SELECT sql FROM sqlite_schema WHERE type='table' AND name='operation_audit_retention'").Scan(&schema); err != nil {
+		return err
+	}
+	if !strings.Contains(strings.Join(strings.Fields(strings.ToUpper(schema)), " "), "BETWEEN 1 AND") {
+		return nil
+	}
+	if _, err := tx.Exec(`CREATE TABLE operation_audit_retention_upgrade ` + auditRetentionColumns + `;
+		INSERT INTO operation_audit_retention_upgrade(risk,days) SELECT risk,days FROM operation_audit_retention;
+		DROP TABLE operation_audit_retention;
+		ALTER TABLE operation_audit_retention_upgrade RENAME TO operation_audit_retention;`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Import replaces the policy and, when supplied, the local accounts in one transaction.

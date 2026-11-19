@@ -19,8 +19,9 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			return
 		}
 		resource := r.PathValue("resource")
+		admin := permissions.IsAdministrator(p)
 		if resource == "status" && r.Method == http.MethodGet {
-			status := map[string]bool{"admin": p.Provider == permissions.AdminProvider, "findingAI": review.Enabled() && p.Provider == permissions.AdminProvider, "mustChangePassword": permissions.MustChangePassword(p), "canChangePassword": permissions.CanChangePassword(p), "superAdministrator": p.Subject == "local:admin" && p.Provider == permissions.AdminProvider}
+			status := map[string]bool{"admin": admin, "findingAI": review.Enabled() && admin, "mustChangePassword": permissions.MustChangePassword(p), "canChangePassword": permissions.CanChangePassword(p), "superAdministrator": p.Subject == "local:admin" && p.Provider == permissions.AdminProvider}
 			if managed != nil {
 				status["manageEnvironments"] = status["admin"]
 				status["manageBusinessLines"] = status["admin"]
@@ -28,7 +29,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			adminhttp.WriteJSON(w, status)
 			return
 		}
-		if p.Provider != permissions.AdminProvider && !(resource == "password" && permissions.CanChangePassword(p)) {
+		if (resource == "password" && !permissions.CanChangePassword(p)) || (resource != "password" && !admin) {
 			http.Error(w, "forbidden", 403)
 			return
 		}

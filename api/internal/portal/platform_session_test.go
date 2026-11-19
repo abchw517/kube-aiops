@@ -55,6 +55,13 @@ func TestPlatformGuestPasswordResetRevokesExistingSessions(t *testing.T) {
 	initial := login("admin", "admin123")
 	call("POST", "/api/v1/admin/password", `{"current":"admin123","password":"`+rootPassword+`"}`, initial, 204)
 	admin := login("admin", rootPassword)
+	const auditRetention = `{"low":0,"medium":5,"high":7}`
+	call("PUT", "/api/v1/admin/operations", auditRetention, nil, 401)
+	call("PUT", "/api/v1/admin/operations", auditRetention, admin, 204)
+	auditPolicy := call("GET", "/api/v1/admin/operations", "", admin, 200)
+	if !strings.Contains(auditPolicy.Body.String(), `"retention":{"low":0,"medium":5,"high":7}`) {
+		t.Fatal(auditPolicy.Body.String())
+	}
 	call("POST", "/api/v1/admin/accounts", `{"action":"create","name":"reader","kind":"guest","password":"`+guestTemporary+`"}`, admin, 200)
 	first := login("reader", guestTemporary)
 	status := call("GET", "/api/v1/admin/status", "", first, 200)

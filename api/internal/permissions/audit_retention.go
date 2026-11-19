@@ -14,7 +14,7 @@ import (
 
 const secondsPerDay = 86400
 const auditExpired = `EXISTS (SELECT 1 FROM operation_audit_retention AS retention
-	WHERE retention.risk=operation_audit.risk AND operation_audit.created_at <= ? - retention.days * 86400)`
+	WHERE retention.risk=operation_audit.risk AND (retention.days=0 OR operation_audit.created_at <= ? - retention.days * 86400))`
 
 type auditRetentionDays struct {
 	Low  int64 `json:"low"`
@@ -33,6 +33,7 @@ func (a *Admin) auditRetention(ctx context.Context) (auditRetentionDays, error) 
 
 func pruneOperations(ctx context.Context, db auditExecutor, now time.Time) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM operation_audit WHERE
+		risk IN (SELECT risk FROM operation_audit_retention WHERE days=0) OR
 		(risk='低' AND created_at <= ? - (SELECT days FROM operation_audit_retention WHERE risk='低') * 86400) OR
 		(risk='中' AND created_at <= ? - (SELECT days FROM operation_audit_retention WHERE risk='中') * 86400) OR
 		(risk='高' AND created_at <= ? - (SELECT days FROM operation_audit_retention WHERE risk='高') * 86400)`,
@@ -60,14 +61,19 @@ func (a *Admin) updateAuditRetention(w http.ResponseWriter, r *http.Request, act
 		http.Error(w, "仅超级管理员可修改审计保留策略", http.StatusForbidden)
 		return
 	}
-	var days auditRetentionDays
-	if !adminhttp.Decode(w, r, &days) {
+	var input struct {
+		Low  *int64 `json:"low"`
+		Med  *int64 `json:"medium"`
+		High *int64 `json:"high"`
+	}
+	if !adminhttp.Decode(w, r, &input) || input.Low == nil || input.Med == nil || input.High == nil {
 		http.Error(w, "请输入三个风险等级的保留天数", http.StatusBadRequest)
 		return
 	}
+	days := auditRetentionDays{Low: *input.Low, Med: *input.Med, High: *input.High}
 	for _, value := range []int64{days.Low, days.Med, days.High} {
-		if value < 1 || value > math.MaxInt64/secondsPerDay {
-			http.Error(w, "保留天数必须为有效的正整数", http.StatusBadRequest)
+		if value < 0 || value > math.MaxInt64/secondsPerDay {
+			http.Error(w, "保留天数必须为有效的非负整数", http.StatusBadRequest)
 			return
 		}
 	}

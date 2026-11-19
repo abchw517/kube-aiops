@@ -60,3 +60,38 @@ func TestIdentityPersistenceAndAtomicImport(t *testing.T) {
 		t.Fatalf("account was not removed: %v", err)
 	}
 }
+
+// TestAuditRetentionMigrationPreservesConfiguredDays 验证既有保留策略升级后可设置 0。
+func TestAuditRetentionMigrationPreservesConfiguredDays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "identity.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE operation_audit_retention (
+		risk TEXT PRIMARY KEY CHECK (risk IN ('低','中','高')),
+		days INTEGER NOT NULL CHECK (days BETWEEN 1 AND 106751991167300)
+	); INSERT INTO operation_audit_retention VALUES ('低',2),('中',4),('高',6);`)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var low, medium, high int64
+	if err := store.QueryRow(`SELECT
+		(SELECT days FROM operation_audit_retention WHERE risk='低'),
+		(SELECT days FROM operation_audit_retention WHERE risk='中'),
+		(SELECT days FROM operation_audit_retention WHERE risk='高')`).Scan(&low, &medium, &high); err != nil || low != 2 || medium != 4 || high != 6 {
+		t.Fatalf("configured values were not preserved: %d %d %d, %v", low, medium, high, err)
+	}
+	if _, err := store.Exec("UPDATE operation_audit_retention SET days=0 WHERE risk='低'"); err != nil {
+		t.Fatal(err)
+	}
+}

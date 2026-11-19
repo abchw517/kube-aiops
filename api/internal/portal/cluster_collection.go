@@ -26,6 +26,7 @@ type collectionState struct {
 type collectionData struct {
 	Nodes           []kubernetes.NodeStatus `json:"nodes,omitempty"`
 	Namespaces      []kubernetes.Namespace  `json:"namespaces,omitempty"`
+	CheckedAtNanos  int64                   `json:"checkedAtNanos,omitempty"`
 	NodeSampleAt    int64                   `json:"nodeSampleAt,omitempty"`
 	NodeFailures    int                     `json:"nodeFailures,omitempty"`
 	NodeError       string                  `json:"nodeError,omitempty"`
@@ -109,11 +110,15 @@ func (o *onboarding) collect(ctx context.Context, id, configuration string, sour
 	}
 
 	data := state.Data
+	data.CheckedAtNanos = now.UnixNano()
 	if nodesErr == nil && len(nodes) > 0 {
 		data.Nodes, data.NodeSampleAt = nodes, now.Unix()
 		data.NodeFailures, data.NodeError = 0, ""
-	} else if data.NodeSampleAt == 0 || now.Sub(lastCheck) >= nodeCollectionInterval {
-		data.NodeFailures++
+	} else {
+		// Manual checks update the latest error without accelerating snapshot expiration.
+		if data.NodeSampleAt == 0 || now.Sub(lastCheck) >= nodeCollectionInterval {
+			data.NodeFailures++
+		}
 		data.NodeError = "暂未找到包含 Ready 状态的节点"
 		if nodesErr != nil {
 			data.NodeError = nodeCollectionError(nodesErr)
@@ -153,7 +158,10 @@ func (o *onboarding) collect(ctx context.Context, id, configuration string, sour
 		SELECT ?,?,?,?,? WHERE ? = '' OR EXISTS(SELECT 1 FROM managed_clusters WHERE id=? AND document=?)
 		ON CONFLICT(id) DO UPDATE SET first_at=CASE WHEN cluster_collection.first_at=0 THEN excluded.first_at ELSE cluster_collection.first_at END,
 		validated_at=excluded.validated_at, checked_at=excluded.checked_at, document=excluded.document
-		WHERE cluster_collection.checked_at < excluded.checked_at`,
+		WHERE cluster_collection.checked_at < excluded.checked_at
+		OR (cluster_collection.checked_at = excluded.checked_at AND
+			COALESCE(json_extract(cluster_collection.document, '$.checkedAtNanos'), 0) <
+			json_extract(excluded.document, '$.checkedAtNanos'))`,
 		id, state.FirstAt, state.ValidatedAt, now.Unix(), string(raw), configuration, id, configuration)
 	return err
 }
