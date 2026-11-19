@@ -79,8 +79,10 @@ func (f *Review) GetFinding(ctx context.Context, id string) (finding.Finding, er
 		return item, err
 	}
 	var latest string
-	err = f.store.QueryRowContext(ctx, "SELECT conclusion FROM finding_reviews WHERE finding_key=? ORDER BY revision DESC LIMIT 1", reviewKey(item)).Scan(&latest)
+	err = f.store.QueryRowContext(ctx, "SELECT conclusion, revision FROM finding_reviews WHERE finding_key=? ORDER BY revision DESC LIMIT 1", reviewKey(item)).Scan(&latest, &item.ReviewRevision)
 	if err == nil {
+		item.OriginalDetails = new(string)
+		*item.OriginalDetails = item.Details
 		item.Details = "AI 复核结论\n\n" + latest
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return item, err
@@ -136,9 +138,10 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		adminhttp.WriteJSON(w, struct {
-			Original string            `json:"original"`
-			History  []findingRevision `json:"history"`
-		}{item.Details, history})
+			Original   string            `json:"original"`
+			History    []findingRevision `json:"history"`
+			CanPublish bool              `json:"canPublish"`
+		}{item.Details, history, wiki.CanPublishFinding(ctx, item)})
 		return
 	}
 	var input struct {
@@ -147,6 +150,7 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Revision    int             `json:"revision"`
 		Action      string          `json:"action"`
 		Messages    []reviewMessage `json:"messages"`
+		PreviewID   string          `json:"previewId"`
 		DraftID     string          `json:"draftId"`
 		Baseline    string          `json:"baseline"`
 	}
@@ -155,6 +159,22 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch input.Action {
+	case "assess":
+		if len(input.Observation) > 4000 {
+			http.Error(w, "观察内容过长", 400)
+			return
+		}
+	case "save":
+		if len(input.Observation) > 8192 || strings.TrimSpace(input.Observation) == "" {
+			http.Error(w, "请填写复核结论", 400)
+			return
+		}
+	case "preview-publication", "publish":
+		if !wiki.CanPublishFinding(ctx, item) {
+			http.Error(w, "无权向此范围发布知识", 403)
+			return
+		}
+
 	case "":
 		if len(input.Messages) != 0 || len(input.Source) > 1024 || len(input.Observation) > 4000 ||
 			strings.TrimSpace(input.Source) == "" || strings.TrimSpace(input.Observation) == "" {
@@ -200,10 +220,26 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		current = history[0].Revision
 	}
 	if current != input.Revision {
-		http.Error(w, "诊断已更新，请重新打开分析窗口", 409)
+		http.Error(w, "诊断已更新，请重新载入复核记录", 409)
+		return
+	}
+	if input.Action == "save" {
+		f.saveReview(ctx, w, item, key, current, input.Observation)
+		return
+	}
+	if input.Action == "preview-publication" || input.Action == "publish" {
+		if current == 0 {
+			http.Error(w, "请先保存复核结论", 400)
+			return
+		}
+		f.publishSavedReview(ctx, w, item, key, history[0], input.Action == "publish", input.PreviewID)
 		return
 	}
 	if input.Action == "confirm" {
+		if !wiki.CanPublishFinding(ctx, item) {
+			http.Error(w, "无权向此范围发布知识", 403)
+			return
+		}
 		f.confirmWikiReview(ctx, w, item, key, current, input.DraftID)
 		return
 	}
@@ -229,38 +265,16 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slices.Reverse(history)
-	var platformEvidence *correlation.CorrelationBundle
-	if input.Action != "" && f.correlator != nil {
-		evidenceCtx, done := context.WithTimeout(ctx, 5*time.Second)
-		bundle, queryErr := f.correlator.Correlate(evidenceCtx, correlation.Request{
-			FindingID: item.ID, AnchorTime: item.CreatedAt,
-			Scope: correlation.CorrelationScope{Cluster: item.Cluster, Namespace: item.Namespace, Resource: item.Resource},
-		})
-		done()
-		if queryErr == nil {
-			if safe, err := sanitizer.DefaultCorrelation().CorrelationBundle(bundle); err == nil {
-				// Keep source availability and bound the evidence sent to the model.
-				signals := safe.Signals
-				safe.Signals = make([]correlation.CorrelationSignal, 0)
-				remaining := 24 << 10
-				perSource := make(map[correlation.CorrelationSource]int)
-				for _, signal := range signals {
-					encoded, err := json.Marshal(signal)
-					if err != nil || len(encoded)+1 > remaining || perSource[signal.Source] >= 4 {
-						continue
-					}
-					safe.Signals = append(safe.Signals, signal)
-					remaining -= len(encoded) + 1
-					perSource[signal.Source]++
-				}
-				platformEvidence = &safe
-			}
-		}
-	}
+	platformEvidence, evidenceState := f.reviewEvidence(ctx, item, input.Action)
 	if item.Namespace != "" && (input.Action == "enhance" || input.Baseline == "") {
 		ctx = wiki.WithEvidence(ctx, item)
 	}
-	conclusion, err := f.analyze(ctx, item.Problem, item.Details, history, evidence.Problem, evidence.Details, input.Action, input.Messages, platformEvidence)
+	var conclusion string
+	if input.Action == "assess" {
+		conclusion, err = f.assess(ctx, item, evidence.Details, platformEvidence)
+	} else {
+		conclusion, err = f.analyze(ctx, item.Problem, item.Details, history, evidence.Problem, evidence.Details, input.Action, input.Messages, platformEvidence)
+	}
 	if err != nil {
 		code := "AI_PROVIDER_UNAVAILABLE"
 		switch {
@@ -289,8 +303,15 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		adminhttp.WriteJSON(w, map[string]string{"code": code})
 		return
 	}
+	if input.Action == "assess" {
+		if !writeAssessment(w, ctx, item, conclusion, platformEvidence, evidenceState) {
+			http.Error(w, "AI 未返回可用的复核结果，请重试", 502)
+		}
+		return
+	}
 	safe := item
 	safe.Details = conclusion
+
 	safe, err = sanitizer.Default().Finding(safe)
 	if err != nil || strings.TrimSpace(safe.Details) == "" {
 		http.Error(w, "AI 未返回可用结论", 502)
@@ -312,6 +333,16 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.createWikiReviewDraft(ctx, w, key, current, safe.Details)
 		return
 	}
+	f.saveReview(ctx, w, item, key, current, safe.Details)
+}
+
+func (f *Review) saveReview(ctx context.Context, w http.ResponseWriter, item finding.Finding, key string, current int, conclusion string) {
+	item.Details = conclusion
+	safe, err := sanitizer.Default().Finding(item)
+	if err != nil || strings.TrimSpace(safe.Details) == "" {
+		http.Error(w, "复核结论无效", 400)
+		return
+	}
 	result, err := f.store.ExecContext(ctx, "INSERT INTO finding_reviews VALUES (?, ?, ?) ON CONFLICT(finding_key, revision) DO NOTHING", key, current+1, safe.Details)
 	if err != nil {
 		http.Error(w, "结论保存失败", 503)
@@ -323,11 +354,46 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if count == 0 {
-		http.Error(w, "诊断已更新，请重新打开分析窗口", 409)
+		http.Error(w, "诊断已更新，请重新载入复核记录", 409)
 		return
 	}
 	slog.InfoContext(ctx, "finding AI review saved", "revision", current+1)
 	adminhttp.WriteJSON(w, findingRevision{current + 1, safe.Details})
+}
+
+func (f *Review) reviewEvidence(ctx context.Context, item finding.Finding, action string) (*correlation.CorrelationBundle, string) {
+	if action == "" || f.correlator == nil {
+		return nil, "disabled"
+	}
+	evidenceCtx, done := context.WithTimeout(ctx, 5*time.Second)
+	bundle, queryErr := f.correlator.Correlate(evidenceCtx, correlation.Request{
+		FindingID: item.ID, AnchorTime: item.CreatedAt,
+		Scope: correlation.CorrelationScope{Cluster: item.Cluster, Namespace: item.Namespace, Resource: item.Resource},
+	})
+	done()
+	if queryErr == nil {
+		if safe, err := sanitizer.DefaultCorrelation().CorrelationBundle(bundle); err == nil {
+			// Keep source availability and bound the evidence sent to the model.
+			signals := safe.Signals
+			safe.Signals = make([]correlation.CorrelationSignal, 0)
+			remaining := 24 << 10
+			perSource := make(map[correlation.CorrelationSource]int)
+			for _, signal := range signals {
+				encoded, err := json.Marshal(signal)
+				if err != nil || len(encoded)+1 > remaining || perSource[signal.Source] >= 4 {
+					continue
+				}
+				safe.Signals = append(safe.Signals, signal)
+				remaining -= len(encoded) + 1
+				perSource[signal.Source]++
+			}
+			return &safe, "available"
+		}
+	}
+	if errors.Is(queryErr, context.DeadlineExceeded) || errors.Is(evidenceCtx.Err(), context.DeadlineExceeded) {
+		return nil, "timeout"
+	}
+	return nil, "unavailable"
 }
 
 func (f *Review) analyze(ctx context.Context, problem, original string, history []findingRevision, source, observation, action string, conversation []reviewMessage, platformEvidence *correlation.CorrelationBundle) (string, error) {

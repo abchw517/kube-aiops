@@ -162,19 +162,21 @@ tbody tr:hover { background: #f5f8fd; }
 .legacy-roles summary { cursor: pointer; }
 
 .finding-review-trigger { min-height: 32px; padding-inline: 10px; font-size: .875rem; }
-.finding-review-dialog { width: min(42rem, calc(100% - 2rem)); max-height: min(90vh, 48rem); padding: 20px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); }
-.finding-review-dialog::backdrop { background: #102d4070; }
-.finding-review-form, .finding-review-form label { display: grid; gap: 8px; }
-.finding-review-form { gap: 14px; }
-.finding-review-form :is(h2, p) { margin: 0; }
-.finding-review-form textarea { width: 100%; resize: vertical; padding: 8px; font: inherit; border: 1px solid #aebed0; border-radius: 7px; }
-.finding-review-form [data-review-history] { display: grid; gap: 6px; margin-top: 8px; }
-.finding-review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-
-.finding-review-conversation:empty { display: none; }
-.finding-review-conversation { display: grid; gap: 8px; max-height: 32vh; overflow-y: auto; padding: 4px; }
-.finding-review-message { padding: 10px 12px; border-radius: 8px; background: #f3f8fa; }
-.finding-review-message-user { background: #eef3fb; margin-inline-start: 16px; }
+.finding-review { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.finding-review h3, .detail-copy h3 { margin: 12px 0 5px; font-size: .95rem; }
+.finding-review > :not([hidden]) { margin-block: 10px; }
+.finding-review [data-review-status]:empty { display: none; }
+.finding-review details { margin-block: 10px; }
+.finding-review summary { cursor: pointer; }
+.finding-review label { display: grid; gap: 6px; margin: 9px 0; }
+.finding-review textarea { width: 100%; resize: vertical; padding: 8px; font: inherit; border: 1px solid #aebed0; border-radius: 7px; }
+.finding-review-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-state { display: inline-block; background: #fff4db; color: #783f12; padding: 3px 8px; border-radius: 5px; font-weight: 700; }
+.review-state[data-state="supported"] { background: #e4f3ed; color: #155649; }
+.review-state[data-state="conflicting"] { background: #fbeaec; color: #97283d; }
+.review-evidence { padding-inline-start: 1.25rem; }
+.review-evidence small { display: block; }
+[data-evidence-signal]:focus, [data-finding-explanation]:focus { outline: 2px solid var(--blue); outline-offset: 3px; }
 
 .button[hidden] { display: none; }
 .button:disabled { opacity: .55; cursor: not-allowed; }

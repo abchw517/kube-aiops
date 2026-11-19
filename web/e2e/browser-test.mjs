@@ -248,53 +248,39 @@ try {
       throw new Error("Role editor did not restore selected checkboxes");
     }
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
-      (text) => text.includes("诊断说明") && text.includes("AI 分析"), "AI review entry did not render");
-    await cdp.send("Runtime.evaluate", {
-      expression: 'document.querySelector("[data-open-review]").click()',
-    });
-    await assertText(cdp, (text) => text.includes("你的消息") && !text.includes("正在加载复核记录"),
-      "AI review dialog did not load");
-    await assertText(cdp, (text) => text.includes("正在结合 Wiki 生成增强说明"), "Enhancement did not enter its waiting state");
-    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-close-review]").click()'});
-    await assertText(cdp, (text) => !text.includes("你的消息"), "AI review did not close while enhancement was pending");
-    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-open-review]").click()'});
-    await assertText(cdp, (text) => text.includes("增强诊断案例") && !text.includes("正在结合 Wiki"),
-      "AI review did not recover after reopening");
-    for (const [message, reply] of [
-      ["Pod 事件显示镜像仓库拒绝访问", "请补充镜像仓库返回的状态码。"],
-      ["仓库返回 403", "403 支持访问被拒绝，请核实拉取凭据。"],
-    ]) {
-      await cdp.send("Runtime.evaluate", {
-        expression: `(() => {
-          const form = document.querySelector(".finding-review-form");
-          form.elements.message.value = ${JSON.stringify(message)};
-          form.requestSubmit();
-        })()`,
-      });
-      if (message === "Pod 事件显示镜像仓库拒绝访问") {
-        await assertText(cdp, (text) => text.includes("模型响应超时。输入已保留，可以重新发送。"),
-          "Provider timeout did not show the retry message");
-        const pending = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-          const form = document.querySelector(".finding-review-form");
-          const field = form.elements.message;
-          const send = form.querySelector('button[type="submit"]');
-          if (field.value !== ${JSON.stringify(message)} || field.readOnly || send.disabled ||
-              form.querySelector("[data-review-conversation]").children.length) return false;
-          form.requestSubmit(send);
-          return true;
-        })()` });
-        if (!pending.result?.value) throw new Error("Provider timeout lost the draft or prevented retry");
-      }
-      await assertText(cdp, (text) => text.includes(message) && text.includes(reply) && !text.includes("更新结论：镜像仓库拒绝访问"),
-        "AI review did not display the conversation without updating the diagnosis");
-    }
-    await cdp.send("Runtime.evaluate", {
-      expression: 'document.querySelector("[data-finalize-review]").click()',
-    });
-    await assertText(cdp, (text) => text.includes("结论草稿") && text.includes("核对草稿后可确认"), "Draft was not shown");
-    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-confirm-review]").click()`});
-    await assertText(cdp, (text) => text.includes("AI 复核结论") && text.includes("更新结论：镜像仓库拒绝访问"),
-      "AI review did not update the diagnostic explanation");
+      (text) => text.includes("K8sGPT 原始说明") && text.includes("AI 复核") && !text.includes("正在复核关联证据"), "AI review was missing or started automatically");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="toggle"]').click()` });
+    await assertText(cdp, (text) => text.includes("正在复核关联证据") && text.includes("K8sGPT 原始说明") && text.includes("关联证据"),
+      "Inline AI review did not show its pending state alongside the diagnosis");
+    await assertText(cdp, (text) => text.includes("证据不足") && text.includes("当前镜像仓库响应") && text.includes("核对最近一次拉取事件"),
+      "Review did not display the structured judgment, gaps and next action");
+    const clickedEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      document.querySelector("[data-review-jump]").click();
+      return document.activeElement.dataset.evidenceSignal;
+    })()` });
+    if (clickedEvidence.result?.value !== "event-critical") throw new Error("Review citation did not focus the original event");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector("[data-review-input]").open = true;
+      document.querySelector("[data-review-observation]").value = "仓库返回 403";
+      document.querySelector('[data-review-action="assess"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("模型响应超时。观察内容已保留，可以重新复核。") && text.includes("K8sGPT 原始说明"), "Model timeout was not recoverable inline");
+    const observation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.querySelector("[data-review-observation]").value' });
+    if (observation.result?.value !== "仓库返回 403") throw new Error("Review discarded the observation after failure");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("镜像仓库返回 403，仍需核对"), "Retry did not use the operator observation");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector("[data-review-conclusion]").value = "人工确认：镜像仓库拒绝访问";
+      document.querySelector('[data-review-action="save"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("已保存复核结论") && text.includes("人工确认：镜像仓库拒绝访问") && !text.includes("已发布到知识库"),
+      "Saving a review did not keep publication independent");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="preview"]').click()` });
+    await assertText(cdp, (text) => text.includes("知识发布预览") && text.includes("local / payments") && !text.includes("已发布到知识库"),
+      "Saved conclusion was not previewed before publication");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="publish"]').click()` });
+    await assertText(cdp, (text) => text.includes("已发布到知识库") && text.includes("已保存复核结论"),
+      "Independent publication did not surface success");
     await cdp.send("Runtime.evaluate", {
       expression: `document.querySelector('a[href="#/wiki"]').click()`,
     });

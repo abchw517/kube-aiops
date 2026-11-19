@@ -24,16 +24,18 @@ type ResourceRef struct {
 }
 
 type Finding struct {
-	ResultUID string      `json:"resultUid,omitempty"`
-	ID        string      `json:"id"`
-	Cluster   string      `json:"cluster"`
-	Namespace string      `json:"namespace,omitempty"`
-	Severity  string      `json:"severity"`
-	Resource  ResourceRef `json:"resource"`
-	Problem   string      `json:"problem"`
-	Details   string      `json:"details,omitempty"`
-	Source    string      `json:"source"`
-	CreatedAt string      `json:"createdAt,omitempty"`
+	ResultUID       string      `json:"resultUid,omitempty"`
+	ID              string      `json:"id"`
+	Cluster         string      `json:"cluster"`
+	Namespace       string      `json:"namespace,omitempty"`
+	Severity        string      `json:"severity"`
+	Resource        ResourceRef `json:"resource"`
+	Problem         string      `json:"problem"`
+	ReviewRevision  int         `json:"reviewRevision,omitempty"`
+	OriginalDetails *string     `json:"originalDetails,omitempty"`
+	Details         string      `json:"details,omitempty"`
+	Source          string      `json:"source"`
+	CreatedAt       string      `json:"createdAt,omitempty"`
 }
 
 type Filter struct {

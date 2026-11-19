@@ -1,6 +1,6 @@
 # 诊断控制台 · 页面拆解
 
-[PRD v1.0](00-prd.md) · [模块开发规范](../development-standard.md) · [HTML 原型](prototype.html)
+[PRD v1.1](00-prd.md) · [模块开发规范](../development-standard.md) · [HTML 原型](prototype.html)
 
 ## DC-P01
 
@@ -18,4 +18,6 @@
 
 使用记录所属实例及诊断 ID 定位。按接口权限显示详情、关联证据和 AI 复核。跨实例同名记录独立定位。资源不可见、已移除或请求失败时沿用各自现有状态。
 
-关联功能 [DC-F02](02-features.md#dc-f02)。
+诊断说明卡片始终展示原始说明，下面展示已保存复核及版本；点击「AI 复核」后在同一卡片展开结果、补充信息和保存入口。点击证据引用定位到下方原始证据。知识发布预览在复核区单独确认。
+
+关联功能 [DC-F02](02-features.md#dc-f02)、[DC-F04](02-features.md#dc-f04)。

@@ -7,6 +7,10 @@ const root = new URL("../dist/", import.meta.url);
 
 const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
 
+const reviewHistory = [];
+let observationRequests = 0;
+let reviewPublished = false;
+
 const findings = [
   {
     id: "finding-critical",
@@ -50,7 +54,6 @@ const clusters = [
 ];
 
 let warningEvidenceRequests = 0;
-let reviewChatTimedOut = false;
 let authenticationRequired = false;
 let authenticated = false;
 const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
@@ -140,36 +143,31 @@ createServer(async (request, response) => {
     findingAI: true, manageEnvironments: true, manageBusinessLines: true,
   });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
-    if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: [] });
+    if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: reviewHistory, canPublish: true });
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
-    const transcript = [
-      { role: "user", text: "Pod 事件显示镜像仓库拒绝访问" },
-      { role: "assistant", text: "请补充镜像仓库返回的状态码。" },
-      { role: "user", text: "仓库返回 403" },
-      { role: "assistant", text: "403 支持访问被拒绝，请核实拉取凭据。" },
-    ];
-    const matches = (length) => JSON.stringify(input.messages) === JSON.stringify(transcript.slice(0, length));
-    if (input.revision === 0 && input.action === "chat") {
-      if (matches(1)) {
-        if (!reviewChatTimedOut) {
-          reviewChatTimedOut = true;
-          return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
-        }
-        return json(response, 200, { reply: transcript[1].text });
-      }
-      if (matches(3)) return json(response, 200, { reply: transcript[3].text });
+    if (input.revision !== (reviewHistory[0]?.revision ?? 0)) return json(response, 409, {});
+    if (input.action === "assess") {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
+      if (input.observation && ++observationRequests === 1) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
+      return json(response, 200, {
+        assessment: { state: "insufficient", judgment: input.observation ? "镜像仓库返回 403，仍需核对当前响应。" : "已有历史事件支持排查镜像仓库。", gaps: "当前镜像仓库响应", next: "核对最近一次拉取事件" },
+        evidence: [{ source: "kubernetes-events", signalId: "event-critical", title: "ContainerBackOff", time: "2026-09-02T02:59:00Z", historical: true }],
+        evidenceState: "available", sources: [{ source: "prometheus", state: "unavailable" }],
+        citations: [{ knowledgeId: "fixture-knowledge", revision: 1, title: "镜像拉取案例" }],
+      });
     }
-    if (input.action === "enhance") {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 900));
-      return json(response, 200, {conclusion: "增强诊断案例", citations: []});
+    if (input.action === "save" && input.observation === "人工确认：镜像仓库拒绝访问") {
+      reviewHistory.unshift({ revision: input.revision + 1, conclusion: input.observation });
+      return json(response, 200, reviewHistory[0]);
     }
-    if (input.revision === 0 && input.action === "summarize" && matches(4)) {
-      return json(response, 200, {conclusion: "镜像仓库拒绝访问", draftId: "fixture-draft"});
+    if (input.action === "preview-publication" && reviewHistory.length && !reviewPublished) {
+      return json(response, 200, { previewId: "fixture-preview", document: { title: "故障复盘", body: reviewHistory[0].conclusion, cluster: "local", namespace: "payments" } });
     }
-    if (input.revision === 0 && input.action === "confirm" && input.draftId === "fixture-draft") {
-      return json(response, 200, { revision: 1, conclusion: "更新结论：镜像仓库拒绝访问" });
+    if (input.action === "publish" && input.previewId === "fixture-preview") {
+      reviewPublished = true;
+      return json(response, 200, { knowledgeId: "fixture-knowledge" });
     }
     return json(response, 400, { error: "invalid fixture evidence" });
   }

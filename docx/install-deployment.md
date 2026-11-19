@@ -338,13 +338,13 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
 
-管理员在诊断详情点击 **AI 分析**，发送已知数据、观察结果或需要核实的问题，可根据 AI 回复继续补充，最多对话十轮。API 在当前诊断的集群、命名空间、资源和时间窗口内查询关联证据，例如 Kubernetes 事件以及已配置的 Prometheus、VictoriaLogs 和 Alertmanager。每轮将脱敏后的可用证据、对话、原始诊断和最近五版结论发送给已配置的模型。请勿提交凭据或个人敏感信息。
+管理员在诊断详情展开 **AI 复核**，查看模型对关联证据的判断、待验证项和下一步。可以补充现场观察后重新复核。API 在当前诊断的集群、命名空间、资源和时间窗口内查询关联证据，例如 Kubernetes 事件以及已配置的 Prometheus、VictoriaLogs 和 Alertmanager。请勿提交凭据或个人敏感信息。
 
-确认信息充分后，点击 **生成结论草稿**，核对后再点击 **确认并发布知识**。如果结论已被其他人更新，请重新打开分析窗口。对话保留在当前详情页内，刷新页面会清除对话。
+核对并编辑复核结论后，点击 **保存复核结论**。需要沉淀知识时，可另行预览并确认发布。若结论已被其他人更新，请先加载最新版本。
 
 诊断复核的模型请求默认等待 35 秒。可在 API 容器环境变量中设置 `FINDING_AI_PROVIDER_TIMEOUT`，取值范围为 `5s` 到 `40s`，本地和手动接入实例共用该配置。复核总时限为 50 秒，其中关联证据查询最多占 5 秒。HTTP 响应写入时限为 55 秒，入口代理应为此路由预留至少 60 秒。知识库问答继续受自身 30 秒总时限约束。
 
-诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，原输入保留，可直接重试。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。响应中缺少此错误码时，对照 Portal 入口代理日志和 API 请求日志判断等待发生在哪一层。
+诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，现场观察内容保留，可直接重新复核。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。响应中缺少此错误码时，对照 Portal 入口代理日志和 API 请求日志判断等待发生在哪一层。
 
 复核成功后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
 

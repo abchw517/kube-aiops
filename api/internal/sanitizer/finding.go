@@ -44,6 +44,10 @@ func (s *typedSanitizer) Finding(item finding.Finding) (finding.Finding, error) 
 
 	item.Problem = sanitizeDiagnosticText(item.Problem, s.policy.MaxProblemBytes)
 	item.Details = sanitizeDiagnosticText(item.Details, s.policy.MaxDetailsBytes)
+	if item.OriginalDetails != nil {
+		original := sanitizeDiagnosticText(*item.OriginalDetails, s.policy.MaxDetailsBytes)
+		item.OriginalDetails = &original
+	}
 	return item, nil
 }
 
