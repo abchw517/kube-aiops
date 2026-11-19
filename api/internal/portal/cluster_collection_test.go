@@ -2,7 +2,9 @@ package portal
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -41,11 +43,17 @@ func TestPullCollectionLocksEnvironmentAndKeepsLastValidNodeSample(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	api := httptest.NewTLSServer(nil)
+	defer api.Close()
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: api.Certificate().Raw})
 	create := func(method, env string, want int) {
 		t.Helper()
 		w := httptest.NewRecorder()
-		input := `{"id":"remote","name":"remote","environment":"` + env + `","business":"ops","group":"apps","mode":"pull","enabled":true,"apiURL":"https://example.com","engineNamespace":"engine","engineName":"engine"}`
-		o.admin(w, httptest.NewRequest(method, "/", strings.NewReader(input)))
+		input := fmt.Sprintf(`{"id":"remote","name":"remote","environment":%q,"business":"ops","group":"apps","mode":"pull","enabled":true,"apiURL":%q,"engineNamespace":"engine","engineName":"engine"`, env, api.URL)
+		if method == "POST" {
+			input += fmt.Sprintf(`,"credential":{"kind":"token","token":"fixture","ca":%q}`, ca)
+		}
+		o.admin(w, httptest.NewRequest(method, "/", strings.NewReader(input+"}")))
 		if w.Code != want {
 			t.Fatalf("%s %s: %d %s", method, env, w.Code, w.Body.String())
 		}

@@ -37,6 +37,7 @@ type Entry = Record<string, string | boolean | number | undefined> & {
 
 function collectionStatus(item: Entry): string {
   if (item.deleted) return "已删除";
+  if (item.mode === "pull" && !item.credentialKind) return "待补录凭据";
   if (!item.enabled) return "已停用";
   if (item.mode === "push") {
     if (!item.reportedAt) return "等待首次上报";
@@ -114,11 +115,11 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
           ${item.deleted ? maintenanceButton(item, "reconnect", "重新连接") : `
             <button type="button" class="button secondary" data-cluster-details>采集详情</button>
             <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${collectionStatus(item)}</p>${renderCollection(item)}</template>
-            ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : "编辑配置")}
-            ${item.enabled ? editorButton(item, "ownership", "命名空间归属") : ""}
-            ${item.enabled && item.mode === "pull" ? maintenanceButton(item, "recheck", "重新校验") : ""}
+            ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
+            ${item.enabled && (item.mode !== "pull" || item.credentialKind) ? editorButton(item, "ownership", "命名空间归属") : ""}
+            ${item.enabled && item.mode === "pull" && item.credentialKind ? maintenanceButton(item, "recheck", "重新校验") : ""}
             ${item.mode === "push" ? maintenanceButton(item, "rotate-token", "轮换上报凭据") : ""}
-            ${item.mode === "pull" ? editorButton(item, "rotate", "轮换直连凭据") : ""}
+            ${item.mode === "pull" && item.credentialKind ? editorButton(item, "rotate", "轮换直连凭据") : ""}
             ${maintenanceButton(item, "delete", "删除")}`}
           </div></td></tr>`).join("")}
           <tr data-cluster-empty${items.length ? " hidden" : ""}><td colspan="5" class="catalog-empty">暂无符合条件的集群。</td></tr></tbody>
@@ -141,6 +142,7 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
   }));
   const locked = Boolean(item?.firstCollectedAt && item.environment);
   const local = mode === "local";
+  const startsWithKubeconfig = mode === "pull" && !item?.credentialKind && !rotating;
   const title = rotating ? "轮换直连凭据" : local ? "编辑归属" : editing ? "编辑配置" : mode === "pull" ? "新增集群" : "采集上报";
   const body = `<form class="login-form identity-form cluster-editor" data-onboarding-mode="${mode}" data-editing="${editing}" data-rotating="${rotating}">
       <p>${local ? "本地自动采集" : mode === "pull" ? "外部直连" : "采集上报"}</p>
@@ -167,14 +169,14 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
       ${local ? "" : `<fieldset><legend>连接与观测配置</legend><div class="cluster-form-grid">
         ${fields.filter(([key, , base]) => !base && (mode === "pull" || !["apiURL", "engineNamespace", "engineName"].includes(key)))
           .map(([key, label]) => `<label>${label}<input name="${key}" value="${escapeHtml(item?.[key])}"
-          ${["apiURL", "engineNamespace", "engineName"].includes(key) ? "required" : ""}></label>`).join("")}
+          ${key === "apiURL" && startsWithKubeconfig ? "disabled" : ["apiURL", "engineNamespace", "engineName"].includes(key) ? "required" : ""}></label>`).join("")}
       </div></fieldset>`}
       ${mode === "pull" ? credentialFields(item?.credentialKind, rotating) : ""}
       ${mode === "pull" ? `<label><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""} style="width:auto"> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
       ${local ? "" : `<label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>`}
-      <p>${local ? "本地采集使用部署内的服务账号。" : mode === "pull" ? "部署挂载方式使用实例 ID 对应的 Token 和 CA。轮换直连凭据须校验节点读取通过后才会切换。" :
+      <p>${local ? "本地采集使用部署内的服务账号。" : mode === "pull" ? "直连凭据加密保存在 SQLite 中。轮换凭据通过节点读取校验后才会生效。" :
         "保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。"} </p>
-      ${mode === "pull" && !rotating ? "<p>测试连接临时使用新填写的凭据。保存新凭据需要服务端配置集群凭据加密密钥。</p>" : ""}
+      ${mode === "pull" && !rotating ? "<p>测试连接临时使用本次填写的凭据。</p>" : ""}
       <p role="status"></p>
       <textarea rows="3" readonly hidden aria-label="上报凭据" data-report-token></textarea>
       <div class="cluster-editor-actions">
@@ -187,18 +189,22 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
   return `<h2>${title}</h2><a href="${route}">返回集群接入</a>${body}
 
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
-    ${item?.mode === "pull" && item.enabled ? `<form data-collection-check="${escapeHtml(item.id)}">
+    ${item?.mode === "pull" && item.enabled && item.credentialKind ? `<form data-collection-check="${escapeHtml(item.id)}">
       <button type="submit" class="button secondary">重新校验</button><p role="status"></p></form>` : ""}`;
 }
 
 function credentialFields(kind: string | undefined, rotating: boolean): string {
-  const current = kind === "token" ? "ServiceAccount Token" : kind === "certificate" ? "客户端证书" : kind === "kubeconfig" ? "kubeconfig" : "部署挂载 Token 和 CA";
-  const text = (label: string, name: string) => `<label data-credential-piece="${name}" hidden>${label}
-    <textarea name="credential${name}" rows="4" autocomplete="off" disabled></textarea></label>`;
+  const current = kind === "token" ? "ServiceAccount Token" : kind === "certificate" ? "客户端证书" : kind === "kubeconfig" ? "kubeconfig" : "";
+  const defaultKubeconfig = !current && !rotating;
+  const text = (label: string, name: string) => {
+    const visible = defaultKubeconfig && name === "Kubeconfig";
+    return `<label data-credential-piece="${name}"${visible ? "" : " hidden"}>${label}
+      <textarea name="credential${name}" rows="4" autocomplete="off" ${visible ? "required" : "disabled"}></textarea></label>`;
+  };
   return `<fieldset><legend>直连凭据</legend>
-    <label>凭据方式<select name="credentialKind" data-cluster-credential>
-      <option value="">${rotating ? "请选择新凭据方式" : `沿用${current}`}</option>
-      <option value="kubeconfig">kubeconfig</option><option value="token">ServiceAccount Token</option>
+    <label>凭据方式<select name="credentialKind" data-cluster-credential${rotating ? " required" : ""}>
+      ${rotating ? '<option value="" selected disabled>请选择新凭据方式</option>' : current ? `<option value="">沿用${current}</option>` : ""}
+      <option value="kubeconfig"${defaultKubeconfig ? " selected" : ""}>kubeconfig</option><option value="token">ServiceAccount Token</option>
       <option value="certificate">客户端证书与私钥</option></select></label>
     <div class="cluster-form-grid">${text("kubeconfig（内嵌 CA 与静态凭据）", "Kubeconfig")}
       <label data-credential-piece="Token" hidden>只读 Token<input type="password" name="credentialToken" autocomplete="off" disabled></label>

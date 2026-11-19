@@ -63,11 +63,11 @@ function clusterEditor(row,mode){
  '<p>'+esc(row.mode)+'</p><div class="flow-grid">'+field("实例 ID","id",row.id,existing?"readonly":"required pattern=\"[a-z0-9-]+\"")+field("实例名称","name",row.name,"required")+
  (row.locked?field("环境","environment",row.environment,"readonly") : pick("环境","environment",choices,row.environment))+
  pick("业务线","business",catalog.business.map(x=>x.name),row.business)+field("集群名称","group",row.group,"required")+
- pick("集群类型","type",["共用集群","独立业务集群"],row.type)+(pull?field("Kubernetes API 地址","url",row.url,'type="url" required')+
+ pick("集群类型","type",["共用集群","独立业务集群"],row.type)+(pull?field("Kubernetes API 地址","url",row.url,'type="url" disabled')+
  field("Engine 命名空间","engineNamespace","k8sgpt-system","required")+field("Engine 实例名","engineName","k8sgpt","required")+
- pick("直连凭据方式","credential",["部署挂载 Token 和 CA","kubeconfig","ServiceAccount Token","客户端证书与私钥"],"部署挂载 Token 和 CA"):"")+'</div>'+
+ pick("直连凭据方式","credential",["kubeconfig","ServiceAccount Token","客户端证书与私钥"],"kubeconfig"):"")+'</div>'+
  (row.locked?"<small>首次采集已成功，集群环境已锁定。</small>":"")+
- (pull?'<p>支持部署挂载或提交内嵌凭据。保存时加密，直连轮换校验通过后切换。</p><div id="credential-fields"></div><p id="check-result" role="status"></p>':""),
+ (pull?'<p>直连凭据加密保存在 SQLite 中。直连轮换校验通过后切换。</p><div id="credential-fields"><label>kubeconfig<textarea rows="4"></textarea></label></div><p id="check-result" role="status"></p>':""),
  cancel+(pull?clusterButton("测试连接","cluster-form-check"):"")+'<button class="btn primary">'+(isLocal?"保存归属":"保存")+'</button>',data=>{
   const form=Object.fromEntries(data);
   if(!existing&&sampleClusters.some(x=>x.id===form.id)){notify("实例 ID 已存在");return}
@@ -118,6 +118,8 @@ document.addEventListener("change",e=>{
  if(e.target.id==="cluster-state"){stateFilter=e.target.value;clusterList();}
  if(e.target.name==="credential"){
   const kind=e.target.value;
+  const url=e.target.form?.elements.namedItem("url");
+  if(url){url.disabled=kind==="kubeconfig";url.required=!url.disabled;}
   $("#credential-fields").innerHTML=kind==="kubeconfig"?'<label>kubeconfig<textarea rows="4"></textarea></label>':
    kind==="ServiceAccount Token"?field("Token","token","","type=password"):
    kind==="客户端证书与私钥"?field("客户端证书","certificate")+field("客户端私钥","key","","type=password"):"";

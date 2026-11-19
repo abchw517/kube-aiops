@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -85,7 +84,8 @@ func (o *onboarding) load(ctx context.Context) error {
 		if err := json.Unmarshal(raw, &spec); err != nil {
 			return err
 		}
-		if spec.ID == "local" {
+		// 旧挂载记录仍可在资源目录补录凭据，补录前不创建采集连接。
+		if spec.ID == "local" || (spec.Mode == "pull" && spec.CredentialCipher == "") {
 			continue
 		}
 		target, err := o.build(spec, nil)
@@ -132,14 +132,13 @@ func (o *onboarding) build(spec managedCluster, draft *clusterCredential) (httpa
 		if !remoteHTTPS(spec.APIURL) || !clusterIDPattern.MatchString(spec.EngineNamespace) || !clusterIDPattern.MatchString(spec.EngineName) {
 			return httpapi.ClusterTarget{}, errors.New("需要 HTTPS Kubernetes 地址、Engine 命名空间和实例名")
 		}
-		dir := filepath.Join("/etc/kube-aiops/clusters", spec.ID)
 		cfg := kubernetes.Config{ClusterID: spec.ID, ClusterName: spec.Name, Environment: spec.Environment,
-			APIURL: spec.APIURL, TokenFile: filepath.Join(dir, "token"), CAFile: filepath.Join(dir, "ca.crt"), K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName}
+			APIURL: spec.APIURL, K8sGPTNS: spec.EngineNamespace, K8sGPTName: spec.EngineName}
 		if draft != nil {
 			if err := draft.apply(&cfg); err != nil {
 				return httpapi.ClusterTarget{}, err
 			}
-		} else if err := spec.configureCredential(&cfg); err != nil {
+		} else if err := o.configureCredential(spec, &cfg); err != nil {
 			return httpapi.ClusterTarget{}, err
 		}
 		remote = kubernetes.NewClient(cfg)
@@ -332,16 +331,10 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		return
 	}
-	if draft != nil {
-		if err := spec.encryptCredential(input.Credential.Kind, draft); err != nil {
-			http.Error(w, err.Error(), 400)
+	if draft != nil && r.Method == http.MethodPut {
+		if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
+			http.Error(w, "新凭据校验失败，原连接配置已保留。"+nodeCollectionError(err), 502)
 			return
-		}
-		if r.Method == http.MethodPut {
-			if _, err := target.Backend.(directoryBackend).remote.ListNodeStatuses(ctx); err != nil {
-				http.Error(w, "新凭据校验失败，原连接配置已保留。"+nodeCollectionError(err), 502)
-				return
-			}
 		}
 	}
 	o.mu.Lock()
@@ -363,6 +356,12 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 		}
 		if other {
 			http.Error(w, "请先解除命名空间中其他业务线的归属", 409)
+			return
+		}
+	}
+	if draft != nil {
+		if err := o.encryptCredential(ctx, &spec, input.Credential.Kind, draft); err != nil {
+			http.Error(w, "集群凭据存储暂不可用，请检查 SQLite 数据目录", 503)
 			return
 		}
 	}
