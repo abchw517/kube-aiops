@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -103,6 +104,11 @@ func (a *Admin) editPlatform(ctx context.Context, change func(*platformState, *s
 	return tx.Commit()
 }
 
+// isAdministrator 区分本地管理员与直接获授系统管理员角色的 LDAP 员工。
+func (account platformAccount) isAdministrator() bool {
+	return account.Kind == "administrator" || account.Kind == "ldap" && slices.Contains(account.Roles, adminRole)
+}
+
 func (account platformAccount) principal() identity.Principal {
 	provider := employeeProvider
 	switch account.Kind {
@@ -114,7 +120,10 @@ func (account platformAccount) principal() identity.Principal {
 	if account.MustChange {
 		provider = pendingProvider
 	}
-	return identity.Principal{Subject: account.ID, DisplayName: account.Username, Provider: provider, SessionVersion: account.Generation}
+	return identity.Principal{
+		Subject: account.ID, DisplayName: account.Username, Provider: provider,
+		SessionVersion: account.Generation, Administrator: provider == employeeProvider && account.isAdministrator(),
+	}
 }
 
 func versionOf(hash string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(hash))) }
@@ -138,7 +147,8 @@ func (a *Admin) ValidateSession(ctx context.Context, principal identity.Principa
 		return identity.ErrAuthenticationUnavailable
 	}
 	account, exists := state.Accounts[principal.Subject]
-	if !exists || account.Disabled || account.DirectoryDisabled || account.Generation != principal.SessionVersion {
+	if !exists || account.Disabled || account.DirectoryDisabled || account.Generation != principal.SessionVersion ||
+		principal.Provider == employeeProvider && principal.Administrator != account.isAdministrator() {
 		return identity.ErrUnauthenticated
 	}
 	return nil
@@ -244,6 +254,15 @@ func (a *Admin) RecordLogin(ctx context.Context, username, subject string, statu
 	if status == 204 {
 		result = "成功"
 	}
+	// 停用低风险审计时仍更新账号最近登录信息，但不落登录审计记录。
+	if status == 204 && subject != "" {
+		if _, err := a.store.ExecContext(ctx, `INSERT INTO account_last_login(actor,created_at)
+			VALUES (?,?)
+			ON CONFLICT(actor) DO UPDATE SET created_at=MAX(account_last_login.created_at,excluded.created_at)`,
+			subject, time.Now().Unix()); err != nil {
+			slog.WarnContext(ctx, "cannot update account last login", "error", err)
+		}
+	}
 	_ = writeOperation(ctx, a.store, operation{Actor: subject, Action: "登录", Risk: "低", Target: username, Result: result})
 }
 
@@ -267,8 +286,10 @@ func writeOperation(ctx context.Context, db auditExecutor, event operation) erro
 	if event.Result == "" {
 		event.Result = "成功"
 	}
-	_, err := db.ExecContext(ctx, "INSERT INTO operation_audit(created_at,actor,action,risk,target,result,reason,batch) VALUES(?,?,?,?,?,?,?,?)",
-		time.Now().Unix(), event.Actor, event.Action, event.Risk, event.Target, event.Result, event.Reason, event.Batch)
+	_, err := db.ExecContext(ctx, `INSERT INTO operation_audit(created_at,actor,action,risk,target,result,reason,batch)
+		SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS
+		(SELECT 1 FROM operation_audit_retention WHERE risk=? AND days=0)`,
+		time.Now().Unix(), event.Actor, event.Action, event.Risk, event.Target, event.Result, event.Reason, event.Batch, event.Risk)
 	return err
 }
 

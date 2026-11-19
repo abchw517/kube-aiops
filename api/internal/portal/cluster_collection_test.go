@@ -108,6 +108,25 @@ func TestPullCollectionLocksEnvironmentAndKeepsLastValidNodeSample(t *testing.T)
 	if state.Data.NodeFailures != 0 || state.FirstAt != start.Add(time.Second).Unix() {
 		t.Fatalf("recovery altered the first collection or retained failures: %+v", state)
 	}
+
+	// A manual failure must take precedence over a healthy sample from the same second.
+	healthy := collectionFixture{nodes: []kubernetes.NodeStatus{{Name: "worker", Ready: "True"}}}
+	latestSuccess := 21 * time.Minute
+	sample(current, healthy, latestSuccess)
+	state = sample(current, failed, latestSuccess+100*time.Millisecond)
+	if state.Data.NodeError == "" || state.Data.NodeFailures != 0 ||
+		state.Data.NodeSampleAt != start.Add(latestSuccess).Unix() ||
+		len(state.Data.Nodes) != 1 || state.Data.Nodes[0].Ready != "True" {
+		t.Fatalf("manual failure did not preserve the last successful snapshot and update the error: %+v", state.Data)
+	}
+	state = sample(current, healthy, latestSuccess+50*time.Millisecond)
+	if state.Data.NodeError == "" {
+		t.Fatal("an older check finishing late cleared a recent failure")
+	}
+	state = sample(current, healthy, latestSuccess+200*time.Millisecond)
+	if state.Data.NodeError != "" || state.Data.NodeFailures != 0 {
+		t.Fatalf("a new successful check did not clear the failure: %+v", state.Data)
+	}
 }
 
 // TestLocalNodeRecheckAfterRBACRepair 验证本地 403 会提示对应权限，权限恢复后可立即重查。

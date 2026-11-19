@@ -3,6 +3,7 @@ import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
 const route = "#/resources/clusters";
+const nodeValidationFailed = "已接入 · 节点校验失败";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],
   ["environment", "环境", true], ["business", "业务线", true], ["group", "集群名称", true],
@@ -50,6 +51,8 @@ function collectionStatus(item: Entry): string {
     return timedOut ? "首次采集超时" : "等待首次采集";
   }
   if ((item.collection?.nodeFailures ?? 0) >= 2 && item.collection?.nodeSampleAt) return "已接入 · 节点数据已过期";
+  // 历史节点快照仍可查阅，但最新校验失败时不能用它判断当前健康。
+  if (item.collection?.nodeError) return nodeValidationFailed;
   if (item.collection?.nodes?.some((node) => node.ready === "False")) return "已接入 · 集群异常";
   if (item.collection?.nodes?.some((node) => node.ready === "Unknown")) return "已接入 · 节点状态未知";
   if (item.collection?.nodes?.length) return "已接入 · 当前集群正常";
@@ -73,15 +76,17 @@ function renderCollectionRecheck(item: Entry): string {
 
 function renderCollection(item: Entry): string {
   const data = item.collection;
+  const isHistorical = Boolean(data?.nodeError && data.nodes?.length);
+  const nodeHeading = isHistorical ? "历史节点快照" : "节点状态";
   return `<div class="collection-details">
     <p>${item.firstCollectedAt ? `首次采集成功 ${displayTime(item.firstCollectedAt)}` : "尚未收到有效采集数据"}</p>
     ${item.reportedAt ? `<p>最近上报 ${displayTime(item.reportedAt)}</p>` : ""}
     ${item.checkedAt ? `<p>最近检查 ${displayTime(item.checkedAt)}</p>` : ""}
-    ${data?.nodeSampleAt ? `<p>节点更新时间 ${displayTime(data.nodeSampleAt)}</p>` : ""}
+    ${data?.nodeError ? `<p role="status">${escapeHtml(data.nodeError)}</p>` : ""}
+    ${data?.nodeSampleAt ? `<p>${isHistorical ? "上次成功采样时间" : "节点更新时间"} ${displayTime(data.nodeSampleAt)}</p>` : ""}
     ${(data?.nodeFailures ?? 0) >= 2 && data?.nodeSampleAt ? '<p role="status">节点数据已过期</p>' : ""}
-    ${data?.nodeError ? `<p>${escapeHtml(data.nodeError)}</p>` : ""}
-    <h3>节点状态</h3>
-    ${data?.nodes?.length ? `<ul aria-label="节点状态">${data.nodes.map((node) =>
+    <h3>${nodeHeading}</h3>
+    ${data?.nodes?.length ? `<ul aria-label="${nodeHeading}">${data.nodes.map((node) =>
       `<li>${escapeHtml(node.name)} · <strong>${node.ready === "True" ? "Ready" : node.ready === "False" ? "NotReady" : "Unknown"}</strong></li>`).join("")}</ul>` : "<p>尚未收到节点数据。</p>"}
     <h3>命名空间</h3>
     ${data?.namespaceError ? "<p>命名空间采集异常</p>" : data?.namespaces?.length ?
@@ -104,7 +109,8 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
   }
   const items = await response.json() as Entry[];
   if (!id) {
-    const states = [...new Set(items.map(collectionStatus))];
+    const rows = items.map((item) => ({ item, status: collectionStatus(item) }));
+    const states = [...new Set(rows.map(({ status }) => status))];
     return `<div class="catalog-section">
       <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
         <button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>
@@ -116,16 +122,16 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
       </div>
       <div class="catalog-table-wrap" role="region" aria-labelledby="cluster-list-title" tabindex="0"><table class="catalog-table cluster-table">
         <thead><tr><th scope="col">集群</th><th scope="col">环境 / 业务线</th><th scope="col">集群类型</th><th scope="col">采集状态</th><th scope="col">操作</th></tr></thead>
-        <tbody>${items.map((item) => `<tr data-cluster-row data-status="${escapeHtml(collectionStatus(item))}">
+        <tbody>${rows.map(({ item, status }) => `<tr data-cluster-row data-status="${escapeHtml(status)}">
           <td><strong>${escapeHtml(item.group || item.name)}</strong> <code>${escapeHtml(item.id)}</code>
             <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "外部直连" : "采集上报"}</div></td>
           <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
           <td>${item.clusterType === "dedicated" ? "独立业务集群" : "共用集群"}</td>
-          <td><span class="cluster-status">${collectionStatus(item)}</span></td>
+          <td><span class="cluster-status${status === nodeValidationFailed ? " cluster-status-warning" : ""}">${status}</span></td>
           <td><div class="catalog-actions">
           ${item.deleted ? maintenanceButton(item, "reconnect", "重新连接") : `
             <button type="button" class="button secondary" data-cluster-details>采集详情</button>
-            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${collectionStatus(item)}</p>${renderCollection(item)}${renderCollectionRecheck(item)}</template>
+            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${status}</p>${renderCollection(item)}${renderCollectionRecheck(item)}</template>
             ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
             ${item.enabled && (item.mode !== "pull" || item.credentialKind) ? editorButton(item, "ownership", "命名空间归属") : ""}
             ${canRecheckCollection(item) ? maintenanceButton(item, "recheck", "重新校验") : ""}

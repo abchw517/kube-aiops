@@ -13,18 +13,29 @@ const ldapFields = [
   ["groupFilter", "LDAP 组过滤器"],
 ] as const;
 
-export async function renderIdentityAdmin(resource: string, initial: boolean, roleID?: string, administrator = true, superAdmin = false): Promise<string> {
+type IdentityAdminView = {
+  initial: boolean;
+  roleID?: string;
+  administrator: boolean;
+  superAdmin: boolean;
+  canChangePassword: boolean;
+  auditContent?: string;
+};
+
+/** 根据当前会话能力展示认证和账号管理功能。 */
+export async function renderIdentityAdmin(resource: string, view: IdentityAdminView): Promise<string> {
+  const { initial, roleID, administrator, superAdmin, canChangePassword, auditContent } = view;
   const navigation = initial || !administrator ? "" : `<nav class="identity-nav" aria-label="系统管理">
     <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
     <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
     <a href="#/admin/access"${resource === "access" || resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
     <a href="#/admin/operations"${resource === "operations" ? ' aria-current="page"' : ""}>操作审计</a>
-    <a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>
+    ${canChangePassword ? `<a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>` : ""}
   </nav>`;
   let content: string;
   try {
-    content = ["users", "access", "operations"].includes(resource) ? await renderPlatform(resource, roleID, superAdmin)
-      : resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial);
+    content = auditContent ?? (["users", "access"].includes(resource) ? await renderPlatform(resource, roleID, superAdmin)
+      : resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial));
   } catch {
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }

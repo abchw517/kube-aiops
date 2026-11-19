@@ -2,6 +2,7 @@ import { PortalApp } from "./app.ts";
 import "./styles.css";
 import "./components/portal-shell.css";
 import "./views/diagnosis/diagnosis.css";
+import "./views/permissions/audit.css";
 import "./views/wiki/wiki.css";
 
 const root = document.querySelector<HTMLElement>("#app");

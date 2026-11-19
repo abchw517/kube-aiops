@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: bb8a6351 2f5df311 6f1cdeaf ac554f16 d7d73e85 0ca81325 e3349bc6 373fd27a
+// Contract source SHA-256 groups: a48dc706 6263ca44 614a4419 64835214 8a71a8dc 9a6e4cf7 8ffc39e2 08dd1f77
 
 export interface StatusResponse {
   "status": string;
@@ -173,6 +173,9 @@ export interface GetResourceParams {
 
 export interface ListFindingsParams {
   "cluster"?: string;
+  "environment"?: string;
+  "business"?: string;
+  "group"?: string;
   "namespace"?: string;
   "kind"?: string;
   "severity"?: Severity;
@@ -183,6 +186,9 @@ export interface ListFindingsParams {
 
 export interface SummarizeFindingsParams {
   "cluster"?: string;
+  "environment"?: string;
+  "business"?: string;
+  "group"?: string;
   "namespace"?: string;
   "kind"?: string;
   "severity"?: Severity;
@@ -259,6 +265,9 @@ export class KubeAIOpsApiClient {
     let path = `/api/v1/findings`;
     const query = new URLSearchParams();
     if (params["cluster"] !== undefined) query.set("cluster", String(params["cluster"]));
+    if (params["environment"] !== undefined) query.set("environment", String(params["environment"]));
+    if (params["business"] !== undefined) query.set("business", String(params["business"]));
+    if (params["group"] !== undefined) query.set("group", String(params["group"]));
     if (params["namespace"] !== undefined) query.set("namespace", String(params["namespace"]));
     if (params["kind"] !== undefined) query.set("kind", String(params["kind"]));
     if (params["severity"] !== undefined) query.set("severity", String(params["severity"]));
@@ -274,6 +283,9 @@ export class KubeAIOpsApiClient {
     let path = `/api/v1/findings/summary`;
     const query = new URLSearchParams();
     if (params["cluster"] !== undefined) query.set("cluster", String(params["cluster"]));
+    if (params["environment"] !== undefined) query.set("environment", String(params["environment"]));
+    if (params["business"] !== undefined) query.set("business", String(params["business"]));
+    if (params["group"] !== undefined) query.set("group", String(params["group"]));
     if (params["namespace"] !== undefined) query.set("namespace", String(params["namespace"]));
     if (params["kind"] !== undefined) query.set("kind", String(params["kind"]));
     if (params["severity"] !== undefined) query.set("severity", String(params["severity"]));

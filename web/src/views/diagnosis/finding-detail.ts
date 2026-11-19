@@ -3,11 +3,12 @@ import { escapeHtml, formatSeverity, formatTimestamp } from "../../components/ht
 
 import { findingReviewControls } from "./finding-review.ts";
 
-export function renderFindingDetail(finding: Finding, reviewEnabled = false): string {
+export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null): string {
+  const query = returnQuery ?? new URLSearchParams({ cluster: finding.cluster }).toString();
   return `
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
-        <a class="back-link" href="#/findings${finding.cluster === "local" ? "" : `?cluster=${encodeURIComponent(finding.cluster)}`}">← 返回诊断列表</a>
+        <a class="back-link" href="#/findings?${escapeHtml(query)}">← 返回诊断列表</a>
         <div class="detail-heading">
           <h2>故障信息</h2>
           <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>

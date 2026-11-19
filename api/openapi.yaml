@@ -137,7 +137,10 @@ paths:
       operationId: listFindings
       summary: List normalized K8sGPT findings
       parameters:
-        - $ref: '#/components/parameters/ClusterQuery'
+        - $ref: '#/components/parameters/FindingCollectionClusterQuery'
+        - $ref: '#/components/parameters/FindingEnvironmentQuery'
+        - $ref: '#/components/parameters/FindingBusinessQuery'
+        - $ref: '#/components/parameters/FindingGroupQuery'
         - $ref: '#/components/parameters/NamespaceQuery'
         - $ref: '#/components/parameters/KindQuery'
         - $ref: '#/components/parameters/SeverityQuery'
@@ -182,7 +185,10 @@ paths:
       operationId: summarizeFindings
       summary: Summarize normalized K8sGPT findings
       parameters:
-        - $ref: '#/components/parameters/ClusterQuery'
+        - $ref: '#/components/parameters/FindingCollectionClusterQuery'
+        - $ref: '#/components/parameters/FindingEnvironmentQuery'
+        - $ref: '#/components/parameters/FindingBusinessQuery'
+        - $ref: '#/components/parameters/FindingGroupQuery'
         - $ref: '#/components/parameters/NamespaceQuery'
         - $ref: '#/components/parameters/KindQuery'
         - $ref: '#/components/parameters/SeverityQuery'
@@ -281,6 +287,35 @@ components:
       schema:
         type: string
         default: local
+    FindingCollectionClusterQuery:
+      name: cluster
+      in: query
+      required: false
+      description: Cluster instance ID. Use '*' to query all authorized instances. Omission queries local.
+      schema:
+        type: string
+        default: local
+    FindingEnvironmentQuery:
+      name: environment
+      in: query
+      required: false
+      description: Select the exact environment label when cluster is '*'.
+      schema:
+        type: string
+    FindingBusinessQuery:
+      name: business
+      in: query
+      required: false
+      description: Select the exact business label when cluster is '*'.
+      schema:
+        type: string
+    FindingGroupQuery:
+      name: group
+      in: query
+      required: false
+      description: Select the exact cluster group label when cluster is '*'.
+      schema:
+        type: string
     NamespaceQuery:
       name: namespace
       in: query

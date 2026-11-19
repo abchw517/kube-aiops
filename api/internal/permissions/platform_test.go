@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,6 +122,96 @@ func TestPlatformRoleSourcesAndImmediateAccessChanges(t *testing.T) {
 	var failures int
 	if err := store.QueryRowContext(ctx, "SELECT count(*) FROM operation_audit WHERE result='失败' AND batch<>''").Scan(&failures); err != nil || failures != 1 {
 		t.Fatalf("missing partial batch audit: %d, %v", failures, err)
+	}
+}
+
+// TestBatchAdministratorRoleForLDAP 验证直接角色批量操作、管理员边界与会话失效。
+func TestBatchAdministratorRoleForLDAP(t *testing.T) {
+	ctx := t.Context()
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "auth.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a := &Admin{store: store}
+	login := func(subject string) identity.Principal {
+		t.Helper()
+		p, err := a.registerEmployee(ctx, subject, identity.Principal{Subject: subject})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	alice, bob := login("ldap:alice"), login("ldap:bob")
+	if err := a.editPlatform(ctx, func(s *platformState, _ *sql.Tx) error {
+		s.Roles["read-dev"] = platformRole{ID: "read-dev", Name: "研发诊断"}
+		s.Roles["read-test"] = platformRole{ID: "read-test", Name: "测试诊断"}
+		s.Accounts["local:operator"] = platformAccount{ID: "local:operator", Kind: "administrator", Generation: "fixture-operator"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	super := identity.Principal{Subject: superSubject, Provider: AdminProvider}
+	operator := identity.Principal{Subject: "local:operator", Provider: AdminProvider, SessionVersion: "fixture-operator"}
+	change := func(actor identity.Principal, body string, want int) []changeResult {
+		t.Helper()
+		w := httptest.NewRecorder()
+		a.handlePlatform(w, httptest.NewRequest("POST", "/", strings.NewReader(body)), "accounts", actor)
+		if w.Code != want {
+			t.Fatalf("status %d want %d: %s", w.Code, want, w.Body)
+		}
+		if want != 200 {
+			return nil
+		}
+		var results []changeResult
+		if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+			t.Fatal(err)
+		}
+		return results
+	}
+	grant := `{"action":"grant","ids":["ldap:alice","ldap:bob"],"values":["read-dev","read-test","system-admin"]}`
+	for _, result := range change(operator, grant, 200) {
+		if !strings.Contains(result.Reason, "仅超级管理员") {
+			t.Fatalf("ordinary administrator changed the protected role: %+v", result)
+		}
+	}
+	state, err := a.platform(ctx)
+	if err != nil || !slices.Equal(state.Accounts[alice.Subject].Roles, []string{guestRole}) {
+		t.Fatalf("invalid batch partially applied roles: %v", err)
+	}
+	granted := change(super, grant, 200)
+	if len(granted) != 2 {
+		t.Fatalf("missing batch outcomes: %+v", granted)
+	}
+	for _, result := range granted {
+		if result.Reason != "" {
+			t.Fatalf("super administrator grant failed: %+v", result)
+		}
+	}
+	for _, old := range []identity.Principal{alice, bob} {
+		if err := a.ValidateSession(ctx, old); !errors.Is(err, identity.ErrUnauthenticated) {
+			t.Fatalf("old LDAP session survived role grant: %v", err)
+		}
+	}
+	elevated := login(alice.Subject)
+	decision, err := a.Authorize(ctx, authorization.DecisionRequest{Principal: elevated, Capability: authorization.CapabilityEnvironmentsManage, Scope: authorization.GlobalScope()})
+	if err != nil || !decision.Allowed || !IsAdministrator(elevated) || elevated.Provider != employeeProvider || CanChangePassword(elevated) {
+		t.Fatalf("LDAP administration or directory identity incorrect: %+v, %v", elevated, err)
+	}
+	change(elevated, `{"action":"revoke","id":"ldap:bob","values":["system-admin"]}`, 409)
+	change(operator, `{"action":"disable","id":"ldap:alice"}`, 409)
+	for _, result := range change(super, `{"action":"revoke","ids":["ldap:alice","ldap:bob"],"values":["system-admin","read-dev"]}`, 200) {
+		if result.Reason != "" {
+			t.Fatalf("super administrator revoke failed: %+v", result)
+		}
+	}
+	if err := a.ValidateSession(ctx, elevated); !errors.Is(err, identity.ErrUnauthenticated) {
+		t.Fatalf("privileged LDAP session survived revocation: %v", err)
+	}
+	regular := login(alice.Subject)
+	state, err = a.platform(ctx)
+	if err != nil || IsAdministrator(regular) || !slices.Equal(state.Accounts[alice.Subject].Roles, []string{guestRole, "read-test"}) {
+		t.Fatalf("revocation changed unrelated roles: %+v (%v)", regular, err)
 	}
 }
 

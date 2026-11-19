@@ -20,9 +20,18 @@ rules:
       - ""
     resources:
       - namespaces
-      - nodes
     verbs:
       - list
+
+  # Node 节点查询
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
 
   - apiGroups:
       - ""

@@ -59,8 +59,8 @@
 
 依赖 RM-T03、RM-T11
 
-- `RM-T04-A` 服务端 · 映射网络、认证和节点读取错误；持久化待接入状态及最近失败原因，手动通过后记录首采起点。
-- `RM-T04-B` Web · 接通保存待接入及重新校验按钮，呈现状态和脱敏原因。
+- `RM-T04-A` 服务端 · 映射网络、认证和节点读取错误；持久化待接入状态及最近失败原因，手动通过后记录首采起点。手动重新校验失败时立即更新最近检查时间与 `nodeError`，保留最后一次成功的节点快照及采样时间。同一秒内发起的多次校验按发起时间排序，较早发起的结果即使晚返回也不会覆盖较新结果。
+- `RM-T04-B` Web · 接通保存待接入及重新校验按钮，呈现状态和脱敏原因。对于已接入实例，列表先判断节点数据是否过期，再判断节点校验是否失败，最后展示最新成功快照对应的健康状态。详情明确区分最近检查和上一次成功快照。
 
 ### RM-T05
 
@@ -77,8 +77,8 @@
 
 依赖 RM-T05
 
-- `RM-T06-A` 服务端 · 实现节点采集轮次、快照及失败计数，隔离节点健康和诊断提示；采集调度仅处理活跃连接。
-- `RM-T06-A` RBAC 验收 · 本地节点采集收到 Kubernetes 403 时，提示核对 API Deployment 实际使用的 ServiceAccount。保持默认 ClusterRole 和 ClusterRoleBinding 的权限范围。安装及升级后执行 `python3 scripts/check-api-node-rbac.py --context CONTEXT` 检查实际账号的 `list nodes` 权限。自定义部署可指定 `--namespace` 和 `--deployment`。命令默认只读，显式指定 `--repair` 时为实际账号创建专用 ClusterRole 和 ClusterRoleBinding，仅补授 `list nodes`。
+- `RM-T06-A` 服务端 · 实现节点采集轮次、快照及失败计数，隔离节点健康和诊断提示；采集调度仅处理活跃连接。周期内重复手动校验沿用原有 5 分钟失败计数规则。连续两轮周期采集失败后将快照标记为过期，后续成功读取节点时刷新快照并清除读取错误和失败计数。
+- `RM-T06-A` RBAC 验收 · 本地节点采集收到 Kubernetes 403 时，提示核对 API Deployment 实际使用的 ServiceAccount。默认 API ClusterRole 对 Nodes 授予 `get`、`list`、`watch`，对 Namespaces 仅授予 `list`。安装及升级后执行 `python3 scripts/check-api-node-rbac.py --context CONTEXT` 检查实际账号的 `list nodes` 权限。自定义部署可指定 `--namespace` 和 `--deployment`。命令默认只读，显式指定 `--repair` 时为实际账号创建专用 ClusterRole 和 ClusterRoleBinding，仅补授 `list nodes`。
 - `RM-T06-B` Web · 展示节点异常、最后成功时间及过期提示，并独立呈现 K8sGPT 未安装、无权读取或工作负载故障。已启用的本地集群可「重新校验」，权限修复后成功采集节点即清除提示。
 
 ### RM-T07

@@ -150,13 +150,22 @@ func FilterFindings(source []finding.Finding, filter finding.Filter) ([]finding.
 		items = append(items, item)
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].CreatedAt == items[j].CreatedAt {
-			return items[i].ID < items[j].ID
-		}
-		return items[i].CreatedAt > items[j].CreatedAt
-	})
+	SortFindings(items)
 	return items, nil
+}
+
+// SortFindings 保持时间、诊断 ID 和实例的稳定顺序。
+func SortFindings(items []finding.Finding) {
+	sort.Slice(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		if a.CreatedAt != b.CreatedAt {
+			return a.CreatedAt > b.CreatedAt
+		}
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return a.Cluster < b.Cluster
+	})
 }
 
 func (c *Client) listCurrentResults(ctx context.Context) ([]k8sgpt.Result, error) {
@@ -213,7 +222,8 @@ func cursorStart(items []finding.Finding, cursor *finding.Cursor) int {
 	}
 	for i, item := range items {
 		if item.CreatedAt < cursor.CreatedAt ||
-			(item.CreatedAt == cursor.CreatedAt && item.ID > cursor.ID) {
+			(item.CreatedAt == cursor.CreatedAt && (item.ID > cursor.ID ||
+				(item.ID == cursor.ID && cursor.Cluster != "" && item.Cluster > cursor.Cluster))) {
 			return i
 		}
 	}

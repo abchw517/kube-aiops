@@ -19,6 +19,12 @@ func MustChangePassword(p identity.Principal) bool {
 	return p.Provider == InitialAdminProvider || p.Provider == pendingProvider
 }
 
+// IsAdministrator 识别已认证的本地或 LDAP 系统管理员。
+func IsAdministrator(p identity.Principal) bool {
+	return p.Provider == AdminProvider ||
+		p.Provider == employeeProvider && p.SessionVersion != "" && p.Administrator
+}
+
 func CanChangePassword(p identity.Principal) bool {
 	return MustChangePassword(p) || p.Provider == AdminProvider || p.Provider == guestProvider
 }

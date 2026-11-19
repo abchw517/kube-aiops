@@ -11,20 +11,7 @@ type Account = {
 };
 type Access = { groups: Group[]; roles: Role[] };
 type Entry = { id: string; name: string; environment?: string };
-type Operation = {
-  id: number; at: number; actor: string; action: string; risk: string; target: string;
-  result: string; reason: string; batch: string;
-};
-type AuditRetention = { low: number; medium: number; high: number };
-const auditLevels = [["low", "低"], ["medium", "中"], ["high", "高"]] as const;
-const auditClock = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
-  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-});
-function auditTime(seconds: number): string {
-  return auditClock.format(seconds * 1000).replace(/\s/g, "");
-}
-
+const systemAdministratorRole = "system-admin";
 const environments: Record<string, string> = { development: "研发", testing: "测试", staging: "预发布", production: "生产" };
 const kinds: Record<string, string> = { super: "超级管理员", administrator: "系统管理员", guest: "本地访客", ldap: "LDAP 员工" };
 
@@ -49,11 +36,21 @@ function scopeText(scope: Scope): string {
   return [environments[scope.environment] ?? scope.environment, scope.cluster, scope.business, scope.namespace].filter(Boolean).map(h).join(" / ");
 }
 
+/** LDAP 账号保留目录身份，其直接管理员角色仍赋予全局权限。 */
+function hasAdministratorRole(user: Account): boolean {
+  return user.kind === "administrator" || user.roles?.includes(systemAdministratorRole) === true;
+}
+
+/** 仅超级管理员可以维护其他拥有管理员角色的账号。 */
+function canManageAccount(user: Account, superAdmin: boolean): boolean {
+  return user.kind !== "super" && (superAdmin || !hasAdministratorRole(user));
+}
+
 function effectivePermissions(user: Account): string {
   if (user.disabled || user.directoryDisabled || user.mustChangePassword) {
     return '<p class="system-notice">账号当前无法访问诊断数据。启用并完成所需的改密后，按关联角色生效。</p>';
   }
-  if (user.kind === "super" || user.kind === "administrator") {
+  if (user.kind === "super" || hasAdministratorRole(user)) {
     return '<div class="system-permission"><strong>全局管理与诊断查看</strong><p>直接授予 → 系统管理员</p></div>';
   }
   if (!user.effective?.length) return "<p>暂无生效权限。下次成功登录后恢复访客只读。</p>";
@@ -107,8 +104,9 @@ function choices(name: string, title: string, items: Entry[], selected: string[]
       "<p>暂无可选项。</p>"}</fieldset>`;
 }
 
-function assignmentEditor(access: Access, account?: Account): string {
-  const roles = access.roles.filter((role) => role.id !== "system-admin");
+/** 直接角色分配依据操作者权限开放管理员角色。 */
+function assignmentEditor(access: Access, superAdmin: boolean, account?: Account): string {
+  const roles = superAdmin ? access.roles : access.roles.filter((role) => role.id !== systemAdministratorRole);
   return editor(account ? "assign" : "batch", account ? "分配用户组或角色" : "批量授权 / 撤销",
     operationForm("accounts", account?.id ?? "", `
       <p data-assignment-target>${account ? h(account.username) : ""}</p>
@@ -117,12 +115,13 @@ function assignmentEditor(access: Access, account?: Account): string {
         <label>操作<select data-assignment-mode><option value="add">授予</option><option value="remove">撤销</option></select></label>
       </div>
       <div data-assignment-options="groups">${choices("groups", "选择用户组", access.groups)}</div>
-      <div data-assignment-options="roles" hidden>${choices("roles", "选择直接角色", roles)}</div>
+      <div data-assignment-options="roles" hidden>${choices("roles", "选择直接角色", roles)}
+        ${superAdmin ? "<p>管理员角色发生变更时，目标账号需重新登录。</p>" : ""}</div>
     `, "提交", "assignment"));
 }
 
 function canDeleteAccount(user: Account, superAdmin: boolean): boolean {
-  return user.kind === "guest" || user.kind === "ldap" || (user.kind === "administrator" && superAdmin);
+  return canManageAccount(user, superAdmin) && ["guest", "ldap", "administrator"].includes(user.kind);
 }
 
 function accountBinding(label: string, ids: string[] | null, items: Entry[], empty: string): string {
@@ -132,7 +131,10 @@ function accountBinding(label: string, ids: string[] | null, items: Entry[], emp
 }
 
 function accountDetail(user: Account, access: Access, superAdmin: boolean): string {
-  const allowed = user.kind !== "super" && (user.kind !== "administrator" || superAdmin);
+  const allowed = canManageAccount(user, superAdmin);
+  const canAssign = allowed && user.kind === "ldap";
+  const bindingAction = user.kind !== "ldap" ? "<small>本地账号通过预置角色获得权限。</small>" :
+    canAssign ? editButton("分配或撤销", "assign") : "<small>仅超级管理员可维护此账号的关联关系。</small>";
   const action = user.kind === "administrator" ? "delete" : user.disabled ? "enable" : "disable";
   const label = user.kind === "administrator" ? "删除系统管理员" : user.disabled ? "重新启用" : "停用账号";
   return `<section class="system-card system-detail">
@@ -156,10 +158,9 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
         ${accountBinding("用户组", user.groups, access.groups, "未加入用户组")}
         ${accountBinding("直接角色", user.roles, access.roles, "未分配直接角色")}
       </dl>
-      <footer class="account-bindings-footer">${user.kind === "ldap" ? editButton("分配或撤销", "assign") :
-        "<small>本地账号通过预置角色获得权限。</small>"}</footer>
+      <footer class="account-bindings-footer">${bindingAction}</footer>
     </div>
-    ${user.kind === "ldap" ? assignmentEditor(access, user) : ""}
+    ${canAssign ? assignmentEditor(access, superAdmin, user) : ""}
   </section>`;
 }
 
@@ -190,15 +191,15 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
         title="选择一个可删除的账号" disabled>删除用户</button>
     </div>
     <div class="catalog-table-wrap" role="region" aria-label="账号列表" tabindex="0"><table class="catalog-table account-table">
-      <thead><tr><th scope="col"><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => item.kind !== "super") ? "" : " disabled"}></th><th scope="col">账号</th><th scope="col">类型</th><th scope="col">状态</th><th scope="col">最近登录</th></tr></thead>
-      <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${item.kind === "super" ? " disabled" : ""}></td>
+      <thead><tr><th scope="col"><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => canManageAccount(item, superAdmin)) ? "" : " disabled"}></th><th scope="col">账号</th><th scope="col">类型</th><th scope="col">状态</th><th scope="col">最近登录</th></tr></thead>
+      <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${canManageAccount(item, superAdmin) ? "" : " disabled"}></td>
         <td><div class="system-user-cell">${accountAvatar(item)}<div class="account-identity"><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
         <td>${h(kinds[item.kind])}</td><td>${accountStatus(item)}</td>
         <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
       <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div><div class="catalog-bottom" data-platform-count>共 ${users.length} 个账号</div></section>
       ${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}
     </div>
-    ${assignmentEditor(access)}
+    ${assignmentEditor(access, superAdmin)}
     ${editor("delete-account", "删除用户", operationForm("accounts", "",
       '<p>确定删除<strong data-delete-name></strong>？</p><p class="system-notice" data-delete-impact></p>', "确认删除", "delete"))}
     ${create("guest", "创建访客")}${superAdmin ? create("administrator", "创建系统管理员") : ""}`;
@@ -230,7 +231,7 @@ async function renderAccess(tab?: string): Promise<string> {
     admin<Access>("access"), json<{ items: Entry[] }>("/api/v1/clusters"), admin<Entry[]>("business-lines"), admin<Account[]>("accounts"),
   ]);
   const groups = tab === "groups";
-  const available = access.roles.filter((role) => role.id !== "system-admin");
+  const available = access.roles.filter((role) => role.id !== systemAdministratorRole);
   const groupEditor = (group?: Group) => editor(`group:${group?.id ?? ""}`, group ? "编辑用户组" : "新建用户组",
     operationForm("access", group?.id ?? "", `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"></label>
       <label>用途<input name="description" maxlength="256" value="${h(group?.description)}"></label>
@@ -249,7 +250,7 @@ async function renderAccess(tab?: string): Promise<string> {
     <td>${names(group.roles, access.roles)}</td><td>${users.filter((user) => user.groups?.includes(group.id)).length} 人</td>
     <td><div class="system-actions">${editButton("编辑", `group:${group.id}`, true)}${editButton("删除", `remove:${group.id}`, true)}</div></td></tr>`)
     : access.roles.map((role) => `<tr><td><strong>${h(role.name)}</strong>${role.fixed ? ' <span class="system-badge">预置</span>' : ""}</td>
-    <td>${role.id === "system-admin" ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断权限`}</td>
+    <td>${role.id === systemAdministratorRole ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断权限`}</td>
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
@@ -266,57 +267,9 @@ async function renderAccess(tab?: string): Promise<string> {
         : roleEditor(role) + remove(role, "role")).join("")}`;
 }
 
-function auditDetail(item: Operation): string {
-  return editor(`audit:${item.id}`, "审计详情", `<div class="system-editor-body">
-    <h3>${h(item.action)}</h3><p>${h(item.risk)}风险 · ${h(item.result)}</p>
-    <dl><dt>操作者</dt><dd>${h(item.actor || "—")}</dd><dt>目标</dt><dd>${h(item.target)}</dd>
-      <dt>时间（北京时间）</dt><dd>${auditTime(item.at)}</dd>
-      ${item.reason ? `<dt>失败原因</dt><dd>${h(item.reason)}</dd>` : ""}</dl></div>
-    <footer class="system-dialog-footer">${item.batch ? `<button class="button secondary" type="button" data-audit-batch="${h(item.batch)}">查看同批次</button>` : ""}
-      <button class="button" type="button" data-system-close>关闭</button></footer>`);
-}
-
-function operationRows(items: Operation[]): string {
-  if (items.length === 0) return '<tr><td colspan="7">暂无匹配记录。</td></tr>';
-  return items.map((item) => `<tr><td>${auditTime(item.at)}</td><td>${h(item.actor || "—")}</td>
-    <td>${h(item.action)}</td><td><span class="system-badge" data-audit-risk="${h(item.risk)}">${h(item.risk)}</span></td>
-    <td>${h(item.target)}</td><td><span class="system-badge" data-audit-result="${h(item.result)}">${h(item.result)}</span></td>
-    <td>${editButton("详情", `audit:${item.id}`, true)}${auditDetail(item)}</td></tr>`).join("");
-}
-
-function renderAuditRetention(retention: AuditRetention, canEdit: boolean): string {
-  const summary = auditLevels.map(([key, label]) => `${label} ${retention[key]} 天`).join(" / ");
-  if (!canEdit) return `<p>审计保留策略 · ${summary}</p>`;
-  return `<details class="system-card audit-retention"><summary>审计保留策略 · <span data-retention-summary>${summary}</span></summary>
-    <form class="system-form" data-audit-retention>
-      <p>按记录生成时间计算。缩短保留时间后，保存时会清理超期记录。</p>
-      <div class="system-field-grid">${auditLevels.map(([key, label]) =>
-        `<label>${label}风险保留天数<input name="${key}" type="number" min="1" step="1" required value="${retention[key]}"></label>`).join("")}</div>
-      ${submit("保存保留策略")}
-      <span role="status" aria-live="polite"></span>
-    </form>
-  </details>`;
-}
-
-async function renderOperations(superAdmin: boolean): Promise<string> {
-  const { items, before, actions, retention } = await admin<{ items: Operation[]; before: number; actions?: string[]; retention?: AuditRetention }>("operations");
-  return `<div class="platform-heading"><div><h2>操作审计</h2><p>查询账号变更、认证事件和逐项批量结果。</p></div></div>
-    ${retention ? renderAuditRetention(retention, superAdmin) : ""}<section class="system-card"><form class="platform-audit-filter" data-audit-filter>
-    <label>账号或目标<input name="account" type="search"></label>
-    <label>操作类型<select name="action"><option value="">所有操作</option>${options((actions ?? [...new Set(items.map((item) => item.action))]).map((name) => ({ id: name, name })))}</select></label>
-    <label>风险等级<select name="risk"><option value="">全部</option><option>低</option><option>中</option><option>高</option></select></label>
-    <input type="hidden" name="batch">
-    ${submit("查询")}<button class="button secondary" type="submit" data-audit-next value="${before}"${before ? "" : " hidden"}>下一页</button>
-    <p role="status"></p>
-  </form><div class="catalog-table-wrap" role="region" aria-label="操作审计记录" tabindex="0"><table class="catalog-table audit-table">
-    <thead><tr><th scope="col">时间（北京时间）</th><th scope="col">操作者</th><th scope="col">操作类型</th><th scope="col">风险等级</th><th scope="col">目标</th><th scope="col">结果</th><th scope="col">操作</th></tr></thead>
-    <tbody data-audit-results>${operationRows(items)}</tbody></table></div><div class="catalog-bottom" data-audit-count>当前页 ${items.length} 条记录</div></section>`;
-}
-
 export function renderPlatform(resource: string, id: string | undefined, superAdmin: boolean): Promise<string> {
   if (resource === "users") return renderAccounts(id, superAdmin);
-  if (resource === "access") return renderAccess(id);
-  return renderOperations(superAdmin);
+  return renderAccess(id);
 }
 
 export async function submitPlatform(form: HTMLFormElement, action: string, reload: () => void): Promise<void> {
@@ -383,71 +336,6 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     dialog?.removeAttribute("aria-busy");
     for (const button of buttons) button.disabled = false;
   }
-}
-
-export async function submitAuditRetention(form: HTMLFormElement): Promise<void> {
-  const status = form.querySelector('[role="status"]');
-  const button = form.querySelector("button");
-  if (!status || !button || button.disabled) return;
-  const data = new FormData(form);
-  const days = Object.fromEntries(auditLevels.map(([key]) => [key, Number(data.get(key))])) as AuditRetention;
-  if (Object.values(days).some((value) => !Number.isSafeInteger(value) || value < 1)) {
-    status.textContent = "保留天数必须为正整数。";
-    return;
-  }
-  button.disabled = true;
-  status.textContent = "正在保存…";
-  try {
-    const response = await fetch("/api/v1/admin/operations", {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(days),
-    });
-    if (response.status !== 204) {
-      status.textContent = response.headers.get("Content-Type")?.startsWith("text/plain") ?
-        (await response.text()).trim() : "保存失败，请重试。";
-      return;
-    }
-    const summary = form.parentElement?.querySelector("[data-retention-summary]");
-    if (summary) summary.textContent = auditLevels.map(([key, label]) => `${label} ${days[key]} 天`).join(" / ");
-    status.textContent = "已保存保留策略。";
-    const filter = form.closest(".identity-panel")?.querySelector<HTMLFormElement>("[data-audit-filter]");
-    if (filter) await queryAudit(filter, "", String(new FormData(filter).get("batch") ?? ""));
-  } catch {
-    status.textContent = "保存失败，请重试。";
-  } finally {
-    button.disabled = false;
-  }
-}
-
-export async function queryAudit(form: HTMLFormElement, before = "", batch = ""): Promise<void> {
-  const panel = form.closest(".identity-panel");
-  const body = panel?.querySelector("[data-audit-results]");
-  const status = form.querySelector('[role="status"]');
-  const next = form.querySelector<HTMLButtonElement>("[data-audit-next]");
-  const batchInput = form.querySelector<HTMLInputElement>('[name="batch"]');
-  if (!body || !status || !next || !batchInput || next.disabled) return;
-  batchInput.value = batch || (before ? batchInput.value : "");
-  const query = new URLSearchParams();
-  for (const [name, value] of new FormData(form)) {
-    if (value) query.set(name, String(value).trim());
-  }
-  if (batchInput.value) {
-    query.delete("account");
-    query.delete("action");
-    query.delete("risk");
-  }
-  if (before) query.set("before", before);
-  next.disabled = true;
-  try {
-    const page = await admin<{ items: Operation[]; before: number }>(`operations?${query}`);
-    body.innerHTML = operationRows(page.items);
-    const count = form.parentElement?.querySelector("[data-audit-count]");
-    if (count) count.textContent = `当前页 ${page.items.length} 条记录`;
-    next.value = String(page.before);
-    next.hidden = !page.before;
-    status.textContent = batchInput.value ? "正在查看同一批次的记录。" : "";
-  } catch {
-    status.textContent = "审计记录查询失败。";
-  } finally { next.disabled = false; }
 }
 
 export function handlePlatformClick(event: MouseEvent): void {
@@ -547,12 +435,6 @@ export function handlePlatformClick(event: MouseEvent): void {
   }
   if (target.closest("[data-scope-remove]") && !dialog?.hasAttribute("aria-busy")) {
     target.closest("[data-saved-scope]")?.remove();
-  }
-  const batch = target.closest<HTMLButtonElement>("[data-audit-batch]")?.dataset.auditBatch;
-  const filter = target.closest(".identity-panel")?.querySelector<HTMLFormElement>("[data-audit-filter]");
-  if (batch && filter) {
-    dialog?.close();
-    void queryAudit(filter, "", batch);
   }
 }
 

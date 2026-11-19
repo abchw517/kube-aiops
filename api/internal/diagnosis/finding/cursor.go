@@ -12,6 +12,7 @@ type Cursor struct {
 	Version   int    `json:"v"`
 	CreatedAt string `json:"createdAt"`
 	ID        string `json:"id"`
+	Cluster   string `json:"cluster,omitempty"`
 }
 
 func EncodeCursor(item Finding) string {
@@ -22,6 +23,7 @@ func EncodeCursor(item Finding) string {
 		Version:   cursorVersion,
 		CreatedAt: item.CreatedAt,
 		ID:        item.ID,
+		Cluster:   item.Cluster,
 	})
 	return base64.RawURLEncoding.EncodeToString(payload)
 }

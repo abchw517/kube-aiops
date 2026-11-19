@@ -31,7 +31,22 @@ Back-off pulling image "busybox:1.36": 403 Forbidden
     details: "Available replicas are below desired replicas.",
     source: "k8sgpt",
     createdAt: "2026-09-02T03:05:00Z"
+  },
+  {
+    id: "finding-warning",
+    cluster: "test-k8s",
+    namespace: "sandbox",
+    severity: "info",
+    resource: { apiVersion: "v1", kind: "Pod", namespace: "sandbox", name: "fixture" },
+    problem: "测试集群容量建议",
+    details: "测试环境容器资源建议",
+    source: "k8sgpt",
+    createdAt: "2026-09-02T03:05:00Z"
   }
+];
+const clusters = [
+  { id: "local", name: "local", status: "ready", environment: "生产", business: "平台", group: "生产集群" },
+  { id: "test-k8s", name: "测试实例", status: "ready", environment: "测试", business: "平台", group: "测试集群" },
 ];
 
 let warningEvidenceRequests = 0;
@@ -39,8 +54,19 @@ let authenticationRequired = false;
 let authenticated = false;
 const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
 let adminSession = false;
+let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
+const assignmentRoleIds = ["diagnosis-reader", "namespace-auditor", "system-admin"];
+let fixtureReaderRoles = ["guest-readonly"];
 let auditRetention = { low: 3, medium: 5, high: 7 };
+let auditSaves = 0;
+const auditAt = Date.parse("2026-11-18T07:43:19Z") / 1000;
+const auditFixture = [
+  { id: 4, at: auditAt, actor: "local:admin", action: "创建账号", risk: "高", target: "local:guest", result: "成功", reason: "", batch: "" },
+  { id: 3, at: auditAt - 1, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "批量操作", result: "部分成功", reason: "", batch: "batch-fixture" },
+  { id: 2, at: auditAt - 2, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:alice", result: "成功", reason: "", batch: "batch-fixture" },
+  { id: 1, at: auditAt - 3, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:bob", result: "失败", reason: "账号已停用", batch: "batch-fixture" },
+];
 let role;
 
 let localConnectionDeleted = false;
@@ -54,6 +80,7 @@ createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/test/admin-session") {
     adminSession = true;
+    fixtureSuperAdministrator = url.searchParams.get("super") !== "false";
     authenticated = true;
     response.writeHead(204).end();
     return;
@@ -64,6 +91,7 @@ createServer(async (request, response) => {
     response.writeHead(204).end();
     return;
   }
+  if (url.pathname === "/test/audit-saves") return json(response, 200, auditSaves);
   if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -102,7 +130,10 @@ createServer(async (request, response) => {
   if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
     return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
   }
-  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, { admin: true, superAdministrator: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true });
+  if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
+    admin: true, superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,
+    findingAI: true, manageEnvironments: true, manageBusinessLines: true,
+  });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: [] });
     const chunks = [];
@@ -231,13 +262,18 @@ createServer(async (request, response) => {
         fixtureAccountDeleted = true;
         return json(response, 200, [{ id: ldapReaderId }]);
       }
-      if (change.action === "grant" && change.ids?.[0] === ldapReaderId && change.values?.[0] === "guest-readonly") {
+      const targetsReader = change.id === ldapReaderId || (change.ids?.length === 1 && change.ids[0] === ldapReaderId);
+      const hasExpectedRoles = change.values?.length === assignmentRoleIds.length &&
+        assignmentRoleIds.every((id) => change.values.includes(id));
+      if (fixtureSuperAdministrator && targetsReader && hasExpectedRoles && ["grant", "revoke"].includes(change.action)) {
+        fixtureReaderRoles = change.action === "grant" ? [...new Set([...fixtureReaderRoles, ...change.values])] :
+          fixtureReaderRoles.filter((roleId) => !change.values.includes(roleId));
         return json(response, 200, [{ id: ldapReaderId }]);
       }
       return json(response, 400, { error: "unexpected account assignment" });
     }
     return json(response, 200, fixtureAccountDeleted ? [] : [{
-      id: ldapReaderId, username: "reader", kind: "ldap", groups: ["ops"], roles: ["guest-readonly"],
+      id: ldapReaderId, username: "reader", kind: "ldap", groups: ["ops"], roles: fixtureReaderRoles,
       effective: [{ environment: "development", sources: ["直接授予 → 访客只读", "用户组 运维 → 观察员"] }],
     }]);
   }
@@ -256,23 +292,34 @@ createServer(async (request, response) => {
       }
       return json(response, 400, { error: "unexpected system editor change" });
     }
-    return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] }],
-      roles: [{ id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] }] });
+    return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] }], roles: [
+      { id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] },
+      { id: "diagnosis-reader", name: "诊断观察员", scopes: [{ environment: "development" }] },
+      { id: "namespace-auditor", name: "命名空间审计员", scopes: [{ environment: "testing" }] },
+      { id: "system-admin", name: "系统管理员", fixed: true, scopes: [] },
+    ] });
   }
   if (url.pathname === "/api/v1/admin/operations" && adminSession) {
     if (request.method === "PUT") {
+      if (!fixtureSuperAdministrator) return json(response, 403, { error: "audit retention is read-only" });
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const { low, medium, high } = JSON.parse(Buffer.concat(chunks).toString());
-      if (low === 2 && medium === 6 && high === 9) {
+      if ([low, medium, high].every((days) => Number.isInteger(days) && days >= 0)) {
         auditRetention = { low, medium, high };
+        auditSaves++;
         response.writeHead(204).end();
         return;
       }
       return json(response, 400, { error: "unexpected audit retention configuration" });
     }
-    return json(response, 200, { items: [{ id: 1, at: Date.parse("2026-11-18T07:43:19Z") / 1000, actor: "local:admin", action: "创建账号", risk: "高",
-      target: "local:guest", result: "成功", reason: "", batch: "" }], before: 0, retention: auditRetention });
+    const active = auditFixture.filter(({ risk }) => auditRetention[{ 低: "low", 中: "medium", 高: "high" }[risk]] !== 0);
+    const { account, action, risk, batch, before } = Object.fromEntries(url.searchParams);
+    const items = active.filter((item) => (!account || `${item.actor}${item.target}`.includes(account)) &&
+      (!action || item.action === action) && (!risk || item.risk === risk) && (!batch || item.batch === batch) && (!before || item.id < Number(before)));
+    const pageSize = 2;
+    return json(response, 200, { items: items.slice(0, pageSize), before: items.length > pageSize ? items[pageSize - 1].id : 0,
+      ...(!url.search ? { retention: auditRetention, actions: [...new Set(active.map((item) => item.action))] } : {}) });
   }
   if (url.pathname === "/api/v1/admin/roles" && adminSession) {
     if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });
@@ -289,8 +336,9 @@ createServer(async (request, response) => {
     }
     return json(response, 400, { error: "unexpected role configuration" });
   }
-  if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: [{ id: "local", name: "local", status: "ready" }] });
+  if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: clusters });
   if (url.pathname === "/api/v1/clusters/local/namespaces") return json(response, 200, { items: [{ name: "default" }, { name: "payments" }] });
+  if (url.pathname === "/api/v1/clusters/test-k8s/namespaces") return json(response, 200, { items: [{ name: "sandbox" }] });
   if (url.pathname === "/api/v1/findings/summary") {
     const filtered = filterFindings(url);
     return json(response, 200, summarize(filtered));
@@ -299,10 +347,11 @@ createServer(async (request, response) => {
     return json(response, 200, { items: filterFindings(url), pagination: { limit: 50 } });
   }
   const correlationPath = url.pathname.match(/^\/api\/v1\/findings\/([^/]+)\/correlation$/);
-  if (correlationPath) return correlationResponse(response, decodeURIComponent(correlationPath[1]));
+  if (correlationPath) return correlationResponse(response, decodeURIComponent(correlationPath[1]), url.searchParams.get("cluster") ?? "local");
   if (url.pathname.startsWith("/api/v1/findings/")) {
     const id = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-    const finding = findings.find((item) => item.id === id) ??
+    const cluster = url.searchParams.get("cluster") ?? "local";
+    const finding = findings.find((item) => item.id === id && item.cluster === cluster) ??
       (["finding-auth", "finding-forbidden"].includes(id) ? { ...findings[0], id } : undefined);
     return finding ? json(response, 200, finding) : json(response, 404, { error: { code: "FINDING_NOT_FOUND", message: "finding not found" } });
   }
@@ -321,12 +370,12 @@ createServer(async (request, response) => {
   }
 }).listen(port, "127.0.0.1", () => console.log(`mock server listening on ${port}`));
 
-function correlationResponse(response, id) {
+function correlationResponse(response, id, cluster) {
   if (id === "finding-auth") return json(response, 401, { error: { code: "UNAUTHORIZED" } });
   if (id === "finding-forbidden") return json(response, 403, { error: { code: "FORBIDDEN" } });
-  const finding = findings.find((item) => item.id === id);
+  const finding = findings.find((item) => item.id === id && item.cluster === cluster);
   if (!finding) return json(response, 404, { error: { code: "FINDING_NOT_FOUND" } });
-  if (id === "finding-warning" && ++warningEvidenceRequests === 1) {
+  if (id === "finding-warning" && cluster === "local" && ++warningEvidenceRequests === 1) {
     return json(response, 503, { error: { code: "CORRELATION_UNAVAILABLE", message: "private-provider-detail" } });
   }
   const signals = id === "finding-critical" ? [
@@ -352,11 +401,17 @@ function correlationResponse(response, id) {
 }
 
 function filterFindings(url) {
+  const selected = url.searchParams.get("cluster") ?? "local";
+  const scope = clusters.filter((cluster) => selected === "*" ?
+    ["environment", "business", "group"].every((key) => !url.searchParams.get(key) || cluster[key] === url.searchParams.get(key)) :
+    selected === cluster.id);
+  const instances = new Set(scope.map(({ id }) => id));
   return findings.filter((item) => {
     const severity = url.searchParams.get("severity");
     const namespace = url.searchParams.get("namespace");
     const kind = url.searchParams.get("kind");
-    return (!severity || item.severity === severity) && (!namespace || item.namespace === namespace) && (!kind || item.resource.kind === kind);
+    return instances.has(item.cluster) && (!severity || item.severity === severity) &&
+      (!namespace || item.namespace === namespace) && (!kind || item.resource.kind === kind);
   });
 }
 

@@ -145,13 +145,14 @@ func (s ldapSettings) configuration() (*identity.LDAPConfig, error) {
 }
 
 func (a *Admin) Authorize(ctx context.Context, r authorization.DecisionRequest) (authorization.Decision, error) {
+	if IsAdministrator(r.Principal) {
+		return authorization.Decision{Allowed: true}, nil
+	}
 	switch r.Principal.Provider {
 	case InitialAdminProvider, pendingProvider:
 		return authorization.Decision{}, nil
 	case guestProvider, employeeProvider:
 		return a.authorizePlatform(ctx, r)
-	case AdminProvider:
-		return authorization.Decision{Allowed: true}, nil
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()

@@ -31,6 +31,7 @@ type Principal struct {
 	DisplayName    string   `json:"displayName,omitempty"`
 	Groups         []string `json:"groups,omitempty"`
 	SessionVersion string   `json:"-"`
+	Administrator  bool     `json:"-"` // 由服务端账号角色填充的可信会话属性。
 }
 
 // Validate applies bounded, provider-neutral invariants before a Principal enters request context.
