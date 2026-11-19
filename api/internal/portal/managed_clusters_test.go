@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"encoding/pem"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -86,7 +87,10 @@ func TestManagedAIReviewUsesOnlySelectedPullInstance(t *testing.T) {
 	spec := managedCluster{ID: "remote", Name: "remote", Environment: "test", Business: "ops", Group: "apps",
 		Mode: "pull", Enabled: true, AIEnabled: true, APIURL: "https://remote.example",
 		EngineNamespace: "engine-ns", EngineName: "remote-engine"}
-	target, err := o.build(spec, nil)
+	api := httptest.NewTLSServer(nil)
+	defer api.Close()
+	draft := &clusterCredential{Token: "fixture", CA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: api.Certificate().Raw})}
+	target, err := o.build(spec, draft)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,14 +1,17 @@
 package portal
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/abchw517/kube-aiops/api/internal/kubernetes"
@@ -31,7 +34,7 @@ type clusterCredential struct {
 	Key         []byte
 }
 
-func clusterCipher() (cipher.AEAD, error) {
+func legacyClusterCipher() (cipher.AEAD, error) {
 	path := os.Getenv("CLUSTER_CREDENTIAL_KEY_FILE")
 	if path == "" {
 		path = os.Getenv("AUTH_LDAP_ENCRYPTION_KEY_FILE")
@@ -44,11 +47,74 @@ func clusterCipher() (cipher.AEAD, error) {
 	if err != nil || len(key) != 32 {
 		return nil, errors.New("集群凭据密钥必须为 Base64 编码的 32 字节")
 	}
+	return newClusterCipher(key)
+}
+
+func newClusterCipher(key []byte) (cipher.AEAD, error) {
+	if len(key) != 32 {
+		return nil, errors.New("集群凭据存储密钥无效")
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	return cipher.NewGCMWithRandomNonce(block)
+}
+
+const sqliteCredentialPrefix = "v2:"
+
+// storedClusterCipher 读写与 SQLite 同目录的密钥，避免密钥和凭据密文存放在同一文件。
+func (o *onboarding) storedClusterCipher(ctx context.Context, create bool) (cipher.AEAD, error) {
+	path := o.store.Path() + ".cluster-credentials.key"
+	key, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) && create {
+		var occupied bool
+		err = o.store.QueryRowContext(ctx, `SELECT EXISTS (
+			SELECT 1 FROM managed_clusters WHERE json_extract(document, '$.credentialCipher') LIKE 'v2:%'
+		)`).Scan(&occupied)
+		if err != nil {
+			return nil, err
+		}
+		if occupied {
+			// 先重读一次，处理另一个进程刚完成首次保存的情况。
+			key, err = os.ReadFile(path)
+		} else {
+			key, err = createClusterKey(path)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return newClusterCipher(key)
+}
+
+// createClusterKey 先写好并同步密钥，再原子发布文件；并发初始化沿用同一把密钥。
+func createClusterKey(path string) ([]byte, error) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".cluster-credentials-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(key); err != nil {
+		file.Close()
+		return nil, err
+	}
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if err := errors.Join(syncErr, closeErr); err != nil {
+		return nil, err
+	}
+	if err := os.Link(file.Name(), path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return os.ReadFile(path)
+		}
+		return nil, err
+	}
+	return key, nil
 }
 
 func clusterCredentialContext(spec managedCluster) []byte {
@@ -90,26 +156,35 @@ func (spec *managedCluster) prepareCredentials(draft *credentialInput, previous 
 }
 
 // encryptCredential 仅在保存或轮换时生成绑定到实例 ID 和 API 地址的密文。
-func (spec *managedCluster) encryptCredential(kind string, entry *clusterCredential) error {
-	aead, err := clusterCipher()
+func (o *onboarding) encryptCredential(ctx context.Context, spec *managedCluster, kind string, entry *clusterCredential) error {
+	aead, err := o.storedClusterCipher(ctx, true)
 	if err != nil {
 		return err
 	}
 	raw, _ := json.Marshal(entry)
 	spec.CredentialKind = kind
-	spec.CredentialCipher = base64.StdEncoding.EncodeToString(aead.Seal(nil, nil, raw, clusterCredentialContext(*spec)))
+	spec.CredentialCipher = sqliteCredentialPrefix + base64.StdEncoding.EncodeToString(aead.Seal(nil, nil, raw, clusterCredentialContext(*spec)))
 	return nil
 }
 
-func (spec managedCluster) configureCredential(cfg *kubernetes.Config) error {
-	if spec.CredentialCipher == "" {
-		return nil
+// configureCredential 解密 SQLite 中的直连凭据，并兼容升级前的密文。
+func (o *onboarding) configureCredential(spec managedCluster, cfg *kubernetes.Config) error {
+	rawCipher := spec.CredentialCipher
+	if rawCipher == "" {
+		return errors.New("请填写外部直连凭据")
 	}
-	aead, err := clusterCipher()
+	var aead cipher.AEAD
+	var err error
+	if cipherText, current := strings.CutPrefix(rawCipher, sqliteCredentialPrefix); current {
+		rawCipher = cipherText
+		aead, err = o.storedClusterCipher(context.Background(), false)
+	} else {
+		aead, err = legacyClusterCipher()
+	}
 	if err != nil {
-		return err
+		return errors.New("无法读取已保存的集群凭据，请检查持久化密钥或重新录入凭据")
 	}
-	encrypted, err := base64.StdEncoding.DecodeString(spec.CredentialCipher)
+	encrypted, err := base64.StdEncoding.DecodeString(rawCipher)
 	if err != nil {
 		return errors.New("直连凭据无法读取")
 	}

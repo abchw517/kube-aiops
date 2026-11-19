@@ -115,10 +115,6 @@ func TestClusterConnectionMaintenance(t *testing.T) {
 
 // TestExternalCredentialsAreRedactedAndRollbackOnFailure 覆盖凭据测试、加密存储和失败轮换。
 func TestExternalCredentialsAreRedactedAndRollbackOnFailure(t *testing.T) {
-	keyPath := filepath.Join(t.TempDir(), "key")
-	if err := os.WriteFile(keyPath, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600); err != nil {
-		t.Fatal(err)
-	}
 	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", "")
 	t.Setenv("AUTH_LDAP_ENCRYPTION_KEY_FILE", "")
 	api := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -201,8 +197,9 @@ users:
 	if message := lifecycleRequest(t, o, "POST", "/?test=true", body(withKubeconfig, &denied), http.StatusBadGateway); !strings.Contains(message, "节点读取权限不足") {
 		t.Fatalf("expected remote node permission failure, got %q", message)
 	}
-	if message := lifecycleRequest(t, o, "POST", "/", body(withKubeconfig, kubeconfigDraft), http.StatusBadRequest); !strings.Contains(message, "请配置集群凭据加密密钥") {
-		t.Fatalf("expected missing storage key failure, got %q", message)
+	lifecycleRequest(t, o, "POST", "/", body(spec, nil), http.StatusBadRequest)
+	if _, err := os.Stat(store.Path() + ".cluster-credentials.key"); !os.IsNotExist(err) {
+		t.Fatalf("connection test created a storage key: %v", err)
 	}
 	if list := lifecycleRequest(t, o, "GET", "/", "", http.StatusOK); strings.TrimSpace(list) != "[]" {
 		t.Fatalf("test or rejected save persisted a cluster: %s", list)
@@ -211,12 +208,12 @@ users:
 		t.Fatal("test or rejected save registered a cluster")
 	}
 
-	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", keyPath)
+	// 从未配置外部密钥的全新环境首次保存即可成功。
 	lifecycleRequest(t, o, "POST", "/", body(withKubeconfig, kubeconfigDraft), http.StatusOK)
 	saved, err := o.clusterSpec(t.Context(), spec.ID)
 	var config kubernetes.Config
-	if err != nil || saved.APIURL != api.URL || saved.CredentialKind != "kubeconfig" || saved.CredentialCipher == "" ||
-		saved.configureCredential(&config) != nil || config.Token != token.Token || strings.Contains(saved.CredentialCipher, token.Token) {
+	if err != nil || saved.APIURL != api.URL || saved.CredentialKind != "kubeconfig" || !strings.HasPrefix(saved.CredentialCipher, sqliteCredentialPrefix) ||
+		o.configureCredential(saved, &config) != nil || config.Token != token.Token || strings.Contains(saved.CredentialCipher, token.Token) {
 		t.Fatal("kubeconfig was not saved as usable encrypted credentials")
 	}
 	list := lifecycleRequest(t, o, "GET", "/", "", http.StatusOK)
@@ -224,11 +221,16 @@ users:
 		t.Fatal("cluster directory exposed credentials or omitted kind")
 	}
 
-	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", "")
-	lifecycleRequest(t, o, "PUT", "/?test=true", body(withKubeconfig, kubeconfigDraft), http.StatusNoContent)
-	lifecycleRequest(t, o, "PUT", "/?test=true", body(spec, nil), http.StatusBadRequest)
-	lifecycleRequest(t, o, "PUT", "/", body(spec, token), http.StatusBadRequest)
-	t.Setenv("CLUSTER_CREDENTIAL_KEY_FILE", keyPath)
+	reopened, err := identitystore.Open(store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	o, err = newOnboarding(reopened, &httpapi.ClusterBackends{Backend: testBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycleRequest(t, o, "PUT", "/?test=true", body(spec, nil), http.StatusNoContent)
 	invalidToken := *token
 	invalidToken.Token = "fixture-invalid-cluster"
 	lifecycleRequest(t, o, "PUT", "/", body(spec, &invalidToken), http.StatusBadGateway)
@@ -239,6 +241,30 @@ users:
 	}
 	lifecycleRequest(t, o, "PUT", "/", body(spec, token), http.StatusOK)
 	lifecycleRequest(t, o, "PUT", "/", body(spec, certificate), http.StatusOK)
+
+	legacy := spec
+	legacy.ID = "legacy-mount"
+	if _, err := store.ExecContext(t.Context(), "INSERT INTO managed_clusters(id,document,token_hash) VALUES (?,?,'')", legacy.ID, body(legacy, nil)); err != nil {
+		t.Fatal(err)
+	}
+	o, err = newOnboarding(reopened, &httpapi.ClusterBackends{Backend: testBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := o.registry.Lookup(legacy.ID); ok {
+		t.Fatal("legacy mount-only cluster should wait for credential entry")
+	}
+	lifecycleRequest(t, o, "PUT", "/", body(legacy, token), http.StatusOK)
+	lifecycleRequest(t, o, "PUT", "/?test=true", body(legacy, nil), http.StatusNoContent)
+
+	keyFile := store.Path() + ".cluster-credentials.key"
+	if err := os.Remove(keyFile); err != nil {
+		t.Fatal(err)
+	}
+	lifecycleRequest(t, o, "PUT", "/", body(legacy, token), http.StatusServiceUnavailable)
+	if _, err := os.Stat(keyFile); !os.IsNotExist(err) {
+		t.Fatalf("missing key was silently replaced: %v", err)
+	}
 
 	if _, _, err := decodeKubeconfig(strings.Replace(kubeconfig, "user: { token: fixture-valid-cluster }", "user: { exec: { command: unsupported } }", 1)); err == nil {
 		t.Fatal("executable kubeconfig credential accepted")

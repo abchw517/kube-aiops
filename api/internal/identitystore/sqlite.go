@@ -12,7 +12,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ *sql.DB }
+type Store struct {
+	*sql.DB
+	path string
+}
+
+// Path 返回服务端 SQLite 数据文件的绝对路径。
+func (s *Store) Path() string { return s.path }
 
 func Open(path string) (*Store, error) {
 	absolute, err := filepath.Abs(path)
@@ -227,7 +233,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db}, nil
+	return &Store{DB: db, path: absolute}, nil
 }
 
 // Import replaces the policy and, when supplied, the local accounts in one transaction.

@@ -158,7 +158,7 @@ createServer(async (request, response) => {
     }
     if (request.method === "GET") {
       return json(response, 200, [{
-        id: "dev-k8s", name: "研发集群", group: "应用集群", mode: "pull", enabled: true,
+        id: "dev-k8s", name: "研发集群", group: "应用集群", mode: "pull", enabled: true, credentialKind: "kubeconfig",
         environment: "研发", business: "云帆", firstCollectedAt: 1700000000,
         collection: { nodes: [{ name: "test-worker", ready: "False" }], namespaces: [{ name: "dev-app" }] },
       }, {
