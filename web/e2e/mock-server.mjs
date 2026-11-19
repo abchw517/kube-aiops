@@ -45,7 +45,7 @@ Back-off pulling image "busybox:1.36": 403 Forbidden
   }
 ];
 const clusters = [
-  { id: "local", name: "local", status: "ready", environment: "生产", business: "平台", group: "生产集群" },
+  { id: "local", name: "local", status: "ready", environment: "研发", business: "平台", group: "研发集群" },
   { id: "test-k8s", name: "测试实例", status: "ready", environment: "测试", business: "平台", group: "测试集群" },
 ];
 
@@ -286,7 +286,8 @@ createServer(async (request, response) => {
         return json(response, 200, [{ id: "ops" }]);
       }
       if (change.action === "role-save" && change.name === "浏览器检查" &&
-          change.scopes?.length === 1 && change.scopes[0].cluster === "local" && change.scopes[0].namespace === "payments") {
+          change.scopes?.length === 1 && change.scopes[0].environment === "development" &&
+          change.scopes[0].cluster === "local" && change.scopes[0].namespace === "payments") {
         response.writeHead(409, { "Content-Type": "text/plain" }).end("角色名称已使用");
         return;
       }
