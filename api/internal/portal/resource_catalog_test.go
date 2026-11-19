@@ -154,6 +154,9 @@ func TestDedicatedClusterOnlyAllowsItsOwnBusiness(t *testing.T) {
 	}
 	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"namespace":"shared-app","businesses":["yunfan"]}`, 204)
 	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"namespace":"shared-app","businesses":["youshu"]}`, 409)
+	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"businessId":"youshu","add":["shared-app"]}`, 409)
+	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"businessId":"yunfan","remove":["shared-app"]}`, 204)
+	request(o.namespaceAssignments, "PUT", "/?cluster=dedicated", `{"businessId":"yunfan","add":["shared-app"]}`, 204)
 	has, err := o.namespaceBusiness(ctx, "dedicated", "shared-app", "yunfan")
 	if err != nil || !has {
 		t.Fatalf("failed assignment changed valid business: %v %v", has, err)

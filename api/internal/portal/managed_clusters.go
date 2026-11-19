@@ -259,10 +259,20 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "实例不存在", 404)
 			return
 		}
-		target, _ := o.registry.Lookup(id)
+		if err != nil {
+			http.Error(w, "集群目录暂不可用", 503)
+			return
+		}
+		target, available := o.scopedCluster(id)
 		directory, _ := target.Backend.(directoryBackend)
-		if err != nil || directory.remote == nil {
-			http.Error(w, "仅已启用的手动接入实例支持重新校验", 409)
+		var source collectionSource
+		if id == "local" && o.local != nil {
+			source = o.local
+		} else if directory.remote != nil {
+			source = directory.remote
+		}
+		if !available || source == nil {
+			http.Error(w, "仅已启用的本地自动采集或外部直连实例支持重新校验", 409)
 			return
 		}
 		var spec managedCluster
@@ -270,7 +280,7 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "集群配置已更新，请重试", 409)
 			return
 		}
-		if err := o.collect(ctx, id, raw, directory.remote, time.Now(), true); err != nil {
+		if err := o.collect(ctx, id, raw, source, time.Now(), true); err != nil {
 			http.Error(w, "重新校验失败", 503)
 			return
 		}

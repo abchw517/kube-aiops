@@ -143,16 +143,38 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 	var input struct {
 		assignment
 		Assignments []assignment
+		BusinessID  *string
+		Add         []string
+		Remove      []string
 	}
-	if !adminhttp.Decode(w, r, &input) || (input.Assignments != nil && (input.Namespace != "" || input.Businesses != nil)) {
+	if !adminhttp.Decode(w, r, &input) {
+		http.Error(w, "归属无效", 400)
+		return
+	}
+	batch := input.Assignments != nil
+	delta := input.BusinessID != nil || input.Add != nil || input.Remove != nil
+	single := input.Namespace != "" || input.Businesses != nil
+	if (batch && single) || (delta && (single || batch || input.BusinessID == nil || *input.BusinessID == "")) {
 		http.Error(w, "归属无效", 400)
 		return
 	}
 	changes := input.Assignments
-	if changes == nil {
-		changes = []assignment{input.assignment}
+	var names []string
+	if delta {
+		names = append(append(names, input.Add...), input.Remove...)
+	} else {
+		if changes == nil {
+			changes = []assignment{input.assignment}
+		}
+		for _, change := range changes {
+			if len(change.Businesses) > 50 {
+				http.Error(w, "归属无效", 400)
+				return
+			}
+			names = append(names, change.Namespace)
+		}
 	}
-	if len(changes) == 0 {
+	if len(names) == 0 {
 		http.Error(w, "归属无效", 400)
 		return
 	}
@@ -165,17 +187,17 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 	for _, ns := range namespaces {
 		knownNames[ns.Name] = true
 	}
-	seen := make(map[string]bool, len(changes))
-	for _, change := range changes {
-		if change.Namespace == "" || len(change.Businesses) > 50 || seen[change.Namespace] {
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		if name == "" || seen[name] {
 			http.Error(w, "归属无效", 400)
 			return
 		}
-		if !knownNames[change.Namespace] {
+		if !knownNames[name] {
 			http.Error(w, "命名空间不存在", 404)
 			return
 		}
-		seen[change.Namespace] = true
+		seen[name] = true
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -197,29 +219,56 @@ func (o *onboarding) namespaceAssignments(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	for _, change := range changes {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=?", cluster, change.Namespace); err != nil {
+	lookupBusiness := func(id string) (string, bool) {
+		var key string
+		err := tx.QueryRowContext(ctx, "SELECT stable_key FROM resource_catalog_ids WHERE kind='business-lines' AND alias=? AND id=?", id, id).Scan(&key)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "业务线不存在", 409)
+			return "", false
+		}
+		if err != nil {
 			http.Error(w, "保存失败", 503)
+			return "", false
+		}
+		if dedicatedBusiness != "" && key != dedicatedBusiness {
+			http.Error(w, "独立业务集群只能分配到所属业务线", 409)
+			return "", false
+		}
+		return key, true
+	}
+	if delta {
+		key, valid := lookupBusiness(*input.BusinessID)
+		if !valid {
 			return
 		}
-		for _, id := range change.Businesses {
-			var key string
-			err := tx.QueryRowContext(ctx, "SELECT stable_key FROM resource_catalog_ids WHERE kind='business-lines' AND alias=? AND id=?", id, id).Scan(&key)
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, "业务线不存在", 409)
-				return
-			}
-			if err != nil {
+		// 仅写入选中业务线的关联，保留其他业务线在同一命名空间的并发变更。
+		for _, name := range input.Remove {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=? AND business=?", cluster, name, key); err != nil {
 				http.Error(w, "保存失败", 503)
 				return
 			}
-			if dedicatedBusiness != "" && key != dedicatedBusiness {
-				http.Error(w, "独立业务集群只能分配到所属业务线", 409)
-				return
-			}
-			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, change.Namespace, key); err != nil {
+		}
+		for _, name := range input.Add {
+			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, name, key); err != nil {
 				http.Error(w, "保存失败", 503)
 				return
+			}
+		}
+	} else {
+		for _, change := range changes {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM namespace_business WHERE cluster=? AND namespace=?", cluster, change.Namespace); err != nil {
+				http.Error(w, "保存失败", 503)
+				return
+			}
+			for _, id := range change.Businesses {
+				key, valid := lookupBusiness(id)
+				if !valid {
+					return
+				}
+				if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO namespace_business VALUES(?,?,?)", cluster, change.Namespace, key); err != nil {
+					http.Error(w, "保存失败", 503)
+					return
+				}
 			}
 		}
 	}

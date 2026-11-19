@@ -60,6 +60,17 @@ function displayTime(seconds: number): string {
   return escapeHtml(new Date(seconds * 1000).toLocaleString());
 }
 
+/** 本地及已保存凭据的外部直连实例支持重新校验。 */
+function canRecheckCollection(item: Entry): boolean {
+  return item.enabled && (item.mode === "local" || (item.mode === "pull" && Boolean(item.credentialKind)));
+}
+
+/** 在采集详情和独立编辑页复用重新校验表单。 */
+function renderCollectionRecheck(item: Entry): string {
+  return canRecheckCollection(item) ? `<form data-collection-check="${escapeHtml(item.id)}">
+    <button type="submit" class="button secondary">重新校验</button><p role="status"></p></form>` : "";
+}
+
 function renderCollection(item: Entry): string {
   const data = item.collection;
   return `<div class="collection-details">
@@ -114,10 +125,10 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
           <td><div class="catalog-actions">
           ${item.deleted ? maintenanceButton(item, "reconnect", "重新连接") : `
             <button type="button" class="button secondary" data-cluster-details>采集详情</button>
-            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${collectionStatus(item)}</p>${renderCollection(item)}</template>
+            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${collectionStatus(item)}</p>${renderCollection(item)}${renderCollectionRecheck(item)}</template>
             ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
             ${item.enabled && (item.mode !== "pull" || item.credentialKind) ? editorButton(item, "ownership", "命名空间归属") : ""}
-            ${item.enabled && item.mode === "pull" && item.credentialKind ? maintenanceButton(item, "recheck", "重新校验") : ""}
+            ${canRecheckCollection(item) ? maintenanceButton(item, "recheck", "重新校验") : ""}
             ${item.mode === "push" ? maintenanceButton(item, "rotate-token", "轮换上报凭据") : ""}
             ${item.mode === "pull" && item.credentialKind ? editorButton(item, "rotate", "轮换直连凭据") : ""}
             ${maintenanceButton(item, "delete", "删除")}`}
@@ -189,8 +200,7 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
   return `<h2>${title}</h2><a href="${route}">返回集群接入</a>${body}
 
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
-    ${item?.mode === "pull" && item.enabled && item.credentialKind ? `<form data-collection-check="${escapeHtml(item.id)}">
-      <button type="submit" class="button secondary">重新校验</button><p role="status"></p></form>` : ""}`;
+    ${item ? renderCollectionRecheck(item) : ""}`;
 }
 
 function credentialFields(kind: string | undefined, rotating: boolean): string {

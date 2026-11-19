@@ -117,6 +117,10 @@ func (o *onboarding) collect(ctx context.Context, id, configuration string, sour
 		data.NodeError = "暂未找到包含 Ready 状态的节点"
 		if nodesErr != nil {
 			data.NodeError = nodeCollectionError(nodesErr)
+			var apiErr *kubernetes.APIError
+			if id == "local" && errors.As(nodesErr, &apiErr) && apiErr.StatusCode == http.StatusForbidden {
+				data.NodeError = "节点读取权限不足，请为 API 工作负载的 ServiceAccount 核对集群级 list nodes 权限"
+			}
 		}
 	}
 	if namespacesErr == nil {

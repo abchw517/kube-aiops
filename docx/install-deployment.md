@@ -302,6 +302,17 @@ imagePullSecrets:
 
 应用清单前，按 [生产身份接入](#生产身份接入) 完成 SQLite PVC 和 `api.yaml` 配置。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
 
+#### 检查本地节点采集权限
+
+部署或升级 API 后，用有权读取 Deployment 并模拟其 ServiceAccount 的账号核对集群级节点读取权限。默认检查 `kube-aiops-system/kube-aiops-api`，自定义部署可传入 `--namespace` 和 `--deployment`。
+
+```bash
+kube_context="$(kubectl config current-context)"
+python3 scripts/check-api-node-rbac.py --context "$kube_context"
+```
+
+若返回缺少权限，确认目标上下文及服务账号后，由有权管理集群 RBAC 的管理员对同一命令追加 `--repair`。脚本仅向该 API 的专用 ServiceAccount 授予集群级 `list nodes`，并重新检查生效结果。在「资源管理 → 集群接入」对本地自动采集实例点「重新校验」，确认节点列表恢复。
+
 ### 启用诊断详情的 AI 分析
 
 完成 [配置 Engine 模型与语言](#配置-engine-模型与语言) 和 [生产身份接入](#生产身份接入) 后，将下列变量合并到 API 容器的 `env` 中：

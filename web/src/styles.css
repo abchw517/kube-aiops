@@ -323,8 +323,87 @@ tbody tr:hover { background: #f5f8fd; }
 .account-bindings-footer { display: flex; justify-content: flex-end; margin-top: 12px; }
 .account-table :is(th, td):nth-child(3), .account-table :is(th, td):nth-child(4) { white-space: nowrap; }
 
-.namespace-ownership-list { display: grid; gap: 10px; }
-.namespace-ownership-form .system-choice-list label { display: flex; margin: 0; }
+.namespace-ownership-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-block-size: 0;
+  max-inline-size: 44rem;
+  padding: 0 16px 16px;
+}
+.catalog-dialog[open]:has(.namespace-ownership-form) {
+  display: flex;
+  flex-direction: column;
+  max-block-size: calc(100dvh - 32px);
+}
+.catalog-dialog:has(.namespace-ownership-form) > .catalog-dialog-body {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+.catalog-dialog .namespace-ownership-form { padding: 0; }
+.namespace-ownership-form > :not([data-ownership-choices]), [data-ownership-choices] > p { flex: none; }
+.namespace-ownership-form [data-ownership-choices]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+.namespace-ownership-form p { margin: 0; }
+.namespace-ownership-cluster, .namespace-ownership-hint, .namespace-ownership-fixed { color: var(--muted); }
+.namespace-ownership-cluster strong, .namespace-ownership-fixed strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.namespace-ownership-fixed strong { margin-inline-start: 8px; }
+.namespace-ownership-form .namespace-ownership-business {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  max-inline-size: 24rem;
+  font-weight: 650;
+}
+.namespace-ownership-business select {
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+}
+.namespace-ownership-form .namespace-ownership-hint {
+  font-size: .875rem;
+  line-height: 1.5;
+}
+.namespace-ownership-list {
+  min-block-size: 0;
+  max-block-size: min(26rem, max(7rem, calc(100dvh - 22rem)));
+  margin-top: 8px;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.namespace-ownership-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 4px;
+}
+.namespace-ownership-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-block-size: 42px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.namespace-ownership-options label:is(:hover, :focus-within) { background: var(--accent-soft); }
+.namespace-ownership-options input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
+.namespace-ownership-options span { min-width: 0; overflow-wrap: anywhere; }
+.namespace-ownership-form .cluster-editor-actions { padding-top: 10px; border-top: 1px solid var(--line); }
 
 .system-badge[data-audit-risk="高"], .system-badge[data-audit-result="失败"] { background: #fff1f2; color: var(--red); }
 .system-badge[data-audit-risk="中"] { background: #fff2d8; color: #895200; }

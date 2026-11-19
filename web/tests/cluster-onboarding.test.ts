@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderOnboarding } from "../src/views/clusters/cluster-onboarding.ts";
+import { renderNamespaceOwnership } from "../src/views/clusters/namespace-ownership.ts";
 
 test("shows the persisted first collection and protects an existing environment in the editor", async (t) => {
   t.mock.method(globalThis, "fetch", async (path: string) => {
@@ -13,7 +14,9 @@ test("shows the persisted first collection and protects an existing environment 
           namespaces: [{ name: "dev-app" }],
           nodeSampleAt: 1700000000,
         },
-      }, { id: "old", name: "旧挂载集群", mode: "pull", enabled: true }]);
+      }, { id: "old", name: "旧挂载集群", mode: "pull", enabled: true },
+      { id: "local", name: "本地集群", mode: "local", enabled: true },
+      { id: "push", name: "上报集群", mode: "push", enabled: true }]);
     }
     return Response.json(path.endsWith("/environments") ? [{ id: "development", name: "研发" }] :
       [{ id: "yunfan", name: "云帆" }]);
@@ -23,6 +26,9 @@ test("shows the persisted first collection and protects an existing environment 
   assert.match(list, /worker-1 · <strong>NotReady/);
   assert.match(list, /dev-app/);
   assert.match(list, /待补录凭据/);
+  assert.match(list, /data-cluster-action="recheck" data-id="local"/);
+  assert.doesNotMatch(list, /data-cluster-action="recheck" data-id="(?:old|push)"/);
+  assert.match(await renderOnboarding("edit-local"), /data-collection-check="local"/);
   const edit = await renderOnboarding("edit-dev-k8s");
   assert.match(edit, /name="environment" value="旧研发"\s+required\s+readonly/);
   assert.match(edit, /重新校验/);
@@ -38,4 +44,25 @@ test("shows the persisted first collection and protects an existing environment 
   assert.match(create, /name="credentialKubeconfig" [^>]*required/);
   assert.match(create, /name="apiURL"[^>]*disabled/);
   assert.doesNotMatch(create, /部署挂载|服务端配置集群凭据加密密钥/);
+});
+
+test("dedicated ownership fixes the business line and only checks its collected namespaces", async (t) => {
+  t.mock.method(globalThis, "fetch", async (path: string) => {
+    if (path.endsWith("/business-lines")) {
+      return Response.json([{ id: "team-a", name: "业务 A" }, { id: "team-b", name: "业务 B" }]);
+    }
+    return Response.json({
+      namespaces: [{ name: "payments" }, { name: "jobs" }],
+      assigned: { payments: ["team-a"], jobs: ["team-b"], retired: ["team-a"] },
+      dedicatedBusinessId: "team-a",
+    });
+  });
+  const editor = await renderNamespaceOwnership("dedicated", true);
+  assert.match(editor, /业务线 <strong>业务 A<\/strong>/);
+  assert.doesNotMatch(editor, /业务 B|<select|retired/);
+  assert.match(editor, /value="payments"[^>]+ checked>/);
+  assert.match(editor, /value="jobs"[^>]+>/);
+  assert.doesNotMatch(editor, /value="jobs"[^>]+ checked>/);
+  assert.match(editor, /role="region" aria-label="命名空间列表" tabindex="0"/);
+  assert.match(editor, /type="submit">保存归属/);
 });
