@@ -20,10 +20,10 @@
   width: 34px;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid #829af6;
-  border-inline-start: 3px solid #aabaff;
+  border: 1px solid #6187bc;
+  border-inline-start: 3px solid #9ab9e2;
   border-radius: 7px;
-  background: #334f9d;
+  background: #24538c;
   color: #fff;
   font-size: 1rem;
   font-weight: 800;
@@ -56,7 +56,7 @@
   padding: 24px 12px;
   overflow-y: auto;
   border-inline-end: 1px solid var(--line);
-  background: var(--surface);
+  background: #eaf0f8;
 }
 .workspace-nav a {
   display: flex;

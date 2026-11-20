@@ -316,24 +316,48 @@ func (a *Service) candidateList(w http.ResponseWriter, r *http.Request, p identi
 	adminhttp.WriteJSON(w, out)
 }
 
+var candidateActions = map[string]string{
+	"save": "knowledge.candidate.save", "preview": "knowledge.candidate.preview",
+	"submit": "knowledge.workflow.submit", "reject": "knowledge.workflow.reject",
+	"discard": "knowledge.candidate.discard", "publish": "knowledge.workflow.publish",
+}
+
 func (a *Service) candidate(w http.ResponseWriter, r *http.Request, p identity.Principal) {
 	ctx := r.Context()
+	var input candidateAction
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		if !adminhttp.Decode(w, r, &input) {
+			http.Error(w, "无效的候选操作", 400)
+			return
+		}
+		code, known := candidateActions[input.Action]
+		if !known {
+			http.Error(w, "未知的候选操作", 400)
+			return
+		}
+		ctx = withWikiOperation(ctx, code, authorization.CapabilityWikiPublish)
+		r = r.WithContext(ctx)
+	default:
+		w.WriteHeader(405)
+		return
+	}
 	c, err := readCandidate(a.store.QueryRowContext(ctx, candidateQuery+" WHERE id=?", r.PathValue("id")))
-	if err != nil || !a.canGovern(ctx, p, c) {
+	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if !a.canGovern(ctx, p, c) {
+		if r.Method == http.MethodPost && a.canGovern(withWikiOperation(ctx, "knowledge.candidate.read", authorization.CapabilityWikiPublish), p, c) {
+			http.Error(w, "无权执行候选操作", 403)
+		} else {
+			http.NotFound(w, r)
+		}
 		return
 	}
 	if r.Method == http.MethodGet {
 		adminhttp.WriteJSON(w, c)
-		return
-	}
-	if r.Method != http.MethodPost {
-		w.WriteHeader(405)
-		return
-	}
-	var input candidateAction
-	if !adminhttp.Decode(w, r, &input) {
-		http.Error(w, "无效的候选操作", 400)
 		return
 	}
 	if input.Action == "publish" && c.Status == publishedStatus && input.Version+1 == c.Version {

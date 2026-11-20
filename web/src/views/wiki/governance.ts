@@ -1,3 +1,4 @@
+import type { WikiAccess } from "./wiki.ts";
 import type { WikiFeedback } from "./wiki-feedback.ts";
 import { escapeHtml } from "../../components/html.ts";
 import { authorizationDeniedState } from "../../components/states.ts";
@@ -110,28 +111,35 @@ function editor(doc: WikiDocument, candidate?: Candidate, existing?: string): st
 
 const emptyDoc: WikiDocument = { title: "", cluster: "local", namespace: "", documentType: "排障手册", environment: "", business: "" };
 
-export async function renderWikiGovernance(path: string, params: URLSearchParams): Promise<string | null> {
+export async function renderWikiGovernance(path: string, params: URLSearchParams, access?: WikiAccess): Promise<string | null> {
   if (path === "#/wiki/governance") {
-    const response = await fetch(`${url}/candidates`);
+    const candidateStates = !access || access.candidates ? ["review", "draft", "rejected"] : [];
+    const publishedStates = !access || access.governance ? ["published", "overdue", "withdrawn", "scopePending"] : [];
+    const statuses = [...candidateStates, ...publishedStates];
+    if (!statuses.length) return authorizationDeniedState();
+    const requested = params.get("status") ?? "";
+    const state = statuses.includes(requested) ? requested : (statuses[0] ?? "review");
+    const publishedTab = publishedStates.includes(state);
+    const response = await fetch(`${url}/${publishedTab ? "governance" : "candidates"}`);
     if (response.status === 401) return null;
     if (!response.ok) return authorizationDeniedState();
-    const candidates = await response.json() as Candidate[];
-    const published = await wikiJSON<WikiDocument[]>(`${url}/governance`);
-    const statuses = ["review", "draft", "rejected", "published", "overdue", "withdrawn", "scopePending"];
-    const state = params.get("status") || "review";
+    const contents = await response.json();
+    const candidates = publishedTab ? [] : contents as Candidate[];
+    const published = publishedTab ? contents as WikiDocument[] : [];
     const text: Record<string, string> = { ...statusLabels, overdue: "待复核", withdrawn: "已撤回", scopePending: "范围待确认" };
-    const listing = ["published", "overdue", "withdrawn", "scopePending"].includes(state)
+    const listing = publishedTab
       ? published.filter((doc) => state === "withdrawn" ? doc.withdrawn : state === "scopePending" ? doc.scopePending : !doc.withdrawn &&
         (state === "published" || doc.pendingFeedback || reviewReminder(doc.metadata?.reviewBy)))
         .map((doc) => `<li><a href="#/wiki/manage/${h(doc.knowledgeId)}">${h(doc.title)}</a> · v${doc.revision}${doc.pendingFeedback ? ` · ${doc.pendingFeedback} 条待复核反馈` : ""}${reviewReminder(doc.metadata?.reviewBy) ? ` · ${h(reviewReminder(doc.metadata?.reviewBy))}` : ""}${doc.metadata?.team ? ` · ${h(doc.metadata.team)}` : ""}</li>`)
       : candidates.filter((entry) => entry.status === state).map((entry) =>
         `<li><a href="#/wiki/draft/${h(entry.id)}">${h(entry.document.title || "未命名草稿")}</a> · ${statusLabels[entry.status]}${!entry.document.environment ? " · 范围待确认" : ""}</li>`);
-    return `<section class="panel wiki-card"><div class="wiki-toolbar"><h2>知识治理</h2><div class="system-actions"><a href="#/wiki">返回知识库</a><a href="#/wiki/draft/new" class="button">新建知识</a></div></div>
+    return `<section class="panel wiki-card"><div class="wiki-toolbar"><h2>知识治理</h2><div class="system-actions"><a href="#/wiki">返回知识库</a>${!access || access.draft ? '<a href="#/wiki/draft/new" class="button">新建知识</a>' : ""}</div></div>
       <nav class="system-subtabs" aria-label="知识状态">${statuses.map((item) =>
         `<a href="#/wiki/governance?status=${item}"${state === item ? ' aria-current="page"' : ""}>${text[item]}</a>`).join("")}</nav>
       ${listing.length ? `<ul class="wiki-governance-list">${listing.join("")}</ul>` : "<p>所选状态暂无条目。</p>"}</section>`;
   }
   if (path === "#/wiki/draft/new") {
+    if (access && !access.draft) return authorizationDeniedState();
     const id = params.get("knowledgeId");
     return id ? editor(await wikiJSON<WikiDocument>(`${url}/knowledge/${encodeURIComponent(id)}/governance`), undefined, id) : editor(emptyDoc);
   }
@@ -139,7 +147,7 @@ export async function renderWikiGovernance(path: string, params: URLSearchParams
   if (!/^[a-f0-9]{64}$/.test(id)) return authorizationDeniedState();
   if (path.startsWith("#/wiki/manage/")) {
     const doc = await wikiJSON<WikiDocument>(`${url}/knowledge/${id}/governance`);
-    const feedback = await wikiJSON<WikiFeedback[]>(`${url}/knowledge/${id}/feedback`);
+    const feedback = await wikiJSON<WikiFeedback[]>(`${url}/knowledge/${id}/feedback`).catch(() => []);
     return `<section class="panel wiki-card"><a href="#/wiki/governance">返回知识治理</a><h2>${h(doc.title)} · v${doc.revision}</h2>
       ${doc.withdrawn ? "<p>已撤回。仅治理人员可查看历史。</p>" : ""}
       ${renderWikiSections(doc)}

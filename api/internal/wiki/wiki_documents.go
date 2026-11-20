@@ -38,11 +38,7 @@ type Document struct {
 }
 
 func (a *Service) wikiAllowed(r *http.Request, principal identity.Principal, capability authorization.Capability, doc Document) (bool, error) {
-	decision, err := a.Authorize(r.Context(), authorization.DecisionRequest{
-		Principal: principal, Capability: capability,
-		Scope: authorization.NamespaceScope(doc.Cluster, doc.Namespace),
-	})
-	return decision.Allowed, err
+	return a.permitTarget(r.Context(), principal, capability, authorization.NamespaceScope(doc.Cluster, doc.Namespace))
 }
 
 func (a *Service) handleWikiImport(w http.ResponseWriter, r *http.Request, principal identity.Principal) {

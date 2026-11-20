@@ -10,6 +10,7 @@ const longRegistryURL = `https://registry.example.com/v2/library/${"registry-pat
 const reviewHistory = [];
 let observationRequests = 0;
 let knowledgeCandidate;
+let interfaceRoleSaved = false;
 
 const findings = [
   {
@@ -332,6 +333,10 @@ createServer(async (request, response) => {
       effective: [{ environment: "development", sources: ["直接授予 → 访客只读", "用户组 运维 → 观察员"] }],
     }]);
   }
+  if (url.pathname === "/api/v1/admin/permission-catalog" && adminSession) {
+    const catalog = await readFile(new URL("../../api/internal/permissions/catalog/catalog.json", import.meta.url), "utf8");
+    return json(response, 200, JSON.parse(catalog));
+  }
   if (url.pathname === "/api/v1/admin/access" && adminSession) {
     if (request.method === "POST") {
       const chunks = [];
@@ -339,6 +344,12 @@ createServer(async (request, response) => {
       const change = JSON.parse(Buffer.concat(chunks).toString());
       if (change.action === "group-save" && change.id === "ops" && change.roleIds?.[0] === "guest-readonly") {
         return json(response, 200, [{ id: "ops" }]);
+      }
+      if (change.action === "role-save" && change.name === "接口授权检查" &&
+          change.grants?.length === 1 && change.grants[0].code === "system.audit.list" && !change.grants[0].scope.environment) {
+        interfaceRoleSaved = true;
+        response.setHeader("X-Operation-Audit-Ref", "ABCDEFGHIJKLMNOPQRSTUVWXY2");
+        return json(response, 200, [{ id: "interface-audit" }]);
       }
       if (change.action === "role-save" && change.name === "浏览器检查" &&
           change.scopes?.length === 2 && change.scopes.every(({ environment, cluster }) => environment === "development" && cluster === "local") &&
@@ -352,6 +363,7 @@ createServer(async (request, response) => {
       { id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] },
       { id: "diagnosis-reader", name: "诊断观察员", scopes: [{ environment: "development" }] },
       { id: "namespace-auditor", name: "命名空间审计员", scopes: [{ environment: "testing" }] },
+      ...(interfaceRoleSaved ? [{ id: "interface-audit", name: "接口授权检查", scopes: [], grants: [{ code: "system.audit.list", scope: {} }] }] : []),
       { id: "system-admin", name: "系统管理员", fixed: true, scopes: [] },
     ] });
   }

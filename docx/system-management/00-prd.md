@@ -1,5 +1,7 @@
 # kube-aiops 系统管理 PRD
 
+接口级权限目录和角色编辑见[权限目录 PRD](../permission-catalog/00-prd.md)。本文件仍记录账号、认证、组关联及操作审计规则。
+
 全平台权限迭代参见 [平台访问控制 PRD 评审稿](../platform-access-control/00-prd.md)。
 
 平台权限演进参见 [全局权限设计评审稿](platform-rbac-design.md)。本版需求继续按已评审的权限规则执行。

@@ -98,7 +98,8 @@ function renderCollection(item: Entry): string {
   </div>`;
 }
 
-export async function renderOnboarding(id?: string, modal = false): Promise<string> {
+export async function renderOnboarding(id?: string, modal = false, editable = true): Promise<string> {
+  if (id && !editable) return '<p role="alert">当前账号只能查看集群接入状态。</p>';
   if (id?.startsWith("ownership-")) {
     const body = await renderNamespaceOwnership(decodeURIComponent(id.slice(10)), modal);
     return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回集群接入</a>${body}`;
@@ -113,7 +114,7 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
     const states = [...new Set(rows.map(({ status }) => status))];
     return `<div class="catalog-section">
       <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
-        <button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>
+        ${editable ? '<button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>' : ""}
       </div></div>
       <div class="cluster-filters">
         <label>搜索集群<input type="search" name="query" autocomplete="off" data-cluster-filter="query" placeholder="名称、ID、环境或业务线…"></label>
@@ -129,15 +130,15 @@ export async function renderOnboarding(id?: string, modal = false): Promise<stri
           <td>${item.clusterType === "dedicated" ? "独立业务集群" : "共用集群"}</td>
           <td><span class="cluster-status${status === nodeValidationFailed ? " cluster-status-warning" : ""}">${status}</span></td>
           <td><div class="catalog-actions">
-          ${item.deleted ? maintenanceButton(item, "reconnect", "重新连接") : `
+          ${item.deleted ? (editable ? maintenanceButton(item, "reconnect", "重新连接") : "已删除") : `
             <button type="button" class="button secondary" data-cluster-details>采集详情</button>
-            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${status}</p>${renderCollection(item)}${renderCollectionRecheck(item)}</template>
-            ${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
+            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${status}</p>${renderCollection(item)}${editable ? renderCollectionRecheck(item) : ""}</template>
+            ${editable ? `${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
             ${item.enabled && (item.mode !== "pull" || item.credentialKind) ? editorButton(item, "ownership", "命名空间归属") : ""}
             ${canRecheckCollection(item) ? maintenanceButton(item, "recheck", "重新校验") : ""}
             ${item.mode === "push" ? maintenanceButton(item, "rotate-token", "轮换上报凭据") : ""}
             ${item.mode === "pull" && item.credentialKind ? editorButton(item, "rotate", "轮换直连凭据") : ""}
-            ${maintenanceButton(item, "delete", "删除")}`}
+            ${maintenanceButton(item, "delete", "删除")}` : ""}`}
           </div></td></tr>`).join("")}
           <tr data-cluster-empty${items.length ? " hidden" : ""}><td colspan="5" class="catalog-empty">暂无符合条件的集群。</td></tr></tbody>
       </table></div>

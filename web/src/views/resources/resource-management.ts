@@ -18,7 +18,7 @@ export function resolveResourceTab(hash: string, access: ResourceAccess): Tab | 
   return tabs.find(([key]) => access[key])?.[0];
 }
 
-export function renderCatalog(kind: Catalog, entries: Entry[]): string {
+export function renderCatalog(kind: Catalog, entries: Entry[], editable = true): string {
   const name = kind === "environments" ? "环境" : "业务线";
   return `<div class="catalog-section" data-catalog-kind="${kind}">
     <h2 id="catalog-title">${name}管理</h2>
@@ -26,13 +26,13 @@ export function renderCatalog(kind: Catalog, entries: Entry[]): string {
       <thead><tr><th scope="col">${name}名称</th><th scope="col">${name} ID</th><th scope="col">操作</th></tr></thead>
       <tbody>${entries.map((entry) => `<tr>
         <td>${escapeHtml(entry.name)}</td><td><code>${escapeHtml(entry.id)}</code></td>
-        <td><div class="catalog-actions">
+        <td><div class="catalog-actions">${editable ? `
           <button class="button secondary" type="button" data-catalog-action="edit" data-entry-id="${escapeHtml(entry.id)}" data-entry-name="${escapeHtml(entry.name)}">编辑</button>
           <button class="button secondary catalog-danger" type="button" data-catalog-action="delete" data-entry-id="${escapeHtml(entry.id)}" data-entry-name="${escapeHtml(entry.name)}">删除</button>
-        </div></td>
+        ` : "只读"}</div></td>
       </tr>`).join("") || `<tr><td colspan="3" class="catalog-empty">暂无${name}。</td></tr>`}</tbody>
     </table></div>
-    <div class="catalog-bottom"><span>共 ${entries.length} 条</span><button class="button" type="button" data-catalog-action="add">＋ 新增${name}</button></div>
+    <div class="catalog-bottom"><span>共 ${entries.length} 条</span>${editable ? `<button class="button" type="button" data-catalog-action="add">＋ 新增${name}</button>` : ""}</div>
     <dialog class="catalog-dialog" aria-label="${name}编辑与删除" data-catalog-dialog></dialog>
   </div>`;
 }
@@ -72,20 +72,20 @@ export function handleResourceCatalogClick(event: MouseEvent): void {
   if (!dialog.open) dialog.showModal();
 }
 
-export async function renderResourceManagement(hash: string, access: ResourceAccess): Promise<string> {
+export async function renderResourceManagement(hash: string, access: ResourceAccess, editable = true): Promise<string> {
   const selected = resolveResourceTab(hash, access);
   if (!selected) return '<p role="alert">无权访问此资源管理页面。</p>';
   const navigation = tabs.filter(([key]) => access[key]).map(([key, label]) =>
     `<a href="#/resources/${key}"${key === selected ? ' aria-current="page"' : ""}>${label}</a>`).join("");
   let content: string;
   if (selected === "clusters") {
-    content = await renderOnboarding(hash.split("/")[3]);
+    content = await renderOnboarding(hash.split("/")[3], false, editable);
   } else {
     const response = await fetch(`/api/v1/admin/${selected}`);
     if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
       throw new Error("resource catalog unavailable");
     }
-    content = renderCatalog(selected, await response.json() as Entry[]);
+    content = renderCatalog(selected, await response.json() as Entry[], editable);
   }
   return `<section class="panel identity-panel resource-management">
     <nav class="identity-nav" aria-label="资源管理">${navigation}</nav>

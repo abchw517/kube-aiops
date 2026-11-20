@@ -1,7 +1,8 @@
+import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
 import { filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
-import { bindWiki, renderWiki } from "./views/wiki/wiki.ts";
+import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
 import {
@@ -54,8 +55,12 @@ export class PortalApp {
   private knownKindsScope = "";
   private renderGeneration = 0;
   private identityAdmin = false;
+  private permissionCatalog = false;
+  private auditRead = false;
+  private wikiAccess: WikiAccess | undefined;
   private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
   private findingAI = false;
+  private reviewAccess = false;
   private mustChangePassword = false;
   private canChangePassword = false;
   private superAdministrator = false;
@@ -107,18 +112,26 @@ export class PortalApp {
   private async route(): Promise<void> {
     const generation = ++this.renderGeneration;
     this.findingAI = false;
+    this.reviewAccess = false;
     if (!demoMode) {
       try {
         const response = await fetch("/api/v1/admin/status");
         const status = response.ok ? await response.json() : {};
         if (generation !== this.renderGeneration) return;
         this.identityAdmin = status.admin === true;
+        this.permissionCatalog = status.permissionCatalog === true || this.identityAdmin;
+        this.auditRead = status.auditRead === true || this.identityAdmin;
+        this.wikiAccess = status.interfaceRoleAccount === true ? {
+          draft: status.wikiDraft === true, candidates: status.wikiCandidates === true,
+          governance: status.wikiGovernance === true, ask: status.wikiAsk !== false,
+        } : undefined;
         this.resourceAccess = {
-          clusters: this.identityAdmin,
+          clusters: status.manageClusters === true || this.identityAdmin,
           environments: status.manageEnvironments === true,
           "business-lines": status.manageBusinessLines === true,
         };
-        this.findingAI = this.identityAdmin && status.findingAI === true;
+        this.findingAI = status.findingAI === true;
+        this.reviewAccess = status.reviewAccess === true || this.identityAdmin;
         this.mustChangePassword = status.mustChangePassword === true;
         this.canChangePassword = status.canChangePassword === true;
         this.superAdministrator = status.superAdministrator === true;
@@ -142,10 +155,27 @@ export class PortalApp {
       if (!this.mustChangePassword && /^#\/resources(?:\/|$)/.test(hash)) {
         this.renderShell(loadingState("正在加载资源管理。"));
         try {
-          const body = await renderResourceManagement(hash, this.resourceAccess);
+          const body = await renderResourceManagement(hash, this.resourceAccess, this.identityAdmin);
           if (generation === this.renderGeneration) this.renderShell(body);
         } catch {
           if (generation === this.renderGeneration) this.renderShell(errorState("无法加载资源管理。"));
+        }
+        return;
+      }
+      if (!this.mustChangePassword && hash === "#/admin/access/catalog") {
+        this.renderShell(loadingState("正在加载权限目录。"));
+        try {
+          const catalog = await loadPermissionCatalog();
+          if (generation !== this.renderGeneration) return;
+          const body = await renderIdentityAdmin("access", {
+            initial: false, administrator: this.identityAdmin, superAdmin: this.superAdministrator,
+            canChangePassword: this.canChangePassword, auditContent: renderPermissionCatalog(),
+          });
+          if (generation !== this.renderGeneration) return;
+          this.renderShell(body);
+          bindPermissionCatalog(this.root, catalog);
+        } catch {
+          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限目录。请核对访问权限后重试。"));
         }
         return;
       }
@@ -166,7 +196,7 @@ export class PortalApp {
     if (!demoMode && /^#\/wiki(?:[/?]|$)/.test(window.location.hash)) {
       this.renderShell(loadingState("正在加载知识库。"));
       try {
-        const body = await renderWiki(window.location.hash, this.identityAdmin);
+        const body = await renderWiki(window.location.hash, this.identityAdmin, this.wikiAccess);
         if (generation === this.renderGeneration) {
           if (body === null) {
             this.renderShell(authenticationRequiredState(), true);
@@ -225,6 +255,8 @@ export class PortalApp {
     this.knownKinds.clear();
     this.showLogout = false;
     this.identityAdmin = false;
+    this.permissionCatalog = false;
+    this.auditRead = false;
     this.superAdministrator = false;
     this.canChangePassword = false;
     this.renderShell(authenticationRequiredState("会话已过期。登录后可继续使用操作审计。"), true);
@@ -285,12 +317,12 @@ export class PortalApp {
       const finding = await apiClient.getFinding({ id, cluster: toDetailCluster(window.location.hash) });
       if (generation !== this.renderGeneration) return;
       const reviewEnabled = finding.cluster === "local" ? this.findingAI :
-        this.identityAdmin && (await this.loadClusters().catch(() => [])).some((instance) => instance.id === finding.cluster && instance.reviewEnabled);
+        this.reviewAccess && (await this.loadClusters().catch(() => [])).some((instance) => instance.id === finding.cluster && instance.reviewEnabled);
       if (generation !== this.renderGeneration) return;
       const returnQuery = new URLSearchParams(window.location.hash.split("?")[1]).get("return");
       this.renderShell(renderFindingDetail(finding, reviewEnabled, returnQuery) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
-      if (this.identityAdmin) bindFindingReview(this.root, id, finding.cluster);
+      if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
       if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {
@@ -352,7 +384,7 @@ export class PortalApp {
     this.root.innerHTML = renderPortalShell(content, {
       hash: window.location.hash,
       demoMode,
-      identityAdmin: this.identityAdmin,
+      identityAdmin: this.identityAdmin, permissionCatalog: this.permissionCatalog, auditRead: this.auditRead,
       canManageResources: Object.values(this.resourceAccess).some(Boolean),
       mustChangePassword: this.mustChangePassword,
       canChangePassword: this.canChangePassword,

@@ -687,6 +687,34 @@ try {
     if (!rolePreselected.result?.value) throw new Error("Group editor did not preload existing role associations");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="group-save"]').click()` });
     await assertText(cdp, (text) => !text.includes("保存用户组") && text.includes("新建用户组"), "Group save did not close the editor");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
+      (text) => ["权限目录", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
+      "Interface permission catalog did not render independent modules");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-pc-module="knowledge"]').click();
+      const query = document.querySelector("[data-pc-query]");
+      query.value = "knowledge.workflow.publish";
+      query.dispatchEvent(new Event("input", { bubbles: true }));
+    })()` });
+    await assertText(cdp, text => text.includes("action=publish") && text.includes("/api/v1/wiki/candidates/{id}") && !text.includes("保存草稿"),
+      "Catalog search did not isolate the publish action");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
+      "Role configuration did not render");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-system-open="role:"]').click();
+      const form = document.querySelector("dialog[open] form");
+      form.elements.name.value = "接口授权检查";
+      form.querySelector('[data-pc-module="system"]').click();
+      form.querySelector('[data-pc-point="system.audit.list"]').click();
+      form.querySelector("[data-pc-toggle]").click();
+      form.querySelector("[data-role-add-grants]").click();
+      form.querySelector('button[value="role-preview"]').click();
+    })()` });
+    await assertText(cdp, text => text.includes("新增接口授权") && text.includes("查询审计列表"), "Scoped interface grant missing from role preview");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
+    await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计"), "Saving interface grants did not show the audit shortcut");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
+    await assertText(cdp, text => text.includes("接口授权检查") && !text.includes("角色保存结果"), "Role list did not refresh after confirming the save");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
       (text) => text.includes("新建角色") && text.includes("访客只读"), "Role tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `(() => {

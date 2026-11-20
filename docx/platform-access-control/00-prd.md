@@ -1,6 +1,6 @@
 # kube-aiops 平台访问控制 PRD
 
-系统管理交互以 [已确认的系统管理 PRD](../system-management/00-prd.md#31-已确认的交互调整) 为准。本文保留后续平台动作委派的评审范围。
+系统管理交互以 [已确认的系统管理 PRD](../system-management/00-prd.md#31-已确认的交互调整) 为准。本文保留早期平台访问控制方案。当前动作目录、前端交互及接口授权以[权限目录 PRD](../permission-catalog/00-prd.md)为准。
 
 | 项目 | 约定 |
 | --- | --- |

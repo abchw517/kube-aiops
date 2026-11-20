@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/catalog"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 	"log/slog"
 	"net/http"
@@ -107,6 +108,29 @@ func (f *Review) history(ctx context.Context, key string) ([]findingRevision, er
 	return history, rows.Err()
 }
 
+type reviewAuthorizationKey struct{}
+
+func WithReviewAuthorization(ctx context.Context, authorize func(context.Context, string, finding.Finding) bool) context.Context {
+	return context.WithValue(ctx, reviewAuthorizationKey{}, authorize)
+}
+
+func reviewAllowed(ctx context.Context, code string, item finding.Finding) bool {
+	authorize, ok := ctx.Value(reviewAuthorizationKey{}).(func(context.Context, string, finding.Finding) bool)
+	return !ok || authorize(ctx, code, item)
+}
+
+func reviewOperation(action string) string {
+	switch action {
+	case "", "assess", "enhance":
+		return catalog.ReviewRun
+	case "chat", "finalize", "summarize":
+		return catalog.ReviewChat
+	case "save", "preview-publication", "publish", "confirm":
+		return catalog.ReviewSave
+	}
+	return ""
+}
+
 func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		w.Header().Set("Allow", "GET, POST")
@@ -123,6 +147,10 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Error(w, "无法读取诊断", 502)
 		}
+		return
+	}
+	if r.Method == http.MethodGet && !reviewAllowed(ctx, catalog.ReviewRead, item) {
+		http.NotFound(w, r)
 		return
 	}
 	key := ReviewKey(item)
@@ -156,6 +184,16 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !adminhttp.Decode(w, r, &input) {
 		http.Error(w, "请求无效", 400)
+		return
+	}
+	code := reviewOperation(input.Action)
+	if code == "" {
+		http.Error(w, "未知的复核操作", 400)
+		return
+	}
+	needsSave := input.Action == "" || input.Action == "finalize"
+	if !reviewAllowed(ctx, code, item) || needsSave && !reviewAllowed(ctx, catalog.ReviewSave, item) {
+		http.Error(w, "无权执行复核操作", 403)
 		return
 	}
 	switch input.Action {
@@ -297,7 +335,7 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		adminhttp.WriteJSON(w, map[string]string{"code": code})
 		return
 	}
-	if !wiki.EvidenceCurrent(ctx) {
+	if !wiki.EvidenceCurrent(ctx) || !reviewAllowed(ctx, code, item) || needsSave && !reviewAllowed(ctx, catalog.ReviewSave, item) {
 		http.Error(w, "知识版本或权限已变更，请重试", 409)
 		return
 	}

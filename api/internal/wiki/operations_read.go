@@ -10,6 +10,7 @@ import (
 
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/catalog"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 )
 
@@ -100,14 +101,22 @@ func (a *Service) allowedTarget(ctx context.Context, principal identity.Principa
 	if scope.Validate() != nil || target.Namespace == "" || target.Cluster == "*" || target.Namespace == "*" {
 		return false, nil
 	}
-	decision, err := a.Authorize(ctx, authorization.DecisionRequest{Principal: principal, Capability: capability, Scope: scope})
-	return decision.Allowed, err
+	return a.permitTarget(ctx, principal, capability, scope)
 }
 
 func (a *Service) readableTarget(ctx context.Context, p identity.Principal, target Target, verified bool) (bool, error) {
 	ok, err := a.allowedTarget(ctx, p, authorization.CapabilityWikiRead, target)
-	if !ok || err != nil || !verified {
+	if !ok || err != nil {
 		return ok, err
+	}
+	if operation, _ := ctx.Value(wikiOperationKey{}).(wikiOperation); operation.key == catalog.WikiAsk {
+		ok, err = a.permit(ctx, p, catalog.WikiAsk, authorization.CapabilityWikiRead, authorization.NamespaceScope(target.Cluster, target.Namespace))
+		if !ok || err != nil {
+			return ok, err
+		}
+	}
+	if !verified {
+		return true, nil
 	}
 	current, err := a.currentTarget(ctx, target.Cluster, target.Namespace)
 	return targetsEqual(current, target), err

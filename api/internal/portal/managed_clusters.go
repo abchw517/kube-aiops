@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -212,8 +213,19 @@ func (b directoryBackend) Clusters() []kubernetes.Cluster {
 	return []kubernetes.Cluster{instance}
 }
 
+type clusterVisibilityKey struct{}
+
+func withClusterVisibility(ctx context.Context, visible func(string) bool) context.Context {
+	return context.WithValue(ctx, clusterVisibilityKey{}, visible)
+}
+
 func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if action := r.URL.Query().Get("action"); action != "" &&
+		(r.Method != http.MethodPost || (action != "recheck" && action != "reconnect" && action != "rotate-token")) {
+		http.Error(w, "未知的集群操作", 400)
+		return
+	}
 	if r.Method == http.MethodGet {
 		rows, err := o.store.QueryContext(ctx, "SELECT m.document, m.reported_at, COALESCE(c.first_at,0), COALESCE(c.validated_at,0), COALESCE(c.checked_at,0), COALESCE(c.document,'{}') FROM managed_clusters m LEFT JOIN cluster_collection c ON c.id=m.id ORDER BY m.id")
 		if err != nil {
@@ -242,6 +254,9 @@ func (o *onboarding) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows.Close()
+		if visible, ok := ctx.Value(clusterVisibilityKey{}).(func(string) bool); ok {
+			entries = slices.DeleteFunc(entries, func(entry status) bool { return !visible(entry.ID) })
+		}
 		adminhttp.WriteJSON(w, entries)
 		return
 	}
