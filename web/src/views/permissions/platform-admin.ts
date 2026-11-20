@@ -2,13 +2,16 @@ import { escapeHtml as h } from "../../components/html.ts";
 
 import { auditLocation, auditRecordReference } from "./audit-data.ts";
 import { roleReferences, scopeDifference, type Scope } from "./platform-scopes.ts";
-type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null };
+import { bindPermissionCatalog, catalogSource, describePermission, loadPermissionCatalog,
+  renderPermissionCatalog, selectedPermissions, updateCatalogGrants, type InterfaceGrant, type PermissionCatalog } from "./permission-catalog.ts";
+type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null; grants?: InterfaceGrant[] };
 type Group = { id: string; name: string; description?: string; roles: string[] | null };
 type Account = {
   id: string; username: string; kind: string; disabled: boolean; directoryDisabled: boolean;
   mustChangePassword: boolean; groups: string[] | null; roles: string[] | null;
   lastLoginAt?: number;
   effective: (Scope & { sources: string[] })[] | null;
+  effectiveGrants?: (InterfaceGrant & { sources: string[] })[];
 };
 type Access = { groups: Group[]; roles: Role[] };
 type Entry = { id: string; name: string; environment?: string };
@@ -54,10 +57,12 @@ function effectivePermissions(user: Account): string {
   if (user.kind === "super" || hasAdministratorRole(user)) {
     return '<div class="system-permission"><strong>全局管理与诊断查看</strong><p>直接授予 → 系统管理员</p></div>';
   }
-  if (!user.effective?.length) return "<p>暂无生效权限。下次成功登录后恢复访客只读。</p>";
-  return `<div class="system-permissions">${user.effective.map((scope) => `<div class="system-permission">
-    <div class="system-card-heading"><strong>历史诊断查看</strong><span class="system-badge">${scope.sources.length} 条来源</span></div>
-    <p>${scopeText(scope)}</p><ul>${scope.sources.map((source) => `<li>${h(source)}</li>`).join("")}</ul></div>`).join("")}</div>`;
+  if (!user.effective?.length && !user.effectiveGrants?.length) return "<p>暂无生效权限。</p>";
+  const display = (label: string, scope: Scope, sources: string[]) => `<div class="system-permission">
+    <div class="system-card-heading"><strong>${h(label)}</strong><span class="system-badge">${sources.length} 条来源</span></div>
+    <p>${scopeText(scope) || "该动作适用范围"}</p><ul>${sources.map(source => `<li>${h(source)}</li>`).join("")}</ul></div>`;
+  return `<div class="system-permissions">${(user.effective ?? []).map(scope => display("历史诊断查看", scope, scope.sources)).join("")}
+    ${(user.effectiveGrants ?? []).map(item => display(item.code, item.scope, item.sources)).join("")}</div>`;
 }
 
 function accountAvatar(user: Account): string {
@@ -234,10 +239,12 @@ function scopeRow(scope: Scope): string {
 }
 
 async function renderAccess(tab?: string): Promise<string> {
-  const [access, clusters, businesses, users] = await Promise.all([
+  const [access, clusters, businesses, users, catalog] = await Promise.all([
     admin<Access>("access"), json<{ items: Entry[] }>("/api/v1/clusters"), admin<Entry[]>("business-lines"), admin<Account[]>("accounts"),
+    loadPermissionCatalog().catch(() => null),
   ]);
   const groups = tab === "groups";
+  const labels = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, point.label] as const)));
   const available = access.roles.filter((role) => role.id !== systemAdministratorRole);
   const groupEditor = (group?: Group) => editor(`group:${group?.id ?? ""}`, group ? "编辑用户组" : "新建用户组",
     operationForm("access", group?.id ?? "", `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"></label>
@@ -252,10 +259,13 @@ async function renderAccess(tab?: string): Promise<string> {
           <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
           <h3>已配置权限</h3>
           <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
+          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, labels.get(grant.code))).join("")}</div>
           <p class="system-scope-empty">尚未添加权限范围。</p>
+          ${catalog ? '<div data-role-catalog-host></div>' : '<p>接口权限目录暂不可用。</p>'}
           ${scopeInputs(clusters.items, businesses)}
           <div class="system-actions"><button type="button" class="button secondary" data-scope-add>添加到清单</button>
-          <button type="button" class="button" data-scope-add="preview">添加并预览</button></div>
+          <button type="button" class="button" data-scope-add="preview">添加并预览</button>
+          ${catalog ? '<button type="button" class="button" data-role-add-grants>将所选动作加入授权</button>' : ""}</div>
         </div>
         <div class="system-editor-body" data-role-preview hidden>
           <h3 tabindex="-1">核对角色变更</h3>
@@ -281,12 +291,12 @@ async function renderAccess(tab?: string): Promise<string> {
     }).join("") || "—"}</div></td><td>${users.filter((user) => user.groups?.includes(group.id)).length} 人</td>
     <td><div class="system-actions">${editButton("编辑", `group:${group.id}`, true)}${editButton("删除", `remove:${group.id}`, true)}</div></td></tr>`)
     : access.roles.map((role) => `<tr><td><strong>${h(role.name)}</strong>${role.fixed ? ' <span class="system-badge">预置</span>' : ""}</td>
-    <td>${role.id === systemAdministratorRole ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断权限`}</td>
+    <td>${role.id === systemAdministratorRole ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断范围 · ${role.grants?.length ?? 0} 项接口授权`}</td>
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
   return `<div class="platform-heading"><div><h2>权限配置</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
-      editButton("权限目录", "permission-catalog", true) + editButton("＋ 新建角色", "role:")}</div></div>
+      `<a class="button secondary" href="#/admin/access/catalog">权限目录</a>${editButton("＋ 新建角色", "role:")}`}</div></div>
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
       <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色配置</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
@@ -294,10 +304,7 @@ async function renderAccess(tab?: string): Promise<string> {
       <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
       ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
     ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") : roleEditor()}
-    ${editor("permission-catalog", "权限目录", `<dl class="system-editor-body account-bindings">
-      <div class="account-binding"><dt>诊断控制台</dt><dd>历史诊断查看可按环境和资源范围授予。</dd></div>
-      <div class="account-binding"><dt>运维知识库</dt><dd>Wiki 只读试点默认关闭。AI 复核、Wiki 发布与同步沿用各自现行授权。</dd></div>
-      <div class="account-binding"><dt>平台管理</dt><dd>资源维护、账号与 LDAP 管理、审计使用现有管理员边界。</dd></div></dl>`)}
+    ${catalogSource(catalog)}
     ${access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
         `<div class="system-editor-body"><p class="system-notice">预置角色的权限固定，始终禁止删除。</p>${role.scopes?.map((scope) => `<p>历史诊断查看 · ${scopeText(scope)}</p>`).join("") || "<p>管理系统与全局诊断</p>"}</div>`)
         : roleEditor(role) + (groups ? "" : remove(role, "role"))).join("")}`;
@@ -308,8 +315,12 @@ export function renderPlatform(resource: string, id: string | undefined, superAd
   return renderAccess(id);
 }
 
+function platformStatus(form: HTMLFormElement): HTMLElement | null {
+  return form.querySelector<HTMLElement>(".system-editor-status") ?? form.querySelector<HTMLElement>('[role="status"]');
+}
+
 export async function submitPlatform(form: HTMLFormElement, action: string, reload: () => void): Promise<void> {
-  const status = form.querySelector<HTMLElement>('[role="status"]');
+  const status = platformStatus(form);
   const dialog = form.closest<HTMLDialogElement>("dialog");
   if (!status || dialog?.hasAttribute("aria-busy")) return;
   const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]:not(:disabled)')];
@@ -332,7 +343,8 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     return;
   }
   const scopes = savedScopes(form);
-  if (action === "role-save" && scopes.length === 0) {
+  const grants = savedGrants(form);
+  if (action === "role-save" && scopes.length === 0 && grants.length === 0) {
     status.textContent = "请添加至少一项授权范围。";
     return;
   }
@@ -344,6 +356,7 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, id: form.dataset.id, ids, values, scopes,
         previousRole: action === "role-save" ? originalRole(form) : undefined,
+        grants: action === "role-save" && form.querySelector("[data-role-catalog-host]") ? grants : undefined,
         roleIds: form.querySelector("[data-replace-group-roles]") ? data.getAll("roles") : undefined,
         name: data.get("name") ?? "", description: data.get("description") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
     });
@@ -352,10 +365,14 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       return;
     }
     const results = await response.json() as { id: string; reason?: string }[];
-    if (dialog && (["join", "leave", "grant", "revoke"].includes(action) || action.startsWith("group-roles"))) {
+    if (action === "role-save" && results.some(result => result.reason)) {
+      status.textContent = results.map(result => result.reason).filter(Boolean).join("；");
+      return;
+    }
+    if (dialog && (["join", "leave", "grant", "revoke"].includes(action) || action.startsWith("group-roles") || action === "role-save")) {
       const auditReference = auditRecordReference(response.headers.get("X-Operation-Audit-Ref"));
       const title = dialog.querySelector("#system-dialog-title");
-      if (title) title.textContent = "授权操作结果";
+      if (title) title.textContent = action === "role-save" ? "角色保存结果" : "授权操作结果";
       form.outerHTML = `<div class="system-editor-body"><div class="catalog-table-wrap"><table class="catalog-table">
         <thead><tr><th>账号或角色</th><th>结果</th><th>说明</th></tr></thead>
         <tbody>${results.map(({ id, reason }) => `<tr><td>${h(id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
@@ -429,6 +446,14 @@ function openPlatformEditor(panel: HTMLElement, key: string): void {
     const assignment = dialog.querySelector<HTMLFormElement>("form:has([data-assignment-kind])");
     if (assignment) updateAssignmentOptions(assignment);
     dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
+    const host = dialog.querySelector<HTMLElement>("[data-role-catalog-host]");
+    const source = panel.querySelector<HTMLElement>("[data-pc-source]")?.dataset.catalog;
+    if (host && source) {
+      const catalog = JSON.parse(source) as PermissionCatalog;
+      host.innerHTML = renderPermissionCatalog(true);
+      const roleForm = host.closest("form");
+      bindPermissionCatalog(host, catalog, roleForm ? savedGrants(roleForm) : []);
+    }
     dialog.showModal();
     if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
     for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
@@ -465,8 +490,14 @@ export function handlePlatformClick(event: MouseEvent): void {
   if (form && !dialog?.hasAttribute("aria-busy")) {
     if (scopeButton && addScopes(form) && scopeButton.dataset.scopeAdd === "preview") previewRole(form);
     if (target.closest("[data-role-back]")) showRolePreview(form, false);
+    if (target.closest("[data-role-add-grants]")) addInterfaceGrants(form);
     const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
     if (retry) void refreshScope(retry);
+  }
+  if (form && target.closest("[data-role-grant-remove]") && !dialog?.hasAttribute("aria-busy")) {
+    target.closest("[data-role-grant]")?.remove();
+    updateCatalogGrants(form, savedGrants(form));
+    form.querySelector<HTMLButtonElement>("[data-role-grant-remove], [data-pc-module]")?.focus();
   }
   if (target.closest("[data-scope-remove]") && !dialog?.hasAttribute("aria-busy")) {
     target.closest("[data-saved-scope]")?.remove();
@@ -576,9 +607,78 @@ function savedScopes(form: HTMLFormElement): Scope[] {
     .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
 }
 
+function grantKey(grant: InterfaceGrant): string {
+  const { environment, cluster, business, namespace } = grant.scope;
+  return JSON.stringify([grant.code, environment ?? "", cluster ?? "", business ?? "", namespace ?? ""]);
+}
+
+function grantRow(grant: InterfaceGrant, label = grant.code): string {
+  return `<div class="system-scope-row" data-role-grant="${h(JSON.stringify(grant))}">
+    <span><strong>${h(label)}</strong><br>${scopeText(grant.scope) || "平台全局或本人范围"}</span>
+    <button type="button" class="button secondary" data-role-grant-remove>移除</button></div>`;
+}
+
+function savedGrants(form: HTMLFormElement): InterfaceGrant[] {
+  return [...form.querySelectorAll<HTMLElement>("[data-role-grant]")].map(row => JSON.parse(row.dataset.roleGrant ?? "{}") as InterfaceGrant);
+}
+
+function addInterfaceGrants(form: HTMLFormElement): void {
+  const status = platformStatus(form);
+  const list = form.querySelector("[data-role-grants]");
+  if (!status || !list) return;
+  const points = selectedPermissions(form);
+  if (!points.length) {
+    status.textContent = "请先勾选要授予的接口动作。";
+    return;
+  }
+  const scopeKinds = new Set(points.map(point => point.feature.scope));
+  if (scopeKinds.size !== 1) {
+    status.textContent = "请按适用范围分次添加所选动作。";
+    return;
+  }
+  const kind = points[0]?.feature.scope;
+  if (!kind) return;
+  const data = new FormData(form);
+  const environment = String(data.get("environment") ?? "");
+  const cluster = String(data.get("cluster") ?? "");
+  const business = String(data.get("business") ?? "");
+  const namespaces = data.getAll("namespace").map(String);
+  let scopes: Scope[];
+  if (kind === "平台全局" || kind === "仅本人") {
+    scopes = [{ environment: "" }];
+  } else if (kind === "集群实例") {
+    if (!cluster) {
+      status.textContent = "请选择一个集群实例。";
+      return;
+    }
+    scopes = [{ environment, cluster }];
+  } else {
+    const field = form.querySelector<HTMLElement>("[data-scope]");
+    if (field?.hasAttribute("aria-busy") || field?.dataset.scopeUnavailable === "true") {
+      status.textContent = "请先完成命名空间加载。";
+      return;
+    }
+    if ((restrictedScope(environment) && (!cluster || !business || !namespaces.length)) ||
+        (cluster && !namespaces.length && !data.has("entireCluster"))) {
+      status.textContent = "请明确选择授权范围。预发布与生产需要集群、业务线和命名空间。";
+      return;
+    }
+    scopes = (namespaces.length ? namespaces : [""]).map(namespace => ({ environment, cluster, business, namespace }));
+  }
+  const previous = new Set(savedGrants(form).map(grantKey));
+  const additions = points.flatMap(point => scopes.flatMap(scope => {
+    const grant = { code: point.code, scope };
+    return previous.has(grantKey(grant)) ? [] : [grantRow(grant, point.label)];
+  }));
+  list.insertAdjacentHTML("beforeend", additions.join(""));
+  updateCatalogGrants(form, savedGrants(form), true);
+  for (const box of form.querySelectorAll<HTMLInputElement>('[data-scope] input[type="checkbox"]')) box.checked = false;
+  status.textContent = additions.length ? `已添加 ${additions.length} 项接口授权。` : "所选接口授权已在清单中。";
+}
+
 function addScopes(form: HTMLFormElement): boolean {
   const list = form.querySelector("[data-scope-list]");
-  const status = form.querySelector('[role="status"]');
+  const status = platformStatus(form);
   const field = form.querySelector<HTMLElement>("[data-scope]");
   if (!list || !status || !field) return false;
   if (field.hasAttribute("aria-busy") || field.dataset.scopeUnavailable === "true") {
@@ -618,28 +718,42 @@ function showRolePreview(form: HTMLFormElement, showing: boolean): void {
   previewButton.hidden = previewButton.disabled = showing;
   confirm.hidden = confirm.disabled = !showing;
   back.hidden = !showing;
-  form.querySelector<HTMLElement>('[role="status"]')?.replaceChildren();
+  platformStatus(form)?.replaceChildren();
   if (showing) preview.querySelector("h3")?.focus();
   else previewButton.focus();
 }
 
 function previewRole(form: HTMLFormElement): void {
   const diff = form.querySelector("[data-role-diff]");
-  const status = form.querySelector('[role="status"]');
+  const status = platformStatus(form);
   if (!diff || !status || !form.reportValidity()) return;
   const scopes = savedScopes(form);
+  const grants = savedGrants(form);
+  if (selectedPermissions(form).length) {
+    status.textContent = "请先将已勾选的接口动作加入授权清单。";
+    return;
+  }
   const name = String(new FormData(form).get("name") ?? "").trim();
-  if (!name || !scopes.length || form.querySelector('[name="namespace"]:checked, [name="entireCluster"]:checked')) {
+  if (!name || !(scopes.length || grants.length) || form.querySelector('[name="namespace"]:checked, [name="entireCluster"]:checked')) {
     const message = !name ? "请输入角色名称。" : "请先把已选范围加入清单。";
-    status.textContent = !scopes.length && name ? "请添加至少一项授权范围。" : message;
+    status.textContent = !scopes.length && !grants.length && name ? "请添加至少一项授权范围。" : message;
     return;
   }
   const original = originalRole(form);
   const { added, removed } = scopeDifference(original?.scopes ?? [], scopes);
   const section = (title: string, entries: Scope[]) => `<h4>${title} · ${entries.length} 项</h4>${
     entries.length ? `<ul>${entries.map((item) => `<li>历史诊断查看 · ${scopeText(item)}</li>`).join("")}</ul>` : "<p>无</p>"}`;
+  const previous = new Set((original?.grants ?? []).map(grantKey));
+  const next = new Set(grants.map(grantKey));
+  const grantSection = (title: string, items: InterfaceGrant[]) => items.length ? `<h4>${title} · ${items.length} 项</h4><ul>${items.map(item => {
+    const point = describePermission(form, item.code);
+    return `<li>${h(point?.label ?? item.code)} · ${scopeText(item.scope) || h(point?.feature.scope ?? "该动作适用范围")}
+      ${point?.risk === "高风险" ? ' <span class="system-badge">高风险</span>' : ""}</li>`;
+  }).join("")}</ul>` : "";
   diff.innerHTML = `<p>角色名称 ${h(name)}${original && original.name !== name ? `（原名称 ${h(original.name)}）` : ""}</p>${
-    section("新增权限", added)}${section("移除权限", removed)}`;
+    section("新增权限", added)}${section("移除权限", removed)}
+    ${grantSection("新增接口授权", grants.filter(grant => !previous.has(grantKey(grant))))}
+    ${grantSection("移除接口授权", (original?.grants ?? []).filter(grant => !next.has(grantKey(grant))))}`;
   showRolePreview(form, true);
 }
 

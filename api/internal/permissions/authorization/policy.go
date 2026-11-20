@@ -164,6 +164,17 @@ func (a *PolicyAuthorizer) Authorize(_ context.Context, request DecisionRequest)
 	return Decision{Allowed: allowed}, nil
 }
 
+// Denies reports a matching explicit deny without interpreting an absent rule as a deny.
+func (a *PolicyAuthorizer) Denies(r DecisionRequest) bool {
+	for _, rule := range a.rules {
+		if rule.Effect == EffectDeny && (!rule.collectionOnly || r.Collection) &&
+			selectorMatches(rule, r.Principal) && capabilityMatches(rule.Capabilities, r.Capability) && scopesMatch(rule.Scopes, r.Scope) {
+			return true
+		}
+	}
+	return false
+}
+
 func selectorMatches(rule Rule, principal identity.Principal) bool {
 	for _, subject := range rule.Subjects {
 		if subject == principal.Subject {

@@ -3,6 +3,7 @@ package wiki
 import (
 	"github.com/abchw517/kube-aiops/api/internal/identitystore"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/catalog"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"net/http"
 )
@@ -24,27 +25,39 @@ func (a *Service) SetFindingLookup(find FindingLookup) { a.find = find }
 func (a *Service) SetTargetResolver(resolve TargetResolver) { a.resolve = resolve }
 
 func (a *Service) Register(mux *http.ServeMux, s *identity.Sessions, ask AskModel) {
-	mux.HandleFunc("/api/v1/wiki/sources/{id}", a.wikiSourceHandler(s, a.handleWikiSource))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/check", a.wikiSourceHandler(s, a.handleWikiCheck))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/sync", a.wikiSourceHandler(s, a.handleWikiSync))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/runs", a.wikiSourceHandler(s, a.syncRuns))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/runs/{run}", a.wikiSourceHandler(s, a.syncRuns))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/runs/{run}/{action}", a.wikiSourceHandler(s, a.syncRuns))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/schedule", a.wikiSourceHandler(s, a.handleWikiSchedule))
-	mux.HandleFunc("/api/v1/wiki/sources/{id}/credential", a.wikiSourceHandler(s, a.handleWikiCredential))
-	mux.HandleFunc("/api/v1/wiki/finding", a.wikiSessionHandler(s, a.findingKnowledge))
-	mux.HandleFunc("/api/v1/wiki/governance", a.wikiSessionHandler(s, a.governanceList))
-	mux.HandleFunc("/api/v1/wiki/candidates", a.wikiSessionHandler(s, a.candidates))
-	mux.HandleFunc("/api/v1/wiki/candidates/{id}", a.wikiSessionHandler(s, a.candidate))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}", a.wikiSessionHandler(s, a.handleWikiDocument))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/feedback", a.wikiSessionHandler(s, a.wikiFeedback))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/governance", a.wikiSessionHandler(s, a.governDocument))
-	mux.HandleFunc("/api/v1/wiki/knowledge", a.wikiSessionHandler(s, a.handleWikiDocuments))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions/{revision}", a.wikiSessionHandler(s, a.handleWikiDocument))
-	mux.HandleFunc("/api/v1/wiki/knowledge/{id}/revisions", a.wikiSessionHandler(s, a.handleWikiRevision))
-	mux.HandleFunc("/api/v1/wiki/imports/files", a.wikiSessionHandler(s, a.handleWikiFiles))
-	mux.HandleFunc("/api/v1/wiki/imports", a.wikiSessionHandler(s, a.handleWikiImport))
-	mux.HandleFunc("/api/v1/wiki/ask", a.wikiSessionHandler(s, func(w http.ResponseWriter, r *http.Request, p identity.Principal) {
+	read, publish, sync := authorization.CapabilityWikiRead, authorization.CapabilityWikiPublish, authorization.CapabilityWikiSync
+	source := func(path, get, post, put, remove string, handler func(http.ResponseWriter, *http.Request, identity.Principal, string)) {
+		mux.HandleFunc("/api/v1/wiki/"+path, a.wikiSourceHandler(s, func(w http.ResponseWriter, r *http.Request, p identity.Principal, id string) {
+			handler(w, forWikiMethod(r, get, post, put, remove, sync), p, id)
+		}))
+	}
+	resource := func(path, get, post string, legacy authorization.Capability, handler func(http.ResponseWriter, *http.Request, identity.Principal)) {
+		mux.HandleFunc("/api/v1/wiki/"+path, a.wikiSessionHandler(s, func(w http.ResponseWriter, r *http.Request, p identity.Principal) {
+			handler(w, forWikiMethod(r, get, post, "", "", legacy), p)
+		}))
+	}
+	source("sources/{id}", "knowledge.source.read", "", "knowledge.source.register", "knowledge.source.disable", a.handleWikiSource)
+	source("sources/{id}/check", "", "knowledge.source.check", "", "", a.handleWikiCheck)
+	source("sources/{id}/sync", "", "knowledge.sync.run", "", "", a.handleWikiSync)
+	source("sources/{id}/runs", "knowledge.sync.runs", "", "", "", a.syncRuns)
+	source("sources/{id}/runs/{run}", "knowledge.sync.run-read", "", "", "", a.syncRuns)
+	source("sources/{id}/runs/{run}/{action}", "", "knowledge.sync.retry", "", "", a.syncRuns)
+	source("sources/{id}/schedule", "knowledge.schedule.read", "", "knowledge.schedule.save", "", a.handleWikiSchedule)
+	source("sources/{id}/credential", "knowledge.credential.status", "", "", "knowledge.credential.unbind", a.handleWikiCredential)
+
+	resource("finding", "", "", "", a.findingKnowledge)
+	resource("governance", "knowledge.governance.list", "", publish, a.governanceList)
+	resource("candidates", "knowledge.candidate.list", "knowledge.candidate.create", publish, a.candidates)
+	resource("candidates/{id}", "knowledge.candidate.read", "", publish, a.candidate)
+	resource("knowledge/{id}", catalog.DocumentRead, "", read, a.handleWikiDocument)
+	resource("knowledge/{id}/feedback", "knowledge.feedback.list", "", publish, a.wikiFeedback)
+	resource("knowledge/{id}/governance", "knowledge.governance.read", "", publish, a.governDocument)
+	resource("knowledge", "knowledge.document.search", "", read, a.handleWikiDocuments)
+	resource("knowledge/{id}/revisions/{revision}", catalog.VersionRead, "", read, a.handleWikiDocument)
+	resource("knowledge/{id}/revisions", "", "", publish, a.handleWikiRevision)
+	resource("imports/files", "", "knowledge.candidate.import", publish, a.handleWikiFiles)
+	resource("imports", "", "", publish, a.handleWikiImport)
+	resource("ask", "", catalog.WikiAsk, "", func(w http.ResponseWriter, r *http.Request, p identity.Principal) {
 		a.handleWikiAsk(w, r, p, ask)
-	}))
+	})
 }

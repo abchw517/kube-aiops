@@ -13,6 +13,7 @@ import (
 
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/finding"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/catalog"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"github.com/abchw517/kube-aiops/api/internal/sanitizer"
 )
@@ -160,6 +161,12 @@ func (a *Service) handleWikiAsk(w http.ResponseWriter, r *http.Request, p identi
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if checker, ok := a.Authorizer.(interface {
+		HasScopedOperation(context.Context, identity.Principal, string) bool
+	}); ok && !checker.HasScopedOperation(r.Context(), p, catalog.WikiAsk) {
+		http.Error(w, "无权使用知识问答", http.StatusForbidden)
 		return
 	}
 	var input struct {

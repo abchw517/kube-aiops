@@ -1,15 +1,15 @@
 /* 控制台共用色板、基础控件和状态。 */
 :root {
-  --nav: #162541;
+  --nav: #102642;
   --ink: #192943;
   --muted: #53647c;
   --surface: #fff;
   --bg: #f1f4fa;
   --line: #dce4f0;
   --control-line: #889ab3;
-  --blue: #2c4ab0;
-  --blue-hover: #223a8d;
-  --accent-soft: #edf1ff;
+  --blue: #1b56aa;
+  --blue-hover: #144487;
+  --accent-soft: #edf4ff;
   --teal: #176861;
   --red: #a9273d;
   --panel-radius: 9px;
@@ -441,3 +441,45 @@ tbody tr:hover { background: #f5f8fd; }
 .account-role-link { padding: 2px 0; border: 0; background: none; color: var(--teal); cursor: pointer; text-align: start; text-decoration: underline; }
 .system-editor-status { margin: 0; padding: 0 18px 10px; }
 .system-dialog [hidden], [data-account-detail-slot] [hidden] { display: none; }
+
+/* 权限目录在现有运维工作台中使用独立的矩阵与接口详情。 */
+.permission-catalog { --pc-navy: #143251; --pc-blue: #1b56aa; --pc-border: #dce5f0; margin-top: 1rem; }
+.permission-catalog-heading { display: flex; align-items: center; gap: .85rem; margin: 1.15rem 0; }
+.permission-catalog-heading h2, .permission-catalog-heading p { margin: 0; }
+.permission-catalog-heading p, .permission-catalog-count, .permission-ancestry { color: #4e6480; }
+.permission-catalog-mark { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: .5rem; color: #fff; background: #214c81; font-weight: 750; }
+.permission-catalog-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 23%); align-items: start; gap: .8rem; }
+.permission-catalog-main, .permission-catalog-detail { min-width: 0; border: 1px solid var(--pc-border); border-radius: .55rem; background: #fff; }
+.permission-catalog-tabs { display: flex; overflow-x: auto; gap: 1.15rem; padding: 0 .8rem; border-bottom: 1px solid var(--pc-border); }
+.permission-catalog-tabs [data-pc-module] { color: #385576; padding: .75rem 0 .55rem; white-space: nowrap; border: 0; border-bottom: .18rem solid transparent; background: transparent; }
+.permission-catalog-tabs [data-pc-module][aria-pressed="true"] { border-color: var(--pc-blue); color: var(--pc-blue); font-weight: 700; }
+.permission-catalog-filters { display: flex; gap: .5rem; flex-wrap: wrap; padding: .7rem .8rem; }
+.permission-catalog-filters input, .permission-catalog-filters select { border: 1px solid var(--pc-border); border-radius: .35rem; background: #fff; padding: .43rem .6rem; color: var(--pc-navy); }
+.permission-catalog-filters input { min-width: 10rem; flex: 1; }
+.permission-catalog-table .catalog-table { min-width: 520px; table-layout: fixed; }
+.permission-catalog-table th:first-child:not([colspan]) { width: 26%; }
+.permission-catalog-table td, .permission-catalog-table th { padding: .55rem .55rem; vertical-align: top; }
+.permission-catalog-table thead th { background: #edf3fa; color: #345071; }
+.permission-catalog-table th small { display: block; margin-top: .2rem; color: #526882; font-weight: 400; }
+.permission-group th { background: #f5f8fc; color: #24476e; }
+.permission-group th > div { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+.permission-group .button { font-size: .75rem; padding: .24rem .45rem; min-height: auto; }
+.permission-point { display: block; max-width: 100%; text-align: left; overflow-wrap: anywhere; margin-bottom: .22rem; padding: .24rem .38rem; font: inherit; font-size: .78rem; line-height: 1.4; color: #31527b; background: #f7faff; border: 1px solid #dae4f2; border-radius: .28rem; }
+.permission-point[data-risk="高风险"], .permission-catalog-detail [data-risk="高风险"] { color: #794909; background: #fff3dc; }
+.permission-point[aria-pressed="true"] { color: #164d98; border-color: #6992d0; background: #edf4ff; }
+.permission-point[data-pc-configured="true"] { box-shadow: inset 2px 0 #3277c2; }
+.permission-catalog-detail dd ul { margin: 0; padding-inline-start: 1rem; }
+.permission-empty { color: #657b94; }
+.permission-catalog-count { margin: .55rem .8rem; font-size: .8rem; }
+.permission-catalog-detail { padding: .85rem; }
+.permission-catalog-detail h3 { font-size: .83rem; color: #3d5d81; padding-bottom: .55rem; border-bottom: 1px solid var(--pc-border); }
+.permission-catalog-detail h4 { margin: .2rem 0 .5rem; font-size: 1rem; }
+.permission-catalog-detail .system-badge { margin-right: .3rem; }
+.permission-catalog-detail dl { margin: .75rem 0; }
+.permission-catalog-detail dl div { padding: .55rem 0; border-top: 1px solid #e8eef5; }
+.permission-catalog-detail dt, .permission-ancestry { font-size: .75rem; }
+.permission-catalog-detail dd { margin: .18rem 0 0; color: var(--pc-navy); font-size: .82rem; overflow-wrap: anywhere; }
+.permission-catalog-detail code, [data-role-grant] code { overflow-wrap: anywhere; }
+.system-dialog:has([data-role-catalog-host] .permission-catalog) { width: min(1100px, calc(100% - 1.4rem)); }
+@media (max-width: 900px) { .permission-catalog-workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 540px) { .permission-catalog-tabs { gap: .75rem; } .permission-catalog-filters input { width: 100%; } }

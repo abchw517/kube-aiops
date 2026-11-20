@@ -52,8 +52,8 @@ func (a *Service) wikiSyncSource(ctx context.Context, p identity.Principal, id s
 	if err != nil {
 		return source, err
 	}
-	decision, err := a.Authorize(ctx, authorization.DecisionRequest{Principal: p, Capability: authorization.CapabilityWikiSync, Scope: authorization.NamespaceScope(source.Cluster, source.Namespace)})
-	if err != nil || !decision.Allowed {
+	allowed, err := a.permitTarget(ctx, p, authorization.CapabilityWikiSync, authorization.NamespaceScope(source.Cluster, source.Namespace))
+	if err != nil || !allowed {
 		return source, errors.New("source permission denied")
 	}
 	return source, nil
@@ -479,6 +479,7 @@ func (a *Service) runDueWikiSchedule(ctx context.Context) {
 		next, status = 0, "配置用户已失效"
 	}
 	if next > 0 {
+		ctx = withWikiOperation(ctx, "knowledge.sync.run", authorization.CapabilityWikiSync)
 		source, err := a.wikiSyncSource(ctx, p, id)
 		if err != nil {
 			next, status = 0, "配置用户权限已失效"

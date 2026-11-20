@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -32,6 +33,7 @@ type accountView struct {
 	Roles             []string         `json:"roles"`
 	Groups            []string         `json:"groups"`
 	Effective         []effectiveScope `json:"effective"`
+	Grants            []effectiveGrant `json:"effectiveGrants,omitempty"`
 	LastLoginAt       int64            `json:"lastLoginAt,omitempty"`
 }
 
@@ -46,6 +48,7 @@ type platformChange struct {
 	Kind         string
 	Password     string
 	Scopes       []accessScope
+	Grants       *[]interfaceGrant
 	PreviousRole *platformRole
 }
 
@@ -59,7 +62,20 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	if resource == "operations" {
 		switch r.Method {
 		case http.MethodGet:
-			a.handleOperations(w, r)
+			if r.URL.Query().Get("retention") == "1" {
+				if !a.readGlobalOperation(ctx, actor, "system.retention.read") {
+					http.Error(w, "forbidden", 403)
+					return
+				}
+				settings, err := a.auditRetention(ctx)
+				if err != nil {
+					http.Error(w, "无法读取审计保留策略", 503)
+					return
+				}
+				adminhttp.WriteJSON(w, map[string]any{"retention": settings})
+				return
+			}
+			a.handleOperations(w, r, actor)
 		case http.MethodPut:
 			a.updateAuditRetention(w, r, actor)
 		default:
@@ -68,6 +84,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		return
 	}
 	if r.Method == http.MethodGet {
+		canRead := func(code string) bool { return a.readGlobalOperation(ctx, actor, code) }
 		state, err := a.platform(ctx)
 		if err != nil {
 			http.Error(w, "系统管理暂不可用", 503)
@@ -82,7 +99,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 				users = append(users, accountView{
 					ID: account.ID, Username: account.Username, Kind: account.Kind, Disabled: account.Disabled,
 					DirectoryDisabled: account.DirectoryDisabled, MustChange: account.MustChange,
-					Roles: account.Roles, Groups: account.Groups, Effective: state.effective(account),
+					Roles: account.Roles, Groups: account.Groups, Effective: state.effective(account), Grants: state.effectiveGrants(account),
 				})
 			}
 			rows, err := a.store.QueryContext(ctx, `SELECT actor, created_at FROM account_last_login`)
@@ -108,6 +125,17 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 			for i := range users {
 				users[i].LastLoginAt = lastLogins[users[i].ID]
 			}
+			if !canRead("system.binding.read") {
+				for i := range users {
+					users[i].Roles, users[i].Groups, users[i].Effective, users[i].Grants = nil, nil, nil, nil
+				}
+			}
+			if !canRead("system.account.list") {
+				for i := range users {
+					user := &users[i]
+					*user = accountView{ID: user.ID, Username: user.Username, Roles: user.Roles, Groups: user.Groups, Effective: user.Effective, Grants: user.Grants}
+				}
+			}
 			slices.SortFunc(users, func(a, b accountView) int { return strings.Compare(a.ID, b.ID) })
 			adminhttp.WriteJSON(w, users)
 			return
@@ -122,7 +150,14 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		}
 		slices.SortFunc(roles, func(a, b platformRole) int { return strings.Compare(a.Name, b.Name) })
 		slices.SortFunc(groups, func(a, b platformGroup) int { return strings.Compare(a.Name, b.Name) })
-		adminhttp.WriteJSON(w, map[string]any{"roles": roles, "groups": groups})
+		result := map[string]any{}
+		if canRead("system.role.list") {
+			result["roles"] = roles
+		}
+		if canRead("system.group.list") {
+			result["groups"] = groups
+		}
+		adminhttp.WriteJSON(w, result)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -130,11 +165,17 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		return
 	}
 	var input platformChange
-	if !adminhttp.Decode(w, r, &input) || len(input.IDs) > 100 || len(input.Values) > 50 || len(input.Scopes) > 100 || (input.RoleIDs != nil && len(*input.RoleIDs) > 50) {
+	if !adminhttp.Decode(w, r, &input) || len(input.IDs) > 100 || len(input.Values) > 50 || len(input.Scopes) > 100 || (input.Grants != nil && len(*input.Grants) > 512) || (input.RoleIDs != nil && len(*input.RoleIDs) > 50) {
 		http.Error(w, "请求无效或超出批量上限", 400)
 		return
 	}
 	if resource == "access" && input.Action == "role-save" {
+		if input.Grants != nil {
+			if err := a.validateInterfaceGrants(ctx, *input.Grants); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+		}
 		for _, scope := range input.Scopes {
 			if !validAccessScope(scope) {
 				http.Error(w, "授权范围无效。生产和预发布须指定集群、业务线和命名空间", 400)
@@ -202,7 +243,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	results := make([]changeResult, 0, len(ids))
 	action, risk := labelChange(input.Action)
 	var auditReference string
-	assignment := input.Action == "join" || input.Action == "leave" || input.Action == "grant" || input.Action == "revoke"
+	auditLink := input.Action == "join" || input.Action == "leave" || input.Action == "grant" || input.Action == "revoke" || input.Action == "role-save"
 	err := a.editPlatform(ctx, func(state *platformState, tx *sql.Tx) error {
 		if actor.Subject != superSubject {
 			current := state.Accounts[actor.Subject]
@@ -238,6 +279,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 			for _, id := range uniqueStrings(ids) {
 				input.ID = id
 				result := changeResult{ID: id}
+				previousRole := state.Roles[id]
 				if resource == "accounts" {
 					result = applyAccount(*state, input, hash, actor.Subject == superSubject)
 					if input.Action == "delete" && result.Reason == "" && state.DeletedLDAP[id] {
@@ -254,11 +296,14 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 					if result.Reason != "" {
 						event.Result = "失败"
 					}
-					reference, err := storeOperation(ctx, tx, event, assignment && batch == "")
+					if result.Reason == "" && input.Action == "role-save" {
+						event.Reason = auditGrantDiff(previousRole.Grants, state.Roles[result.ID].Grants)
+					}
+					reference, err := storeOperation(ctx, tx, event, auditLink && batch == "")
 					if err != nil {
 						return err
 					}
-					if assignment && batch == "" {
+					if auditLink && batch == "" {
 						auditReference = reference
 					}
 				}
@@ -499,7 +544,7 @@ func applyAccess(state platformState, input platformChange) changeResult {
 			if input.PreviousRole != nil {
 				current := state.Roles[input.ID]
 				before := input.PreviousRole
-				if current.ID != before.ID || current.Name != before.Name || !slices.Equal(current.Scopes, before.Scopes) {
+				if current.ID != before.ID || current.Name != before.Name || !slices.Equal(current.Scopes, before.Scopes) || !slices.Equal(current.Grants, before.Grants) {
 					return fail("角色已被其他操作修改。请刷新后重新核对")
 				}
 			}
@@ -511,15 +556,24 @@ func applyAccess(state platformState, input platformChange) changeResult {
 					return fail("角色名称已使用")
 				}
 			}
-			if len(input.Scopes) == 0 {
-				return fail("至少配置一项历史诊断查看范围")
+			grants := state.Roles[input.ID].Grants
+			if input.Grants != nil {
+				if input.ID != "" && input.PreviousRole == nil {
+					return fail("缺少角色版本，请刷新后重新核对")
+				}
+				grants = slices.Clone(*input.Grants)
+				slices.SortFunc(grants, func(a, b interfaceGrant) int { return strings.Compare(grantOrder(a), grantOrder(b)) })
+				grants = slices.Compact(grants)
+			}
+			if len(input.Scopes) == 0 && len(grants) == 0 {
+				return fail("至少配置一项权限或历史诊断查看范围")
 			}
 			for _, scope := range input.Scopes {
 				if !validAccessScope(scope) {
 					return fail("授权范围无效，生产与预发布须指定业务线和命名空间")
 				}
 			}
-			state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: uniqueAccessScopes(input.Scopes)}
+			state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: uniqueAccessScopes(input.Scopes), Grants: grants}
 		} else {
 			group := state.Groups[input.ID]
 			if input.ID != "" && group.ID == "" {
@@ -590,7 +644,12 @@ func applyAccess(state platformState, input platformChange) changeResult {
 }
 
 // handleOperations 返回保留期内的审计记录和首屏元数据。
-func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
+func (a *Admin) readGlobalOperation(ctx context.Context, actor identity.Principal, code string) bool {
+	ok, err := a.AuthorizeOperation(ctx, actor, code, "", authorization.GlobalScope(), false)
+	return err == nil && ok
+}
+
+func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request, actor identity.Principal) {
 	q := r.URL.Query()
 	page, limit, err := auditPagination(q)
 	if err != nil {
@@ -613,7 +672,9 @@ func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "无法加载审计保留策略", http.StatusServiceUnavailable)
 			return
 		}
-		payload["retention"] = retention
+		if a.readGlobalOperation(r.Context(), actor, "system.retention.read") {
+			payload["retention"] = retention
+		}
 		actionRows, err := a.store.QueryContext(r.Context(), "SELECT DISTINCT action FROM operation_audit WHERE NOT "+auditExpired+" ORDER BY action", now)
 		if err != nil {
 			http.Error(w, "审计记录暂不可用", 503)

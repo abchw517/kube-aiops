@@ -2,7 +2,7 @@ import { escapeHtml as h } from "../../components/html.ts";
 import { knowledgeLink, type WikiDocument, wikiJSON } from "../wiki/governance.ts";
 
 interface Link { knowledgeId: string; title: string; wikiRevision: number }
-interface Knowledge { items: WikiDocument[]; links: Link[]; status: string; canDraft: boolean }
+interface Knowledge { items: WikiDocument[]; links: Link[]; status: string; canDraft: boolean; canLink?: boolean }
 
 export function findingKnowledgePanel(): string {
   return '<section class="panel correlation-panel" data-finding-knowledge aria-label="相关知识"><h2>相关知识</h2><div data-knowledge-content aria-live="polite">正在查找相关知识…</div></section>';
@@ -29,13 +29,14 @@ export function bindFindingKnowledge(root: HTMLElement, id: string, cluster: str
       `<p>${current.status === "unresolved" ? "诊断范围待确认。" : "当前无匹配知识。"} <a href="#/wiki">搜索知识库</a></p>`;
     if (links.length) content.insertAdjacentHTML("beforeend", `<p>已关联 ${links.map((link) =>
       `<a href="${knowledgeLink(link.knowledgeId, link.wikiRevision)}">${h(link.title)} v${link.wikiRevision}</a>`).join("、")}</p>`);
-    if (!current.canDraft) return;
+    const canLink = current.canLink ?? current.canDraft;
+    if (!current.canDraft && !canLink) return;
     content.insertAdjacentHTML("beforeend", revision < 1 ? "<p>保存复核结论后可沉淀知识。</p>" :
       `<details><summary>沉淀知识</summary><div class="system-actions">
-       <button type="button" class="button" data-knowledge-action="draft">创建故障案例草稿</button>
-       ${handbooks.map((doc) => `<button type="button" class="button secondary" data-knowledge-action="link" data-id="${h(doc.knowledgeId)}">关联 ${h(doc.title)}</button>`).join("")}</div>
-       <form data-link-search class="wiki-filters"><label>查找其他可关联手册<input name="q" type="search" maxlength="512" value="${h(query)}"></label>
-       <button class="button secondary">搜索手册</button></form></details>`);
+       ${current.canDraft ? '<button type="button" class="button" data-knowledge-action="draft">创建故障案例草稿</button>' : ""}
+       ${canLink ? handbooks.map((doc) => `<button type="button" class="button secondary" data-knowledge-action="link" data-id="${h(doc.knowledgeId)}">关联 ${h(doc.title)}</button>`).join("") : ""}</div>
+       ${canLink ? `<form data-link-search class="wiki-filters"><label>查找其他可关联手册<input name="q" type="search" maxlength="512" value="${h(query)}"></label>
+       <button class="button secondary">搜索手册</button></form>` : ""}</details>`);
     content.insertAdjacentHTML("beforeend", '<p data-knowledge-status role="status"></p>');
   };
   const load = async () => {

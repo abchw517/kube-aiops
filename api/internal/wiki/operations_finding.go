@@ -55,6 +55,11 @@ func (a *Service) findingKnowledge(w http.ResponseWriter, r *http.Request, p ide
 		return
 	}
 	if r.Method == http.MethodGet {
+		scope := authorization.NamespaceScope(source.Cluster, source.Namespace)
+		if allowed, err := a.permit(ctx, p, "diagnosis.related.read", authorization.CapabilityFindingsRead, scope); err != nil || !allowed {
+			http.NotFound(w, r)
+			return
+		}
 		target := Target{Cluster: source.Cluster, Namespace: source.Namespace}
 		status := "ready"
 		list := []Document{}
@@ -96,7 +101,7 @@ func (a *Service) findingKnowledge(w http.ResponseWriter, r *http.Request, p ide
 			http.Error(w, "无法加载知识关联", 503)
 			return
 		}
-		adminhttp.WriteJSON(w, map[string]any{"items": list, "links": links, "status": status, "canDraft": a.canDraftFinding(ctx, p, source)})
+		adminhttp.WriteJSON(w, map[string]any{"items": list, "links": links, "status": status, "canDraft": a.canChangeFinding(ctx, p, source, "draft"), "canLink": a.canChangeFinding(ctx, p, source, "link")})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -113,7 +118,11 @@ func (a *Service) findingKnowledge(w http.ResponseWriter, r *http.Request, p ide
 		http.Error(w, "请先保存复核结论", 400)
 		return
 	}
-	if !a.canDraftFinding(ctx, p, source) {
+	if input.Action != "draft" && input.Action != "link" {
+		http.Error(w, "未知的沉淀操作", 400)
+		return
+	}
+	if !a.canChangeFinding(ctx, p, source, input.Action) {
 		http.Error(w, "无权维护此范围", 403)
 		return
 	}
@@ -133,11 +142,20 @@ func (a *Service) findingKnowledge(w http.ResponseWriter, r *http.Request, p ide
 	}
 }
 
-func (a *Service) canDraftFinding(ctx context.Context, p identity.Principal, src FindingSource) bool {
+func (a *Service) canChangeFinding(ctx context.Context, p identity.Principal, src FindingSource, action string) bool {
 	if src.Namespace == "" {
 		return permissions.IsAdministrator(p)
 	}
-	return a.allTargetsAllowed(ctx, p, authorization.CapabilityWikiPublish, []Target{{Cluster: src.Cluster, Namespace: src.Namespace}})
+	scope := authorization.NamespaceScope(src.Cluster, src.Namespace)
+	allowed, err := a.permit(ctx, p, "diagnosis.related."+action, authorization.CapabilityWikiPublish, scope)
+	if err != nil || !allowed {
+		return false
+	}
+	if action == "link" {
+		return true
+	}
+	allowed, err = a.permit(ctx, p, "knowledge.candidate.create", authorization.CapabilityWikiPublish, scope)
+	return err == nil && allowed
 }
 
 func (a *Service) draftFinding(w http.ResponseWriter, r *http.Request, p identity.Principal, item finding.Finding, key string, source FindingSource, conclusion string) {
@@ -184,7 +202,7 @@ func (a *Service) linkFinding(w http.ResponseWriter, r *http.Request, p identity
 		return
 	}
 	target := Target{Cluster: source.Cluster, Namespace: source.Namespace}
-	if ok, err := a.canRead(ctx, p, doc, &target, false); err != nil || !ok {
+	if ok, err := a.canRead(withWikiOperation(ctx, "knowledge.document.version", authorization.CapabilityWikiRead), p, doc, &target, false); err != nil || !ok {
 		http.NotFound(w, r)
 		return
 	}
@@ -231,7 +249,7 @@ func (a *Service) findingLinks(ctx context.Context, p identity.Principal, key st
 			continue
 		}
 		target := Target{Cluster: link.Cluster, Namespace: link.Namespace}
-		if ok, err := a.canRead(ctx, p, doc, &target, false); err == nil && ok {
+		if ok, err := a.canRead(withWikiOperation(ctx, "knowledge.document.version", authorization.CapabilityWikiRead), p, doc, &target, false); err == nil && ok {
 			link.Title = doc.Title
 			filtered = append(filtered, link)
 		}

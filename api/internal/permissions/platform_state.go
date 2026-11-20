@@ -34,10 +34,11 @@ type accessScope struct {
 }
 
 type platformRole struct {
-	ID     string        `json:"id"`
-	Name   string        `json:"name"`
-	Scopes []accessScope `json:"scopes"`
-	Fixed  bool          `json:"fixed,omitempty"`
+	ID     string           `json:"id"`
+	Name   string           `json:"name"`
+	Scopes []accessScope    `json:"scopes"`
+	Grants []interfaceGrant `json:"grants,omitempty"`
+	Fixed  bool             `json:"fixed,omitempty"`
 }
 
 type platformGroup struct {

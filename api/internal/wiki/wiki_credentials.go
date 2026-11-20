@@ -68,23 +68,40 @@ func (a *Service) wikiSessionHandler(s *identity.Sessions, handle func(http.Resp
 // Sources are immutable in this implementation. A different remote URL gets a
 // new ID, so previously stored credentials cannot follow a changed endpoint.
 func (a *Service) handleWikiSource(w http.ResponseWriter, r *http.Request, principal identity.Principal, id string) {
-	if !permissions.IsAdministrator(principal) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	ctx := r.Context()
+	switch r.Method {
+	case http.MethodGet:
+		source, err := a.wikiSyncSource(ctx, principal, id)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		location, err := url.Parse(source.URL)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		adminhttp.WriteJSON(w, map[string]string{"id": id, "host": location.Host, "cluster": source.Cluster, "namespace": source.Namespace})
 		return
-	}
-	if r.Method == http.MethodDelete {
-		ctx := r.Context()
+	case http.MethodDelete:
+		// Sources are immutable, so the scope resolved before the transaction cannot move.
+		var source wikiSource
+		if err := a.store.QueryRowContext(ctx, "SELECT cluster, namespace FROM wiki_sources WHERE id=?", id).Scan(&source.Cluster, &source.Namespace); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		allowed, err := a.permitTarget(ctx, principal, authorization.CapabilityWikiSync, authorization.NamespaceScope(source.Cluster, source.Namespace))
+		if err != nil || !allowed {
+			http.NotFound(w, r)
+			return
+		}
 		tx, err := a.store.BeginTx(ctx, nil)
 		if err != nil {
 			http.Error(w, "无法停用来源", 503)
 			return
 		}
 		defer tx.Rollback()
-		doc := Document{ID: id}
-		if err := tx.QueryRowContext(ctx, "SELECT cluster,namespace FROM wiki_sources WHERE id=?", id).Scan(&doc.Cluster, &doc.Namespace); err != nil {
-			http.NotFound(w, r)
-			return
-		}
+		doc := Document{ID: id, Cluster: source.Cluster, Namespace: source.Namespace}
 		result, err := tx.ExecContext(ctx, "INSERT INTO wiki_disabled_sources(id) VALUES(?) ON CONFLICT(id) DO NOTHING", id)
 		if err != nil {
 			http.Error(w, "无法停用来源", 503)
@@ -97,9 +114,13 @@ func (a *Service) handleWikiSource(w http.ResponseWriter, r *http.Request, princ
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
-	}
-	if r.Method != http.MethodPut {
-		w.Header().Set("Allow", "PUT")
+	case http.MethodPut:
+		if !permissions.IsAdministrator(principal) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -135,31 +156,47 @@ func (a *Service) handleWikiSource(w http.ResponseWriter, r *http.Request, princ
 func (a *Service) handleWikiCredential(w http.ResponseWriter, r *http.Request, principal identity.Principal, id string) {
 	ctx := r.Context()
 	var source wikiSource
-	err := a.store.QueryRowContext(ctx, "SELECT url, cluster, namespace FROM wiki_sources WHERE id=?", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "无法读取 Wiki 来源", http.StatusServiceUnavailable)
-		return
-	}
-	if err == nil {
-		decision, authErr := a.Authorize(ctx, authorization.DecisionRequest{
-			Principal: principal, Capability: authorization.CapabilityWikiSync,
-			Scope: authorization.NamespaceScope(source.Cluster, source.Namespace),
-		})
-		if authErr != nil {
-			http.Error(w, "无法校验 Wiki 权限", http.StatusServiceUnavailable)
-			return
-		}
-		if !decision.Allowed {
-			err = sql.ErrNoRows
-		}
-	}
+	err := a.store.QueryRowContext(ctx, "SELECT url,cluster,namespace FROM wiki_sources WHERE id=?", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
 	}
+	if err != nil {
+		http.Error(w, "无法读取 Wiki 来源", http.StatusServiceUnavailable)
+		return
+	}
+	scope := authorization.NamespaceScope(source.Cluster, source.Namespace)
+	capability := authorization.CapabilityWikiSync
+	eligible := false
+	for _, point := range []string{"knowledge.source.read", "knowledge.source.check", "knowledge.sync.run", "knowledge.sync.retry"} {
+		ok, err := a.permit(ctx, principal, point, capability, scope)
+		if err != nil {
+			http.Error(w, "无法校验 Wiki 权限", http.StatusServiceUnavailable)
+			return
+		}
+		if ok {
+			eligible = true
+			break
+		}
+	}
+	if !eligible {
+		http.NotFound(w, r)
+		return
+	}
+	permit := func(code string) bool {
+		ok, err := a.permit(ctx, principal, code, capability, scope)
+		if err != nil || !ok {
+			http.NotFound(w, r)
+			return false
+		}
+		return true
+	}
 
 	switch r.Method {
 	case http.MethodGet:
+		if !permit("knowledge.credential.status") {
+			return
+		}
 		var username string
 		err = a.store.QueryRowContext(ctx, "SELECT username FROM wiki_source_credentials WHERE source_id=? AND provider=? AND subject=?", id, principal.Provider, principal.Subject).Scan(&username)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -178,12 +215,37 @@ func (a *Service) handleWikiCredential(w http.ResponseWriter, r *http.Request, p
 			http.Error(w, "需要有效的 Wiki 账号和密码", http.StatusBadRequest)
 			return
 		}
+		var exists bool
+		if err := a.store.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM wiki_source_credentials WHERE source_id=? AND provider=? AND subject=?)", id, principal.Provider, principal.Subject).Scan(&exists); err != nil {
+			http.Error(w, "无法读取 Wiki 凭据状态", http.StatusServiceUnavailable)
+			return
+		}
+		code := "knowledge.credential.bind"
+		if exists {
+			code = "knowledge.credential.rotate"
+		}
+		if !permit(code) {
+			return
+		}
 		aead, err := wikiPasswordCipher()
 		if err == nil {
 			ciphertext := aead.Seal(nil, nil, []byte(input.Password), wikiPasswordContext(id, source.URL, principal, input.Username))
-			_, err = a.store.ExecContext(ctx, `INSERT INTO wiki_source_credentials VALUES (?, ?, ?, ?, ?)
-				ON CONFLICT(source_id, provider, subject) DO UPDATE SET username=excluded.username, password_ciphertext=excluded.password_ciphertext`,
-				id, principal.Provider, principal.Subject, input.Username, ciphertext)
+			var result sql.Result
+			if exists {
+				result, err = a.store.ExecContext(ctx, "UPDATE wiki_source_credentials SET username=?,password_ciphertext=? WHERE source_id=? AND provider=? AND subject=?",
+					input.Username, ciphertext, id, principal.Provider, principal.Subject)
+			} else {
+				result, err = a.store.ExecContext(ctx, "INSERT INTO wiki_source_credentials VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+					id, principal.Provider, principal.Subject, input.Username, ciphertext)
+			}
+			if err == nil {
+				var count int64
+				count, err = result.RowsAffected()
+				if err == nil && count == 0 {
+					http.Error(w, "凭据绑定状态已变更，请刷新后重试", http.StatusConflict)
+					return
+				}
+			}
 		}
 		if err != nil {
 			http.Error(w, "无法加密或保存 Wiki 凭据", http.StatusServiceUnavailable)
@@ -191,6 +253,9 @@ func (a *Service) handleWikiCredential(w http.ResponseWriter, r *http.Request, p
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
+		if !permit("knowledge.credential.unbind") {
+			return
+		}
 		_, err = a.store.ExecContext(ctx, "DELETE FROM wiki_source_credentials WHERE source_id=? AND provider=? AND subject=?", id, principal.Provider, principal.Subject)
 		if err != nil {
 			http.Error(w, "无法删除 Wiki 凭据", http.StatusServiceUnavailable)

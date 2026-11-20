@@ -10,6 +10,8 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/finding"
 	"github.com/abchw517/kube-aiops/api/internal/httpapi"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
+	"github.com/abchw517/kube-aiops/api/internal/permissions/catalog"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 )
@@ -26,15 +28,26 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 		resource := r.PathValue("resource")
 		admin := permissions.IsAdministrator(p)
 		if resource == "status" && r.Method == http.MethodGet {
-			status := map[string]bool{"admin": admin, "findingAI": review.Enabled() && admin, "mustChangePassword": permissions.MustChangePassword(p), "canChangePassword": permissions.CanChangePassword(p), "superAdministrator": p.Subject == "local:admin" && p.Provider == permissions.AdminProvider}
+			read := func(resource string) bool { return canEnterAdmin(a, r, p, resource) }
+			status := map[string]bool{"admin": admin, "findingAI": review.Enabled() && read("finding-analysis"), "permissionCatalog": read("permission-catalog"), "auditRead": read("operations"), "mustChangePassword": permissions.MustChangePassword(p), "canChangePassword": permissions.CanChangePassword(p), "superAdministrator": p.Subject == "local:admin" && p.Provider == permissions.AdminProvider}
+			for field, code := range map[string]string{
+				"wikiDraft": "knowledge.candidate.create", "wikiCandidates": "knowledge.candidate.list",
+				"wikiGovernance": "knowledge.governance.list",
+			} {
+				status[field], _ = a.AuthorizeOperation(r.Context(), p, code, "", authorization.GlobalScope(), true)
+			}
+			status["reviewAccess"] = read("finding-analysis")
+			status["interfaceRoleAccount"] = permissions.UsesInterfaceRoles(p)
+			status["wikiAsk"] = a.HasScopedOperation(r.Context(), p, catalog.WikiAsk)
 			if managed != nil {
-				status["manageEnvironments"] = status["admin"]
-				status["manageBusinessLines"] = status["admin"]
+				status["manageEnvironments"] = read("environments")
+				status["manageBusinessLines"] = read("business-lines")
+				status["manageClusters"] = read("cluster-onboarding")
 			}
 			adminhttp.WriteJSON(w, status)
 			return
 		}
-		if (resource == "password" && !permissions.CanChangePassword(p)) || (resource != "password" && !admin) {
+		if !canEnterAdmin(a, r, p, resource) {
 			http.Error(w, "forbidden", 403)
 			return
 		}
@@ -46,13 +59,22 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			http.Error(w, "forbidden", 403)
 			return
 		}
+		if resource == "permission-catalog" && r.Method == http.MethodGet {
+			catalog.Serve(w)
+			return
+		}
 		if managed != nil {
 			switch resource {
 			case environmentKind, businessKind:
 				a.AuditChange(w, r, p.Subject, "维护资源目录", "中", resource, func(w http.ResponseWriter, r *http.Request) { managed.catalog(w, r, resource) })
 				return
 			case "cluster-onboarding":
-				a.AuditChange(w, r, p.Subject, "维护集群接入", "高", resource, managed.admin)
+				a.AuditChange(w, r, p.Subject, "维护集群接入", "高", resource, func(w http.ResponseWriter, r *http.Request) {
+					managed.admin(w, r.WithContext(withClusterVisibility(r.Context(), func(id string) bool {
+						allowed, err := a.AuthorizeOperation(r.Context(), p, "resources.cluster.list", "", authorization.ClusterScope(id), false)
+						return err == nil && allowed
+					})))
+				})
 				return
 			case "namespace-business":
 				a.AuditChange(w, r, p.Subject, "调整命名空间归属", "高", resource, managed.namespaceAssignments)
@@ -75,6 +97,15 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			}
 			if selected.Enabled() {
 				ctx := wikis.WithFindingLookup(identity.WithPrincipal(r.Context(), p), p)
+				ctx = diagnosis.WithReviewAuthorization(ctx, func(ctx context.Context, code string, item finding.Finding) bool {
+					scope := authorization.NamespaceScope(item.Cluster, item.Namespace)
+					if !admin && item.Namespace == "" {
+						return false
+					}
+					findingAllowed, findingErr := a.AuthorizeOperation(ctx, p, catalog.FindingRead, authorization.CapabilityFindingsRead, scope, false)
+					allowed, err := a.AuthorizeOperation(ctx, p, code, "", scope, false)
+					return findingErr == nil && findingAllowed && err == nil && allowed
+				})
 				ctx = wiki.WithSessionRecheck(ctx, func(ctx context.Context) bool {
 					current, err := s.Authenticate(ctx, r)
 					return err == nil && current.Subject == p.Subject && current.Provider == p.Provider

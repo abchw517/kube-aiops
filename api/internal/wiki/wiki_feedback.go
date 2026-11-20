@@ -38,7 +38,8 @@ func (a *Service) wikiFeedback(w http.ResponseWriter, r *http.Request, p identit
 			return
 		}
 		version, err := a.readableVersion(ctx, p, doc, input.Revision)
-		if err != nil || !currentSession(ctx) {
+		feedback := withWikiOperation(ctx, "knowledge.feedback.create", authorization.CapabilityWikiRead)
+		if err != nil || !currentSession(ctx) || !a.canGiveFeedback(feedback, p, version) {
 			http.NotFound(w, r)
 			return
 		}
@@ -114,4 +115,18 @@ func (a *Service) wikiFeedbackEntries(ctx context.Context, p identity.Principal,
 		}
 	}
 	return visible, nil
+}
+
+func (a *Service) canGiveFeedback(ctx context.Context, p identity.Principal, doc Document) bool {
+	for _, target := range documentTargets(doc) {
+		ok, err := a.readableTarget(ctx, p, target, len(doc.Metadata.Targets) > 0)
+		if err == nil && ok {
+			read := withWikiOperation(ctx, "knowledge.document.version", authorization.CapabilityWikiRead)
+			if visible, err := a.readableTarget(read, p, target, len(doc.Metadata.Targets) > 0); err != nil || !visible {
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }

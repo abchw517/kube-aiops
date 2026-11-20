@@ -2,6 +2,8 @@ interface PortalShellState {
   hash: string;
   demoMode: boolean;
   identityAdmin: boolean;
+  permissionCatalog?: boolean;
+  auditRead?: boolean;
   canManageResources: boolean;
   mustChangePassword: boolean;
   canChangePassword: boolean;
@@ -11,8 +13,8 @@ interface PortalShellState {
 
 /** 根据应用提供的路由和权限状态渲染控制台外框。 */
 export function renderPortalShell(content: string, state: PortalShellState): string {
-  const { hash, demoMode, identityAdmin, canManageResources, mustChangePassword, canChangePassword, showLogout, signedOut } = state;
-  const adminPage = mustChangePassword || (identityAdmin && hash.startsWith("#/admin"));
+  const { hash, demoMode, identityAdmin, permissionCatalog, auditRead, canManageResources, mustChangePassword, canChangePassword, showLogout, signedOut } = state;
+  const adminPage = mustChangePassword || ((identityAdmin || permissionCatalog || auditRead) && hash.startsWith("#/admin"));
   const resourcePage = !mustChangePassword && /^#\/resources(?:\/|$)/.test(hash);
   const wikiPage = /^#\/wiki(?:[/?]|$)/.test(hash);
   const detailPage = /^#\/findings\/[^?]+/.test(hash);
@@ -35,7 +37,7 @@ export function renderPortalShell(content: string, state: PortalShellState): str
         <a href="#/findings"${adminPage || wikiPage || resourcePage ? "" : currentPage}>诊断控制台</a>
         ${demoMode ? "" : `<a href="#/wiki"${wikiPage ? currentPage : ""}>运维知识库</a>`}
         ${canManageResources ? `<a href="#/resources"${resourcePage ? currentPage : ""}>资源管理</a>` : ""}
-        ${identityAdmin ? `<a href="#/admin/ldap"${adminPage ? currentPage : ""}>系统管理</a>` : ""}
+        ${identityAdmin || permissionCatalog || auditRead ? `<a href="${identityAdmin ? "#/admin/ldap" : permissionCatalog ? "#/admin/access/catalog" : "#/admin/operations"}"${adminPage ? currentPage : ""}>系统管理</a>` : ""}
       </nav>`}
       <main id="portal-content" class="page-shell" tabindex="-1">
         ${signedOut

@@ -150,6 +150,24 @@ func writeWikiAudit(ctx context.Context, tx *sql.Tx, p identity.Principal, actio
 
 func (a *Service) governDocument(w http.ResponseWriter, r *http.Request, p identity.Principal) {
 	ctx := r.Context()
+	var input struct {
+		Action   string `json:"action"`
+		Revision int    `json:"revision"`
+		ReviewBy string `json:"reviewBy"`
+		Team     string `json:"team"`
+	}
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		if !adminhttp.Decode(w, r, &input) || (input.Action != "review" && input.Action != "withdraw") {
+			http.Error(w, "无效请求", 400)
+			return
+		}
+		ctx = withWikiOperation(ctx, "knowledge.governance."+input.Action, authorization.CapabilityWikiPublish)
+	default:
+		w.WriteHeader(405)
+		return
+	}
 	doc, err := LoadDocument(ctx, a.store.DB, r.PathValue("id"))
 	if err != nil || !a.allTargetsAllowed(ctx, p, authorization.CapabilityWikiPublish, documentTargets(doc)) {
 		http.NotFound(w, r)
@@ -157,20 +175,6 @@ func (a *Service) governDocument(w http.ResponseWriter, r *http.Request, p ident
 	}
 	if r.Method == http.MethodGet {
 		adminhttp.WriteJSON(w, doc)
-		return
-	}
-	if r.Method != http.MethodPost {
-		w.WriteHeader(405)
-		return
-	}
-	var input struct {
-		Action   string `json:"action"`
-		Revision int    `json:"revision"`
-		ReviewBy string `json:"reviewBy"`
-		Team     string `json:"team"`
-	}
-	if !adminhttp.Decode(w, r, &input) {
-		http.Error(w, "无效请求", 400)
 		return
 	}
 	if input.Revision != doc.Revision || doc.Withdrawn {
