@@ -31,7 +31,7 @@ export function findingReviewPanel(): string {
   return `<section id="finding-review" class="finding-review" aria-label="AI 证据复核" hidden>
     <p data-review-status role="status"></p>
     <div data-review-result></div>
-    <details data-review-input hidden>
+    <details data-review-input>
       <summary>补充观察或追问</summary>
       <label>现场观察或问题（选填）<textarea data-review-observation rows="3" maxlength="4000" placeholder="例如：10 分钟前 PVC 仍处于 Pending"></textarea></label>
       <button type="button" class="button secondary" data-review-action="assess">重新复核</button>
@@ -88,7 +88,6 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   const status = reviewElement<HTMLElement>(panel, "[data-review-status]");
   const result = reviewElement<HTMLElement>(panel, "[data-review-result]");
   const observation = reviewElement<HTMLTextAreaElement>(panel, "[data-review-observation]");
-  const observationPanel = reviewElement<HTMLDetailsElement>(panel, "[data-review-input]");
   const conclusion = reviewElement<HTMLTextAreaElement>(panel, "[data-review-conclusion]");
   const editor = reviewElement<HTMLElement>(panel, "[data-review-editor]");
   const preview = reviewElement<HTMLElement>(panel, "[data-review-preview]");
@@ -101,27 +100,32 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   let canPublish = false;
   let loaded = false;
   let busy = false;
+  let assessment: { input: string; controller: AbortController } | undefined;
   let stale = false;
   let dirty = false;
   let previewId = "";
 
   function updateActions() {
-    for (const action of ["assess", "save", "refresh", "preview", "publish", "cancel-preview"]) {
+    const reviewingCurrentInput = assessment?.input === observation.value.trim();
+    const assessButton = button("assess");
+    assessButton.disabled = stale || (busy && (!assessment || reviewingCurrentInput));
+    assessButton.textContent = reviewingCurrentInput ? "复核中…" : "重新复核";
+    for (const action of ["save", "refresh", "preview", "publish", "cancel-preview"]) {
       button(action).disabled = busy || (stale && action !== "refresh");
     }
     button("refresh").hidden = !stale;
     button("preview").hidden = !canPublish || revision === 0;
-    observation.readOnly = busy;
     conclusion.readOnly = busy;
     button("save").hidden = !dirty;
-    panel.setAttribute("aria-busy", String(busy));
+    result.setAttribute("aria-busy", String(Boolean(assessment)));
   }
 
-  async function request<T>(action?: string, fields = {}): Promise<T> {
+  async function request<T>(action?: string, fields = {}, signal?: AbortSignal): Promise<T> {
     const response = await fetch(url, action ? {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, revision, ...fields }),
-    } : undefined);
+      body: JSON.stringify({ action, revision, ...fields }), signal,
+    } : { signal });
+    signal?.throwIfAborted();
     if (response.status === 409) stale = true;
     if (!response.ok) {
       if (response.headers.get("Content-Type")?.includes("application/json")) {
@@ -165,42 +169,53 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
       `<p class="detail-text"><strong>v${entry.revision}</strong> ${escapeHtml(entry.conclusion)}</p>`).join("");
   }
 
-  async function loadHistory() {
-    const data = await request<{ history: Revision[]; canPublish: boolean }>();
+  async function loadHistory(signal?: AbortSignal) {
+    const data = await request<{ history: Revision[]; canPublish: boolean }>(undefined, {}, signal);
+    signal?.throwIfAborted();
     canPublish = data.canPublish;
     showHistory(data.history);
     loaded = true;
     stale = false;
   }
 
-  async function assess() {
-    if (!loaded) await loadHistory();
-    observationPanel.hidden = false;
-    const input = observation.value.trim();
-    if (new TextEncoder().encode(input).length > 4000) throw new Error("观察内容最多 4000 字节。");
-    const data = await request<Assessment>("assess", { observation: input });
+  /** 提交点击时的观察快照，取消的复核不再更新界面。 */
+  async function assess(input: string, signal: AbortSignal) {
+    if (!loaded) await loadHistory(signal);
+    signal.throwIfAborted();
+    const data = await request<Assessment>("assess", { observation: input }, signal);
+    signal.throwIfAborted();
     result.innerHTML = renderAssessment(data);
     conclusion.value = `${data.assessment.judgment}\n\n待验证项：${data.assessment.gaps}\n下一步：${data.assessment.next}`;
     editor.hidden = false;
     dirty = true;
-    status.textContent = "";
+    status.textContent = input !== observation.value.trim() ? "补充内容已保留，可点击「重新复核」提交。" : "";
   }
 
   async function run(action: string) {
-    if (busy || (stale && action !== "refresh")) return;
+    const input = observation.value.trim();
+    if (stale && action !== "refresh") return;
+    if (busy && (action !== "assess" || !assessment || assessment.input === input)) return;
     if (action === "cancel-preview") {
       preview.hidden = true;
       button("preview").focus();
       return;
     }
+    if (action === "assess" && new TextEncoder().encode(input).length > 4000) {
+      status.textContent = "观察内容最多 4000 字节。";
+      return;
+    }
+    const attempt = action === "assess" ? { input, controller: new AbortController() } : undefined;
+    assessment?.controller.abort();
+    assessment = attempt;
     busy = true;
     updateActions();
     try {
+      if (attempt) {
+        status.textContent = input ? "正在复核补充的信息…" : "正在复核关联证据…";
+        await assess(attempt.input, attempt.controller.signal);
+        return;
+      }
       switch (action) {
-        case "assess":
-          status.textContent = "正在复核关联证据…";
-          await assess();
-          break;
         case "refresh":
           await loadHistory();
           preview.hidden = true;
@@ -240,14 +255,19 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
         }
       }
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : "操作失败，请重试。";
-      if (action === "assess") observationPanel.hidden = false;
+      if (!attempt?.controller.signal.aborted) {
+        status.textContent = error instanceof Error ? error.message : "操作失败，请重试。";
+      }
     } finally {
-      busy = false;
-      updateActions();
+      if (!attempt?.controller.signal.aborted) {
+        assessment = undefined;
+        busy = false;
+        updateActions();
+      }
     }
   }
 
+  observation.addEventListener("input", updateActions);
   conclusion.addEventListener("input", () => { dirty = true; updateActions(); });
   trigger.addEventListener("click", () => {
     panel.hidden = !panel.hidden;

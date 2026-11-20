@@ -249,21 +249,50 @@ try {
     }
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) => text.includes("K8sGPT 原始说明") && text.includes("AI 复核") && !text.includes("正在复核关联证据"), "AI review was missing or started automatically");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="toggle"]').click()` });
+    const observationReady = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (String(input).startsWith("/api/v1/admin/finding-analysis?") && (init?.method ?? "GET") === "GET") {
+          window.fetch = originalFetch;
+          return new Promise((resolve, reject) => {
+            window.releaseInitialReviewHistory = () => originalFetch(input, init).then(resolve, reject);
+          });
+        }
+        return originalFetch(input, init);
+      };
+      document.querySelector('[data-review-action="toggle"]').click();
+      const section = document.querySelector("[data-review-input]");
+      section.open = true;
+      const field = document.querySelector("[data-review-observation]");
+      field.focus();
+      return !section.hidden && !field.readOnly && document.activeElement === field;
+    })()` });
+    if (!observationReady.result?.value) throw new Error("Observation entry was locked while review history was pending");
+    await cdp.send("Input.insertText", { text: "仓库返回 403" });
+    const drafted = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const ready = document.querySelector("[data-review-observation]").value === "仓库返回 403" &&
+        !document.querySelector('[data-review-action="assess"]').disabled;
+      window.releaseInitialReviewHistory();
+      return ready;
+    })()` });
+    if (!drafted.result?.value) throw new Error("Could not enter an observation while the first review was pending");
     await assertText(cdp, (text) => text.includes("正在复核关联证据") && text.includes("K8sGPT 原始说明") && text.includes("关联证据"),
       "Inline AI review did not show its pending state alongside the diagnosis");
-    await assertText(cdp, (text) => text.includes("证据不足") && text.includes("当前镜像仓库响应") && text.includes("核对最近一次拉取事件"),
+    await assertText(cdp, (text) => text.includes("证据不足") && text.includes("当前镜像仓库响应") && text.includes("核对最近一次拉取事件") &&
+      text.includes("补充内容已保留，可点击「重新复核」提交。"),
       "Review did not display the structured judgment, gaps and next action");
     const clickedEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector("[data-review-jump]").click();
       return document.activeElement.dataset.evidenceSignal;
     })()` });
     if (clickedEvidence.result?.value !== "event-critical") throw new Error("Review citation did not focus the original event");
-    await cdp.send("Runtime.evaluate", { expression: `(() => {
-      document.querySelector("[data-review-input]").open = true;
-      document.querySelector("[data-review-observation]").value = "仓库返回 403";
-      document.querySelector('[data-review-action="assess"]').click();
+    const awaitingObservation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const button = document.querySelector('[data-review-action="assess"]');
+      button.click();
+      return button.disabled && button.textContent === "复核中…" &&
+        !document.querySelector("[data-review-observation]").readOnly;
     })()` });
+    if (!awaitingObservation.result?.value) throw new Error("Submitting an observation did not immediately show pending status");
     await assertText(cdp, (text) => text.includes("模型响应超时。观察内容已保留，可以重新复核。") && text.includes("K8sGPT 原始说明"), "Model timeout was not recoverable inline");
     const observation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.querySelector("[data-review-observation]").value' });
     if (observation.result?.value !== "仓库返回 403") throw new Error("Review discarded the observation after failure");
