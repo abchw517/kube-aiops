@@ -84,7 +84,7 @@ const all = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const systemAdminRole = "system-admin";
 const state = {
-  page:"users", actor:"super", guestAccount:"visitor-qa", detail:"liwei", tab:"effective", q:"", filter:"", status:"", checked:new Set(), permissionTab:"roles", wikiPilot:false,
+  page:"users", actor:"super", guestAccount:"visitor-qa", detail:"liwei", tab:"effective", q:"", filter:"", status:"", checked:new Set(), permissionTab:"roles",
   auditFilter:{q:"",type:"",level:"",batch:""}, auditPage:0, auditPageSize:10, auditCustomSize:false, auditAccess:"", retention:{"低":3,"中":5,"高":7},
   tested:false, ldapSteps:[], ldapTest:{account:"",password:"",failure:"tcp",message:""},
   ldap:{address:"ldaps://directory.example.internal:636",bind:"CN=svc-aiops,OU=Service Accounts,DC=example,DC=internal",base:"OU=Employees,DC=example,DC=internal",attribute:"sAMAccountName",userFilter:"",groupAttribute:"memberOf",groupBase:"",groupFilter:"",range:"整个子树",groupScope:"",allowPlain:false,passwordConfigured:true},
@@ -372,7 +372,6 @@ function refreshAssign(){
 const clustersByEnv={"研发":["dev-k8s"],"测试":["test-k8s"],"预发布":["stg-yunfan"],"生产":["prod-shared","prod-yunfan"]};
 const namespaces={"dev-k8s":["dev-base","platform"],"test-k8s":["qa-base","qa-payment"],"stg-yunfan":["yunfan-api","yunfan-jobs"],"prod-yunfan":["yunfan-api","yunfan-jobs"],"prod-shared":{"云帆":["yunfan-api","yunfan-jobs","shared-observe"],"有数":["youshu-api","shared-observe"]}};
 const diagnosticAction="历史诊断查看";
-const wikiAction="Wiki 阅读";
 const scopeKey=s=>JSON.stringify([...s.slice(0,4),scopeAction(s)]);
 let scopeDraft=[],roleDraftID="",roleDraftName="",roleRange;
 function editRole(id,resume=false){
@@ -390,34 +389,34 @@ function editRole(id,resume=false){
  modal(r?"编辑角色":"新建角色",'<label class="field">角色名称<input name="name" maxlength="80" required value="'+esc(roleDraftName)+'"></label>'+
   '<h3>已配置权限</h3><div id="scope-list"></div>'+
   '<fieldset class="quick-fieldset stack"><legend>添加权限范围</legend><div class="gridform">'+
-  '<label class="field">操作<select id="scope-action">'+choices([[diagnosticAction,diagnosticAction],...(state.wikiPilot?[[wikiAction,wikiAction]]:[])],roleRange?.action)+'</select></label>'+
+  '<label class="field">操作<select id="scope-action">'+choices([[diagnosticAction,diagnosticAction]],roleRange?.action)+'</select></label>'+
   '<label class="field">环境<select id="scope-env">'+choices(Object.keys(clustersByEnv).map(x=>[x,x]),roleRange?.env||"研发")+'</select></label>'+
   '<label class="field">集群<select id="scope-cluster"></select></label>'+
   '<label class="field hidden" id="biz-field">业务线<select id="scope-biz"></select></label></div>'+
   '<fieldset class="quick-fieldset"><legend>命名空间</legend><div id="scope-ns" class="namespace-options"></div></fieldset>'+
   '<div class="row">'+btn("添加到清单","add-scope")+btn("添加并预览","review-scope","","primary")+'</div>'+
   '<p id="scope-feedback" class="muted" role="status"></p></fieldset>',"预览已配置权限",()=>{
-  if(selectedNamespaces().length){scopeFeedback("当前已勾选命名空间。请先将它们加到清单，或使用「添加并预览」。");return;}
+  if(selectedNamespaces().length||$("#scope-whole")?.checked){scopeFeedback("请先把已选范围加入清单，或使用「添加并预览」。");return;}
   previewRole();
  });
  scopeOptions(true,roleRange);
  showScopes();
 }
-function selectedNamespaces(){return all("#scope-ns input:checked").map(input=>input.value);}
+function selectedNamespaces(){return all("#scope-ns input[name=item]:checked").map(input=>input.value);}
 function scopeFeedback(message){$("#scope-feedback").textContent=message;}
 function scopeOptions(reset,restore){
- const env=$("#scope-env").value, action=$("#scope-action").value;
- const high=["预发布","生产"].includes(env), concrete=high||action===wikiAction;
+ const env=$("#scope-env").value;
+ const high=["预发布","生产"].includes(env);
  const cluster=$("#scope-cluster"), biz=$("#scope-biz");
- if(reset)cluster.innerHTML=choices([...(concrete?[]:[["全部集群","整个环境"]]),...clustersByEnv[env].map(x=>[x,x])],restore?.cluster);
+ if(reset)cluster.innerHTML=choices([...(high?[]:[["全部集群","整个环境"]]),...clustersByEnv[env].map(x=>[x,x])],restore?.cluster);
  $("#biz-field").classList.toggle("hidden",!high);
  const prev=restore?.biz??(reset?"":biz.value);
  biz.innerHTML=choices((cluster.value==="prod-shared"?["云帆","有数"]:["云帆"]).map(x=>[x,x]),prev);
  const keys=namespaces[cluster.value];
  const list=Array.isArray(keys)?keys:keys?.[biz.value]??[];
- $("#scope-ns").innerHTML=list.length?checkboxes(list.map(v=>[v,v]),restore?.selected)+
-  "<small>"+(concrete?"可同时勾选多个命名空间。":"未勾选命名空间时，范围为整个集群。")+"</small>":
-  '<p class="muted">当前范围覆盖整个'+(cluster.value==="全部集群"?"环境":"集群")+'。</p>';
+ $("#scope-ns").innerHTML=(list.length?checkboxes(list.map(v=>[v,v]),restore?.selected):'<p class="muted">'+
+  (cluster.value==="全部集群"?"当前范围为整个环境。":"暂无可选命名空间。")+'</p>')+
+  (!high&&cluster.value!=="全部集群"?'<label class="check"><input type="checkbox" id="scope-whole" '+(restore?.whole?"checked":"")+'>整个集群</label>':"");
  scopeFeedback("");
 }
 function showScopes(){
@@ -427,7 +426,8 @@ function showScopes(){
 function addScopes(andPreview){
  const action=$("#scope-action").value, env=$("#scope-env").value, cluster=$("#scope-cluster").value, selected=selectedNamespaces();
  const high=["生产","预发布"].includes(env), biz=high?$("#scope-biz").value:"—";
- if((high||action===wikiAction)&&!selected.length){scopeFeedback("请选择至少一个具体命名空间。");return;}
+ if(high&&!selected.length){scopeFeedback("请选择至少一个具体命名空间。");return;}
+ if(cluster!=="全部集群"&&!selected.length&&!$("#scope-whole")?.checked){scopeFeedback("请勾选命名空间或明确选择整个集群。");return;}
  const entries=(selected.length?selected:["全部命名空间"]).map(ns=>[env,cluster,biz,ns,action]);
  const configured=new Set(scopeDraft.map(scopeKey));
  const added=entries.filter(s=>!configured.has(scopeKey(s)));
@@ -444,7 +444,7 @@ function previewRole(){
  if(!roleDraftName){scopeFeedback("请输入角色名称。");nameField.focus();return;}
  if(state.roles.some(x=>x.id!==roleDraftID&&x.name===roleDraftName)){scopeFeedback("已存在同名角色。");nameField.focus();return;}
  if(!scopeDraft.length){scopeFeedback("请至少添加一项权限。");return;}
- roleRange={action:$("#scope-action").value,env:$("#scope-env").value,cluster:$("#scope-cluster").value,biz:$("#scope-biz").value,selected:selectedNamespaces()};
+ roleRange={action:$("#scope-action").value,env:$("#scope-env").value,cluster:$("#scope-cluster").value,biz:$("#scope-biz").value,selected:selectedNamespaces(),whole:$("#scope-whole")?.checked};
  const r=role(roleDraftID), before=r?.scopes??[], beforeName=r?.name;
  const old=new Set(before.map(scopeKey)), next=new Set(scopeDraft.map(scopeKey));
  const added=scopeDraft.filter(s=>!old.has(scopeKey(s))), removed=before.filter(s=>!next.has(scopeKey(s)));
@@ -466,11 +466,11 @@ function previewRole(){
 function permissionCatalog(){
  modal("权限目录",'<dl class="account-bindings">'+
   '<div class="account-binding"><dt>诊断控制台</dt><dd>历史诊断查看可按环境和资源范围授予。</dd></div>'+
-  '<div class="account-binding"><dt>运维知识库</dt><dd>Wiki 阅读试点 '+tags(state.wikiPilot?"演示开启":"默认关闭")+
+  '<div class="account-binding"><dt>运维知识库</dt><dd>Wiki 阅读试点 '+tags("默认关闭")+
   ' · 正式开放须评审。文档可见范围与角色授权同时校验。</dd></div>'+
   '<div class="account-binding"><dt>平台管理</dt><dd>集群接入、资源维护、账号与 LDAP 管理、审计管理采用现有管理员边界。</dd></div>'+
   '<div class="account-binding"><dt>其他操作</dt><dd>AI 复核、Wiki 发布与同步沿用各自现行授权。</dd></div></dl>'+
-  btn(state.wikiPilot?"关闭试点演示":"开启试点演示","switch-wiki-pilot"),"");
+  "", "");
 }
 function editGroup(id){
  const g=group(id);
@@ -600,7 +600,6 @@ document.addEventListener("click",event=>{
  case "reset":case "toggle":case "remove-admin":case "delete-user":accountAction(a,v);break;
  case "edit-role":editRole(v);break;
  case "permission-catalog":permissionCatalog();break;
- case "switch-wiki-pilot":state.wikiPilot=!state.wikiPilot;permissionCatalog();break;
  case "account-audit":
   state.auditFilter={q:v,type:"",level:"",batch:""};state.auditPage=0;navigate("audit");$("#audit-heading")?.focus();break;
  case "review-scope":addScopes(true);break;
@@ -672,6 +671,10 @@ document.addEventListener("input",event=>{
 });
 document.addEventListener("change",event=>{
  const e=event.target;
+ if(e.matches("#scope-ns input")&&e.checked){
+  if(e.id==="scope-whole")all("#scope-ns input[name=item]").forEach(input=>input.checked=false);
+  else if($("#scope-whole"))$("#scope-whole").checked=false;
+ }
  if(e.id==="actor"){
   if(e.value==="expired"||e.value==="denied"){
    state.auditAccess=e.value;onSubmit=undefined;

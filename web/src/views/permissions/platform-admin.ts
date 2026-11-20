@@ -1,6 +1,7 @@
 import { escapeHtml as h } from "../../components/html.ts";
 
-type Scope = { environment: string; cluster?: string; namespace?: string; business?: string };
+import { auditLocation, auditRecordReference } from "./audit-data.ts";
+import { roleReferences, scopeDifference, type Scope } from "./platform-scopes.ts";
 type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null };
 type Group = { id: string; name: string; description?: string; roles: string[] | null };
 type Account = {
@@ -78,10 +79,6 @@ function tempPassword(): string {
   return '<label>临时密码<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>';
 }
 
-function names(ids: string[] | null, items: Entry[]): string {
-  return ids?.map((id) => h(items.find((item) => item.id === id)?.name ?? id)).join("、") || "—";
-}
-
 function editButton(label: string, target: string, secondary = false): string {
   return `<button type="button" class="button${secondary ? " secondary" : ""}" data-system-open="${h(target)}">${label}</button>`;
 }
@@ -97,10 +94,11 @@ function operationForm(resource: string, id: string, fields: string, label: stri
     <button type="button" class="button secondary" data-system-close>取消</button>${submit(label, action)}</footer></form>`;
 }
 
-function choices(name: string, title: string, items: Entry[], selected: string[] | null = []): string {
+function choices(name: string, title: string, items: Entry[], selected: string[] | null = [], assignment = false): string {
   return `<fieldset class="system-choice-group"><legend>${title}</legend>
-    ${items.length ? `<div class="system-choice-list">${items.map((item) => `<label><input type="checkbox"
-      name="${name}" value="${h(item.id)}"${selected?.includes(item.id) ? " checked" : ""}><span>${h(item.name)}</span></label>`).join("")}</div>` :
+    ${items.length ? `<div class="system-choice-list">${items.map((item) => `<label${assignment ? ` data-assignment-choice data-associated="${selected?.includes(item.id) === true}"` : ""}><input type="checkbox"
+      name="${name}" value="${h(item.id)}"${!assignment && selected?.includes(item.id) ? " checked" : ""}><span>${h(item.name)}</span>
+      ${assignment && selected?.includes(item.id) ? '<small class="system-badge">已关联</small>' : ""}</label>`).join("")}</div>` :
       "<p>暂无可选项。</p>"}</fieldset>`;
 }
 
@@ -114,9 +112,11 @@ function assignmentEditor(access: Access, superAdmin: boolean, account?: Account
         <label>授权对象<select data-assignment-kind><option value="groups">用户组</option><option value="roles">直接角色</option></select></label>
         <label>操作<select data-assignment-mode><option value="add">授予</option><option value="remove">撤销</option></select></label>
       </div>
-      <div data-assignment-options="groups">${choices("groups", "选择用户组", access.groups)}</div>
-      <div data-assignment-options="roles" hidden>${choices("roles", "选择直接角色", roles)}
+      <label>搜索可分配项<input type="search" data-assignment-search autocomplete="off" placeholder="搜索用户组或角色"></label>
+      <div data-assignment-options="groups">${choices("groups", "选择用户组", access.groups, account?.groups, true)}</div>
+      <div data-assignment-options="roles" hidden>${choices("roles", "选择直接角色", roles, account?.roles, true)}
         ${superAdmin ? "<p>管理员角色发生变更时，目标账号需重新登录。</p>" : ""}</div>
+      <p data-assignment-empty hidden>没有可操作的关联。</p>
     `, "提交", "assignment"));
 }
 
@@ -134,15 +134,17 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
   const allowed = canManageAccount(user, superAdmin);
   const canAssign = allowed && user.kind === "ldap";
   const bindingAction = user.kind !== "ldap" ? "<small>本地账号通过预置角色获得权限。</small>" :
-    canAssign ? editButton("分配或撤销", "assign") : "<small>仅超级管理员可维护此账号的关联关系。</small>";
+    canAssign ? "" : "<small>仅超级管理员可维护此账号的关联关系。</small>";
   const action = user.kind === "administrator" ? "delete" : user.disabled ? "enable" : "disable";
   const label = user.kind === "administrator" ? "删除系统管理员" : user.disabled ? "重新启用" : "停用账号";
-  return `<section class="system-card system-detail">
+  return `<section class="system-card system-detail" data-user-detail="${h(user.id)}">
     <header class="account-detail-header">
       <div class="system-user-cell">${accountAvatar(user)}<div class="account-identity"><h3>${h(user.username)}</h3><code>${h(user.id)}</code></div></div>
-      <div class="account-detail-actions">${accountStatus(user)}
-        ${allowed ? `<div class="system-actions" data-destructive="${action !== "enable"}">${editButton(label, "account-action", true)}
-          ${user.kind !== "ldap" ? editButton("重置密码", "reset", true) : ""}</div>` : ""}
+      <div class="account-detail-actions">${accountStatus(user)}<div class="system-actions">
+        ${canAssign ? editButton("分配或撤销", "assign") : ""}
+        ${allowed ? `<span data-destructive="${action !== "enable"}">${editButton(label, "account-action", true)}</span>
+          ${user.kind !== "ldap" ? editButton("重置密码", "reset", true) : ""}` : ""}
+        <a class="button secondary" href="${h(auditLocation({ account: user.id }))}">账号审计</a></div>
       </div>
     </header>
     ${allowed ? `
@@ -158,7 +160,7 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
         ${accountBinding("用户组", user.groups, access.groups, "未加入用户组")}
         ${accountBinding("直接角色", user.roles, access.roles, "未分配直接角色")}
       </dl>
-      <footer class="account-bindings-footer">${bindingAction}</footer>
+      ${bindingAction ? `<footer class="account-bindings-footer">${bindingAction}</footer>` : ""}
     </div>
     ${canAssign ? assignmentEditor(access, superAdmin, user) : ""}
   </section>`;
@@ -192,13 +194,14 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
     </div>
     <div class="catalog-table-wrap" role="region" aria-label="账号列表" tabindex="0"><table class="catalog-table account-table">
       <thead><tr><th scope="col"><input type="checkbox" data-platform-select-all aria-label="选择当前结果"${users.some((item) => canManageAccount(item, superAdmin)) ? "" : " disabled"}></th><th scope="col">账号</th><th scope="col">类型</th><th scope="col">状态</th><th scope="col">最近登录</th></tr></thead>
-      <tbody>${users.map((item) => `<tr data-platform-row data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${canManageAccount(item, superAdmin) ? "" : " disabled"}></td>
+      <tbody>${users.map((item) => `<tr data-platform-row data-id="${h(item.id)}" data-kind="${h(item.kind)}" data-account-name="${h(item.username)}" data-account-deletable="${canDeleteAccount(item, superAdmin)}" data-status="${h(statusOf(item))}"${item.id === user?.id ? ' class="system-current-row"' : ""}><td><input type="checkbox" name="ids" value="${h(item.id)}" aria-label="选择 ${h(item.username)}"${canManageAccount(item, superAdmin) ? "" : " disabled"}></td>
         <td><div class="system-user-cell">${accountAvatar(item)}<div class="account-identity"><a href="#/admin/users/${encodeURIComponent(item.id)}">${h(item.username)}</a><br><small>${h(item.id)}</small></div></div></td>
         <td>${h(kinds[item.kind])}</td><td>${accountStatus(item)}</td>
         <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
       <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div><div class="catalog-bottom" data-platform-count>共 ${users.length} 个账号</div></section>
-      ${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}
+      <div data-account-detail-slot>${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}</div>
     </div>
+    ${users.filter((item) => item !== user).map((item) => `<template data-account-detail="${h(item.id)}">${accountDetail(item, access, superAdmin)}</template>`).join("")}
     ${assignmentEditor(access, superAdmin)}
     ${editor("delete-account", "删除用户", operationForm("accounts", "",
       '<p>确定删除<strong data-delete-name></strong>？</p><p class="system-notice" data-delete-impact></p>', "确认删除", "delete"))}
@@ -217,13 +220,17 @@ function scopeInputs(clusters: Entry[], businesses: Entry[]): string {
     <label>环境<select name="environment">${options(Object.entries(environments).map(([id, name]) => ({ id, name })), "development")}</select></label>
     <label>集群<select name="cluster"><option value="">整个环境</option>${clusterScopeOptions(clusters, undefined)}</select></label>
     <label data-scope-business hidden>业务线<select name="business" disabled><option value="">请选择</option>${options(businesses)}</select></label>
-    <label>命名空间<select name="namespace" data-scope-namespace disabled><option value="">全部</option></select></label>
+    <div class="system-scope-namespaces"><fieldset class="system-choice-group"><legend>命名空间</legend>
+      <div class="system-choice-list" data-scope-namespace></div>
+      <label data-entire-cluster hidden><input type="checkbox" name="entireCluster" disabled>整个集群</label>
+      <button type="button" class="button secondary" data-scope-retry hidden>重试加载</button>
+    </fieldset></div>
   </fieldset>`;
 }
 
 function scopeRow(scope: Scope): string {
   return `<div class="system-scope-row" data-saved-scope="${h(JSON.stringify(scope))}">
-    <span>${scopeText(scope)}</span><button type="button" class="button secondary" data-scope-remove>移除</button></div>`;
+    <span><strong>历史诊断查看</strong><br>${scopeText(scope)}</span><button type="button" class="button secondary" data-scope-remove>移除</button></div>`;
 }
 
 async function renderAccess(tab?: string): Promise<string> {
@@ -236,35 +243,64 @@ async function renderAccess(tab?: string): Promise<string> {
     operationForm("access", group?.id ?? "", `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"></label>
       <label>用途<input name="description" maxlength="256" value="${h(group?.description)}"></label>
       <div data-replace-group-roles>${choices("roles", "关联角色", available, group?.roles)}</div>`, "保存用户组", "group-save"));
-  const roleEditor = (role?: Role) => editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
-    operationForm("access", role?.id ?? "", `<label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
-      <h3>历史诊断查看</h3>
-      <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-      <p class="system-scope-empty">尚未添加权限范围。</p>
-      ${scopeInputs(clusters.items, businesses)}
-      <button type="button" class="button secondary" data-scope-add>＋ 添加范围</button>`, "保存角色", "role-save"));
+  const roleEditor = (role?: Role) => {
+    const refs = roleReferences(role?.id, users, access.groups);
+    return editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
+      `<form class="system-form" data-platform="access" data-id="${h(role?.id)}" data-role-edit
+          data-role-original="${h(JSON.stringify(role ?? null))}">
+        <div class="system-editor-body" data-role-draft>
+          <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
+          <h3>已配置权限</h3>
+          <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
+          <p class="system-scope-empty">尚未添加权限范围。</p>
+          ${scopeInputs(clusters.items, businesses)}
+          <div class="system-actions"><button type="button" class="button secondary" data-scope-add>添加到清单</button>
+          <button type="button" class="button" data-scope-add="preview">添加并预览</button></div>
+        </div>
+        <div class="system-editor-body" data-role-preview hidden>
+          <h3 tabindex="-1">核对角色变更</h3>
+          <p class="system-notice">直接关联 ${refs.direct} 人 · 关联用户组 ${refs.groups} 个 · 涉及账号 ${refs.affected} 人（去重）</p>
+          <div data-role-diff></div>
+        </div>
+        <p class="system-editor-status" role="status" aria-live="polite"></p>
+        <footer class="system-dialog-footer">
+          <button type="button" class="button secondary" data-system-close>取消</button>
+          <button type="button" class="button secondary" data-role-back hidden>返回编辑</button>
+          ${submit("预览已配置权限", "role-preview")}
+          <button class="button" type="submit" value="role-save" hidden disabled>确认保存</button>
+        </footer>
+      </form>`);
+  };
   const remove = (item: Entry, kind: "group" | "role") => editor(`remove:${item.id}`, "确认删除",
     operationForm("access", item.id, `<p>确定删除「${h(item.name)}」？存在引用时会保留该条目。</p>`, "确认删除", `${kind}-delete`));
   const headers = groups ? ["用户组", "关联角色", "成员", "操作"] : ["角色", "范围", "引用", "操作"];
   const rows = groups ? access.groups.map((group) => `<tr><td><strong>${h(group.name)}</strong><br><small>${h(group.description)}</small></td>
-    <td>${names(group.roles, access.roles)}</td><td>${users.filter((user) => user.groups?.includes(group.id)).length} 人</td>
+    <td><div class="system-actions">${group.roles?.map((id) => {
+      const role = access.roles.find((item) => item.id === id);
+      return role ? `<button type="button" class="account-role-link" data-system-open="role:${h(role.id)}">${h(role.name)}</button>` : h(id);
+    }).join("") || "—"}</div></td><td>${users.filter((user) => user.groups?.includes(group.id)).length} 人</td>
     <td><div class="system-actions">${editButton("编辑", `group:${group.id}`, true)}${editButton("删除", `remove:${group.id}`, true)}</div></td></tr>`)
     : access.roles.map((role) => `<tr><td><strong>${h(role.name)}</strong>${role.fixed ? ' <span class="system-badge">预置</span>' : ""}</td>
     <td>${role.id === systemAdministratorRole ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断权限`}</td>
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
-  return `<div class="platform-heading"><div><h2>权限配置</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div>${groups ? editButton("＋ 新建用户组", "group:") : editButton("＋ 新建角色", "role:")}</div>
+  return `<div class="platform-heading"><div><h2>权限配置</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
+      editButton("权限目录", "permission-catalog", true) + editButton("＋ 新建角色", "role:")}</div></div>
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
-      <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色</a>
+      <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色配置</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
     </nav><div class="catalog-table-wrap" role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
       <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
       ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
-    ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") :
-      roleEditor() + access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
+    ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") : roleEditor()}
+    ${editor("permission-catalog", "权限目录", `<dl class="system-editor-body account-bindings">
+      <div class="account-binding"><dt>诊断控制台</dt><dd>历史诊断查看可按环境和资源范围授予。</dd></div>
+      <div class="account-binding"><dt>运维知识库</dt><dd>Wiki 只读试点默认关闭。AI 复核、Wiki 发布与同步沿用各自现行授权。</dd></div>
+      <div class="account-binding"><dt>平台管理</dt><dd>资源维护、账号与 LDAP 管理、审计使用现有管理员边界。</dd></div></dl>`)}
+    ${access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
         `<div class="system-editor-body"><p class="system-notice">预置角色的权限固定，始终禁止删除。</p>${role.scopes?.map((scope) => `<p>历史诊断查看 · ${scopeText(scope)}</p>`).join("") || "<p>管理系统与全局诊断</p>"}</div>`)
-        : roleEditor(role) + remove(role, "role")).join("")}`;
+        : roleEditor(role) + (groups ? "" : remove(role, "role"))).join("")}`;
 }
 
 export function renderPlatform(resource: string, id: string | undefined, superAdmin: boolean): Promise<string> {
@@ -274,8 +310,14 @@ export function renderPlatform(resource: string, id: string | undefined, superAd
 
 export async function submitPlatform(form: HTMLFormElement, action: string, reload: () => void): Promise<void> {
   const status = form.querySelector<HTMLElement>('[role="status"]');
-  const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]')];
-  if (!status || buttons.some((button) => button.disabled)) return;
+  const dialog = form.closest<HTMLDialogElement>("dialog");
+  if (!status || dialog?.hasAttribute("aria-busy")) return;
+  const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]:not(:disabled)')];
+  if (action === "role-preview") {
+    previewRole(form);
+    return;
+  }
+  if (action === "role-save" && form.querySelector<HTMLElement>("[data-role-preview]")?.hidden !== false) return;
   const data = new FormData(form);
   if (action === "assignment") {
     const group = form.querySelector<HTMLSelectElement>("[data-assignment-kind]")?.value === "groups";
@@ -289,20 +331,19 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     status.textContent = "请选择目标及授权项。";
     return;
   }
-  const scopes = [...form.querySelectorAll<HTMLElement>("[data-saved-scope]")]
-    .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
+  const scopes = savedScopes(form);
   if (action === "role-save" && scopes.length === 0) {
     status.textContent = "请添加至少一项授权范围。";
     return;
   }
   for (const button of buttons) button.disabled = true;
-  const dialog = form.closest<HTMLDialogElement>("dialog");
   dialog?.setAttribute("aria-busy", "true");
   status.textContent = "正在保存…";
   try {
     const response = await fetch(`/api/v1/admin/${form.dataset.platform}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, id: form.dataset.id, ids, values, scopes,
+        previousRole: action === "role-save" ? originalRole(form) : undefined,
         roleIds: form.querySelector("[data-replace-group-roles]") ? data.getAll("roles") : undefined,
         name: data.get("name") ?? "", description: data.get("description") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
     });
@@ -311,17 +352,28 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       return;
     }
     const results = await response.json() as { id: string; reason?: string }[];
-    if (dialog && (ids.length > 0 || action.startsWith("group-roles"))) {
+    if (dialog && (["join", "leave", "grant", "revoke"].includes(action) || action.startsWith("group-roles"))) {
+      const auditReference = auditRecordReference(response.headers.get("X-Operation-Audit-Ref"));
       const title = dialog.querySelector("#system-dialog-title");
       if (title) title.textContent = "授权操作结果";
       form.outerHTML = `<div class="system-editor-body"><div class="catalog-table-wrap"><table class="catalog-table">
         <thead><tr><th>账号或角色</th><th>结果</th><th>说明</th></tr></thead>
         <tbody>${results.map(({ id, reason }) => `<tr><td>${h(id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
           ${reason ? "失败" : "成功"}</span></td><td>${h(reason || "已更新关联关系")}</td></tr>`).join("")}</tbody>
-        </table></div></div><footer class="system-dialog-footer"><button class="button" type="button" data-system-close>完成并刷新</button></footer>`;
+        </table></div></div><footer class="system-dialog-footer">
+        <button class="button${auditReference ? " secondary" : ""}" type="button" data-system-close>完成并刷新</button>
+        ${auditReference ? `<a class="button" href="${h(auditLocation({ record: auditReference }))}">查看本次审计</a>` : ""}</footer>`;
       const hash = window.location.hash;
       dialog.addEventListener("close", () => {
-        if (dialog.isConnected && window.location.hash === hash) reload();
+        if (!dialog.isConnected || window.location.hash !== hash) return;
+        if (form.dataset.id && hash.startsWith("#/admin/users")) {
+          const detail = `#/admin/users/${encodeURIComponent(form.dataset.id)}`;
+          if (detail !== hash) {
+            window.location.hash = detail;
+            return;
+          }
+        }
+        reload();
       }, { once: true });
       dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
     } else if (action === "delete" && window.location.hash !== "#/admin/users") {
@@ -338,51 +390,59 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
   }
 }
 
+function openPlatformEditor(panel: HTMLElement, key: string): void {
+  const dialog = panel.querySelector<HTMLDialogElement>("[data-system-dialog]");
+  if (!dialog || dialog.open) return;
+  const template = [...panel.querySelectorAll<HTMLTemplateElement>("[data-system-editor]")]
+    .find((item) => item.dataset.systemEditor === key);
+  if (template) {
+    dialog.classList.toggle("system-role-dialog", key.startsWith("role:"));
+    dialog.replaceChildren(template.content.cloneNode(true));
+    if (key === "batch") {
+      const form = dialog.querySelector("form");
+      const selected = [...panel.querySelectorAll<HTMLInputElement>('[data-platform-row]:not([hidden]) input[name="ids"]:checked:not(:disabled)')];
+      if (!form || !selected.length) return;
+      for (const account of selected) {
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "ids";
+        hidden.value = account.value;
+        form.append(hidden);
+      }
+      const status = form.querySelector("[data-assignment-target]");
+      if (status) status.textContent = `已选 ${selected.length} 个账号`;
+    }
+    if (key === "delete-account") {
+      const row = selectedAccountForDeletion(panel);
+      const form = dialog.querySelector("form");
+      const label = form?.querySelector("[data-delete-name]");
+      const impact = form?.querySelector("[data-delete-impact]");
+      const box = row?.querySelector<HTMLInputElement>('input[name="ids"]');
+      if (!row || !form || !label || !impact || !box) return;
+      form.dataset.id = box.value;
+      label.textContent = `「${row.dataset.accountName}」`;
+      impact.textContent = row.dataset.kind === "ldap" ?
+        "删除后会立即结束已有会话并收回平台权限。该员工将无法通过原 LDAP 身份再次登录本系统，公司目录账号不受影响。" :
+        "删除后会立即结束已有会话并移除该账号及其权限关联。此操作不可撤销。";
+      form.querySelector('button[type="submit"]')?.classList.add("catalog-danger-fill");
+    }
+    const assignment = dialog.querySelector<HTMLFormElement>("form:has([data-assignment-kind])");
+    if (assignment) updateAssignmentOptions(assignment);
+    dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
+    dialog.showModal();
+    if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
+    for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
+  }
+}
+
 export function handlePlatformClick(event: MouseEvent): void {
   if (!(event.target instanceof HTMLElement)) return;
   const target = event.target;
-  const panel = target.closest(".identity-panel");
+  const panel = target.closest<HTMLElement>(".identity-panel");
   const dialog = panel?.querySelector<HTMLDialogElement>("[data-system-dialog]");
   const opener = target.closest<HTMLButtonElement>("[data-system-open]");
   if (opener && panel && dialog && !dialog.open) {
-    const key = opener.dataset.systemOpen;
-    const template = [...panel.querySelectorAll<HTMLTemplateElement>("[data-system-editor]")]
-      .find((item) => item.dataset.systemEditor === key);
-    if (template) {
-      dialog.replaceChildren(template.content.cloneNode(true));
-      if (key === "batch") {
-        const form = dialog.querySelector("form");
-        const selected = [...panel.querySelectorAll<HTMLInputElement>('[data-platform-row] input[name="ids"]:checked:not(:disabled)')];
-        if (!form || !selected.length) return;
-        for (const account of selected) {
-          const hidden = document.createElement("input");
-          hidden.type = "hidden";
-          hidden.name = "ids";
-          hidden.value = account.value;
-          form.append(hidden);
-        }
-        const status = form.querySelector("[data-assignment-target]");
-        if (status) status.textContent = `已选 ${selected.length} 个账号`;
-      }
-      if (key === "delete-account") {
-        const row = selectedAccountForDeletion(panel);
-        const form = dialog.querySelector("form");
-        const label = form?.querySelector("[data-delete-name]");
-        const impact = form?.querySelector("[data-delete-impact]");
-        const box = row?.querySelector<HTMLInputElement>('input[name="ids"]');
-        if (!row || !form || !label || !impact || !box) return;
-        form.dataset.id = box.value;
-        label.textContent = `「${row.dataset.accountName}」`;
-        impact.textContent = row.dataset.kind === "ldap" ?
-          "删除后会立即结束已有会话并收回平台权限。该员工将无法通过原 LDAP 身份再次登录本系统，公司目录账号不受影响。" :
-          "删除后会立即结束已有会话并移除该账号及其权限关联。此操作不可撤销。";
-        form.querySelector('button[type="submit"]')?.classList.add("catalog-danger-fill");
-      }
-      dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
-      dialog.showModal();
-      if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
-      for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
-    }
+    openPlatformEditor(panel, opener.dataset.systemOpen ?? "");
     return;
   }
   if (target.closest("[data-system-close]") && dialog?.open && !dialog.hasAttribute("aria-busy")) dialog.close();
@@ -400,38 +460,13 @@ export function handlePlatformClick(event: MouseEvent): void {
       master.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
-  if (target.closest("[data-scope-add]")) {
-    const form = target.closest("form");
-    const list = form?.querySelector("[data-scope-list]");
-    const status = form?.querySelector('[role="status"]');
-    if (!form || !list || !status || dialog?.hasAttribute("aria-busy")) return;
-    if (form.querySelector("[data-scope][aria-busy]")) {
-      status.textContent = "正在加载命名空间，请稍候。";
-      return;
-    }
-    const data = new FormData(form);
-    const scope = {
-      environment: String(data.get("environment") ?? ""),
-      cluster: String(data.get("cluster") ?? ""),
-      business: String(data.get("business") ?? ""),
-      namespace: String(data.get("namespace") ?? ""),
-    };
-    if ((scope.environment === "staging" || scope.environment === "production") &&
-        (!scope.cluster || !scope.business || !scope.namespace)) {
-      status.textContent = "请选择集群、业务线和命名空间。";
-      return;
-    }
-    const duplicate = [...list.querySelectorAll<HTMLElement>("[data-saved-scope]")].some((row) => {
-      const existing = JSON.parse(row.dataset.savedScope ?? "{}") as Scope;
-      return (["environment", "cluster", "business", "namespace"] as const).every((key) =>
-        (existing[key] ?? "") === scope[key]);
-    });
-    if (duplicate) {
-      status.textContent = "该授权范围已添加。";
-      return;
-    }
-    list.insertAdjacentHTML("beforeend", scopeRow(scope));
-    status.textContent = "";
+  const scopeButton = target.closest<HTMLElement>("[data-scope-add]");
+  const form = target.closest("form");
+  if (form && !dialog?.hasAttribute("aria-busy")) {
+    if (scopeButton && addScopes(form) && scopeButton.dataset.scopeAdd === "preview") previewRole(form);
+    if (target.closest("[data-role-back]")) showRolePreview(form, false);
+    const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
+    if (retry) void refreshScope(retry);
   }
   if (target.closest("[data-scope-remove]") && !dialog?.hasAttribute("aria-busy")) {
     target.closest("[data-saved-scope]")?.remove();
@@ -444,8 +479,32 @@ function selectedAccountForDeletion(panel: Element): HTMLElement | undefined {
   if (selected.length === 1 && row) return row;
 }
 
+const accountDetails = new WeakMap<Element, Map<string, HTMLElement>>();
+
+function showAccountDetail(panel: Element, id: string): void {
+  const slot = panel.querySelector("[data-account-detail-slot]");
+  if (!slot) return;
+  const active = slot.querySelector<HTMLElement>("[data-user-detail]");
+  if (active?.dataset.userDetail === id) return;
+  const saved = accountDetails.get(panel) ?? new Map<string, HTMLElement>();
+  accountDetails.set(panel, saved);
+  if (active?.dataset.userDetail) saved.set(active.dataset.userDetail, active);
+  const template = [...panel.querySelectorAll<HTMLTemplateElement>("[data-account-detail]")]
+    .find((candidate) => candidate.dataset.accountDetail === id);
+  const node = saved.get(id) ?? template?.content.cloneNode(true);
+  if (node) slot.replaceChildren(node);
+  else slot.innerHTML = '<section class="system-card system-detail"><p>请选择一个账号。</p></section>';
+  for (const row of panel.querySelectorAll<HTMLElement>("[data-platform-row]")) {
+    row.classList.toggle("system-current-row", row.dataset.id === id);
+  }
+}
+
 export function filterAccounts(event: Event): void {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.hasAttribute("data-assignment-search")) {
+    if (target.form) updateAssignmentOptions(target.form);
+    return;
+  }
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
       !target.matches('[data-platform-filter], [data-platform-select-all], input[name="ids"]')) return;
   const panel = target.closest(".identity-panel");
@@ -455,14 +514,18 @@ export function filterAccounts(event: Event): void {
   const kind = field("kind");
   const status = field("status");
   const visible: HTMLInputElement[] = [];
-  let matching = 0;
+  const matching: HTMLElement[] = [];
   for (const row of panel.querySelectorAll<HTMLElement>("[data-platform-row]")) {
     row.hidden = Boolean((kind && row.dataset.kind !== kind) || (status && row.dataset.status !== status) ||
       !row.textContent?.toLowerCase().includes(search));
-    if (!row.hidden) matching++;
+    if (!row.hidden) matching.push(row);
     const box = row.querySelector<HTMLInputElement>('input[name="ids"]');
     if (box?.checked && row.hidden) box.checked = false;
     if (box && !box.disabled && !row.hidden) visible.push(box);
+  }
+  if (target.hasAttribute("data-platform-filter")) {
+    if (matching.length === 1) showAccountDetail(panel, matching[0]?.dataset.id ?? "");
+    else if (!matching.some((row) => row.classList.contains("system-current-row"))) showAccountDetail(panel, "");
   }
   const all = panel.querySelector<HTMLInputElement>("[data-platform-select-all]");
   if (all && target === all) for (const item of visible) item.checked = all.checked;
@@ -478,42 +541,148 @@ export function filterAccounts(event: Event): void {
   const count = panel.querySelector("[data-platform-selected]");
   if (count) count.textContent = `已选 ${selected} 项`;
   const empty = panel.querySelector<HTMLElement>("[data-platform-empty]");
-  if (empty) empty.hidden = matching > 0;
+  if (empty) empty.hidden = matching.length > 0;
   const total = panel.querySelector("[data-platform-count]");
-  if (total) total.textContent = `共 ${matching} 个账号`;
+  if (total) total.textContent = `共 ${matching.length} 个账号`;
+}
+
+function updateAssignmentOptions(form: HTMLFormElement): void {
+  const kind = form.querySelector<HTMLSelectElement>("[data-assignment-kind]")?.value;
+  const remove = form.querySelector<HTMLSelectElement>("[data-assignment-mode]")?.value === "remove";
+  const search = form.querySelector<HTMLInputElement>("[data-assignment-search]")?.value.trim().toLowerCase() ?? "";
+  let matches = 0;
+  for (const pane of form.querySelectorAll<HTMLElement>("[data-assignment-options]")) {
+    pane.hidden = pane.dataset.assignmentOptions !== kind;
+    for (const option of pane.querySelectorAll<HTMLElement>("[data-assignment-choice]")) {
+      const box = option.querySelector("input");
+      if (!box) continue;
+      const associated = option.dataset.associated === "true";
+      option.hidden = (remove && !!form.dataset.id && !associated) || !option.textContent?.toLowerCase().includes(search);
+      box.disabled = pane.hidden || (remove ? !!form.dataset.id && !associated : associated);
+      if (box.disabled) box.checked = false;
+      if (!pane.hidden && !option.hidden) matches++;
+    }
+  }
+  const empty = form.querySelector<HTMLElement>("[data-assignment-empty]");
+  if (empty) empty.hidden = matches > 0;
+}
+
+function originalRole(form: HTMLFormElement): Role | null {
+  return JSON.parse(form.dataset.roleOriginal ?? "null") as Role | null;
+}
+
+function savedScopes(form: HTMLFormElement): Scope[] {
+  return [...form.querySelectorAll<HTMLElement>("[data-saved-scope]")]
+    .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
+}
+
+function addScopes(form: HTMLFormElement): boolean {
+  const list = form.querySelector("[data-scope-list]");
+  const status = form.querySelector('[role="status"]');
+  const field = form.querySelector<HTMLElement>("[data-scope]");
+  if (!list || !status || !field) return false;
+  if (field.hasAttribute("aria-busy") || field.dataset.scopeUnavailable === "true") {
+    status.textContent = field.hasAttribute("aria-busy") ? "正在加载命名空间，请稍候。" : "请重试加载命名空间。";
+    return false;
+  }
+  const data = new FormData(form);
+  const environment = String(data.get("environment") ?? "");
+  const cluster = String(data.get("cluster") ?? "");
+  const business = String(data.get("business") ?? "");
+  const namespaces = data.getAll("namespace").map(String);
+  if (restrictedScope(environment) && (!cluster || !business || !namespaces.length)) {
+    status.textContent = "请选择集群、业务线和至少一个命名空间。";
+    return false;
+  }
+  if (cluster && !namespaces.length && !data.has("entireCluster")) {
+    status.textContent = "请勾选命名空间或明确选择整个集群。";
+    return false;
+  }
+  const candidates = (namespaces.length ? namespaces : [""]).map((namespace) => ({ environment, cluster, business, namespace }));
+  const { added } = scopeDifference(savedScopes(form), candidates);
+  list.insertAdjacentHTML("beforeend", added.map(scopeRow).join(""));
+  for (const box of field.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) box.checked = false;
+  status.textContent = added.length ? `已添加 ${added.length} 项权限。` : "所选范围已在清单中。";
+  return true;
+}
+
+function showRolePreview(form: HTMLFormElement, showing: boolean): void {
+  const draft = form.querySelector<HTMLElement>("[data-role-draft]");
+  const preview = form.querySelector<HTMLElement>("[data-role-preview]");
+  const previewButton = form.querySelector<HTMLButtonElement>('[value="role-preview"]');
+  const confirm = form.querySelector<HTMLButtonElement>('[value="role-save"]');
+  const back = form.querySelector<HTMLButtonElement>("[data-role-back]");
+  if (!draft || !preview || !previewButton || !confirm || !back) return;
+  draft.hidden = showing;
+  preview.hidden = !showing;
+  previewButton.hidden = previewButton.disabled = showing;
+  confirm.hidden = confirm.disabled = !showing;
+  back.hidden = !showing;
+  form.querySelector<HTMLElement>('[role="status"]')?.replaceChildren();
+  if (showing) preview.querySelector("h3")?.focus();
+  else previewButton.focus();
+}
+
+function previewRole(form: HTMLFormElement): void {
+  const diff = form.querySelector("[data-role-diff]");
+  const status = form.querySelector('[role="status"]');
+  if (!diff || !status || !form.reportValidity()) return;
+  const scopes = savedScopes(form);
+  const name = String(new FormData(form).get("name") ?? "").trim();
+  if (!name || !scopes.length || form.querySelector('[name="namespace"]:checked, [name="entireCluster"]:checked')) {
+    const message = !name ? "请输入角色名称。" : "请先把已选范围加入清单。";
+    status.textContent = !scopes.length && name ? "请添加至少一项授权范围。" : message;
+    return;
+  }
+  const original = originalRole(form);
+  const { added, removed } = scopeDifference(original?.scopes ?? [], scopes);
+  const section = (title: string, entries: Scope[]) => `<h4>${title} · ${entries.length} 项</h4>${
+    entries.length ? `<ul>${entries.map((item) => `<li>历史诊断查看 · ${scopeText(item)}</li>`).join("")}</ul>` : "<p>无</p>"}`;
+  diff.innerHTML = `<p>角色名称 ${h(name)}${original && original.name !== name ? `（原名称 ${h(original.name)}）` : ""}</p>${
+    section("新增权限", added)}${section("移除权限", removed)}`;
+  showRolePreview(form, true);
 }
 
 const scopeRequests = new WeakMap<HTMLElement, AbortController>();
+const restrictedScope = (environment: string): boolean => environment === "production" || environment === "staging";
 
 export async function updateScopeOptions(event: Event): Promise<void> {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.type === "checkbox" &&
+      (target.name === "namespace" || target.name === "entireCluster") && target.checked) {
+    const alternative = target.name === "namespace" ? "entireCluster" : "namespace";
+    for (const box of target.closest("[data-scope]")?.querySelectorAll<HTMLInputElement>(`input[name="${alternative}"]`) ?? []) box.checked = false;
+  }
   if (!(target instanceof HTMLSelectElement)) return;
-  if (target.hasAttribute("data-assignment-kind")) {
-    for (const pane of target.form?.querySelectorAll<HTMLElement>("[data-assignment-options]") ?? []) {
-      pane.hidden = pane.dataset.assignmentOptions !== target.value;
-    }
+  if (target.matches("[data-assignment-kind], [data-assignment-mode]") && target.form) {
+    updateAssignmentOptions(target.form);
   }
   const field = target.closest<HTMLElement>("[data-scope]");
-  if (field && ["cluster", "business", "environment"].includes(target.name)) {
-    if (target.name === "environment") {
-      const cluster = field.querySelector<HTMLSelectElement>('[name="cluster"]');
-      if (cluster) cluster.value = "";
-    }
-    await refreshScope(field);
+  if (!field || !["cluster", "business", "environment"].includes(target.name)) return;
+  if (target.name === "environment") {
+    const cluster = field.querySelector<HTMLSelectElement>('[name="cluster"]');
+    if (cluster) cluster.value = "";
   }
+  if (target.name !== "business") {
+    const business = field.querySelector<HTMLSelectElement>('[name="business"]');
+    if (business) business.value = "";
+  }
+  await refreshScope(field);
 }
 
 async function refreshScope(field: HTMLElement): Promise<void> {
   const cluster = field.querySelector<HTMLSelectElement>('[name="cluster"]');
   const business = field.querySelector<HTMLSelectElement>('[name="business"]');
-  const namespace = field.querySelector<HTMLSelectElement>("[data-scope-namespace]");
+  const namespace = field.querySelector<HTMLElement>("[data-scope-namespace]");
   const env = field.querySelector<HTMLSelectElement>('[name="environment"]');
-  if (!cluster || !business || !namespace || !env) return;
+  const whole = field.querySelector<HTMLInputElement>('[name="entireCluster"]');
+  const retry = field.querySelector<HTMLButtonElement>("[data-scope-retry]");
+  if (!cluster || !business || !namespace || !env || !whole || !retry) return;
   scopeRequests.get(field)?.abort();
   const controller = new AbortController();
   scopeRequests.set(field, controller);
-  const restricted = env.value === "production" || env.value === "staging";
-  if (cluster.options[0]) cluster.options[0].text = restricted ? "请选择" : "整个环境";
+  const restricted = restrictedScope(env.value);
+  if (cluster.options[0]) cluster.options[0].text = restricted ? "请选择集群" : "整个环境";
   for (const option of cluster.options) {
     option.hidden = Boolean(option.dataset.scopeEnv && option.dataset.scopeEnv !== env.value);
     option.disabled = option.hidden;
@@ -522,26 +691,37 @@ async function refreshScope(field: HTMLElement): Promise<void> {
   if (businessField) businessField.hidden = !restricted;
   business.disabled = !restricted || !cluster.value;
   if (!restricted) business.value = "";
-  const placeholder = `<option value="">${restricted ? "请选择" : "全部"}</option>`;
-  namespace.disabled = true;
-  namespace.innerHTML = placeholder;
+  field.dataset.scopeUnavailable = "false";
+  retry.hidden = true;
+  whole.disabled = true;
+  whole.checked = false;
+  whole.closest("label")?.setAttribute("hidden", "");
   if (!cluster.value || (restricted && !business.value)) {
+    namespace.textContent = restricted ? "请先选择集群和业务线。" : "当前范围为整个环境。";
     field.removeAttribute("aria-busy");
     return;
   }
+  namespace.textContent = "正在加载命名空间…";
   field.setAttribute("aria-busy", "true");
   try {
     const response = await fetch(`/api/v1/admin/namespace-business?cluster=${encodeURIComponent(cluster.value)}`, { signal: controller.signal });
     if (!response.ok) throw new Error("namespaces unavailable");
     const data = await response.json() as { namespaces: { name: string }[]; assigned: Record<string, string[]> };
     if (scopeRequests.get(field) !== controller) return;
-    const names = (data.namespaces ?? []).filter(({ name }) => !restricted || data.assigned[name]?.includes(business.value));
-    const entries = names.map(({ name }) => ({ id: name, name }));
-    namespace.innerHTML += options(entries);
-    namespace.disabled = false;
+    const names = [...new Set((data.namespaces ?? []).filter(({ name }) =>
+      !restricted || data.assigned?.[name]?.includes(business.value)).map(({ name }) => name))];
+    namespace.innerHTML = names.length ? names.map((name) =>
+      `<label><input type="checkbox" name="namespace" value="${h(name)}"><span>${h(name)}</span></label>`).join("") :
+      "<p>暂无可选命名空间。</p>";
+    if (!restricted) {
+      whole.disabled = false;
+      whole.closest("label")?.removeAttribute("hidden");
+    }
   } catch {
     if (controller.signal.aborted) return;
-    namespace.innerHTML = '<option value="">命名空间暂不可用</option>';
+    namespace.textContent = "命名空间暂不可用。";
+    field.dataset.scopeUnavailable = "true";
+    retry.hidden = false;
   } finally {
     if (scopeRequests.get(field) === controller) field.removeAttribute("aria-busy");
   }

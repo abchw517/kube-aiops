@@ -285,3 +285,91 @@ func TestDeleteSelectedAccountsRevokesSessionsAndPreventsLDAPRegistration(t *tes
 		t.Fatalf("expected three high-risk deletion events, got %d, %v", count, err)
 	}
 }
+
+func TestAssignmentAuditReferenceAndRetention(t *testing.T) {
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "audit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a := &Admin{store: store}
+	ctx := t.Context()
+	if _, err := a.registerEmployee(ctx, "alice", identity.Principal{Subject: "ldap:alice"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.editPlatform(ctx, func(s *platformState, _ *sql.Tx) error {
+		s.Roles["reader"] = platformRole{ID: "reader", Name: "Reader"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	actor := identity.Principal{Subject: superSubject, Provider: AdminProvider}
+	request := func(method, resource, path, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		a.handlePlatform(w, httptest.NewRequest(method, path, strings.NewReader(body)), resource, actor)
+		if w.Code != want {
+			t.Fatalf("%s %s: %d, want %d: %s", method, resource, w.Code, want, w.Body)
+		}
+		return w
+	}
+	records := func(id string) []operation {
+		t.Helper()
+		w := request("GET", "operations", "/?record="+id+"&page=1&limit=10", "", 200)
+		var payload struct{ Items []operation }
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Items
+	}
+	single := request("POST", "accounts", "/", `{"action":"grant","id":"ldap:alice","values":["reader"]}`, 200)
+	id := single.Header().Get("X-Operation-Audit-Ref")
+	if id == "" {
+		t.Fatal("successful grant did not link a persisted audit event")
+	}
+	if items := records(id); len(items) != 1 || items[0].Target != "ldap:alice" || items[0].Batch != "" {
+		t.Fatalf("incorrect single audit: %+v", items)
+	}
+	batch := request("POST", "accounts", "/", `{"action":"revoke","ids":["ldap:alice","local:admin"],"values":["reader"]}`, 200)
+	batchID := batch.Header().Get("X-Operation-Audit-Ref")
+	if batchID == "" || batchID == id {
+		t.Fatal("batch did not link a distinct audit event")
+	}
+	if items := records(batchID); len(items) != 1 || items[0].Batch == "" || items[0].Result != "部分成功" {
+		t.Fatalf("incorrect batch audit: %+v", items)
+	}
+	request("PUT", "operations", "/", `{"low":3,"medium":5,"high":0}`, 204)
+	suppressed := request("POST", "accounts", "/", `{"action":"grant","id":"ldap:alice","values":["reader"]}`, 200)
+	if suppressed.Header().Get("X-Operation-Audit-Ref") != "" || len(records(id)) != 0 {
+		t.Fatal("audit shortcut revealed records excluded by retention")
+	}
+	request("PUT", "operations", "/", `{"low":3,"medium":5,"high":7}`, 204)
+	request("POST", "accounts", "/", `{"action":"revoke","id":"ldap:alice","values":["reader"]}`, 200)
+	if len(records(id)) != 0 || len(records(batchID)) != 0 {
+		t.Fatal("a purged link resolved to a later event")
+	}
+	request("GET", "operations", "/?record=invalid", "", 400)
+}
+
+func TestRoleSnapshotPreventsOverwritingConcurrentChange(t *testing.T) {
+	development := accessScope{Environment: "development"}
+	testingScope := accessScope{Environment: "testing"}
+	old := platformRole{ID: "reader", Name: "Reader", Scopes: []accessScope{development}}
+	state := platformState{Roles: map[string]platformRole{"reader": old}}
+	first := platformChange{Action: "role-save", ID: old.ID, Name: old.Name,
+		PreviousRole: &old, Scopes: []accessScope{development, testingScope, testingScope}}
+	if result := applyAccess(state, first); result.Reason != "" {
+		t.Fatal(result.Reason)
+	}
+	if role := state.Roles[old.ID]; !slices.Equal(role.Scopes, []accessScope{development, testingScope}) {
+		t.Fatalf("scopes were not deduplicated: %+v", role.Scopes)
+	}
+	stale := platformChange{Action: "role-save", ID: old.ID, Name: "Renamed",
+		PreviousRole: &old, Scopes: []accessScope{development}}
+	if result := applyAccess(state, stale); !strings.Contains(result.Reason, "其他操作修改") {
+		t.Fatalf("stale snapshot was accepted: %+v", result)
+	}
+	if role := state.Roles[old.ID]; role.Name != old.Name || !slices.Contains(role.Scopes, testingScope) {
+		t.Fatalf("stale write overwrote concurrent change: %+v", role)
+	}
+}

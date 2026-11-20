@@ -432,3 +432,12 @@ tbody tr:hover { background: #f5f8fd; }
 .cluster-table td .catalog-actions { min-width: 210px; }
 .system-editor-body h3, .system-editor-body > [role="status"] { margin: 0; }
 .system-editor-body > [data-scope-add] { justify-self: start; }
+
+.system-role-dialog { width: min(720px, calc(100% - 28px)); }
+.system-scope-namespaces { grid-column: 1 / -1; min-width: 0; }
+.system-scope-namespaces .system-choice-list { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.system-scope-namespaces [data-entire-cluster] { margin-top: 8px; }
+.system-scope-namespaces label, .system-scope-row span { overflow-wrap: anywhere; }
+.account-role-link { padding: 2px 0; border: 0; background: none; color: var(--teal); cursor: pointer; text-align: start; text-decoration: underline; }
+.system-editor-status { margin: 0; padding: 0 18px 10px; }
+.system-dialog [hidden], [data-account-detail-slot] [hidden] { display: none; }

@@ -72,7 +72,8 @@ func Open(path string) (*Store, error) {
 			target TEXT NOT NULL,
 			result TEXT NOT NULL,
 			reason TEXT NOT NULL,
-			batch TEXT NOT NULL
+			batch TEXT NOT NULL,
+			reference TEXT NOT NULL DEFAULT ''
 		);
 		CREATE INDEX IF NOT EXISTS operation_audit_batch ON operation_audit(batch);
 		CREATE INDEX IF NOT EXISTS operation_audit_action ON operation_audit(action, id);
@@ -272,7 +273,33 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrateAuditReference(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{DB: db, path: absolute}, nil
+}
+
+// migrateAuditReference provides stable audit links even when SQLite reuses deleted row IDs.
+func migrateAuditReference(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var exists bool
+	if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info('operation_audit') WHERE name='reference')").Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.Exec("ALTER TABLE operation_audit ADD COLUMN reference TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS operation_audit_reference ON operation_audit(reference) WHERE reference<>''"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // migrateAuditRetention 将旧版正整数约束升级为允许 0，保留已配置的各档天数。

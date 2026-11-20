@@ -6,7 +6,7 @@ export const auditPageSizes = [defaultAuditLimit, 20, 50];
 export const maxAuditLimit = 100;
 const filterNames = ["account", "action", "risk", "batch"] as const;
 
-export type AuditFilters = Partial<Record<typeof filterNames[number], string>> & { page?: number; limit?: number };
+export type AuditFilters = Partial<Record<typeof filterNames[number], string>> & { page?: number; limit?: number; record?: string };
 export type AuditRetention = Record<typeof auditLevels[number][0], number>;
 export type AuditOperation = {
   id: number; at: number; actor: string; action: string; risk: string; target: string;
@@ -32,12 +32,19 @@ export function readAuditFilters(fields: Pick<FormData, "get">): AuditFilters {
   return filters;
 }
 
+/** 审计链接使用稳定的事件标识。 */
+export function auditRecordReference(value: string | null): string | undefined {
+  if (value && /^[A-Z2-7]{26,64}$/.test(value)) return value;
+}
+
 /** 仅识别固定的审计入口，参数作为数据参与编码。 */
 export function parseAuditRoute(hash: string): AuditFilters | undefined {
   const [route, query] = hash.split(/\?(.*)/s, 2);
   if (route !== auditRoute) return undefined;
   const params = new URLSearchParams(query);
   const filters = readAuditFilters(params);
+  const record = auditRecordReference(params.get("record"));
+  if (record) filters.record = record;
   const page = Number(params.get("page"));
   if (Number.isSafeInteger(page) && page > 1 && /^[1-9]\d*$/.test(params.get("page") ?? "")) filters.page = page;
   const limit = readAuditLimit(params.get("limit"));
@@ -64,6 +71,7 @@ export function auditQuery(filters: AuditFilters): string {
     const value = filters[name];
     if (value) params.set(name, value);
   }
+  if (filters.record) params.set("record", filters.record);
   if (filters.page) params.set("page", String(filters.page));
   if (filters.limit) params.set("limit", String(filters.limit));
   const query = params.toString();

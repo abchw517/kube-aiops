@@ -95,3 +95,32 @@ func TestAuditRetentionMigrationPreservesConfiguredDays(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAuditReferenceMigrationPreservesLegacyEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "identity.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE operation_audit (
+  id INTEGER PRIMARY KEY, created_at INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
+  risk TEXT NOT NULL, target TEXT NOT NULL, result TEXT NOT NULL, reason TEXT NOT NULL, batch TEXT NOT NULL
+ );
+ INSERT INTO operation_audit VALUES (42,100,'local:admin','登录','低','admin','成功','','');`)
+	closeErr := db.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("prepare legacy database: %v %v", err, closeErr)
+	}
+	for range 2 {
+		store, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actor, reference string
+		err = store.QueryRow("SELECT actor, reference FROM operation_audit WHERE id=42").Scan(&actor, &reference)
+		closeErr = store.Close()
+		if err != nil || closeErr != nil || actor != "local:admin" || reference != "" {
+			t.Fatalf("legacy audit changed after opening: %q %q %v %v", actor, reference, err, closeErr)
+		}
+	}
+}

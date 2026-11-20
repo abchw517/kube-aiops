@@ -18,6 +18,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var auditRecordPattern = regexp.MustCompile(`^[A-Z2-7]{26,64}$`)
+
 var accountNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@-]{0,127}$`)
 
 type accountView struct {
@@ -34,16 +36,17 @@ type accountView struct {
 }
 
 type platformChange struct {
-	RoleIDs     *[]string
-	Description string
-	Action      string
-	ID          string
-	IDs         []string
-	Values      []string
-	Name        string
-	Kind        string
-	Password    string
-	Scopes      []accessScope
+	RoleIDs      *[]string
+	Description  string
+	Action       string
+	ID           string
+	IDs          []string
+	Values       []string
+	Name         string
+	Kind         string
+	Password     string
+	Scopes       []accessScope
+	PreviousRole *platformRole
 }
 
 type changeResult struct {
@@ -198,6 +201,8 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	}
 	results := make([]changeResult, 0, len(ids))
 	action, risk := labelChange(input.Action)
+	var auditReference string
+	assignment := input.Action == "join" || input.Action == "leave" || input.Action == "grant" || input.Action == "revoke"
 	err := a.editPlatform(ctx, func(state *platformState, tx *sql.Tx) error {
 		if actor.Subject != superSubject {
 			current := state.Accounts[actor.Subject]
@@ -249,8 +254,12 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 					if result.Reason != "" {
 						event.Result = "失败"
 					}
-					if err := writeOperation(ctx, tx, event); err != nil {
+					reference, err := storeOperation(ctx, tx, event, assignment && batch == "")
+					if err != nil {
 						return err
+					}
+					if assignment && batch == "" {
+						auditReference = reference
 					}
 				}
 			}
@@ -268,7 +277,9 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 			} else if success < len(results) {
 				outcome = "部分成功"
 			}
-			return writeOperation(ctx, tx, operation{Actor: actor.Subject, Action: action, Risk: risk, Target: "批量操作", Batch: batch, Result: outcome})
+			reference, err := storeOperation(ctx, tx, operation{Actor: actor.Subject, Action: action, Risk: risk, Target: "批量操作", Batch: batch, Result: outcome}, true)
+			auditReference = reference
+			return err
 		}
 		return nil
 	})
@@ -283,6 +294,9 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	if batch == "" && len(results) == 1 && results[0].Reason != "" {
 		http.Error(w, results[0].Reason, 409)
 		return
+	}
+	if auditReference != "" {
+		w.Header().Set("X-Operation-Audit-Ref", auditReference)
 	}
 	adminhttp.WriteJSON(w, results)
 }
@@ -454,6 +468,18 @@ func applyGroupRole(state platformState, input platformChange, role string) chan
 	return result
 }
 
+func uniqueAccessScopes(scopes []accessScope) []accessScope {
+	seen := make(map[accessScope]bool, len(scopes))
+	result := make([]accessScope, 0, len(scopes))
+	for _, scope := range scopes {
+		if !seen[scope] {
+			seen[scope] = true
+			result = append(result, scope)
+		}
+	}
+	return result
+}
+
 func applyAccess(state platformState, input platformChange) changeResult {
 	result := changeResult{ID: input.ID}
 	fail := func(reason string) changeResult { result.Reason = reason; return result }
@@ -469,6 +495,13 @@ func applyAccess(state platformState, input platformChange) changeResult {
 		if input.Action == "role-save" {
 			if state.role(input.ID).Fixed || input.ID != "" && state.Roles[input.ID].ID == "" {
 				return fail("该角色不可编辑")
+			}
+			if input.PreviousRole != nil {
+				current := state.Roles[input.ID]
+				before := input.PreviousRole
+				if current.ID != before.ID || current.Name != before.Name || !slices.Equal(current.Scopes, before.Scopes) {
+					return fail("角色已被其他操作修改。请刷新后重新核对")
+				}
 			}
 			if name == state.role(guestRole).Name || name == state.role(adminRole).Name {
 				return fail("角色名称已使用")
@@ -486,7 +519,7 @@ func applyAccess(state platformState, input platformChange) changeResult {
 					return fail("授权范围无效，生产与预发布须指定业务线和命名空间")
 				}
 			}
-			state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: input.Scopes}
+			state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: uniqueAccessScopes(input.Scopes)}
 		} else {
 			group := state.Groups[input.ID]
 			if input.ID != "" && group.ID == "" {
@@ -564,13 +597,17 @@ func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if q.Has("record") && !auditRecordPattern.MatchString(q.Get("record")) {
+		http.Error(w, "审计记录标识无效", http.StatusBadRequest)
+		return
+	}
 	now := time.Now().Unix()
 	payload, err := a.queryAuditOperations(r.Context(), q, now, page, limit)
 	if err != nil {
 		http.Error(w, "审计记录暂不可用", http.StatusServiceUnavailable)
 		return
 	}
-	if r.URL.RawQuery == "" || (page == 1 && q.Get("action") == "" && q.Get("risk") == "" && q.Get("account") == "" && q.Get("batch") == "") {
+	if r.URL.RawQuery == "" || (page == 1 && q.Get("action") == "" && q.Get("risk") == "" && q.Get("account") == "" && q.Get("batch") == "" && q.Get("record") == "") {
 		retention, err := a.auditRetention(r.Context())
 		if err != nil {
 			http.Error(w, "无法加载审计保留策略", http.StatusServiceUnavailable)
@@ -633,12 +670,16 @@ func (a *Admin) queryAuditOperations(ctx context.Context, q url.Values, now, pag
 	}
 	defer tx.Rollback()
 
-	const matching = ` FROM operation_audit WHERE NOT ` + auditExpired + `
+	matching := ` FROM operation_audit WHERE NOT ` + auditExpired + `
 		AND (?='' OR action=?) AND (?='' OR risk=?) AND (?='' OR instr(lower(actor),lower(?))>0 OR instr(lower(target),lower(?))>0)
 		AND (?='' OR batch=?)`
-	query := "SELECT id,created_at,actor,action,risk,target,result,reason,batch" + matching
 	args := []any{now, q.Get("action"), q.Get("action"), q.Get("risk"), q.Get("risk"),
 		q.Get("account"), q.Get("account"), q.Get("account"), q.Get("batch"), q.Get("batch")}
+	if reference := q.Get("record"); reference != "" {
+		matching += " AND reference<>'' AND reference=?"
+		args = append(args, reference)
+	}
+	query := "SELECT id,created_at,actor,action,risk,target,result,reason,batch" + matching
 	payload := map[string]any{"before": int64(0)}
 	if page == 0 {
 		query += " AND (?='' OR id<CAST(? AS INTEGER)) ORDER BY id DESC LIMIT ?"

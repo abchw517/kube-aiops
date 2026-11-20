@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  auditLocation, auditPageCount, maxRetentionDays, newlyDisabledAuditLevels, parseAuditRoute, readAuditLimit, readAuditRetention,
+  auditLocation, auditPageCount, auditRecordReference, maxRetentionDays, newlyDisabledAuditLevels, parseAuditRoute, readAuditLimit, readAuditRetention,
   type AuditOperation,
 } from "../src/views/permissions/audit-data.ts";
 import { renderAuditBatch, renderAuditDetail, renderAuditWorkspace } from "../src/views/permissions/audit-view.ts";
@@ -50,4 +50,13 @@ test("audit views keep retention read-only for administrators and escape event d
   assert.match(renderAuditDetail(item), /&lt;policy violation&gt;/);
   assert.match(renderAuditBatch({ items: [{ ...item, target: "批量操作" }, item], before: 0 }), /&lt;employee&gt;/);
   assert.doesNotMatch(renderAuditBatch({ items: [{ ...item, target: "批量操作" }, item], before: 0 }), /批量操作|<policy violation>/);
+});
+
+test("exact audit records round-trip through an opaque stable reference", () => {
+  const record = "ABCDEFGHIJKLMNOPQRSTUVWXY2";
+  assert.deepEqual(parseAuditRoute(auditLocation({ record })), { record });
+  for (const invalid of ["0", "1e3", "untrusted&risk=高", "1234567890"]) {
+    assert.equal(auditRecordReference(invalid), undefined);
+    assert.deepEqual(parseAuditRoute(`#/admin/operations?record=${encodeURIComponent(invalid)}`), {});
+  }
 });
