@@ -1,5 +1,7 @@
 # LLM Wiki 诊断闭环需求
 
+运维知识库下一轮迭代以 [v1.0 评审稿及其拆解](operations-knowledge/00-prd.md) 为评审依据。本文件保留 Phase 3 的设计及已交付接口背景。
+
 依据 [集成设计](llm-wiki-integration.md)。首期面向 Portal，保留 K8sGPT Result CR 的原始内容。沿用多集群 Finding、资源授权、现场证据和 Engine 模型连接。由 kube-aiops 提供内嵌 Wiki 服务、存储及接口，从空库部署。
 
 ## 用户与权限

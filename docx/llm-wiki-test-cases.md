@@ -1,5 +1,7 @@
 # LLM Wiki 诊断闭环测试用例
 
+运维知识库下一轮迭代以 [v1.0 评审稿及其拆解](operations-knowledge/05-unit-test-cases.md) 为评审依据。本文件保留 Phase 3 的设计及已交付接口背景。
+
 诊断详情内的复核和独立发布见 [DC-UT04](diagnosis-console/05-unit-test-cases.md#dc-ut04)。含队列、索引和同步的用例用于 Wiki 后续验收。以 [需求文档](llm-wiki-requirements.md) 为准。表内 R 编号省略 WK 前缀。
 
 ## 测试数据
