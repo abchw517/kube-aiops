@@ -104,23 +104,37 @@ try {
       );
     }
     await assertText(cdp, (text) =>
-      text.includes("关联证据") && text.includes("ContainerBackOff") &&
-      text.includes("out_of_memory") && text.includes("部分可用") &&
-      text.includes("不可用") && text.includes("已禁用"),
-    "Finding Detail did not render grouped correlation evidence and source states");
+      text.includes("关联证据") && text.includes("2 条证据") &&
+      text.includes("部分可用") && text.includes("不可用") && text.includes("已禁用"),
+    "Finding Detail did not show collapsed evidence sources and source states");
 
     const evidenceEvaluation = await cdp.send("Runtime.evaluate", {
-      expression: `({
-        probe: Boolean(document.querySelector("#evidence-markup-probe")),
-        text: document.querySelector(".correlation-panel")?.innerText ?? "",
-        events: Array.from(document.querySelectorAll('[aria-label="Kubernetes 事件"] .evidence-signal-heading strong'), node => node.textContent)
-      })`,
+      expression: `(() => {
+        const events = document.querySelector('details[aria-label="Kubernetes 事件"]');
+        const logs = document.querySelector('details[aria-label="VictoriaLogs"]');
+        const panel = document.querySelector(".correlation-panel");
+        const startClosed = !events.open && !logs.open &&
+          !panel.innerText.includes("ContainerBackOff") && !panel.innerText.includes("out_of_memory");
+        events.querySelector("summary").click();
+        const text = panel.innerText;
+        events.querySelector("summary").click();
+        logs.querySelector("summary").click();
+        const logsVisible = logs.open && panel.innerText.includes("out_of_memory");
+        logs.querySelector("summary").click();
+        return {
+          startClosed, logsVisible, endsClosed: !events.open && !logs.open,
+          probe: Boolean(document.querySelector("#evidence-markup-probe")),
+          text,
+          events: Array.from(events.querySelectorAll(".evidence-signal-heading strong"), node => node.textContent),
+        };
+      })()`,
       returnByValue: true,
     });
     const evidence = evidenceEvaluation.result?.value ?? {};
-    if (evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
+    if (!evidence.startClosed || !evidence.logsVisible || !evidence.endsClosed ||
+      evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
       evidence.events?.join(",") !== "ContainerBackOff,Started") {
-      throw new Error(`Unexpected evidence markup or ranking: ${JSON.stringify(evidence)}`);
+      throw new Error(`Unexpected evidence folding, markup or ranking: ${JSON.stringify(evidence)}`);
     }
 
     await assertDetailLayout(cdp, 1440, 2);
@@ -283,7 +297,8 @@ try {
       "Review did not display the structured judgment, gaps and next action");
     const clickedEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector("[data-review-jump]").click();
-      return document.activeElement.dataset.evidenceSignal;
+      const target = document.activeElement;
+      return target.closest("details.evidence-source")?.open && target.dataset.evidenceSignal;
     })()` });
     if (clickedEvidence.result?.value !== "event-critical") throw new Error("Review citation did not focus the original event");
     const awaitingObservation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
@@ -296,6 +311,9 @@ try {
     await assertText(cdp, (text) => text.includes("模型响应超时。观察内容已保留，可以重新复核。") && text.includes("K8sGPT 原始说明"), "Model timeout was not recoverable inline");
     const observation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.querySelector("[data-review-observation]").value' });
     if (observation.result?.value !== "仓库返回 403") throw new Error("Review discarded the observation after failure");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("模型服务返回超时（HTTP 504）") && text.includes("观察内容已保留"),
+      "Upstream timeout was not distinguished from the app deadline");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("镜像仓库返回 403，仍需核对"), "Retry did not use the operator observation");
     await cdp.send("Runtime.evaluate", { expression: `(() => {

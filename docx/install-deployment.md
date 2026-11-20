@@ -342,7 +342,9 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 核对并编辑复核结论后，点击 **保存复核结论**。需要沉淀知识时，可另行预览并确认发布。若结论已被其他人更新，请先加载最新版本。
 
-诊断复核的模型请求默认等待 35 秒。可在 API 容器环境变量中设置 `FINDING_AI_PROVIDER_TIMEOUT`，取值范围为 `5s` 到 `40s`，本地和手动接入实例共用该配置。复核总时限为 50 秒，其中关联证据查询最多占 5 秒。HTTP 响应写入时限为 55 秒，入口代理应为此路由预留至少 60 秒。知识库问答继续受自身 30 秒总时限约束。
+诊断 AI 复核（包括补充观察后的重新复核）的模型请求默认等待 90 秒。API 容器环境变量 `FINDING_AI_PROVIDER_TIMEOUT` 支持 `5s` 到 `120s`，本地和手动接入实例共用该配置。升级前已显式配置旧值的环境需同步调整该值才能使用较长的等待时间。复核总时限为 135 秒，关联证据查询最多占 5 秒。启用诊断复核时，API 响应写入时限为 140 秒。知识库问答继续使用自身 30 秒总时限。
+
+发布时同步更新 API、Web 和 [API HTTPRoute](../deploy/api/httproute.yaml)。该清单仅为 `/api/v1/admin/finding-analysis` 设置 150 秒请求时限和 145 秒后端时限。域名前有 NGINX 时，将同一路径的 `proxy_read_timeout` 设为至少 `150s`。如果仍超时，检查 API 日志 `AI provider request failed` 中的 `elapsed_ms` 和 `upstream_status`，分别核对 API 等待时间与上游实际返回的超时状态。
 
 诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，现场观察内容保留，可直接重新复核。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。响应中缺少此错误码时，对照 Portal 入口代理日志和 API 请求日志判断等待发生在哪一层。
 

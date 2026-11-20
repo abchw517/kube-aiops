@@ -205,6 +205,7 @@ createServer(async (request, response) => {
     if (input.action === "assess") {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
       if (input.observation && ++observationRequests === 1) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
+      if (input.observation && observationRequests === 2) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT", upstreamStatus: 504 });
       return json(response, 200, {
         assessment: { state: "insufficient", judgment: input.observation ? "镜像仓库返回 403，仍需核对当前响应。" : "已有历史事件支持排查镜像仓库。", gaps: "当前镜像仓库响应", next: "核对最近一次拉取事件" },
         evidence: [{ source: "kubernetes-events", signalId: "event-critical", title: "ContainerBackOff", time: "2026-09-02T02:59:00Z", historical: true }],

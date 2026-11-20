@@ -53,12 +53,13 @@ func TestProviderTimeoutBudget(t *testing.T) {
 		value string
 		want  time.Duration
 	}{
-		{"", 35 * time.Second},
+		{"", 90 * time.Second},
 		{" 40s ", 40 * time.Second},
 		{"5s", 5 * time.Second},
 		{"25", 0},
 		{"0s", 0},
-		{"41s", 0},
+		{" 120s ", 120 * time.Second},
+		{"121s", 0},
 		{"4s", 0},
 	} {
 		t.Run(tc.value, func(t *testing.T) {

@@ -113,7 +113,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     if (response.status === 409) stale = true;
     if (!response.ok) {
       if (response.headers.get("Content-Type")?.includes("application/json")) {
-        const error = await response.json().catch(() => ({})) as { code?: string };
+        const error = await response.json().catch(() => ({})) as { code?: string; upstreamStatus?: number };
         const messages: Record<string, string> = {
           AI_PROVIDER_TIMEOUT: "模型响应超时。观察内容已保留，可以重新复核。",
           AI_PROVIDER_RATE_LIMITED: "模型服务繁忙，请稍后重试。",
@@ -128,6 +128,9 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
           AI_PROVIDER_REQUEST_REJECTED: "模型服务拒绝请求，请核对模型名称和接口地址。",
           AI_PROVIDER_UNAVAILABLE: "模型服务暂不可用，请稍后重试。",
         };
+        if (error.code === "AI_PROVIDER_TIMEOUT" && error.upstreamStatus) {
+          throw new Error(`模型服务返回超时（HTTP ${error.upstreamStatus}）。观察内容已保留，请重新复核。`);
+        }
         if (error.code && Object.hasOwn(messages, error.code)) throw new Error(messages[error.code]);
       }
       if (response.status === 504 && action === "assess") {
@@ -241,6 +244,8 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
       .find((row) => row.dataset.evidenceSignal === signal && row.dataset.evidenceSource === source);
     const target = source === "K8sGPT" ? root.querySelector<HTMLElement>("[data-finding-explanation]") :
       evidence ?? root.querySelector<HTMLElement>("#correlation-heading");
+    const sourceDetails = evidence?.closest<HTMLDetailsElement>("details.evidence-source");
+    if (sourceDetails) sourceDetails.open = true;
     target?.focus();
     target?.scrollIntoView({ block: "center" });
   });

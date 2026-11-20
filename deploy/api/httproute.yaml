@@ -13,6 +13,16 @@ spec:
   rules:
     - matches:
         - path:
+            type: Exact
+            value: /api/v1/admin/finding-analysis
+      timeouts:
+        request: 150s
+        backendRequest: 145s
+      backendRefs:
+        - name: kube-aiops-api
+          port: 8080
+    - matches:
+        - path:
             type: PathPrefix
             value: /api/v1
       backendRefs:

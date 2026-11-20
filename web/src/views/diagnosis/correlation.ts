@@ -76,16 +76,20 @@ export function renderCorrelationEvidence(bundle: CorrelationBundle): string {
       ${sourceNames.map(([source, name]) => {
         const state = bundle.sources.find((status) => status.source === source)?.state ?? "unavailable";
         const signals = bundle.signals.filter((signal) => signal.source === source);
-        return `
-          <section class="evidence-source" aria-label="${name}">
-            <div class="evidence-source-heading">
-              <h3>${name}</h3>
-              <span class="source-state source-state-${escapeHtml(state)}">${escapeHtml(stateLabels[state])}</span>
-            </div>
-            ${signals.length > 0
-              ? `<ol class="evidence-signals">${signals.map(renderSignal).join("")}</ol>`
-              : state === "available" ? '<p class="evidence-notice">此时间窗口内暂无证据。</p>' : ""}
+        const badge = `<span class="source-state source-state-${escapeHtml(state)}">${escapeHtml(stateLabels[state])}</span>`;
+        if (!signals.length) {
+          return `<section class="evidence-source" aria-label="${name}">
+            <div class="evidence-source-heading"><h3>${name}</h3>${badge}</div>
+            ${state === "available" ? '<p class="evidence-notice">此时间窗口内暂无证据。</p>' : ""}
           </section>`;
+        }
+        return `<details class="evidence-source" aria-label="${name}">
+          <summary class="evidence-source-heading">
+            <span class="evidence-source-name">${name}</span>
+            <span class="evidence-source-count">${signals.length} 条证据</span>${badge}
+          </summary>
+          <ol class="evidence-signals">${signals.map(renderSignal).join("")}</ol>
+        </details>`;
       }).join("")}
     </div>`;
 }

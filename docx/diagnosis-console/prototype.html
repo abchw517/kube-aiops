@@ -78,14 +78,25 @@
     .review-panel details { margin: 1rem 0; }
     .review-panel button { margin: .25rem .25rem .25rem 0; }
     .review-state { color: #775018; font-weight: 700; }
+    .evidence-panel { margin-top: 1rem; }
+    .evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: .8rem; margin-top: .8rem; align-items: start; }
+    .evidence-source { padding: .75rem; border: 1px solid var(--border); border-radius: 8px; }
+    .evidence-source summary, .review-panel summary { cursor: pointer; }
+    .evidence-source summary { font-weight: 700; }
+    .evidence-source summary small { color: var(--muted); margin-left: .4rem; font-weight: 400; }
+    .evidence-source ul { margin: .65rem 0 0; padding: 0; list-style: none; }
+    .evidence-source li { border-top: 1px solid var(--border); padding: .55rem .15rem; overflow-wrap: anywhere; }
+    .evidence-source li p { margin: .2rem 0 0; }
+    .evidence-state { background: #e8eff9; color: #304b74; border-radius: 4px; padding: .14rem .4rem; font-size: .8rem; margin-left: .4rem; }
     #demo-evidence:focus { outline: 2px solid #17687c; }
+    .demo-caption { color: var(--muted); font-size: .86rem; }
     @media (max-width: 900px) { .results { grid-template-columns: minmax(0, 1fr); } .distribution { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; } .distribution section + section { border: 0; padding: 0; margin: 0; } }
     @media (max-width: 680px) { .controls, .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric { padding-inline: .6rem; } .metric:first-child, .metric:last-child { border-radius: 0; } .metric:nth-child(2) { border-right: 0; } .metric:nth-child(even) .tooltip { inset-inline: auto .2rem; } .metric:nth-child(odd) .tooltip { inset-inline: .2rem auto; } .tooltip { width: min(19rem, calc(100vw - 2.3rem)); } }
   </style>
 </head>
 <body>
   <a class="skip" href="#content">跳到主要内容</a>
-  <header class="topbar" translate="no">kube-aiops</header>
+  <header class="topbar" translate="no">kube-aiops · 诊断交互原型</header>
   <main id="content" tabindex="-1">
     <section id="overview" aria-labelledby="page-title">
       <h1 id="page-title">诊断控制台</h1>
@@ -166,14 +177,34 @@
               <h3>下一步</h3><p id="demo-next"></p>
               <details><summary>Wiki 参考</summary><p>历史案例可提供排查路径。</p></details>
             </div>
-            <details id="demo-input"><summary>补充观察或追问</summary><label>现场观察或问题（选填）<textarea id="demo-observation" rows="3" maxlength="4000" placeholder="例如：10 分钟前 PVC 仍处于 Pending"></textarea></label><button type="button" id="demo-retry">重新复核</button></details>
+            <details id="demo-input">
+              <summary>补充观察或追问</summary>
+              <label>现场观察或问题（选填）<textarea id="demo-observation" rows="3" maxlength="4000" placeholder="例如：集群使用的是 containerd"></textarea></label>
+              <p class="demo-caption">原型会模拟首次补充复核超时，再次点击可完成复核。</p>
+              <button type="button" id="demo-retry">重新复核</button>
+            </details>
             <div id="demo-editor" hidden><label>复核结论<textarea id="demo-conclusion"></textarea></label><button type="button" id="demo-save">保存复核结论</button></div>
             <button type="button" id="demo-preview" hidden>预览知识发布</button>
             <div id="demo-publish-panel" hidden><h3>知识发布预览</h3><p id="demo-wiki"></p><button type="button" id="demo-publish">确认发布到知识库</button></div>
           </section>
         </section>
       </div>
-      <section class="panel review-card" style="margin-top:1rem"><h2>关联证据</h2><p id="demo-evidence" tabindex="-1"></p></section>
+      <section class="panel review-card evidence-panel" aria-labelledby="demo-evidence-heading">
+        <h2 id="demo-evidence-heading" tabindex="-1">关联证据</h2>
+        <p class="demo-caption" id="demo-window"></p>
+        <div class="evidence-grid">
+          <details class="evidence-source" id="demo-events">
+            <summary>Kubernetes 事件 <small id="demo-event-count"></small><span class="evidence-state">可用</span></summary>
+            <ul>
+              <li id="demo-evidence" tabindex="-1"><strong id="demo-event-name"></strong><p id="demo-event-message"></p></li>
+              <li id="demo-event-related" hidden><strong>BackOff</strong><p>Back-off pulling image "busybox:1.36"</p></li>
+            </ul>
+          </details>
+          <section class="evidence-source"><strong>Prometheus</strong><span class="evidence-state">暂不可用</span></section>
+          <section class="evidence-source"><strong>VictoriaLogs</strong><span class="evidence-state">已禁用</span></section>
+          <section class="evidence-source"><strong>Alertmanager</strong><span class="evidence-state">已禁用</span></section>
+        </div>
+      </section>
     </section>
   </main>
   <script>
@@ -186,6 +217,7 @@
       { id: "local", environment: "测试", business: "全局", group: "本地-K8S集群" },
     ];
     const findings = [
+      { id: "image-pull", cluster: "local", severity: "warning", problem: "Pod 镜像拉取失败", kind: "Pod", resource: "crashloop-demo-d8d7c886-wj9vs", namespace: "k8sgpt-demo", time: "2026-11-20T08:17:00Z" },
       { id: "endpoints", cluster: "prod-east", severity: "critical", problem: "结算服务没有可用端点", kind: "Service", resource: "checkout-api", namespace: "checkout", time: "2026-11-19T02:57:48Z" },
       { id: "endpoints", cluster: "test-k8s", severity: "warning", problem: "买家服务部分端点未就绪", kind: "Service", resource: "buyer-api", namespace: "test-base", time: "2026-11-19T02:57:48Z" },
       { id: "probe", cluster: "test-k8s", severity: "warning", problem: "买家服务启动探针失败", kind: "Pod", resource: "buyer-api-57ff664c4c-zk8lc", namespace: "test-base", time: "2026-11-19T02:54:00Z" },
@@ -292,6 +324,7 @@
     let demoRun = 0;
     const demoHistory = new Map();
     let demoPendingObservation;
+    let demoObservationTimedOut = false;
     function updateDemoReviewActions() {
       const busy = demoPendingObservation !== undefined;
       const reviewingCurrent = busy && demoPendingObservation === find("demo-observation").value.trim();
@@ -311,12 +344,24 @@
       find("demo-status").textContent = observation ? "正在复核补充的信息…" : "正在复核关联证据…";
       setTimeout(() => {
         if (run !== demoRun) return;
+        if (observation && !demoObservationTimedOut) {
+          demoObservationTimedOut = true;
+          demoPendingObservation = undefined;
+          find("demo-status").textContent = "模型响应超时。观察内容已保留，可以重新复核。";
+          updateDemoReviewActions();
+          return;
+        }
         const pvc = demoRecord.id === "volume";
-        const judgment = pvc ? "发现时 PVC 引用了不存在的 StorageClass，当前状态仍待验证。" : "原始诊断与历史事件方向一致，资源当前状态仍待验证。";
+        const image = demoRecord.id === "image-pull";
+        const containerd = image && /containerd/i.test(observation);
+        const judgment = pvc ? "发现时 PVC 引用了不存在的 StorageClass，当前状态仍待验证。" :
+          image ? "历史事件显示镜像仓库返回 403，当前是否仍失败需核对。" : "原始诊断与历史事件方向一致，资源当前状态仍待验证。";
         find("demo-judgment").textContent = judgment + (observation ? " 已纳入待核实的人工观察。" : "");
         find("demo-gap").textContent = pvc ? "PVC 实际引用的 storageClassName 和当前集群中同名存储类。" : "当前工作负载状态与最新事件。";
-        find("demo-next").textContent = pvc ? "核对 PVC 的 spec.storageClassName，再查询同名 StorageClass。" : "在原集群查看资源状态与近期事件。";
-        find("demo-conclusion").value = judgment;
+        const next = containerd ? "在该集群查询目标 Pod 的近期镜像拉取事件，核对 containerd 环境使用的仓库。" :
+          pvc ? "核对 PVC 的 spec.storageClassName，再查询同名 StorageClass。" : "在原集群查看资源状态与近期事件。";
+        find("demo-next").textContent = next;
+        find("demo-conclusion").value = judgment + "\n\n下一步：" + next;
         find("demo-status").textContent = observation !== find("demo-observation").value.trim()
           ? "补充内容已保留，可点击「重新复核」提交。" : "";
         find("demo-result").hidden = false;
@@ -333,7 +378,11 @@
     });
     find("demo-observation").addEventListener("input", updateDemoReviewActions);
     find("demo-retry").addEventListener("click", runDemoReview);
-    find("demo-jump").addEventListener("click", () => find("demo-evidence").focus());
+    find("demo-jump").addEventListener("click", () => {
+      find("demo-events").open = true;
+      find("demo-evidence").focus();
+      find("demo-evidence").scrollIntoView({ block: "center" });
+    });
     function showDemoSaved() {
       const saved = demoRecord && demoHistory.get(demoRecord.cluster + "/" + demoRecord.id);
       demoVersion = saved?.version || 0;
@@ -371,9 +420,16 @@
       find("demo-input").open = false;
       find("demo-observation").value = "";
       demoPendingObservation = undefined;
+      demoObservationTimedOut = false;
       updateDemoReviewActions();
-      find("demo-original").textContent = record?.problem || "暂无诊断说明";
-      find("demo-evidence").textContent = record ? "Kubernetes 事件 · " + formatDate.format(new Date(record.time)) + " · " + record.problem : "暂无证据";
+      const image = record?.id === "image-pull";
+      find("demo-original").textContent = image ? "镜像拉取失败。镜像仓库返回 403，需检查访问权限和节点容器运行时。" : record?.problem || "暂无诊断说明";
+      find("demo-events").open = false;
+      find("demo-event-count").textContent = image ? "2 条证据" : record ? "1 条证据" : "0 条证据";
+      find("demo-window").textContent = record ? "发现时间 " + formatDate.format(new Date(record.time)) : "暂无证据";
+      find("demo-event-name").textContent = image ? "Failed" : record ? record.kind + " " + record.namespace + "/" + record.resource : "暂无证据";
+      find("demo-event-message").textContent = image ? 'Failed to pull image "busybox:1.36": 仓库返回 403 Forbidden' : record?.problem || "";
+      find("demo-event-related").hidden = !image;
       showDemoSaved();
       find("back").href = listHash;
       find("detail-title").textContent = record?.problem || "未找到该诊断结果";

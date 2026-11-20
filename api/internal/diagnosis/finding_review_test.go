@@ -263,9 +263,9 @@ func TestEvidenceAssessmentAndIndependentPublication(t *testing.T) {
 	}
 }
 
-// TestFindingReviewTimeoutReturnsGatewayTimeout 验证失败后可以安全重试原请求。
+// TestFindingReviewTimeoutReturnsGatewayTimeout verifies that an operator observation can be retried.
 func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
-	t.Setenv("FINDING_AI_PROVIDER_TIMEOUT", "40s")
+	t.Setenv("FINDING_AI_PROVIDER_TIMEOUT", "110s")
 	store, err := identitystore.Open(filepath.Join(t.TempDir(), "identities.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +281,24 @@ func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
 		case "/gateway-timeout":
 			w.WriteHeader(http.StatusGatewayTimeout)
 		case "/reply":
-			_, _ = w.Write([]byte("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"复核完成\"}}]}"))
+			var input struct {
+				Messages []struct {
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(input.Messages) != 2 ||
+				!strings.Contains(input.Messages[1].Content, "集群使用的是containerd") {
+				t.Errorf("retry did not send the observation: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			// The provider response arrives later than the test's first client budget.
+			time.Sleep(50 * time.Millisecond)
+			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{
+				"finish_reason": "stop", "message": map[string]string{
+					"content": `{"state":"insufficient","judgment":"复核完成","gaps":"近期事件","next":"核对容器运行时"}`,
+				},
+			}}})
 		}
 	}))
 	defer upstream.Close()
@@ -292,23 +309,30 @@ func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if review.client.Timeout != 40*time.Second {
+	if review.client.Timeout != 110*time.Second {
 		t.Fatalf("review client timeout = %v", review.client.Timeout)
 	}
 	review.client.Timeout = 25 * time.Millisecond
-	post := func(want int, fragment string) {
+	post := func(want int) string {
 		t.Helper()
 		recorder := httptest.NewRecorder()
-		body := "{\"action\":\"chat\",\"messages\":[{\"role\":\"user\",\"text\":\"确认容器运行时\"}],\"revision\":0}"
+		body := `{"action":"assess","observation":"集群使用的是containerd","revision":0}`
 		review.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/admin/finding-analysis?id=finding-1", strings.NewReader(body)))
-		if recorder.Code != want || !strings.Contains(recorder.Body.String(), fragment) {
-			t.Fatalf("finding-analysis returned %d %s; want %d with %q", recorder.Code, recorder.Body.String(), want, fragment)
+		if recorder.Code != want {
+			t.Fatalf("finding-analysis returned %d %s; want %d", recorder.Code, recorder.Body.String(), want)
 		}
+		return recorder.Body.String()
 	}
-	post(http.StatusGatewayTimeout, "\"AI_PROVIDER_TIMEOUT\"")
+	if got := post(http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || strings.Contains(got, "upstreamStatus") {
+		t.Fatalf("unexpected local timeout response: %s", got)
+	}
 	review.client.Timeout = time.Second
 	endpoint = upstream.URL + "/gateway-timeout"
-	post(http.StatusGatewayTimeout, "\"AI_PROVIDER_TIMEOUT\"")
+	if got := post(http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || !strings.Contains(got, `"upstreamStatus":504`) {
+		t.Fatalf("upstream timeout status lost: %s", got)
+	}
 	endpoint = upstream.URL + "/reply"
-	post(http.StatusOK, "\"reply\":\"复核完成\"")
+	if got := post(http.StatusOK); !strings.Contains(got, `"judgment":"复核完成"`) {
+		t.Fatalf("retry did not complete: %s", got)
+	}
 }
