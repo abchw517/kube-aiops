@@ -2,19 +2,25 @@ import { escapeHtml as h } from "../../components/html.ts";
 
 import { auditLocation, auditRecordReference } from "./audit-data.ts";
 import { roleReferences, scopeDifference, type Scope } from "./platform-scopes.ts";
-import { bindPermissionCatalog, catalogSource, describePermission, loadPermissionCatalog,
+import { bindPermissionCatalog, catalogSource, describePermission, grantKey, loadPermissionCatalog,
   renderPermissionCatalog, selectedPermissions, updateCatalogGrants, type InterfaceGrant, type PermissionCatalog } from "./permission-catalog.ts";
 type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null; grants?: InterfaceGrant[] };
 type Group = { id: string; name: string; description?: string; roles: string[] | null };
 type Account = {
   id: string; username: string; kind: string; disabled: boolean; directoryDisabled: boolean;
   mustChangePassword: boolean; groups: string[] | null; roles: string[] | null;
+  administratorSources?: string[];
   lastLoginAt?: number;
   effective: (Scope & { sources: string[] })[] | null;
   effectiveGrants?: (InterfaceGrant & { sources: string[] })[];
 };
 type Access = { groups: Group[]; roles: Role[] };
-type Entry = { id: string; name: string; environment?: string };
+type Entry = { id: string; name: string; environment?: string; blocked?: boolean };
+type GroupPreview = {
+  version: string;
+  addsAdministrator: boolean;
+  members: { id: string; username: string; eligible: boolean; before: string[] | null; after: string[] | null }[];
+};
 const systemAdministratorRole = "system-admin";
 const environments: Record<string, string> = { development: "研发", testing: "测试", staging: "预发布", production: "生产" };
 const kinds: Record<string, string> = { super: "超级管理员", administrator: "系统管理员", guest: "本地访客", ldap: "LDAP 员工" };
@@ -40,9 +46,9 @@ function scopeText(scope: Scope): string {
   return [environments[scope.environment] ?? scope.environment, scope.cluster, scope.business, scope.namespace].filter(Boolean).map(h).join(" / ");
 }
 
-/** LDAP 账号保留目录身份，其直接管理员角色仍赋予全局权限。 */
+/** 管理员可来自 LDAP 账号的直接授权或用户组关联。 */
 function hasAdministratorRole(user: Account): boolean {
-  return user.kind === "administrator" || user.roles?.includes(systemAdministratorRole) === true;
+  return user.kind === "administrator" || !!user.administratorSources?.length || user.roles?.includes(systemAdministratorRole) === true;
 }
 
 /** 仅超级管理员可以维护其他拥有管理员角色的账号。 */
@@ -55,7 +61,9 @@ function effectivePermissions(user: Account): string {
     return '<p class="system-notice">账号当前无法访问诊断数据。启用并完成所需的改密后，按关联角色生效。</p>';
   }
   if (user.kind === "super" || hasAdministratorRole(user)) {
-    return '<div class="system-permission"><strong>全局管理与诊断查看</strong><p>直接授予 → 系统管理员</p></div>';
+    const sources = user.administratorSources?.length ? user.administratorSources : ["直接授予"];
+    return `<div class="system-permission"><strong>全局管理与诊断查看</strong><ul>
+      ${sources.map(source => `<li>${h(source)} → 系统管理员</li>`).join("")}</ul></div>`;
   }
   if (!user.effective?.length && !user.effectiveGrants?.length) return "<p>暂无生效权限。</p>";
   const display = (label: string, scope: Scope, sources: string[]) => `<div class="system-permission">
@@ -102,7 +110,9 @@ function operationForm(resource: string, id: string, fields: string, label: stri
 function choices(name: string, title: string, items: Entry[], selected: string[] | null = [], assignment = false): string {
   return `<fieldset class="system-choice-group"><legend>${title}</legend>
     ${items.length ? `<div class="system-choice-list">${items.map((item) => `<label${assignment ? ` data-assignment-choice data-associated="${selected?.includes(item.id) === true}"` : ""}><input type="checkbox"
-      name="${name}" value="${h(item.id)}"${!assignment && selected?.includes(item.id) ? " checked" : ""}><span>${h(item.name)}</span>
+      name="${name}" value="${h(item.id)}"${!assignment && selected?.includes(item.id) ? " checked" : ""}
+      ${item.blocked ? ' disabled data-assignment-blocked' : ""}><span>${h(item.name)}</span>
+      ${item.blocked ? '<small class="system-badge">仅超级管理员可分配</small>' : ""}
       ${assignment && selected?.includes(item.id) ? '<small class="system-badge">已关联</small>' : ""}</label>`).join("")}</div>` :
       "<p>暂无可选项。</p>"}</fieldset>`;
 }
@@ -110,6 +120,7 @@ function choices(name: string, title: string, items: Entry[], selected: string[]
 /** 直接角色分配依据操作者权限开放管理员角色。 */
 function assignmentEditor(access: Access, superAdmin: boolean, account?: Account): string {
   const roles = superAdmin ? access.roles : access.roles.filter((role) => role.id !== systemAdministratorRole);
+  const groups = access.groups.map(group => ({ ...group, blocked: !superAdmin && isAdministratorGroup(group) }));
   return editor(account ? "assign" : "batch", account ? "分配用户组或角色" : "批量授权 / 撤销",
     operationForm("accounts", account?.id ?? "", `
       <p data-assignment-target>${account ? h(account.username) : ""}</p>
@@ -118,7 +129,7 @@ function assignmentEditor(access: Access, superAdmin: boolean, account?: Account
         <label>操作<select data-assignment-mode><option value="add">授予</option><option value="remove">撤销</option></select></label>
       </div>
       <label>搜索可分配项<input type="search" data-assignment-search autocomplete="off" placeholder="搜索用户组或角色"></label>
-      <div data-assignment-options="groups">${choices("groups", "选择用户组", access.groups, account?.groups, true)}</div>
+      <div data-assignment-options="groups">${choices("groups", "选择用户组", groups, account?.groups, true)}</div>
       <div data-assignment-options="roles" hidden>${choices("roles", "选择直接角色", roles, account?.roles, true)}
         ${superAdmin ? "<p>管理员角色发生变更时，目标账号需重新登录。</p>" : ""}</div>
       <p data-assignment-empty hidden>没有可操作的关联。</p>
@@ -238,18 +249,50 @@ function scopeRow(scope: Scope): string {
     <span><strong>历史诊断查看</strong><br>${scopeText(scope)}</span><button type="button" class="button secondary" data-scope-remove>移除</button></div>`;
 }
 
-async function renderAccess(tab?: string): Promise<string> {
+function isAdministratorGroup(group?: Group): boolean {
+  return group?.roles?.includes(systemAdministratorRole) === true;
+}
+
+function editableGroup(group: Group | undefined, roles: Role[], members: Account[], superAdmin: boolean): string {
+  const key = `group:${group?.id ?? ""}`;
+  const administrator = isAdministratorGroup(group);
+  const locked = administrator && !superAdmin;
+  const groupRoles = `<fieldset class="system-choice-group"${locked ? " disabled" : ""}><legend>关联角色</legend>
+    <div class="system-choice-list">${roles.map(role => {
+      const admin = role.id === systemAdministratorRole;
+      return `<label><input type="checkbox" name="roles" value="${h(role.id)}"${admin ? " data-group-admin" : ""}
+        ${group?.roles?.includes(role.id) ? " checked" : ""}${admin && !superAdmin ? " disabled" : ""}>
+        <span>${h(role.name)}</span>${admin ? ' <span class="system-badge" data-risk="高风险">全局管理</span>' : ""}</label>`;
+    }).join("")}</div></fieldset>`;
+  const fields = `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"${locked ? " readonly" : ""}></label>
+    <label>用途<input name="description" maxlength="256" value="${h(group?.description)}"${locked ? " readonly" : ""}></label>
+    ${groupRoles}${superAdmin ? "" : "<p>仅超级管理员可维护管理员组的角色与成员。</p>"}`;
+  if (locked) return editor(key, "查看用户组", `<div class="system-editor-body system-form">${fields}</div>`);
+  return editor(key, group ? "编辑用户组" : "新建用户组",
+    `<form class="system-form" data-platform="access" data-id="${h(group?.id)}"
+      data-group-original-admin="${administrator}" data-group-member-count="${members.length}" data-replace-group-roles>
+      <div class="system-editor-body" data-group-draft>${fields}<div class="system-admin-impact" data-group-impact hidden></div></div>
+      <div class="system-editor-body" data-group-preview hidden><h3 tabindex="-1">确认管理员角色变更</h3><div data-group-impact-result></div></div>
+      <p class="system-editor-status" role="status" aria-live="polite"></p>
+      <footer class="system-dialog-footer"><button type="button" class="button secondary" data-system-close>取消</button>
+        <button type="button" class="button secondary" data-group-back hidden>返回编辑</button>
+        <button type="submit" class="button" value="group-save" data-group-save>保存用户组</button>
+        <button type="submit" class="button" value="group-save" data-group-confirm hidden disabled>确认保存</button></footer>
+    </form>`);
+}
+
+async function renderAccess(tab: string | undefined, superAdmin: boolean): Promise<string> {
   const [access, clusters, businesses, users, catalog] = await Promise.all([
     admin<Access>("access"), json<{ items: Entry[] }>("/api/v1/clusters"), admin<Entry[]>("business-lines"), admin<Account[]>("accounts"),
     loadPermissionCatalog().catch(() => null),
   ]);
   const groups = tab === "groups";
-  const labels = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, point.label] as const)));
-  const available = access.roles.filter((role) => role.id !== systemAdministratorRole);
-  const groupEditor = (group?: Group) => editor(`group:${group?.id ?? ""}`, group ? "编辑用户组" : "新建用户组",
-    operationForm("access", group?.id ?? "", `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"></label>
-      <label>用途<input name="description" maxlength="256" value="${h(group?.description)}"></label>
-      <div data-replace-group-roles>${choices("roles", "关联角色", available, group?.roles)}</div>`, "保存用户组", "group-save"));
+  const points = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, { ...point, feature: row }] as const)));
+  const membersOf = (group: Group) => users.filter(user => user.groups?.includes(group.id));
+  const canEditGroup = (group: Group) => superAdmin || !isAdministratorGroup(group);
+  const groupMembers = (group: Group) => editor(`group-members:${group.id}`, "成员生效权限", `<div class="system-editor-body">
+    <h3>${h(group.name)}</h3>${membersOf(group).map(user => `<div class="system-permission">
+      <a href="#/admin/users/${encodeURIComponent(user.id)}">${h(user.username)}</a>${effectivePermissions(user)}</div>`).join("") || "<p>暂无成员。</p>"}</div>`);
   const roleEditor = (role?: Role) => {
     const refs = roleReferences(role?.id, users, access.groups);
     return editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
@@ -257,15 +300,15 @@ async function renderAccess(tab?: string): Promise<string> {
           data-role-original="${h(JSON.stringify(role ?? null))}">
         <div class="system-editor-body" data-role-draft>
           <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
-          <h3>已配置权限</h3>
-          <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, labels.get(grant.code))).join("")}</div>
-          <p class="system-scope-empty">尚未添加权限范围。</p>
           ${catalog ? '<div data-role-catalog-host></div>' : '<p>接口权限目录暂不可用。</p>'}
           ${scopeInputs(clusters.items, businesses)}
-          <div class="system-actions"><button type="button" class="button secondary" data-scope-add>添加到清单</button>
-          <button type="button" class="button" data-scope-add="preview">添加并预览</button>
-          ${catalog ? '<button type="button" class="button" data-role-add-grants>将所选动作加入授权</button>' : ""}</div>
+          <div class="system-actions">${catalog ? '<button type="button" class="button" data-role-add-grants>添加到授权清单</button>' : ""}
+          <button type="button" class="button secondary" data-scope-add>添加历史诊断范围</button>
+          <button type="button" class="button secondary" data-scope-add="preview">添加历史诊断范围并预览</button></div>
+          <h3>授权清单</h3>
+          <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
+          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, points.get(grant.code), true)).join("")}</div>
+          <p class="system-scope-empty">尚未添加权限范围。</p>
         </div>
         <div class="system-editor-body" data-role-preview hidden>
           <h3 tabindex="-1">核对角色变更</h3>
@@ -276,7 +319,7 @@ async function renderAccess(tab?: string): Promise<string> {
         <footer class="system-dialog-footer">
           <button type="button" class="button secondary" data-system-close>取消</button>
           <button type="button" class="button secondary" data-role-back hidden>返回编辑</button>
-          ${submit("预览已配置权限", "role-preview")}
+          ${submit("保存角色", "role-preview")}
           <button class="button" type="submit" value="role-save" hidden disabled>确认保存</button>
         </footer>
       </form>`);
@@ -288,8 +331,10 @@ async function renderAccess(tab?: string): Promise<string> {
     <td><div class="system-actions">${group.roles?.map((id) => {
       const role = access.roles.find((item) => item.id === id);
       return role ? `<button type="button" class="account-role-link" data-system-open="role:${h(role.id)}">${h(role.name)}</button>` : h(id);
-    }).join("") || "—"}</div></td><td>${users.filter((user) => user.groups?.includes(group.id)).length} 人</td>
-    <td><div class="system-actions">${editButton("编辑", `group:${group.id}`, true)}${editButton("删除", `remove:${group.id}`, true)}</div></td></tr>`)
+    }).join("") || "—"}</div></td><td>${membersOf(group).length} 人</td>
+    <td><div class="system-actions">${editButton(canEditGroup(group) ? "编辑" : "查看", `group:${group.id}`, true)}
+    ${editButton("查看成员权限", `group-members:${group.id}`, true)}
+    ${canEditGroup(group) ? editButton("删除", `remove:${group.id}`, true) : ""}</div></td></tr>`)
     : access.roles.map((role) => `<tr><td><strong>${h(role.name)}</strong>${role.fixed ? ' <span class="system-badge">预置</span>' : ""}</td>
     <td>${role.id === systemAdministratorRole ? "全局管理" : `${role.scopes?.length ?? 0} 项历史诊断范围 · ${role.grants?.length ?? 0} 项接口授权`}</td>
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
@@ -303,7 +348,8 @@ async function renderAccess(tab?: string): Promise<string> {
     </nav><div class="catalog-table-wrap" role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
       <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
       ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
-    ${groups ? groupEditor() + access.groups.map((group) => groupEditor(group) + remove(group, "group")).join("") : roleEditor()}
+    ${groups ? editableGroup(undefined, access.roles, [], superAdmin) + access.groups.map(group =>
+      editableGroup(group, access.roles, membersOf(group), superAdmin) + groupMembers(group) + (canEditGroup(group) ? remove(group, "group") : "")).join("") : roleEditor()}
     ${catalogSource(catalog)}
     ${access.roles.map((role) => role.fixed ? editor(`role:${role.id}`, role.name,
         `<div class="system-editor-body"><p class="system-notice">预置角色的权限固定，始终禁止删除。</p>${role.scopes?.map((scope) => `<p>历史诊断查看 · ${scopeText(scope)}</p>`).join("") || "<p>管理系统与全局诊断</p>"}</div>`)
@@ -312,7 +358,7 @@ async function renderAccess(tab?: string): Promise<string> {
 
 export function renderPlatform(resource: string, id: string | undefined, superAdmin: boolean): Promise<string> {
   if (resource === "users") return renderAccounts(id, superAdmin);
-  return renderAccess(id);
+  return renderAccess(id, superAdmin);
 }
 
 function platformStatus(form: HTMLFormElement): HTMLElement | null {
@@ -330,6 +376,11 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
   }
   if (action === "role-save" && form.querySelector<HTMLElement>("[data-role-preview]")?.hidden !== false) return;
   const data = new FormData(form);
+  const groupEditor = form.hasAttribute("data-replace-group-roles");
+  if (groupEditor && groupAdministratorChanged(form) && !form.dataset.groupPreviewVersion) {
+    await previewGroup(form, data);
+    return;
+  }
   if (action === "assignment") {
     const group = form.querySelector<HTMLSelectElement>("[data-assignment-kind]")?.value === "groups";
     const remove = form.querySelector<HTMLSelectElement>("[data-assignment-mode]")?.value === "remove";
@@ -357,10 +408,12 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       body: JSON.stringify({ action, id: form.dataset.id, ids, values, scopes,
         previousRole: action === "role-save" ? originalRole(form) : undefined,
         grants: action === "role-save" && form.querySelector("[data-role-catalog-host]") ? grants : undefined,
-        roleIds: form.querySelector("[data-replace-group-roles]") ? data.getAll("roles") : undefined,
+        roleIds: groupEditor ? data.getAll("roles") : undefined,
+        groupPreview: groupEditor ? form.dataset.groupPreviewVersion : undefined,
         name: data.get("name") ?? "", description: data.get("description") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
     });
     if (!response.ok) {
+      if (response.status === 409 && groupEditor && form.dataset.groupPreviewVersion) showGroupPreview(form, false);
       status.textContent = (await response.text()).trim() || "操作失败。";
       return;
     }
@@ -369,14 +422,15 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       status.textContent = results.map(result => result.reason).filter(Boolean).join("；");
       return;
     }
-    if (dialog && (["join", "leave", "grant", "revoke"].includes(action) || action.startsWith("group-roles") || action === "role-save")) {
+    if (dialog && (["join", "leave", "grant", "revoke", "role-save", "group-save"].includes(action) || action.startsWith("group-roles"))) {
       const auditReference = auditRecordReference(response.headers.get("X-Operation-Audit-Ref"));
       const title = dialog.querySelector("#system-dialog-title");
-      if (title) title.textContent = action === "role-save" ? "角色保存结果" : "授权操作结果";
+      if (title) title.textContent = action === "role-save" ? "角色保存结果" : action === "group-save" ? "用户组保存结果" : "授权操作结果";
+      const savedName = action === "group-save" ? String(data.get("name") ?? "") : "";
       form.outerHTML = `<div class="system-editor-body"><div class="catalog-table-wrap"><table class="catalog-table">
-        <thead><tr><th>账号或角色</th><th>结果</th><th>说明</th></tr></thead>
-        <tbody>${results.map(({ id, reason }) => `<tr><td>${h(id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
-          ${reason ? "失败" : "成功"}</span></td><td>${h(reason || "已更新关联关系")}</td></tr>`).join("")}</tbody>
+        <thead><tr><th>${groupEditor ? "用户组" : "账号或角色"}</th><th>结果</th><th>说明</th></tr></thead>
+        <tbody>${results.map(({ id, reason }) => `<tr><td>${h(savedName || id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
+          ${reason ? "失败" : "成功"}</span></td><td>${h(reason || (action === "role-save" ? "已保存，角色权限已生效" : "已更新关联关系"))}</td></tr>`).join("")}</tbody>
         </table></div></div><footer class="system-dialog-footer">
         <button class="button${auditReference ? " secondary" : ""}" type="button" data-system-close>完成并刷新</button>
         ${auditReference ? `<a class="button" href="${h(auditLocation({ record: auditReference }))}">查看本次审计</a>` : ""}</footer>`;
@@ -403,7 +457,78 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
     const password = form.querySelector<HTMLInputElement>('[name="password"]');
     if (password) password.value = "";
     dialog?.removeAttribute("aria-busy");
-    for (const button of buttons) button.disabled = false;
+    for (const button of buttons) button.disabled = button.hidden;
+  }
+}
+
+function groupAdministratorChanged(form: HTMLFormElement): boolean {
+  const selected = form.querySelector<HTMLInputElement>("[data-group-admin]");
+  return !!selected && !selected.disabled && selected.checked !== (form.dataset.groupOriginalAdmin === "true");
+}
+
+function updateGroupNotice(form: HTMLFormElement, adding: boolean): void {
+  const notice = form.querySelector<HTMLElement>("[data-group-impact]");
+  if (!notice) return;
+  notice.hidden = !groupAdministratorChanged(form);
+  const members = Number(form.dataset.groupMemberCount ?? 0);
+  notice.textContent = `${adding ? "将关联全局管理角色" : "将撤销组的全局管理角色"}。当前成员 ${members} 人。${
+    adding && members === 0 ? "后续加入的符合条件的 LDAP 员工将继承系统管理员。" : "保存前将显示受影响成员及其他授权来源。"}`;
+}
+
+function showGroupPreview(form: HTMLFormElement, showing: boolean): void {
+  const draft = form.querySelector<HTMLElement>("[data-group-draft]");
+  const preview = form.querySelector<HTMLElement>("[data-group-preview]");
+  const save = form.querySelector<HTMLButtonElement>("[data-group-save]");
+  const confirm = form.querySelector<HTMLButtonElement>("[data-group-confirm]");
+  const back = form.querySelector<HTMLButtonElement>("[data-group-back]");
+  if (!draft || !preview || !save || !confirm || !back) return;
+  draft.hidden = showing;
+  preview.hidden = confirm.hidden = confirm.disabled = back.hidden = !showing;
+  save.hidden = save.disabled = showing;
+  if (showing) preview.querySelector("h3")?.focus();
+  else {
+    delete form.dataset.groupPreviewVersion;
+    platformStatus(form)?.replaceChildren();
+    save.focus();
+  }
+}
+
+async function previewGroup(form: HTMLFormElement, data: FormData): Promise<void> {
+  const dialog = form.closest("dialog");
+  const status = platformStatus(form);
+  const result = form.querySelector("[data-group-impact-result]");
+  if (!dialog || !status || !result || !form.reportValidity()) return;
+  dialog.setAttribute("aria-busy", "true");
+  status.textContent = "正在获取成员影响…";
+  try {
+    const response = await fetch("/api/v1/admin/access", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "group-preview", id: form.dataset.id, name: data.get("name"),
+        description: data.get("description"), roleIds: data.getAll("roles") }),
+    });
+    if (!response.ok) {
+      status.textContent = (await response.text()).trim() || "暂时无法核对成员。";
+      return;
+    }
+    const preview = await response.json() as GroupPreview;
+    const eligible = preview.members.filter(member => member.eligible);
+    const changed = eligible.filter(member => !!member.before?.length !== !!member.after?.length);
+    const retained = eligible.filter(member => member.before?.length && member.after?.length);
+    result.innerHTML = `<div class="system-admin-impact">
+      <p><strong>${preview.addsAdministrator ? "将关联系统管理员" : "将取消关联系统管理员"}</strong></p>
+      <p>当前成员 ${preview.members.length} 人 · ${preview.addsAdministrator ? "新增管理员" : "失去管理员"} ${changed.length} 人 · 另有 ${retained.length} 人保留管理员来源。</p>
+      ${preview.members.length < 1 && preview.addsAdministrator ? "<p>后续加入的符合条件的 LDAP 员工将继承系统管理员。</p>" : ""}
+      ${preview.members.length > eligible.length ? `<p>另有 ${preview.members.length - eligible.length} 人当前处于停用或待改密状态。</p>` : ""}
+      ${changed.length ? `<p>受影响成员需重新登录 · ${changed.map(member => h(member.username)).join("、")}</p>` : ""}
+      ${retained.length ? `<ul>${retained.map(member => `<li>${h(member.username)} · 保存后来源 ${h(member.after?.join("、"))}</li>`).join("")}</ul>` : ""}
+      </div>`;
+    form.dataset.groupPreviewVersion = preview.version;
+    status.textContent = "";
+    showGroupPreview(form, true);
+  } catch {
+    status.textContent = "获取成员影响失败，请重试。";
+  } finally {
+    dialog.removeAttribute("aria-busy");
   }
 }
 
@@ -490,6 +615,7 @@ export function handlePlatformClick(event: MouseEvent): void {
   if (form && !dialog?.hasAttribute("aria-busy")) {
     if (scopeButton && addScopes(form) && scopeButton.dataset.scopeAdd === "preview") previewRole(form);
     if (target.closest("[data-role-back]")) showRolePreview(form, false);
+    if (target.closest("[data-group-back]")) showGroupPreview(form, false);
     if (target.closest("[data-role-add-grants]")) addInterfaceGrants(form);
     const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
     if (retry) void refreshScope(retry);
@@ -589,7 +715,7 @@ function updateAssignmentOptions(form: HTMLFormElement): void {
       if (!box) continue;
       const associated = option.dataset.associated === "true";
       option.hidden = (remove && !!form.dataset.id && !associated) || !option.textContent?.toLowerCase().includes(search);
-      box.disabled = pane.hidden || (remove ? !!form.dataset.id && !associated : associated);
+      box.disabled = box.hasAttribute("data-assignment-blocked") || pane.hidden || (remove ? !!form.dataset.id && !associated : associated);
       if (box.disabled) box.checked = false;
       if (!pane.hidden && !option.hidden) matches++;
     }
@@ -607,14 +733,11 @@ function savedScopes(form: HTMLFormElement): Scope[] {
     .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
 }
 
-function grantKey(grant: InterfaceGrant): string {
-  const { environment, cluster, business, namespace } = grant.scope;
-  return JSON.stringify([grant.code, environment ?? "", cluster ?? "", business ?? "", namespace ?? ""]);
-}
-
-function grantRow(grant: InterfaceGrant, label = grant.code): string {
+function grantRow(grant: InterfaceGrant, point?: { label: string; risk: string; feature: { scope: string } }, saved = false): string {
   return `<div class="system-scope-row" data-role-grant="${h(JSON.stringify(grant))}">
-    <span><strong>${h(label)}</strong><br>${scopeText(grant.scope) || "平台全局或本人范围"}</span>
+    <span><strong>${h(point?.label ?? grant.code)}</strong> <span class="system-badge">${saved ? "已保存" : "待保存"}</span>
+    ${point?.risk === "高风险" ? ' <span class="system-badge" data-risk="高风险">高风险</span>' : ""}
+    <br>${scopeText(grant.scope) || h(point?.feature.scope ?? "平台全局或本人范围")}</span>
     <button type="button" class="button secondary" data-role-grant-remove>移除</button></div>`;
 }
 
@@ -666,14 +789,15 @@ function addInterfaceGrants(form: HTMLFormElement): void {
     scopes = (namespaces.length ? namespaces : [""]).map(namespace => ({ environment, cluster, business, namespace }));
   }
   const previous = new Set(savedGrants(form).map(grantKey));
+  const original = new Set((originalRole(form)?.grants ?? []).map(grantKey));
   const additions = points.flatMap(point => scopes.flatMap(scope => {
     const grant = { code: point.code, scope };
-    return previous.has(grantKey(grant)) ? [] : [grantRow(grant, point.label)];
+    return previous.has(grantKey(grant)) ? [] : [grantRow(grant, point, original.has(grantKey(grant)))];
   }));
   list.insertAdjacentHTML("beforeend", additions.join(""));
   updateCatalogGrants(form, savedGrants(form), true);
   for (const box of form.querySelectorAll<HTMLInputElement>('[data-scope] input[type="checkbox"]')) box.checked = false;
-  status.textContent = additions.length ? `已添加 ${additions.length} 项接口授权。` : "所选接口授权已在清单中。";
+  status.textContent = additions.length ? `已添加 ${additions.length} 项接口授权，保存角色后生效。` : "所选接口授权已在清单中。";
 }
 
 function addScopes(form: HTMLFormElement): boolean {
@@ -762,6 +886,9 @@ const restrictedScope = (environment: string): boolean => environment === "produ
 
 export async function updateScopeOptions(event: Event): Promise<void> {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.hasAttribute("data-group-admin") && target.form) {
+    updateGroupNotice(target.form, target.checked);
+  }
   if (target instanceof HTMLInputElement && target.type === "checkbox" &&
       (target.name === "namespace" || target.name === "entireCluster") && target.checked) {
     const alternative = target.name === "namespace" ? "entireCluster" : "namespace";

@@ -105,12 +105,26 @@ func (a *Admin) editPlatform(ctx context.Context, change func(*platformState, *s
 	return tx.Commit()
 }
 
-// isAdministrator 区分本地管理员与直接获授系统管理员角色的 LDAP 员工。
-func (account platformAccount) isAdministrator() bool {
-	return account.Kind == "administrator" || account.Kind == "ldap" && slices.Contains(account.Roles, adminRole)
+func (state platformState) isAdministrator(account platformAccount) bool {
+	if account.Kind == "administrator" {
+		return true
+	}
+	if account.Kind != "ldap" {
+		return false
+	}
+	if slices.Contains(account.Roles, adminRole) {
+		return true
+	}
+	return slices.ContainsFunc(account.Groups, func(id string) bool {
+		return state.Groups[id].hasAdministratorRole()
+	})
 }
 
-func (account platformAccount) principal() identity.Principal {
+func (group platformGroup) hasAdministratorRole() bool {
+	return slices.Contains(group.Roles, adminRole)
+}
+
+func (state platformState) principal(account platformAccount) identity.Principal {
 	provider := employeeProvider
 	switch account.Kind {
 	case "administrator":
@@ -123,7 +137,7 @@ func (account platformAccount) principal() identity.Principal {
 	}
 	return identity.Principal{
 		Subject: account.ID, DisplayName: account.Username, Provider: provider,
-		SessionVersion: account.Generation, Administrator: provider == employeeProvider && account.isAdministrator(),
+		SessionVersion: account.Generation, Administrator: provider == employeeProvider && state.isAdministrator(account),
 	}
 }
 
@@ -149,7 +163,7 @@ func (a *Admin) ValidateSession(ctx context.Context, principal identity.Principa
 	}
 	account, exists := state.Accounts[principal.Subject]
 	if !exists || account.Disabled || account.DirectoryDisabled || account.Generation != principal.SessionVersion ||
-		principal.Provider == employeeProvider && principal.Administrator != account.isAdministrator() {
+		principal.Provider == employeeProvider && principal.Administrator != state.isAdministrator(account) {
 		return identity.ErrUnauthenticated
 	}
 	return nil
@@ -167,13 +181,13 @@ func (a *Admin) platformLocal(ctx context.Context, user, password string) (ident
 	if account.Disabled || len(password) > 72 || bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(password)) != nil {
 		return identity.Principal{}, true, identity.ErrUnauthenticated
 	}
-	return account.principal(), true, nil
+	return state.principal(account), true, nil
 }
 
 func (a *Admin) registerEmployee(ctx context.Context, username string, p identity.Principal) (identity.Principal, error) {
-	var account platformAccount
+	var principal identity.Principal
 	err := a.editPlatform(ctx, func(state *platformState, _ *sql.Tx) error {
-		account = state.Accounts[p.Subject]
+		account := state.Accounts[p.Subject]
 		if state.DeletedLDAP[p.Subject] || account.Disabled {
 			return identity.ErrUnauthenticated
 		}
@@ -188,6 +202,7 @@ func (a *Admin) registerEmployee(ctx context.Context, username string, p identit
 			account.Roles = append(account.Roles, guestRole)
 		}
 		state.Accounts[account.ID] = account
+		principal = state.principal(account)
 		return nil
 	})
 	if errors.Is(err, identity.ErrUnauthenticated) {
@@ -196,7 +211,7 @@ func (a *Admin) registerEmployee(ctx context.Context, username string, p identit
 	if err != nil {
 		return identity.Principal{}, identity.ErrAuthenticationUnavailable
 	}
-	return account.principal(), nil
+	return principal, nil
 }
 
 func (state platformState) roleSources(account platformAccount) map[string][]string {

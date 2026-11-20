@@ -10,9 +10,12 @@
 | Phase 1.2–1.3 | 已完成 | Go 只读 API、OpenAPI 契约、简体中文 Web Portal 和本地 Demo |
 | Phase 1.4 | 已完成 | 身份认证与授权、结构化审计、响应脱敏和生产启动门禁 |
 | Phase 2 | 已完成 | Kubernetes Events、Prometheus、VictoriaLogs、Alertmanager 四类证据关联 |
+| Platform Portal | 已实现 | 多集群资源管理、运维知识库、LDAP 与接口权限配置、管理员组继承及操作审计 |
 | Phase 3–5 | 已规划 | RCA Agent 和 Runbook、人工审批修复、受控自动修复 |
 
 交付与验收记录见 [Phase 1.4](docx/phase-1.4-completion.md) 和 [Phase 2](docx/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docx/kubernetes-v1.36-baseline.md)。
+
+系统管理支持按诊断控制台、运维知识库、资源管理和系统管理浏览权限点。接口权限可逐项或按当前结果批量勾选，并绑定数据范围后保存。超级管理员可让 LDAP 员工通过用户组继承系统管理员。相关需求、原型及验收用例见 [权限目录](docx/permission-catalog/00-prd.md)。
 
 ## Web Portal Demo
 
@@ -69,6 +72,7 @@ flowchart TD
     User["运维人员 / 浏览器"] --> Portal
     subgraph Application["kube-aiops-system"]
         Portal["Web Portal / Nginx"] -->|同源 API 代理| Backend["Go Portal API"]
+        Backend -->|账号、组、角色和审计| Identity["身份 SQLite"]
     end
     subgraph Analysis["k8sgpt-operator-system"]
         Operator["K8sGPT Operator"] -->|管理分析实例| Engine["K8sGPT Engine"]
@@ -76,6 +80,7 @@ flowchart TD
     Engine -->|读取资源并写入 Result| Kubernetes["Kubernetes API"]
     Engine -->|发送匿名化诊断请求| Provider["AI Provider"]
     Backend -->|读取 Result、资源和事件| Kubernetes
+    Backend -->|员工认证| LDAP["LDAP / Active Directory"]
     Backend -->|按需查询指标| Prometheus["Prometheus"]
     Backend -->|按需查询日志信号| VictoriaLogs["VictoriaLogs"]
     Backend -->|按需查询告警| Alertmanager["Alertmanager"]
@@ -107,7 +112,8 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   ├── collector/
 │   ├── k8sgpt/
 │   └── examples/         # 可选部署清单
-├── docx/                 # 保留项目验收和交付文档
+├── docx/                 # 架构、部署、产品设计与验收
+│   └── permission-catalog/ # 权限目录、管理员组和交互原型
 ├── scripts/
 ├── tests/
 ├── Dockerfile            # API 镜像的根目录构建入口

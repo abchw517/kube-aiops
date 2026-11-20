@@ -220,12 +220,12 @@ func TestGroupEditorSavesMetadataAndRoleAssociationsTogether(t *testing.T) {
 		"ops": {ID: "ops", Name: "旧名称", Roles: []string{guestRole}},
 	}}
 	roles := []string{adminRole}
-	result := applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", RoleIDs: &roles})
+	result := applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", RoleIDs: &roles}, false)
 	if result.Reason == "" || state.Groups["ops"].Name != "旧名称" {
 		t.Fatalf("invalid role changed the group: %+v", state.Groups["ops"])
 	}
 	roles = []string{}
-	result = applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", Description: "用途", RoleIDs: &roles})
+	result = applyAccess(state, platformChange{Action: "group-save", ID: "ops", Name: "新名称", Description: "用途", RoleIDs: &roles}, false)
 	group := state.Groups["ops"]
 	if result.Reason != "" || group.Name != "新名称" || group.Description != "用途" || len(group.Roles) != 0 {
 		t.Fatalf("group edit not saved together: %+v, %+v", result, group)
@@ -263,12 +263,12 @@ func TestDeleteSelectedAccountsRevokesSessionsAndPreventsLDAPRegistration(t *tes
 	}
 	super := identity.Principal{Subject: superSubject, Provider: AdminProvider}
 	remove(super, `{"action":"delete","id":"local:admin"}`, 409)
-	remove(admin.principal(), `{"action":"delete","id":"local:operator"}`, 409)
+	remove((platformState{}).principal(admin), `{"action":"delete","id":"local:operator"}`, 409)
 	remove(super, `{"action":"delete","ids":["local:visitor"]}`, 400)
-	remove(admin.principal(), `{"action":"delete","id":"local:visitor"}`, 200)
-	remove(admin.principal(), `{"action":"delete","id":"ldap:uid=employee,dc=example"}`, 200)
+	remove((platformState{}).principal(admin), `{"action":"delete","id":"local:visitor"}`, 200)
+	remove((platformState{}).principal(admin), `{"action":"delete","id":"ldap:uid=employee,dc=example"}`, 200)
 	remove(super, `{"action":"delete","id":"local:operator"}`, 200)
-	for _, p := range []identity.Principal{guest.principal(), employee, admin.principal()} {
+	for _, p := range []identity.Principal{(platformState{}).principal(guest), employee, (platformState{}).principal(admin)} {
 		if err := a.ValidateSession(ctx, p); !errors.Is(err, identity.ErrUnauthenticated) {
 			t.Fatalf("deleted account %s retained a session: %v", p.Subject, err)
 		}
@@ -358,7 +358,7 @@ func TestRoleSnapshotPreventsOverwritingConcurrentChange(t *testing.T) {
 	state := platformState{Roles: map[string]platformRole{"reader": old}}
 	first := platformChange{Action: "role-save", ID: old.ID, Name: old.Name,
 		PreviousRole: &old, Scopes: []accessScope{development, testingScope, testingScope}}
-	if result := applyAccess(state, first); result.Reason != "" {
+	if result := applyAccess(state, first, true); result.Reason != "" {
 		t.Fatal(result.Reason)
 	}
 	if role := state.Roles[old.ID]; !slices.Equal(role.Scopes, []accessScope{development, testingScope}) {
@@ -366,7 +366,7 @@ func TestRoleSnapshotPreventsOverwritingConcurrentChange(t *testing.T) {
 	}
 	stale := platformChange{Action: "role-save", ID: old.ID, Name: "Renamed",
 		PreviousRole: &old, Scopes: []accessScope{development}}
-	if result := applyAccess(state, stale); !strings.Contains(result.Reason, "其他操作修改") {
+	if result := applyAccess(state, stale, true); !strings.Contains(result.Reason, "其他操作修改") {
 		t.Fatalf("stale snapshot was accepted: %+v", result)
 	}
 	if role := state.Roles[old.ID]; role.Name != old.Name || !slices.Contains(role.Scopes, testingScope) {

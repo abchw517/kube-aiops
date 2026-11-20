@@ -11,6 +11,7 @@ const reviewHistory = [];
 let observationRequests = 0;
 let knowledgeCandidate;
 let interfaceRoleSaved = false;
+let administratorGroupSaved = false;
 
 const findings = [
   {
@@ -342,6 +343,16 @@ createServer(async (request, response) => {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const change = JSON.parse(Buffer.concat(chunks).toString());
+      if (fixtureSuperAdministrator && !change.id && change.name === "管理员演练组" && change.roleIds?.includes("system-admin")) {
+        if (change.action === "group-preview") {
+          return json(response, 200, { version: "new-admin-group-version", addsAdministrator: true, members: [] });
+        }
+        if (change.action === "group-save" && change.groupPreview === "new-admin-group-version") {
+          administratorGroupSaved = true;
+          response.setHeader("X-Operation-Audit-Ref", "ABCDEFGHIJKLMNOPQRSTUVWXY2");
+          return json(response, 200, [{ id: "administrator-exercise" }]);
+        }
+      }
       if (change.action === "group-save" && change.id === "ops" && change.roleIds?.[0] === "guest-readonly") {
         return json(response, 200, [{ id: "ops" }]);
       }
@@ -359,7 +370,8 @@ createServer(async (request, response) => {
       }
       return json(response, 400, { error: "unexpected system editor change" });
     }
-    return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] }], roles: [
+    return json(response, 200, { groups: [{ id: "ops", name: "运维", roles: ["guest-readonly"] },
+      ...(administratorGroupSaved ? [{ id: "administrator-exercise", name: "管理员演练组", roles: ["system-admin"] }] : [])], roles: [
       { id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] },
       { id: "diagnosis-reader", name: "诊断观察员", scopes: [{ environment: "development" }] },
       { id: "namespace-auditor", name: "命名空间审计员", scopes: [{ environment: "testing" }] },

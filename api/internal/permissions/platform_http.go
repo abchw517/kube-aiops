@@ -24,17 +24,18 @@ var auditRecordPattern = regexp.MustCompile(`^[A-Z2-7]{26,64}$`)
 var accountNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@-]{0,127}$`)
 
 type accountView struct {
-	ID                string           `json:"id"`
-	Username          string           `json:"username"`
-	Kind              string           `json:"kind"`
-	Disabled          bool             `json:"disabled"`
-	DirectoryDisabled bool             `json:"directoryDisabled"`
-	MustChange        bool             `json:"mustChangePassword"`
-	Roles             []string         `json:"roles"`
-	Groups            []string         `json:"groups"`
-	Effective         []effectiveScope `json:"effective"`
-	Grants            []effectiveGrant `json:"effectiveGrants,omitempty"`
-	LastLoginAt       int64            `json:"lastLoginAt,omitempty"`
+	ID                   string           `json:"id"`
+	Username             string           `json:"username"`
+	Kind                 string           `json:"kind"`
+	Disabled             bool             `json:"disabled"`
+	DirectoryDisabled    bool             `json:"directoryDisabled"`
+	MustChange           bool             `json:"mustChangePassword"`
+	Roles                []string         `json:"roles"`
+	Groups               []string         `json:"groups"`
+	Effective            []effectiveScope `json:"effective"`
+	Grants               []effectiveGrant `json:"effectiveGrants,omitempty"`
+	AdministratorSources []string         `json:"administratorSources,omitempty"`
+	LastLoginAt          int64            `json:"lastLoginAt,omitempty"`
 }
 
 type platformChange struct {
@@ -50,11 +51,13 @@ type platformChange struct {
 	Scopes       []accessScope
 	Grants       *[]interfaceGrant
 	PreviousRole *platformRole
+	GroupPreview string
 }
 
 type changeResult struct {
-	ID     string `json:"id"`
-	Reason string `json:"reason,omitempty"`
+	ID                 string `json:"id"`
+	Reason             string `json:"reason,omitempty"`
+	administratorAudit string
 }
 
 func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource string, actor identity.Principal) {
@@ -100,6 +103,7 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 					ID: account.ID, Username: account.Username, Kind: account.Kind, Disabled: account.Disabled,
 					DirectoryDisabled: account.DirectoryDisabled, MustChange: account.MustChange,
 					Roles: account.Roles, Groups: account.Groups, Effective: state.effective(account), Grants: state.effectiveGrants(account),
+					AdministratorSources: state.administratorSources(account),
 				})
 			}
 			rows, err := a.store.QueryContext(ctx, `SELECT actor, created_at FROM account_last_login`)
@@ -127,13 +131,13 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 			}
 			if !canRead("system.binding.read") {
 				for i := range users {
-					users[i].Roles, users[i].Groups, users[i].Effective, users[i].Grants = nil, nil, nil, nil
+					users[i].Roles, users[i].Groups, users[i].Effective, users[i].Grants, users[i].AdministratorSources = nil, nil, nil, nil, nil
 				}
 			}
 			if !canRead("system.account.list") {
 				for i := range users {
 					user := &users[i]
-					*user = accountView{ID: user.ID, Username: user.Username, Roles: user.Roles, Groups: user.Groups, Effective: user.Effective, Grants: user.Grants}
+					*user = accountView{ID: user.ID, Username: user.Username, Roles: user.Roles, Groups: user.Groups, Effective: user.Effective, Grants: user.Grants, AdministratorSources: user.AdministratorSources}
 				}
 			}
 			slices.SortFunc(users, func(a, b accountView) int { return strings.Compare(a.ID, b.ID) })
@@ -167,6 +171,11 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	var input platformChange
 	if !adminhttp.Decode(w, r, &input) || len(input.IDs) > 100 || len(input.Values) > 50 || len(input.Scopes) > 100 || (input.Grants != nil && len(*input.Grants) > 512) || (input.RoleIDs != nil && len(*input.RoleIDs) > 50) {
 		http.Error(w, "请求无效或超出批量上限", 400)
+		return
+	}
+	super := actor.Subject == superSubject && actor.Provider == AdminProvider
+	if resource == "access" && input.Action == "group-preview" {
+		a.previewGroupAdministrator(w, ctx, input, super)
 		return
 	}
 	if resource == "access" && input.Action == "role-save" {
@@ -243,11 +252,11 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 	results := make([]changeResult, 0, len(ids))
 	action, risk := labelChange(input.Action)
 	var auditReference string
-	auditLink := input.Action == "join" || input.Action == "leave" || input.Action == "grant" || input.Action == "revoke" || input.Action == "role-save"
+	auditLink := input.Action == "join" || input.Action == "leave" || input.Action == "grant" || input.Action == "revoke" || input.Action == "role-save" || input.Action == "group-save"
 	err := a.editPlatform(ctx, func(state *platformState, tx *sql.Tx) error {
-		if actor.Subject != superSubject {
+		if !super {
 			current := state.Accounts[actor.Subject]
-			if !current.isAdministrator() || !IsAdministrator(actor) || current.Disabled ||
+			if !state.isAdministrator(current) || !IsAdministrator(actor) || current.Disabled ||
 				current.DirectoryDisabled || current.MustChange || current.Generation != actor.SessionVersion {
 				return identity.ErrUnauthenticated
 			}
@@ -265,9 +274,10 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		}
 		if batch != "" && resource == "access" {
 			for _, role := range uniqueStrings(input.Values) {
-				result := applyGroupRole(*state, input, role)
+				result := applyGroupRole(*state, input, role, super)
 				results = append(results, result)
 				event := operation{Actor: actor.Subject, Action: action, Risk: risk, Target: input.ID + " → " + role, Batch: batch, Reason: result.Reason}
+				annotateAdministratorAudit(&event, result)
 				if result.Reason != "" {
 					event.Result = "失败"
 				}
@@ -281,25 +291,26 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 				result := changeResult{ID: id}
 				previousRole := state.Roles[id]
 				if resource == "accounts" {
-					result = applyAccount(*state, input, hash, actor.Subject == superSubject)
+					result = applyAccount(*state, input, hash, super)
 					if input.Action == "delete" && result.Reason == "" && state.DeletedLDAP[id] {
 						if _, err := tx.ExecContext(ctx, "DELETE FROM ldap_accounts WHERE subject=?", id); err != nil {
 							return err
 						}
 					}
 				} else {
-					result = applyAccess(*state, input)
+					result = applyAccess(*state, input, super)
 				}
 				results = append(results, result)
-				if result.Reason == "" || batch != "" {
+				if result.Reason == "" || batch != "" || result.administratorAudit != "" {
 					event := operation{Actor: actor.Subject, Action: action, Risk: risk, Target: result.ID, Batch: batch, Reason: result.Reason}
+					annotateAdministratorAudit(&event, result)
 					if result.Reason != "" {
 						event.Result = "失败"
 					}
 					if result.Reason == "" && input.Action == "role-save" {
 						event.Reason = auditGrantDiff(previousRole.Grants, state.Roles[result.ID].Grants)
 					}
-					reference, err := storeOperation(ctx, tx, event, auditLink && batch == "")
+					reference, err := storeOperation(ctx, tx, event, result.Reason == "" && auditLink && batch == "")
 					if err != nil {
 						return err
 					}
@@ -312,6 +323,9 @@ func (a *Admin) handlePlatform(w http.ResponseWriter, r *http.Request, resource 
 		if batch != "" {
 			success := 0
 			for _, result := range results {
+				if result.administratorAudit != "" {
+					risk = "高"
+				}
 				if result.Reason == "" {
 					success++
 				}
@@ -407,7 +421,7 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 	if !exists {
 		return fail("账号不可修改或不存在")
 	}
-	if account.isAdministrator() && !super {
+	if state.isAdministrator(account) && !super {
 		return fail("仅超级管理员可维护其他管理员")
 	}
 	switch input.Action {
@@ -444,9 +458,15 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 		if isGroup {
 			targets = account.Groups
 		}
-		wasAdministrator := account.isAdministrator()
+		wasAdministrator := state.isAdministrator(account)
 		values := uniqueStrings(input.Values)
 		for _, value := range values {
+			if isGroup && state.Groups[value].hasAdministratorRole() {
+				result.administratorAudit = "变更管理员组成员 · " + strings.Join(values, "、")
+				if !super {
+					return fail("仅超级管理员可变更管理员组成员")
+				}
+			}
 			if !isGroup && value == adminRole && !super {
 				return fail("仅超级管理员可授予或撤销系统管理员角色")
 			}
@@ -475,8 +495,11 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 		if input.Action == "revoke" && slices.Contains(input.Values, guestRole) && len(state.roleSources(account)) == 0 {
 			return fail("须保留其他直接或继承角色")
 		}
-		// 系统管理员角色变更必须使已有会话失效，普通数据角色继续即时生效。
-		if wasAdministrator != account.isAdministrator() {
+		if result.administratorAudit != "" {
+			result.administratorAudit += " · 授权后来源：" + strings.Join(state.administratorSources(account), "、")
+		}
+		// 有效管理员身份改变时使已有会话失效。
+		if wasAdministrator != state.isAdministrator(account) {
 			account.Generation = rand.Text()
 		}
 	default:
@@ -486,28 +509,38 @@ func applyAccount(state platformState, input platformChange, hash string, super 
 	return result
 }
 
-func applyGroupRole(state platformState, input platformChange, role string) changeResult {
+func applyGroupRole(state platformState, input platformChange, role string, super bool) changeResult {
 	result := changeResult{ID: role}
 	group := state.Groups[input.ID]
+	before := group
 	switch {
 	case group.ID == "":
 		result.Reason = "用户组不存在"
-	case role == adminRole || state.role(role).ID == "":
+	case state.role(role).ID == "":
 		result.Reason = "角色不可分配"
+	case !super && (group.hasAdministratorRole() || role == adminRole):
+		result.Reason = "仅超级管理员可维护管理员组"
+		result.administratorAudit = "变更管理员组角色"
 	case input.Action == "group-roles-add":
 		if slices.Contains(group.Roles, role) {
 			result.Reason = "用户组已关联该角色"
 			break
 		}
-		group.Roles = append(group.Roles, role)
+		group.Roles = append(slices.Clone(group.Roles), role)
 	case input.Action == "group-roles-remove":
 		if !slices.Contains(group.Roles, role) {
 			result.Reason = "用户组未关联该角色"
 			break
 		}
-		group.Roles = slices.DeleteFunc(group.Roles, func(id string) bool { return id == role })
+		group.Roles = slices.DeleteFunc(slices.Clone(group.Roles), func(id string) bool { return id == role })
+	default:
+		result.Reason = "不支持该批量操作"
 	}
 	if result.Reason == "" {
+		if before.hasAdministratorRole() != group.hasAdministratorRole() {
+			impact := state.groupAdministratorImpact(before, group)
+			result.administratorAudit = state.applyGroupAdministratorImpact(impact)
+		}
 		state.Groups[group.ID] = group
 	}
 	return result
@@ -525,81 +558,56 @@ func uniqueAccessScopes(scopes []accessScope) []accessScope {
 	return result
 }
 
-func applyAccess(state platformState, input platformChange) changeResult {
+func applyAccess(state platformState, input platformChange, super bool) changeResult {
 	result := changeResult{ID: input.ID}
 	fail := func(reason string) changeResult { result.Reason = reason; return result }
 	name := strings.TrimSpace(input.Name)
 	switch input.Action {
-	case "role-save", "group-save":
+	case "group-save":
+		return state.saveGroup(input, super)
+	case "role-save":
 		if name == "" || len(name) > 128 {
 			return fail("请输入有效名称")
 		}
 		if result.ID == "" {
 			result.ID = rand.Text()
 		}
-		if input.Action == "role-save" {
-			if state.role(input.ID).Fixed || input.ID != "" && state.Roles[input.ID].ID == "" {
-				return fail("该角色不可编辑")
+		if state.role(input.ID).Fixed || input.ID != "" && state.Roles[input.ID].ID == "" {
+			return fail("该角色不可编辑")
+		}
+		if input.PreviousRole != nil {
+			current := state.Roles[input.ID]
+			before := input.PreviousRole
+			if current.ID != before.ID || current.Name != before.Name || !slices.Equal(current.Scopes, before.Scopes) || !slices.Equal(current.Grants, before.Grants) {
+				return fail("角色已被其他操作修改。请刷新后重新核对")
 			}
-			if input.PreviousRole != nil {
-				current := state.Roles[input.ID]
-				before := input.PreviousRole
-				if current.ID != before.ID || current.Name != before.Name || !slices.Equal(current.Scopes, before.Scopes) || !slices.Equal(current.Grants, before.Grants) {
-					return fail("角色已被其他操作修改。请刷新后重新核对")
-				}
-			}
-			if name == state.role(guestRole).Name || name == state.role(adminRole).Name {
+		}
+		if name == state.role(guestRole).Name || name == state.role(adminRole).Name {
+			return fail("角色名称已使用")
+		}
+		for id, role := range state.Roles {
+			if id != result.ID && role.Name == name {
 				return fail("角色名称已使用")
 			}
-			for id, role := range state.Roles {
-				if id != result.ID && role.Name == name {
-					return fail("角色名称已使用")
-				}
-			}
-			grants := state.Roles[input.ID].Grants
-			if input.Grants != nil {
-				if input.ID != "" && input.PreviousRole == nil {
-					return fail("缺少角色版本，请刷新后重新核对")
-				}
-				grants = slices.Clone(*input.Grants)
-				slices.SortFunc(grants, func(a, b interfaceGrant) int { return strings.Compare(grantOrder(a), grantOrder(b)) })
-				grants = slices.Compact(grants)
-			}
-			if len(input.Scopes) == 0 && len(grants) == 0 {
-				return fail("至少配置一项权限或历史诊断查看范围")
-			}
-			for _, scope := range input.Scopes {
-				if !validAccessScope(scope) {
-					return fail("授权范围无效，生产与预发布须指定业务线和命名空间")
-				}
-			}
-			state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: uniqueAccessScopes(input.Scopes), Grants: grants}
-		} else {
-			group := state.Groups[input.ID]
-			if input.ID != "" && group.ID == "" {
-				return fail("用户组不存在")
-			}
-			for id, other := range state.Groups {
-				if id != result.ID && other.Name == name {
-					return fail("用户组名称已使用")
-				}
-			}
-			description := strings.TrimSpace(input.Description)
-			if len([]rune(description)) > 256 {
-				return fail("用途最多可填写 256 个字符")
-			}
-			if input.RoleIDs != nil {
-				roleIDs := uniqueStrings(*input.RoleIDs)
-				for _, role := range roleIDs {
-					if role == adminRole || state.role(role).ID == "" {
-						return fail("存在不可分配的角色")
-					}
-				}
-				group.Roles = roleIDs
-			}
-			group.ID, group.Name, group.Description = result.ID, name, description
-			state.Groups[group.ID] = group
 		}
+		grants := state.Roles[input.ID].Grants
+		if input.Grants != nil {
+			if input.ID != "" && input.PreviousRole == nil {
+				return fail("缺少角色版本，请刷新后重新核对")
+			}
+			grants = slices.Clone(*input.Grants)
+			slices.SortFunc(grants, func(a, b interfaceGrant) int { return strings.Compare(grantOrder(a), grantOrder(b)) })
+			grants = slices.Compact(grants)
+		}
+		if len(input.Scopes) == 0 && len(grants) == 0 {
+			return fail("至少配置一项权限或历史诊断查看范围")
+		}
+		for _, scope := range input.Scopes {
+			if !validAccessScope(scope) {
+				return fail("授权范围无效，生产与预发布须指定业务线和命名空间")
+			}
+		}
+		state.Roles[result.ID] = platformRole{ID: result.ID, Name: name, Scopes: uniqueAccessScopes(input.Scopes), Grants: grants}
 	case "role-delete":
 		if state.Roles[input.ID].ID == "" {
 			return fail("预置角色不可删除，或角色不存在")
@@ -623,6 +631,10 @@ func applyAccess(state platformState, input platformChange) changeResult {
 		group := state.Groups[input.ID]
 		if group.ID == "" {
 			return fail("用户组不存在")
+		}
+		if group.hasAdministratorRole() && !super {
+			result.administratorAudit = "删除管理员组"
+			return fail("仅超级管理员可维护管理员组")
 		}
 		var refs []string
 		for _, role := range group.Roles {
