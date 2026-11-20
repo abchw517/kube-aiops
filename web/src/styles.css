@@ -90,7 +90,12 @@ tbody tr:hover { background: #f5f8fd; }
 .correlation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .evidence-source { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; }
 .evidence-source-heading, .evidence-signal-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
-.evidence-source-heading h3 { margin: 0; font-size: 15px; }
+.evidence-source-name { font-size: 15px; font-weight: 700; }
+.evidence-source > summary { justify-content: flex-start; cursor: pointer; border-radius: 4px; }
+.evidence-source > summary::before { content: ""; align-self: center; width: 6px; height: 6px; margin-right: 3px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(-45deg); }
+.evidence-source[open] > summary::before { transform: rotate(45deg); }
+.evidence-source > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.evidence-source-count { margin-inline-start: auto; color: var(--muted); font-size: 12px; }
 .source-state { padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .source-state-available { color: #116142; background: #e6f5eb; }
 .source-state-partial { color: #895200; background: #fff2d8; }

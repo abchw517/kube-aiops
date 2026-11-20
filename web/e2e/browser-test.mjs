@@ -104,23 +104,50 @@ try {
       );
     }
     await assertText(cdp, (text) =>
-      text.includes("关联证据") && text.includes("ContainerBackOff") &&
-      text.includes("out_of_memory") && text.includes("部分可用") &&
-      text.includes("不可用") && text.includes("已禁用"),
-    "Finding Detail did not render grouped correlation evidence and source states");
+      text.includes("关联证据") && text.includes("2 条证据") &&
+      text.includes("部分可用") && text.includes("不可用") && text.includes("已禁用"),
+    "Finding Detail did not show collapsed evidence sources and source states");
 
     const evidenceEvaluation = await cdp.send("Runtime.evaluate", {
-      expression: `({
-        probe: Boolean(document.querySelector("#evidence-markup-probe")),
-        text: document.querySelector(".correlation-panel")?.innerText ?? "",
-        events: Array.from(document.querySelectorAll('[aria-label="Kubernetes 事件"] .evidence-signal-heading strong'), node => node.textContent)
-      })`,
+      expression: `(() => {
+        const panel = document.querySelector(".correlation-panel");
+        const tools = [...panel.querySelectorAll(".correlation-grid > details.evidence-source")];
+        const visibleOnOpen = [
+          "ContainerBackOff",
+          "此来源暂不可用",
+          "out_of_memory",
+          "此来源未启用",
+        ];
+        const startClosed = tools.length === 4 && tools.every(tool => !tool.open) &&
+          visibleOnOpen.every(message => !panel.innerText.includes(message));
+        const expandedIndependently = tools.map((tool, index) => {
+          const summary = tool.querySelector("summary");
+          const count = summary.querySelector(".evidence-source-count").textContent;
+          const expectedCount = [2, 0, 1, 0][index] + " 条证据";
+          summary.click();
+          const expanded = tool.open && tools.every(other => other === tool || !other.open) &&
+            tool.innerText.includes(visibleOnOpen[index]);
+          summary.click();
+          return count === expectedCount && expanded && !tool.open;
+        });
+        const events = panel.querySelector('details[aria-label="Kubernetes 事件"]');
+        events.querySelector("summary").click();
+        const text = panel.innerText;
+        events.querySelector("summary").click();
+        return {
+          startClosed, expandedIndependently,
+          probe: Boolean(document.querySelector("#evidence-markup-probe")),
+          text,
+          events: Array.from(events.querySelectorAll(".evidence-signal-heading strong"), node => node.textContent),
+        };
+      })()`,
       returnByValue: true,
     });
     const evidence = evidenceEvaluation.result?.value ?? {};
-    if (evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
+    if (!evidence.startClosed || evidence.expandedIndependently?.join(",") !== "true,true,true,true" ||
+      evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
       evidence.events?.join(",") !== "ContainerBackOff,Started") {
-      throw new Error(`Unexpected evidence markup or ranking: ${JSON.stringify(evidence)}`);
+      throw new Error(`Unexpected evidence folding, markup or ranking: ${JSON.stringify(evidence)}`);
     }
 
     await assertDetailLayout(cdp, 1440, 2);
@@ -148,8 +175,14 @@ try {
       expression: "document.querySelector('[data-action=retry-correlation]').click()",
     });
     await assertText(cdp, (text) =>
-      text.includes("此时间窗口内暂无证据。") && text.includes("Available replicas are below desired replicas.") &&
-      !text.includes("重新加载证据"), "Evidence retry did not render the empty result");
+      text.includes("0 条证据") && text.includes("Available replicas are below desired replicas.") &&
+      !text.includes("此时间窗口内暂无证据。") && !text.includes("重新加载证据"),
+    "Evidence retry did not render the collapsed empty result");
+    await cdp.send("Runtime.evaluate", {
+      expression: `document.querySelector('details[aria-label="Kubernetes 事件"] summary').click()`,
+    });
+    await assertText(cdp, (text) => text.includes("此时间窗口内暂无证据。"),
+      "Opening the empty available evidence source did not show the empty message");
 
     for (const [id, message] of [
       ["finding-auth", "查看证据需要身份认证"],
@@ -283,9 +316,17 @@ try {
       "Review did not display the structured judgment, gaps and next action");
     const clickedEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector("[data-review-jump]").click();
-      return document.activeElement.dataset.evidenceSignal;
+      const target = document.activeElement;
+      return target.closest("details.evidence-source")?.open && target.dataset.evidenceSignal;
     })()` });
     if (clickedEvidence.result?.value !== "event-critical") throw new Error("Review citation did not focus the original event");
+    const fallbackEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      [...document.querySelectorAll("[data-review-jump]")].find(button => button.textContent.includes("Prometheus")).click();
+      const events = document.querySelector('details[aria-label="Kubernetes 事件"]');
+      const metrics = document.querySelector('details[aria-label="Prometheus"]');
+      return events.open && metrics.open && document.activeElement === metrics.querySelector("summary");
+    })()` });
+    if (!fallbackEvidence.result?.value) throw new Error("Stale citation did not open and focus its own source without closing existing evidence");
     const awaitingObservation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const button = document.querySelector('[data-review-action="assess"]');
       button.click();
@@ -296,6 +337,16 @@ try {
     await assertText(cdp, (text) => text.includes("模型响应超时。观察内容已保留，可以重新复核。") && text.includes("K8sGPT 原始说明"), "Model timeout was not recoverable inline");
     const observation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: 'document.querySelector("[data-review-observation]").value' });
     if (observation.result?.value !== "仓库返回 403") throw new Error("Review discarded the observation after failure");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("模型服务返回超时（HTTP 504）") && text.includes("观察内容已保留"),
+      "Upstream timeout was not distinguished from the app deadline");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("网关等待超时") && text.includes("观察内容已保留") &&
+      text.includes("已有历史事件支持排查镜像仓库") && text.includes("K8sGPT 原始说明"),
+      "Outer gateway timeout did not preserve the existing review or provide its own message");
+    const retainedObservation = await cdp.send("Runtime.evaluate", { returnByValue: true,
+      expression: `document.querySelector("[data-review-observation]").value` });
+    if (retainedObservation.result?.value !== "仓库返回 403") throw new Error("A repeated timeout discarded the observation");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("镜像仓库返回 403，仍需核对"), "Retry did not use the operator observation");
     await cdp.send("Runtime.evaluate", { expression: `(() => {

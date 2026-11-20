@@ -24,7 +24,8 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/sanitizer"
 )
 
-const Timeout = 50 * time.Second
+// Timeout leaves time for finding, model configuration, and evidence reads around inference.
+const Timeout = maxProviderTimeout + 15*time.Second
 
 type reviewMessage struct {
 	Role string `json:"role"`
@@ -309,6 +310,7 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		code := "AI_PROVIDER_UNAVAILABLE"
+		var failure *providerError
 		switch {
 		case errors.Is(err, kubernetes.ErrEnginePermission):
 			code = "AI_ENGINE_PERMISSION_DENIED"
@@ -321,7 +323,6 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, kubernetes.ErrEngineSecret):
 			code = "AI_ENGINE_SECRET_UNAVAILABLE"
 		default:
-			var failure *providerError
 			if errors.As(err, &failure) {
 				code = failure.code
 			}
@@ -330,9 +331,16 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if code == "AI_PROVIDER_TIMEOUT" {
 			status = http.StatusGatewayTimeout
 		}
+		response := struct {
+			Code           string `json:"code"`
+			UpstreamStatus int    `json:"upstreamStatus,omitempty"`
+		}{Code: code}
+		if status == http.StatusGatewayTimeout && failure != nil {
+			response.UpstreamStatus = failure.status
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		adminhttp.WriteJSON(w, map[string]string{"code": code})
+		adminhttp.WriteJSON(w, response)
 		return
 	}
 	if !wiki.EvidenceCurrent(ctx) || !reviewAllowed(ctx, code, item) || needsSave && !reviewAllowed(ctx, catalog.ReviewSave, item) {

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	defaultProviderTimeout = 35 * time.Second
+	defaultProviderTimeout = 90 * time.Second
 	minProviderTimeout     = 5 * time.Second
-	maxProviderTimeout     = 40 * time.Second
+	maxProviderTimeout     = 120 * time.Second
 )
 
 // readProviderTimeout 读取模型请求预算，并为证据和响应写入预留时间。
@@ -30,7 +30,7 @@ func readProviderTimeout() (time.Duration, error) {
 	}
 	timeout, err := time.ParseDuration(raw)
 	if err != nil || timeout < minProviderTimeout || timeout > maxProviderTimeout {
-		return 0, errors.New("FINDING_AI_PROVIDER_TIMEOUT must be a duration from 5s to 40s")
+		return 0, errors.New("FINDING_AI_PROVIDER_TIMEOUT must be a duration from 5s to 120s")
 	}
 	return timeout, nil
 }
