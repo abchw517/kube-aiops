@@ -1032,7 +1032,7 @@
           "method": "POST",
           "path": "/api/v1/admin/access",
           "risk": "敏感",
-          "rule": "action=group-save，加载已有组",
+          "rule": "action=group-save，加载已有组；关联管理员前由超级管理员使用 group-preview 核对影响",
           "status": "现有路由",
           "restricted": true
         },
@@ -1085,7 +1085,7 @@
           "method": "POST",
           "path": "/api/v1/admin/access",
           "risk": "高风险",
-          "rule": "action=group-roles-add，或按 group-save 差异校验",
+          "rule": "action=group-roles-add，或按 group-save 差异校验；仅超级管理员可授予组管理员角色",
           "status": "现有路由",
           "restricted": true
         },
@@ -1118,7 +1118,7 @@
           "method": "POST",
           "path": "/api/v1/admin/access",
           "risk": "高风险",
-          "rule": "action=group-roles-remove，或按 group-save 差异校验",
+          "rule": "action=group-roles-remove，或按 group-save 差异校验；仅超级管理员可撤销组管理员角色",
           "status": "现有路由",
           "restricted": true
         },

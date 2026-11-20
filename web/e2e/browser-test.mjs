@@ -584,10 +584,9 @@ try {
       location.hash = "#/admin/password";
     })` });
     if (!guardedPassword.result?.value) throw new Error("LDAP administrator could open the local password route");
-    await cdp.send("Runtime.evaluate", {
-      awaitPromise: true, expression: `fetch("/test/admin-session").then(() => { location.hash = "#/admin/password"; })`,
-    });
-    await assertText(cdp, (text) => text.includes("为当前本地账号设置新密码"), "Local administrator lost the password route");
+    await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
+    await assertPage(cdp, "http://127.0.0.1:4173/?local-admin-session#/admin/password",
+      (text) => text.includes("为当前本地账号设置新密码"), "Local administrator lost the password route");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("全局管理与诊断查看") && text.includes("创建系统管理员"),
       "Super administrator session did not restore account maintenance");
@@ -680,13 +679,46 @@ try {
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="role:guest-readonly"]').click()` });
     await assertText(cdp, (text) => text.includes("预置角色的权限固定") && text.includes("历史诊断查看"), "Group link did not open the shared read-only role viewer");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-system-close]').click();
-      document.querySelector('[data-system-open="group:ops"]').click()` });
+    await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: `new Promise(resolve => {
+      const dialog = document.querySelector("dialog[open]");
+      dialog.addEventListener("close", resolve, { once: true });
+      dialog.querySelector("[data-system-close]").click();
+    })` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="group:ops"]').click()` });
     const rolePreselected = await cdp.send("Runtime.evaluate", { returnByValue: true,
       expression: `document.querySelector('dialog[open] input[name="roles"]').checked` });
     if (!rolePreselected.result?.value) throw new Error("Group editor did not preload existing role associations");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="group-save"]').click()` });
-    await assertText(cdp, (text) => !text.includes("保存用户组") && text.includes("新建用户组"), "Group save did not close the editor");
+    await assertText(cdp, (text) => text.includes("用户组保存结果"), "Group save did not show its result");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
+    await assertText(cdp, (text) => !text.includes("用户组保存结果") && text.includes("新建用户组"), "Group save did not refresh the list");
+    await assertPage(cdp, "http://127.0.0.1:4173/?group-editor#/admin/access/groups",
+      text => text.includes("新建用户组") && text.includes("查看成员权限"), "Group editor did not reload");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-system-open="group:"]').click();
+      const form = document.querySelector("dialog[open] form");
+      form.elements.name.value = "管理员演练组";
+      form.querySelector("[data-group-admin]").click();
+      form.querySelector("[data-group-save]").click();
+    })()` });
+    await assertText(cdp, text => text.includes("确认管理员角色变更") && text.includes("当前成员 0 人") && text.includes("后续加入"),
+      "New administrator group did not confirm empty membership and future inheritance");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-group-confirm]').click()` });
+    await assertText(cdp, text => text.includes("用户组保存结果") && text.includes("查看本次审计"), "Administrator group save did not link to audit");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
+    await assertText(cdp, text => text.includes("管理员演练组") && !text.includes("用户组保存结果"), "New administrator group was not listed");
+    await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session?super=false")' });
+    await assertPage(cdp, "http://127.0.0.1:4173/?ordinary-group-view#/admin/access/groups", text => text.includes("管理员演练组"), "Could not reload groups as ordinary administrator");
+    const lockedGroup = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const view = document.querySelector('[data-system-open="group:administrator-exercise"]');
+      const create = document.querySelector('template[data-system-editor="group:"]').content;
+      view.click();
+      return view.textContent === "查看" && create.querySelector("[data-group-admin]").disabled &&
+        !document.querySelector('[data-system-open="remove:administrator-exercise"]') &&
+        !document.querySelector('dialog[open] button[value="group-save"]');
+    })()` });
+    if (!lockedGroup.result?.value) throw new Error("Ordinary administrator could edit or assign an administrator group");
+    await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
       (text) => ["权限目录", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
@@ -700,13 +732,36 @@ try {
       "Catalog search did not isolate the publish action");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
       "Role configuration did not render");
-    await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const checkboxBehavior = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
+      const form = document.querySelector("dialog[open] form");
+      const find = '[data-pc-check="diagnosis.finding.list"]';
+      const summary = '[data-pc-check="diagnosis.finding.summary"]';
+      form.querySelector(find).click();
+      form.querySelector('[data-pc-point="diagnosis.finding.list"]').click();
+      if (!form.querySelector(find).checked || !form.querySelector("[data-pc-all]").indeterminate) return false;
+      const query = form.querySelector("[data-pc-query]");
+      query.value = "diagnosis.finding.summary";
+      query.dispatchEvent(new Event("input", { bubbles: true }));
+      form.querySelector("[data-pc-all]").click();
+      const matched = form.querySelector(summary).checked && !form.querySelector(find) &&
+        form.querySelector("[data-pc-selected]").textContent.includes("总待添加 2 项");
+      form.querySelector('[data-pc-module="system"]').click();
+      form.querySelector('[data-pc-module="diagnosis"]').click();
+      query.value = "";
+      query.dispatchEvent(new Event("input", { bubbles: true }));
+      const preserved = form.querySelector(find).checked && form.querySelector(summary).checked &&
+        form.querySelector('[data-pc-toolkit-toggle="历史诊断"]').indeterminate;
+      form.querySelector("[data-pc-clear]").click();
+      return matched && preserved && !form.querySelector(find).checked;
+    })()` });
+    if (!checkboxBehavior.result?.value) throw new Error("Permission checkbox batch ignored visibility or lost deferred selections");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("dialog[open] form");
       form.elements.name.value = "接口授权检查";
       form.querySelector('[data-pc-module="system"]').click();
       form.querySelector('[data-pc-point="system.audit.list"]').click();
-      form.querySelector("[data-pc-toggle]").click();
+      form.querySelector('[data-pc-check="system.audit.list"]').click();
       form.querySelector("[data-role-add-grants]").click();
       form.querySelector('button[value="role-preview"]').click();
     })()` });
@@ -724,7 +779,7 @@ try {
       filter.dispatchEvent(new Event("change", { bubbles: true }));
       const point = form.querySelector('[data-pc-point="system.audit.list"]');
       const visible = Boolean(point?.hasAttribute("data-pc-configured")) &&
-        form.querySelector("[data-pc-details]").textContent.includes("已配置范围");
+        form.querySelector("[data-pc-details]").textContent.includes("已保存");
       form.querySelector("[data-role-grant-remove]").click();
       const removed = !form.querySelector('[data-pc-point="system.audit.list"]');
       document.querySelector("dialog[open] footer [data-system-close]").click();

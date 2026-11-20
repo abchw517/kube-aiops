@@ -302,7 +302,7 @@ tbody tr:hover { background: #f5f8fd; }
 .system-scope-row, .system-notice { border: 1px solid var(--line); padding: 8px 12px; border-radius: 7px; background: #f6f8fc; }
 .system-scope-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
 .system-scope-empty { margin: 0; color: var(--muted); }
-[data-scope-list]:not(:empty) + .system-scope-empty { display: none; }
+[data-role-draft]:has([data-scope-list]:not(:empty), [data-role-grants]:not(:empty)) .system-scope-empty { display: none; }
 .account-identity { min-width: 0; overflow-wrap: anywhere; }
 .account-identity h3 { margin: 0 0 4px; }
 .account-identity code, .account-identity small { color: var(--muted); font-size: .8rem; line-height: 1.45; }
@@ -483,3 +483,14 @@ tbody tr:hover { background: #f5f8fd; }
 .system-dialog:has([data-role-catalog-host] .permission-catalog) { width: min(1100px, calc(100% - 1.4rem)); }
 @media (max-width: 900px) { .permission-catalog-workspace { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 540px) { .permission-catalog-tabs { gap: .75rem; } .permission-catalog-filters input { width: 100%; } }
+
+.permission-selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .55rem; background: #f1f6fd; border: 1px solid #dae4f2; color: #25476d; }
+.permission-catalog label.permission-batch { display: inline-flex; flex-direction: row; align-items: center; gap: .4rem; font-size: .8rem; }
+.permission-selection-toolbar [data-pc-selected] { font-size: .78rem; }
+.permission-action-row { display: flex; align-items: center; gap: .3rem; }
+.permission-action-row .permission-point { flex: 1; min-width: 0; }
+.permission-catalog input[type="checkbox"] { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: #1d56a5; }
+.permission-action-row[data-pc-selected-point="true"] .permission-point { color: #164d98; background: #e8f1ff; border-color: #6992d0; }
+.system-admin-impact { border: 1px solid #efcb91; background: #fff6e8; color: #704608; padding: .75rem; border-radius: .4rem; }
+.system-admin-impact p { margin: .25rem 0; }
+.system-badge[data-risk="高风险"] { color: #794909; background: #fff3dc; }

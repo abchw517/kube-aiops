@@ -37,16 +37,23 @@ func TestCatalogModulesAndPrototypeUseSameOperations(t *testing.T) {
 			}
 		}
 	}
-	prototype, err := os.ReadFile("../../../../docx/permission-catalog/prototype.html")
-	if err != nil {
+	var expected any
+	if err := json.Unmarshal(document, &expected); err != nil {
 		t.Fatal(err)
 	}
-	match := regexp.MustCompile(`<script type="application/json" id="catalog">(.+)</script>`).FindSubmatch(prototype)
-	if len(match) != 2 {
-		t.Fatal("prototype missing embedded catalog")
-	}
-	var actual, expected any
-	if json.Unmarshal(match[1], &actual) != nil || json.Unmarshal(document, &expected) != nil || !reflect.DeepEqual(actual, expected) {
-		t.Fatal("prototype and server catalog differ")
+	pattern := regexp.MustCompile(`<script type="application/json" id="catalog">(.+)</script>`)
+	for _, name := range []string{"prototype.html", "group-admin-prototype.html"} {
+		prototype, err := os.ReadFile("../../../../docx/permission-catalog/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		match := pattern.FindSubmatch(prototype)
+		if len(match) != 2 {
+			t.Fatalf("%s: missing embedded catalog", name)
+		}
+		var actual any
+		if err := json.Unmarshal(match[1], &actual); err != nil || !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("%s: prototype and server catalog differ (%v)", name, err)
+		}
 	}
 }
