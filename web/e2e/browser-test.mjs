@@ -110,19 +110,32 @@ try {
 
     const evidenceEvaluation = await cdp.send("Runtime.evaluate", {
       expression: `(() => {
-        const events = document.querySelector('details[aria-label="Kubernetes 事件"]');
-        const logs = document.querySelector('details[aria-label="VictoriaLogs"]');
         const panel = document.querySelector(".correlation-panel");
-        const startClosed = !events.open && !logs.open &&
-          !panel.innerText.includes("ContainerBackOff") && !panel.innerText.includes("out_of_memory");
+        const tools = [...panel.querySelectorAll(".correlation-grid > details.evidence-source")];
+        const visibleOnOpen = [
+          "ContainerBackOff",
+          "此来源暂不可用",
+          "out_of_memory",
+          "此来源未启用",
+        ];
+        const startClosed = tools.length === 4 && tools.every(tool => !tool.open) &&
+          visibleOnOpen.every(message => !panel.innerText.includes(message));
+        const expandedIndependently = tools.map((tool, index) => {
+          const summary = tool.querySelector("summary");
+          const count = summary.querySelector(".evidence-source-count").textContent;
+          const expectedCount = [2, 0, 1, 0][index] + " 条证据";
+          summary.click();
+          const expanded = tool.open && tools.every(other => other === tool || !other.open) &&
+            tool.innerText.includes(visibleOnOpen[index]);
+          summary.click();
+          return count === expectedCount && expanded && !tool.open;
+        });
+        const events = panel.querySelector('details[aria-label="Kubernetes 事件"]');
         events.querySelector("summary").click();
         const text = panel.innerText;
         events.querySelector("summary").click();
-        logs.querySelector("summary").click();
-        const logsVisible = logs.open && panel.innerText.includes("out_of_memory");
-        logs.querySelector("summary").click();
         return {
-          startClosed, logsVisible, endsClosed: !events.open && !logs.open,
+          startClosed, expandedIndependently,
           probe: Boolean(document.querySelector("#evidence-markup-probe")),
           text,
           events: Array.from(events.querySelectorAll(".evidence-signal-heading strong"), node => node.textContent),
@@ -131,7 +144,7 @@ try {
       returnByValue: true,
     });
     const evidence = evidenceEvaluation.result?.value ?? {};
-    if (!evidence.startClosed || !evidence.logsVisible || !evidence.endsClosed ||
+    if (!evidence.startClosed || evidence.expandedIndependently?.join(",") !== "true,true,true,true" ||
       evidence.probe || !evidence.text?.includes('<em id="evidence-markup-probe">') ||
       evidence.events?.join(",") !== "ContainerBackOff,Started") {
       throw new Error(`Unexpected evidence folding, markup or ranking: ${JSON.stringify(evidence)}`);
@@ -162,8 +175,14 @@ try {
       expression: "document.querySelector('[data-action=retry-correlation]').click()",
     });
     await assertText(cdp, (text) =>
-      text.includes("此时间窗口内暂无证据。") && text.includes("Available replicas are below desired replicas.") &&
-      !text.includes("重新加载证据"), "Evidence retry did not render the empty result");
+      text.includes("0 条证据") && text.includes("Available replicas are below desired replicas.") &&
+      !text.includes("此时间窗口内暂无证据。") && !text.includes("重新加载证据"),
+    "Evidence retry did not render the collapsed empty result");
+    await cdp.send("Runtime.evaluate", {
+      expression: `document.querySelector('details[aria-label="Kubernetes 事件"] summary').click()`,
+    });
+    await assertText(cdp, (text) => text.includes("此时间窗口内暂无证据。"),
+      "Opening the empty available evidence source did not show the empty message");
 
     for (const [id, message] of [
       ["finding-auth", "查看证据需要身份认证"],

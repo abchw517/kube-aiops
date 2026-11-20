@@ -195,14 +195,24 @@
         <div class="evidence-grid">
           <details class="evidence-source" id="demo-events">
             <summary>Kubernetes 事件 <small id="demo-event-count"></small><span class="evidence-state">可用</span></summary>
-            <ul>
+            <ul id="demo-event-list">
               <li id="demo-evidence" tabindex="-1"><strong id="demo-event-name"></strong><p id="demo-event-message"></p></li>
               <li id="demo-event-related" hidden><strong>BackOff</strong><p>Back-off pulling image "busybox:1.36"</p></li>
             </ul>
+            <p id="demo-event-empty" hidden>此时间窗口内暂无证据。</p>
           </details>
-          <section class="evidence-source"><strong>Prometheus</strong><span class="evidence-state">暂不可用</span></section>
-          <section class="evidence-source"><strong>VictoriaLogs</strong><span class="evidence-state">已禁用</span></section>
-          <section class="evidence-source"><strong>Alertmanager</strong><span class="evidence-state">已禁用</span></section>
+          <details class="evidence-source">
+            <summary>Prometheus <small>0 条证据</small><span class="evidence-state">暂不可用</span></summary>
+            <p>此来源暂不可用，未能获取证据。</p>
+          </details>
+          <details class="evidence-source">
+            <summary>VictoriaLogs <small>0 条证据</small><span class="evidence-state">已禁用</span></summary>
+            <p>此来源未启用，未采集证据。</p>
+          </details>
+          <details class="evidence-source">
+            <summary>Alertmanager <small>0 条证据</small><span class="evidence-state">已禁用</span></summary>
+            <p>此来源未启用，未采集证据。</p>
+          </details>
         </div>
       </section>
     </section>
@@ -424,7 +434,9 @@
       updateDemoReviewActions();
       const image = record?.id === "image-pull";
       find("demo-original").textContent = image ? "镜像拉取失败。镜像仓库返回 403，需检查访问权限和节点容器运行时。" : record?.problem || "暂无诊断说明";
-      find("demo-events").open = false;
+      for (const source of document.querySelectorAll(".evidence-grid > details")) source.open = false;
+      find("demo-event-list").hidden = !record;
+      find("demo-event-empty").hidden = Boolean(record);
       find("demo-event-count").textContent = image ? "2 条证据" : record ? "1 条证据" : "0 条证据";
       find("demo-window").textContent = record ? "发现时间 " + formatDate.format(new Date(record.time)) : "暂无证据";
       find("demo-event-name").textContent = image ? "Failed" : record ? record.kind + " " + record.namespace + "/" + record.resource : "暂无证据";

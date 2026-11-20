@@ -22,6 +22,13 @@ const stateLabels: Record<SourceState, string> = {
   disabled: "已禁用",
 };
 
+const emptySourceMessages: Record<SourceState, string> = {
+  available: "此时间窗口内暂无证据。",
+  partial: "此时间窗口内暂无可展示的证据，且来源数据可能不完整。",
+  unavailable: "此来源暂不可用，未能获取证据。",
+  disabled: "此来源未启用，未采集证据。",
+};
+
 const unitLabels: Record<SignalUnit, string> = {
   count: "",
   bytes: "B",
@@ -77,18 +84,14 @@ export function renderCorrelationEvidence(bundle: CorrelationBundle): string {
         const state = bundle.sources.find((status) => status.source === source)?.state ?? "unavailable";
         const signals = bundle.signals.filter((signal) => signal.source === source);
         const badge = `<span class="source-state source-state-${escapeHtml(state)}">${escapeHtml(stateLabels[state])}</span>`;
-        if (!signals.length) {
-          return `<section class="evidence-source" aria-label="${name}">
-            <div class="evidence-source-heading"><h3>${name}</h3>${badge}</div>
-            ${state === "available" ? '<p class="evidence-notice">此时间窗口内暂无证据。</p>' : ""}
-          </section>`;
-        }
         return `<details class="evidence-source" aria-label="${name}">
           <summary class="evidence-source-heading">
             <span class="evidence-source-name">${name}</span>
             <span class="evidence-source-count">${signals.length} 条证据</span>${badge}
           </summary>
-          <ol class="evidence-signals">${signals.map(renderSignal).join("")}</ol>
+          ${signals.length
+            ? `<ol class="evidence-signals">${signals.map(renderSignal).join("")}</ol>`
+            : `<p class="evidence-notice">${emptySourceMessages[state]}</p>`}
         </details>`;
       }).join("")}
     </div>`;
