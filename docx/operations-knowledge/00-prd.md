@@ -1,5 +1,7 @@
 # kube-aiops 运维知识库 PRD
 
+平台权限演进参见 [全局权限设计评审稿](../system-management/platform-rbac-design.md)。本版需求继续按已评审的权限规则执行。
+
 | 项目 | 定义 |
 | --- | --- |
 | 文档版本 | v1.1 · P0/P1 |
