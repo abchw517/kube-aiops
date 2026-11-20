@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -554,39 +556,21 @@ func applyAccess(state platformState, input platformChange) changeResult {
 	return result
 }
 
+// handleOperations 返回保留期内的审计记录和首屏元数据。
 func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	now := time.Now().Unix()
-	rows, err := a.store.QueryContext(r.Context(), `SELECT id,created_at,actor,action,risk,target,result,reason,batch FROM operation_audit
-		WHERE NOT `+auditExpired+` AND (?='' OR action=?) AND (?='' OR risk=?) AND (?='' OR instr(lower(actor),lower(?))>0 OR instr(lower(target),lower(?))>0)
-		AND (?='' OR batch=?) AND (?='' OR id<CAST(? AS INTEGER)) ORDER BY id DESC LIMIT 101`, now, q.Get("action"), q.Get("action"), q.Get("risk"), q.Get("risk"),
-		q.Get("account"), q.Get("account"), q.Get("account"), q.Get("batch"), q.Get("batch"), q.Get("before"), q.Get("before"))
+	page, limit, err := auditPagination(q)
 	if err != nil {
-		http.Error(w, "审计记录暂不可用", 503)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer rows.Close()
-	items := make([]operation, 0)
-	for rows.Next() {
-		var item operation
-		if rows.Scan(&item.ID, &item.At, &item.Actor, &item.Action, &item.Risk, &item.Target, &item.Result, &item.Reason, &item.Batch) != nil {
-			http.Error(w, "审计记录暂不可用", 503)
-			return
-		}
-		items = append(items, item)
-	}
-	if rows.Err() != nil {
-		http.Error(w, "审计记录暂不可用", 503)
+	now := time.Now().Unix()
+	payload, err := a.queryAuditOperations(r.Context(), q, now, page, limit)
+	if err != nil {
+		http.Error(w, "审计记录暂不可用", http.StatusServiceUnavailable)
 		return
 	}
-	var next int64
-	if len(items) > 100 {
-		items = items[:100]
-		next = items[99].ID
-	}
-	rows.Close()
-	payload := map[string]any{"items": items, "before": next}
-	if r.URL.RawQuery == "" {
+	if r.URL.RawQuery == "" || (page == 1 && q.Get("action") == "" && q.Get("risk") == "" && q.Get("account") == "" && q.Get("batch") == "") {
 		retention, err := a.auditRetention(r.Context())
 		if err != nil {
 			http.Error(w, "无法加载审计保留策略", http.StatusServiceUnavailable)
@@ -615,6 +599,88 @@ func (a *Admin) handleOperations(w http.ResponseWriter, r *http.Request) {
 		payload["actions"] = actions
 	}
 	adminhttp.WriteJSON(w, payload)
+}
+
+// auditPagination 验证页码和每页条数，缺少这两个参数时沿用旧游标接口。
+func auditPagination(q url.Values) (page int64, limit int64, err error) {
+	if !q.Has("page") && !q.Has("limit") {
+		return 0, 100, nil
+	}
+	if q.Get("before") != "" {
+		return 0, 0, errors.New("页码分页不能同时指定游标")
+	}
+	page, limit = 1, 10
+	if q.Has("page") {
+		page, err = strconv.ParseInt(q.Get("page"), 10, 64)
+		if err != nil || page < 1 {
+			return 0, 0, errors.New("页码必须为正整数")
+		}
+	}
+	if q.Has("limit") {
+		limit, err = strconv.ParseInt(q.Get("limit"), 10, 64)
+		if err != nil || limit < 1 || limit > 100 {
+			return 0, 0, errors.New("每页条数必须为 1 到 100 的整数")
+		}
+	}
+	return page, limit, nil
+}
+
+// queryAuditOperations 使用同一个 SQLite 读事务取得筛选总数和本页记录。
+func (a *Admin) queryAuditOperations(ctx context.Context, q url.Values, now, page, limit int64) (map[string]any, error) {
+	tx, err := a.store.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	const matching = ` FROM operation_audit WHERE NOT ` + auditExpired + `
+		AND (?='' OR action=?) AND (?='' OR risk=?) AND (?='' OR instr(lower(actor),lower(?))>0 OR instr(lower(target),lower(?))>0)
+		AND (?='' OR batch=?)`
+	query := "SELECT id,created_at,actor,action,risk,target,result,reason,batch" + matching
+	args := []any{now, q.Get("action"), q.Get("action"), q.Get("risk"), q.Get("risk"),
+		q.Get("account"), q.Get("account"), q.Get("account"), q.Get("batch"), q.Get("batch")}
+	payload := map[string]any{"before": int64(0)}
+	if page == 0 {
+		query += " AND (?='' OR id<CAST(? AS INTEGER)) ORDER BY id DESC LIMIT ?"
+		args = append(args, q.Get("before"), q.Get("before"), limit+1)
+	} else {
+		var total int64
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*)"+matching, args...).Scan(&total); err != nil {
+			return nil, err
+		}
+		// 先限制页码再计算偏移，避免过大的请求值导致溢出。
+		page = min(page, max(1, (total-1)/limit+1))
+		payload["total"], payload["page"], payload["limit"] = total, page, limit
+		query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+		args = append(args, limit, (page-1)*limit)
+	}
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]operation, 0)
+	for rows.Next() {
+		var item operation
+		if err := rows.Scan(&item.ID, &item.At, &item.Actor, &item.Action, &item.Risk, &item.Target, &item.Result, &item.Reason, &item.Batch); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	if page == 0 && int64(len(items)) > limit {
+		items = items[:limit]
+		payload["before"] = items[len(items)-1].ID
+	}
+	payload["items"] = items
+	return payload, nil
 }
 
 func (a *Admin) changePlatformPassword(ctx context.Context, p identity.Principal, current, next string) error {

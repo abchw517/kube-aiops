@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/kubernetes"
 )
@@ -43,5 +44,29 @@ func TestProviderFailureCategories(t *testing.T) {
 	}
 	if err := classifyProviderTransport(context.Canceled); !errors.Is(err, context.Canceled) {
 		t.Fatalf("unexpected cancellation: %v", err)
+	}
+}
+
+// TestProviderTimeoutBudget 验证默认值、自定义期限和配置边界。
+func TestProviderTimeoutBudget(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"", 35 * time.Second},
+		{" 40s ", 40 * time.Second},
+		{"5s", 5 * time.Second},
+		{"25", 0},
+		{"0s", 0},
+		{"41s", 0},
+		{"4s", 0},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("FINDING_AI_PROVIDER_TIMEOUT", tc.value)
+			timeout, err := readProviderTimeout()
+			if timeout != tc.want || (err != nil) != (tc.want == 0) {
+				t.Fatalf("readProviderTimeout() = %v, %v; want %v", timeout, err, tc.want)
+			}
+		})
 	}
 }

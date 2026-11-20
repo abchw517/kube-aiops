@@ -273,3 +273,53 @@ func TestEvidenceAssessmentAndIndependentPublication(t *testing.T) {
 		t.Fatalf("expected only three model calls, got %d", providerCalls)
 	}
 }
+
+// TestFindingReviewTimeoutReturnsGatewayTimeout 验证失败后可以安全重试原请求。
+func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
+	t.Setenv("FINDING_AI_PROVIDER_TIMEOUT", "40s")
+	store, err := identitystore.Open(filepath.Join(t.TempDir(), "identities.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/slow":
+			select {
+			case <-r.Context().Done():
+			case <-time.After(time.Second):
+			}
+		case "/gateway-timeout":
+			w.WriteHeader(http.StatusGatewayTimeout)
+		case "/reply":
+			_, _ = w.Write([]byte("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"复核完成\"}}]}"))
+		}
+	}))
+	defer upstream.Close()
+	endpoint := upstream.URL + "/slow"
+	review, err := New(reviewFixtureBackend{}, store, func(context.Context) (kubernetes.EngineAIConfig, error) {
+		return kubernetes.EngineAIConfig{Endpoint: endpoint, Model: "fixture", Key: "fixture-key"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.client.Timeout != 40*time.Second {
+		t.Fatalf("review client timeout = %v", review.client.Timeout)
+	}
+	review.client.Timeout = 25 * time.Millisecond
+	post := func(want int, fragment string) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		body := "{\"action\":\"chat\",\"messages\":[{\"role\":\"user\",\"text\":\"确认容器运行时\"}],\"revision\":0}"
+		review.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/admin/finding-analysis?id=finding-1", strings.NewReader(body)))
+		if recorder.Code != want || !strings.Contains(recorder.Body.String(), fragment) {
+			t.Fatalf("finding-analysis returned %d %s; want %d with %q", recorder.Code, recorder.Body.String(), want, fragment)
+		}
+	}
+	post(http.StatusGatewayTimeout, "\"AI_PROVIDER_TIMEOUT\"")
+	review.client.Timeout = time.Second
+	endpoint = upstream.URL + "/gateway-timeout"
+	post(http.StatusGatewayTimeout, "\"AI_PROVIDER_TIMEOUT\"")
+	endpoint = upstream.URL + "/reply"
+	post(http.StatusOK, "\"reply\":\"复核完成\"")
+}

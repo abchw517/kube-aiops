@@ -9,11 +9,31 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/kubernetes"
 )
+
+const (
+	defaultProviderTimeout = 35 * time.Second
+	minProviderTimeout     = 5 * time.Second
+	maxProviderTimeout     = 40 * time.Second
+)
+
+// readProviderTimeout 读取模型请求预算，并为证据和响应写入预留时间。
+func readProviderTimeout() (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv("FINDING_AI_PROVIDER_TIMEOUT"))
+	if raw == "" {
+		return defaultProviderTimeout, nil
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout < minProviderTimeout || timeout > maxProviderTimeout {
+		return 0, errors.New("FINDING_AI_PROVIDER_TIMEOUT must be a duration from 5s to 40s")
+	}
+	return timeout, nil
+}
 
 type providerError struct {
 	code   string
@@ -61,7 +81,7 @@ func (f *Review) completeAI(ctx context.Context, ai kubernetes.EngineAIConfig, s
 	defer func() {
 		var upstream *providerError
 		if errors.As(failure, &upstream) {
-			slog.WarnContext(ctx, "AI provider request failed", "code", upstream.code, "upstream_status", upstream.status, "elapsed_ms", time.Since(started).Milliseconds())
+			slog.WarnContext(ctx, "AI provider request failed", "code", upstream.code, "upstream_status", upstream.status, "elapsed_ms", time.Since(started).Milliseconds(), "client_timeout_ms", f.client.Timeout.Milliseconds())
 		}
 	}()
 	payload, _ := json.Marshal(map[string]any{"model": ai.Model, "messages": []map[string]string{

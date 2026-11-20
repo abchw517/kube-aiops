@@ -1,5 +1,8 @@
 import { escapeHtml as h } from "../../components/html.ts";
-import { auditLevels, maxRetentionDays, type AuditFilters, type AuditOperation, type AuditPage, type AuditRetention } from "./audit-data.ts";
+import {
+  auditLevels, auditPageCount, auditPageSizes, maxAuditLimit, maxRetentionDays, type AuditFilters, type AuditListPage,
+  type AuditOperation, type AuditPage, type AuditRetention,
+} from "./audit-data.ts";
 
 const auditClock = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric",
@@ -42,8 +45,15 @@ export function renderAuditRows(items: AuditOperation[]): string {
       aria-label="查看 ${h(item.action)} ${h(item.target || "")} 的详情">查看详情</button></td></tr>`).join("");
 }
 
+/** 自定义值显示为当前选项，并保留入口供再次修改。 */
+export function renderAuditLimitOptions(limit: number): string {
+  const sizes = auditPageSizes.includes(limit) ? auditPageSizes : [...auditPageSizes, limit];
+  return `${options(sizes.map(String), String(limit), " 条/页")}<option value="custom">自定义…</option>`;
+}
+
 /** 分开呈现保留策略、检索工具和事件清单。 */
-export function renderAuditWorkspace(page: AuditPage, metadata: AuditPage, filters: AuditFilters, canEdit: boolean): string {
+export function renderAuditWorkspace(page: AuditListPage, metadata: AuditPage, filters: AuditFilters, canEdit: boolean): string {
+  const pages = auditPageCount(page.total, page.limit);
   return `<div class="audit-workspace" data-audit-workspace>
     <div class="platform-heading"><div><h2>操作审计</h2><p>查询账号变更、认证事件和逐项批量结果。</p></div></div>
     ${metadata.retention ? `<section class="system-card audit-retention" aria-labelledby="audit-policy-heading">
@@ -72,11 +82,22 @@ export function renderAuditWorkspace(page: AuditPage, metadata: AuditPage, filte
           <tbody data-audit-results>${renderAuditRows(page.items)}</tbody>
         </table>
       </div>
-      <footer class="audit-list-footer"><span data-audit-count>当前页 ${page.items.length} 条记录</span>
+      <footer class="audit-list-footer">
         <nav class="audit-pagination" aria-label="审计记录分页">
-          <button class="button secondary" type="button" data-audit-previous${filters.before ? "" : " hidden"}>上一页</button>
-          <button class="button secondary" type="button" data-audit-next${page.before ? "" : " hidden"}>下一页</button>
+          <span data-audit-count>共 ${page.total} 条</span>
+          <button class="button secondary" type="button" aria-label="上一页" data-audit-previous${page.page <= 1 ? " disabled" : ""}>‹</button>
+          <span class="audit-page-number" data-audit-page aria-live="polite">第 ${page.page} / ${pages} 页</span>
+          <button class="button secondary" type="button" aria-label="下一页" data-audit-next${page.page >= pages ? " disabled" : ""}>›</button>
+          <select data-audit-limit aria-label="每页条数" aria-controls="audit-custom-page-size">${renderAuditLimitOptions(page.limit)}</select>
         </nav>
+        <form class="audit-limit-editor" id="audit-custom-page-size" data-audit-limit-form hidden>
+          <label>自定义每页条数
+            <input type="number" name="customLimit" min="1" max="${maxAuditLimit}" step="1" required aria-describedby="audit-limit-range">
+          </label>
+          <small id="audit-limit-range">1–${maxAuditLimit} 条</small>
+          <button class="button" type="submit">应用</button>
+          <button class="button secondary" type="button" data-audit-limit-cancel>取消</button>
+        </form>
       </footer>
     </section>
     <dialog class="audit-dialog" data-audit-dialog aria-labelledby="audit-dialog-heading"></dialog>

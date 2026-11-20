@@ -66,10 +66,14 @@ let auditRetention = { low: 3, medium: 5, high: 7 };
 let auditSaves = 0;
 const auditAt = Date.parse("2026-11-18T07:43:19Z") / 1000;
 const auditFixture = [
-  { id: 4, at: auditAt, actor: "local:admin", action: "创建账号", risk: "高", target: "local:guest", result: "成功", reason: "", batch: "" },
-  { id: 3, at: auditAt - 1, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "批量操作", result: "部分成功", reason: "", batch: "batch-fixture" },
-  { id: 2, at: auditAt - 2, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:alice", result: "成功", reason: "", batch: "batch-fixture" },
-  { id: 1, at: auditAt - 3, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:bob", result: "失败", reason: "账号已停用", batch: "batch-fixture" },
+  { id: 76, at: auditAt, actor: "local:admin", action: "创建账号", risk: "高", target: "local:guest", result: "成功", reason: "", batch: "" },
+  { id: 75, at: auditAt - 1, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "批量操作", result: "部分成功", reason: "", batch: "batch-fixture" },
+  { id: 74, at: auditAt - 2, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:alice", result: "成功", reason: "", batch: "batch-fixture" },
+  ...Array.from({ length: 19 }, (_, index) => ({ id: 73 - index, at: auditAt - 3 - index, actor: "local:admin",
+    action: "批量加入用户组", risk: "中", target: `ldap:member-${index}`, result: "成功", reason: "", batch: "batch-fixture" })),
+  { id: 54, at: auditAt - 22, actor: "local:admin", action: "批量加入用户组", risk: "中", target: "ldap:bob", result: "失败", reason: "账号已停用", batch: "batch-fixture" },
+  ...Array.from({ length: 53 }, (_, index) => ({ id: 53 - index, at: auditAt - 23 - index, actor: "local:admin",
+    action: "维护资源目录", risk: "低", target: `environment-${index}`, result: "成功", reason: "", batch: "" })),
 ];
 let role;
 
@@ -146,7 +150,7 @@ createServer(async (request, response) => {
     if (input.revision !== (reviewHistory[0]?.revision ?? 0)) return json(response, 409, {});
     if (input.action === "assess") {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
-      if (input.observation && ++observationRequests === 1) return json(response, 502, { code: "AI_PROVIDER_TIMEOUT" });
+      if (input.observation && ++observationRequests === 1) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
       return json(response, 200, {
         assessment: { state: "insufficient", judgment: input.observation ? "镜像仓库返回 403，仍需核对当前响应。" : "已有历史事件支持排查镜像仓库。", gaps: "当前镜像仓库响应", next: "核对最近一次拉取事件" },
         evidence: [{ source: "kubernetes-events", signalId: "event-critical", title: "ContainerBackOff", time: "2026-09-02T02:59:00Z", historical: true }],
@@ -323,9 +327,17 @@ createServer(async (request, response) => {
     const { account, action, risk, batch, before } = Object.fromEntries(url.searchParams);
     const items = active.filter((item) => (!account || `${item.actor}${item.target}`.includes(account)) &&
       (!action || item.action === action) && (!risk || item.risk === risk) && (!batch || item.batch === batch) && (!before || item.id < Number(before)));
-    const pageSize = 2;
-    return json(response, 200, { items: items.slice(0, pageSize), before: items.length > pageSize ? items[pageSize - 1].id : 0,
-      ...(!url.search ? { retention: auditRetention, actions: [...new Set(active.map((item) => item.action))] } : {}) });
+    const metadata = { retention: auditRetention, actions: [...new Set(active.map((item) => item.action))] };
+    if (url.searchParams.has("page")) {
+      const limit = Number(url.searchParams.get("limit"));
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) return json(response, 400, { error: "invalid audit page size" });
+      const page = Math.min(Number(url.searchParams.get("page")), Math.max(1, Math.ceil(items.length / limit)));
+      const start = (page - 1) * limit;
+      return json(response, 200, { items: items.slice(start, start + limit), total: items.length, page, limit, before: 0,
+        ...(!account && !action && !risk && !batch && page === 1 ? metadata : {}) });
+    }
+    return json(response, 200, { items: items.slice(0, 100), before: items.length > 100 ? items[99].id : 0,
+      ...(!url.search ? metadata : {}) });
   }
   if (url.pathname === "/api/v1/admin/roles" && adminSession) {
     if (request.method === "GET") return json(response, 200, { roles: role ? [role] : [], legacyRules: [] });

@@ -1,9 +1,12 @@
 export const auditRoute = "#/admin/operations";
 export const auditLevels = [["low", "低"], ["medium", "中"], ["high", "高"]] as const;
 export const maxRetentionDays = 106_751_991_167_300;
-const filterNames = ["account", "action", "risk", "batch", "before"] as const;
+export const defaultAuditLimit = 10;
+export const auditPageSizes = [defaultAuditLimit, 20, 50];
+export const maxAuditLimit = 100;
+const filterNames = ["account", "action", "risk", "batch"] as const;
 
-export type AuditFilters = Partial<Record<typeof filterNames[number], string>>;
+export type AuditFilters = Partial<Record<typeof filterNames[number], string>> & { page?: number; limit?: number };
 export type AuditRetention = Record<typeof auditLevels[number][0], number>;
 export type AuditOperation = {
   id: number; at: number; actor: string; action: string; risk: string; target: string;
@@ -15,14 +18,14 @@ export type AuditPage = {
   actions?: string[];
   retention?: AuditRetention;
 };
+export type AuditListPage = AuditPage & { total: number; page: number; limit: number };
 
-/** 仅解析审计接口支持的筛选和游标字段。 */
+/** 仅解析审计表格支持的筛选字段。 */
 export function readAuditFilters(fields: Pick<FormData, "get">): AuditFilters {
   const filters: AuditFilters = {};
   for (const name of filterNames) {
     const value = fields.get(name);
     if (typeof value !== "string" || !value.trim()) continue;
-    if (name === "before" && !/^[1-9]\d*$/.test(value)) continue;
     if (name === "risk" && !auditLevels.some(([, risk]) => risk === value)) continue;
     filters[name] = value.trim();
   }
@@ -32,7 +35,26 @@ export function readAuditFilters(fields: Pick<FormData, "get">): AuditFilters {
 /** 仅识别固定的审计入口，参数作为数据参与编码。 */
 export function parseAuditRoute(hash: string): AuditFilters | undefined {
   const [route, query] = hash.split(/\?(.*)/s, 2);
-  return route === auditRoute ? readAuditFilters(new URLSearchParams(query)) : undefined;
+  if (route !== auditRoute) return undefined;
+  const params = new URLSearchParams(query);
+  const filters = readAuditFilters(params);
+  const page = Number(params.get("page"));
+  if (Number.isSafeInteger(page) && page > 1 && /^[1-9]\d*$/.test(params.get("page") ?? "")) filters.page = page;
+  const limit = readAuditLimit(params.get("limit"));
+  if (limit && limit !== defaultAuditLimit) filters.limit = limit;
+  return filters;
+}
+
+/** 页脚和地址共用自定义行数的范围校验。 */
+export function readAuditLimit(value: string | null): number | undefined {
+  if (!value || !/^\d{1,3}$/.test(value)) return undefined;
+  const limit = Number(value);
+  if (limit >= 1 && limit <= maxAuditLimit) return limit;
+}
+
+/** 空结果仍展示第 1 页，避免出现第 0 页。 */
+export function auditPageCount(total: number, limit: number): number {
+  return Math.max(1, Math.ceil(total / limit));
 }
 
 /** 将有效字段编码为审计参数，省略空值。 */
@@ -42,6 +64,8 @@ export function auditQuery(filters: AuditFilters): string {
     const value = filters[name];
     if (value) params.set(name, value);
   }
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.limit) params.set("limit", String(filters.limit));
   const query = params.toString();
   return query ? `?${query}` : "";
 }

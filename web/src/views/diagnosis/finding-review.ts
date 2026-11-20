@@ -125,16 +125,25 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     if (response.status === 409) stale = true;
     if (!response.ok) {
       if (response.headers.get("Content-Type")?.includes("application/json")) {
-        const error = await response.json() as { code?: string };
+        const error = await response.json().catch(() => ({})) as { code?: string };
         const messages: Record<string, string> = {
-          AI_PROVIDER_TIMEOUT: "模型响应超时，请重试。",
+          AI_PROVIDER_TIMEOUT: "模型响应超时。观察内容已保留，可以重新复核。",
           AI_PROVIDER_RATE_LIMITED: "模型服务繁忙，请稍后重试。",
           AI_PROVIDER_RESPONSE_INVALID: "模型未返回完整的复核内容，请重试。",
           AI_ENGINE_PERMISSION_DENIED: "无法读取模型配置，请检查 API 的 Engine 和 Secret 读取权限。",
           AI_ENGINE_ENDPOINT_NOT_APPROVED: "模型地址未获批准，请检查 API 的允许地址。",
           AI_PROVIDER_ACCESS_DENIED: "模型服务拒绝访问，请检查模型授权。",
+          AI_ENGINE_CONFIG_INVALID: "Engine 的 AI 配置无效，请检查模型、地址和 Secret 引用。",
+          AI_ENGINE_UNAVAILABLE: "无法读取 Engine，请检查实例名称、命名空间和集群连接。",
+          AI_ENGINE_SECRET_UNAVAILABLE: "无法读取 Secret 或指定密钥项，请检查 Engine 的 Secret 引用。",
+          AI_PROVIDER_CONNECT_FAILED: "无法连接模型服务，请检查 API Pod 的出口、DNS 和 TLS。",
+          AI_PROVIDER_REQUEST_REJECTED: "模型服务拒绝请求，请核对模型名称和接口地址。",
+          AI_PROVIDER_UNAVAILABLE: "模型服务暂不可用，请稍后重试。",
         };
         if (error.code && Object.hasOwn(messages, error.code)) throw new Error(messages[error.code]);
+      }
+      if (response.status === 504 && action === "assess") {
+        throw new Error("网关等待超时。观察内容已保留，请重试。若仍失败请检查入口代理和 API 的超时配置。");
       }
       const text = response.headers.get("Content-Type")?.includes("text/plain") ? (await response.text()).trim() : "";
       throw new Error(text || "服务暂时无法完成此操作，请重试。");
