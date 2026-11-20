@@ -9,7 +9,7 @@
 | 试点故障 | 镜像拉取失败、PVC Pending、Pod 探针失败 |
 | 阶段 | 需求评审与开发拆解 |
 
-[页面](01-pages.md) · [功能](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [测试用例](05-unit-test-cases.md) · [模块开发规范](../development-standard.md)
+[可点击原型](prototype.html) · [页面](01-pages.md) · [功能](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [测试用例](05-unit-test-cases.md) · [模块开发规范](../development-standard.md)
 
 ## 1. 目标与现状
 

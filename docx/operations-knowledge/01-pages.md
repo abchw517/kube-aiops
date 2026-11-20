@@ -1,6 +1,6 @@
 # 运维知识库 · 页面拆解
 
-[PRD v1.0](00-prd.md) · [功能拆解](02-features.md)
+[PRD v1.0](00-prd.md) · [功能拆解](02-features.md) · [可点击原型](prototype.html)
 
 ## OK-P01
 
