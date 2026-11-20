@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { roleReferences, scopeDifference } from "../src/views/permissions/platform-scopes.ts";
 import { renderPlatform } from "../src/views/permissions/platform-admin.ts";
 
 test("super administrators can assign all direct roles while other administrators only read privileged LDAP accounts", async (t) => {
@@ -27,4 +28,14 @@ test("super administrators can assign all direct roles while other administrator
   assert.match(adminView, /name="roles" value="diagnosis-reader"/);
   assert.match(adminView, /name="roles" value="namespace-auditor"/);
   assert.doesNotMatch(adminView, /name="roles" value="system-admin"|data-system-open="(?:assign|account-action|reset)"/);
+});
+
+test("role preview treats omitted and empty scope parts equally and counts each affected account once", () => {
+  const dev = { environment: "development" };
+  const a = { environment: "production", cluster: "shared", business: "cloud", namespace: "one" };
+  const b = { ...a, namespace: "two" };
+  assert.deepEqual(scopeDifference([dev, a], [{ ...dev, cluster: "" }, b, b]), { added: [b], removed: [a] });
+  assert.deepEqual(roleReferences("reader", [
+    { roles: ["reader"], groups: ["one", "two"] }, { roles: null, groups: ["two"] }, { roles: ["other"], groups: null },
+  ], [{ id: "one", roles: ["reader"] }, { id: "two", roles: ["reader"] }]), { direct: 1, groups: 2, affected: 2 });
 });

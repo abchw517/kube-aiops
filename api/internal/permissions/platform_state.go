@@ -283,14 +283,30 @@ type auditExecutor interface {
 }
 
 func writeOperation(ctx context.Context, db auditExecutor, event operation) error {
+	_, err := storeOperation(ctx, db, event, false)
+	return err
+}
+
+// storeOperation optionally issues a stable link for a persisted event.
+func storeOperation(ctx context.Context, db auditExecutor, event operation, link bool) (string, error) {
 	if event.Result == "" {
 		event.Result = "成功"
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO operation_audit(created_at,actor,action,risk,target,result,reason,batch)
-		SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS
-		(SELECT 1 FROM operation_audit_retention WHERE risk=? AND days=0)`,
-		time.Now().Unix(), event.Actor, event.Action, event.Risk, event.Target, event.Result, event.Reason, event.Batch, event.Risk)
-	return err
+	reference := ""
+	if link {
+		reference = rand.Text()
+	}
+	result, err := db.ExecContext(ctx, `INSERT INTO operation_audit(created_at,actor,action,risk,target,result,reason,batch,reference)
+  SELECT ?,?,?,?,?,?,?,?,? WHERE NOT EXISTS
+  (SELECT 1 FROM operation_audit_retention WHERE risk=? AND days=0)`,
+		time.Now().Unix(), event.Actor, event.Action, event.Risk, event.Target, event.Result, event.Reason, event.Batch, reference, event.Risk)
+	if err != nil || !link {
+		return "", err
+	}
+	if count, err := result.RowsAffected(); err != nil || count == 0 {
+		return "", err
+	}
+	return reference, nil
 }
 
 func (a *Admin) RecordOperation(ctx context.Context, actor, action, risk, target string) {

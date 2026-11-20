@@ -11,7 +11,7 @@ import {
 
 /** 有筛选或深链接时，单独读取全局操作类型及保留设置。 */
 function needsAuditMetadata(filters: AuditFilters): boolean {
-  return Boolean(filters.account || filters.action || filters.risk || filters.batch || (filters.page ?? 1) > 1);
+  return Boolean(filters.account || filters.action || filters.risk || filters.batch || filters.record || (filters.page ?? 1) > 1);
 }
 
 /** 使用服务端实际页码，避免已被清理的页在刷新时反复请求。 */
@@ -250,4 +250,11 @@ export function bindAudit(root: HTMLElement, initial: Awaited<ReturnType<typeof 
     if (trigger?.isConnected) trigger.focus();
     trigger = null;
   });
+  if (filters.record) {
+    const row = page.items[0];
+    if (row) {
+      const button = results.querySelector<HTMLButtonElement>("[data-audit-detail]");
+      button?.click();
+    } else queryStatus.textContent = "该审计记录已过期或未保留。可继续按账号、操作类型或风险等级查询。";
+  }
 }

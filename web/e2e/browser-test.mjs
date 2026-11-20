@@ -547,7 +547,11 @@ try {
       form.requestSubmit(form.querySelector('button[value="assignment"]'));
     })()` });
     await assertText(cdp, (text) => text.includes("授权操作结果") && text.includes("已更新关联关系"), "Batch results did not display individual outcomes");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] a[href*="?record="]').click()` });
+    await assertText(cdp, (text) => text.includes("授予角色") && text.includes("操作者") && text.includes("local:admin"),
+      "Authorization result did not open the exact retained audit record");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
+      (text) => text.includes("reader") && text.includes("用户管理"), "The account list did not reload after viewing the audit");
     await assertText(cdp, (text) => text.includes("已选 0 项") && text.includes("LDAP 员工") && text.includes("全局管理与诊断查看"),
       "Batch grant did not show full administrator permissions while retaining the LDAP account type");
     await cdp.send("Runtime.evaluate", {
@@ -588,16 +592,27 @@ try {
       (text) => text.includes("全局管理与诊断查看") && text.includes("创建系统管理员"),
       "Super administrator session did not restore account maintenance");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
-      document.querySelector('[data-system-tab="bindings"]').click();
       document.querySelector('[data-system-open="assign"]').click();
       const form = document.querySelector("dialog[open] form");
       const kind = form.querySelector("[data-assignment-kind]");
       kind.value = "roles";
       kind.dispatchEvent(new Event("change", { bubbles: true }));
-      form.querySelector("[data-assignment-mode]").value = "remove";
+      const mode = form.querySelector("[data-assignment-mode]");
+      mode.value = "remove";
+      mode.dispatchEvent(new Event("change", { bubbles: true }));
+      const search = form.querySelector("[data-assignment-search]");
+      search.value = "命名空间";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      if (form.querySelectorAll('[data-assignment-options="roles"] [data-assignment-choice]:not([hidden])').length !== 1) {
+        throw new Error("Assignment search did not filter the current role options");
+      }
+      search.value = "";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
       for (const id of ${JSON.stringify(assignmentRoleIds)}) form.querySelector('input[value="' + id + '"]').checked = true;
       form.requestSubmit(form.querySelector('button[value="assignment"]'));
     })()` });
+    await assertText(cdp, (text) => text.includes("授权操作结果") && text.includes("已更新关联关系"), "Single authorization did not show its outcome");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await assertText(cdp, (text) => text.includes("用户组 运维") && !text.includes("全局管理与诊断查看"),
       "Revoking multiple roles did not restore scoped LDAP permissions");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-system-open=guest]").click()' });
@@ -608,9 +623,22 @@ try {
       kind.value = "guest";
       kind.dispatchEvent(new Event("change", { bubbles: true }));
     })()` });
-    await assertText(cdp, (text) => text.includes("暂无符合条件的账号") && text.includes("已选 0 项"), "Filtering should clear hidden selections");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
-      (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") && text.includes("直接授予"), "User detail omitted permission origins");
+    await assertText(cdp, (text) => text.includes("暂无符合条件的账号") && text.includes("已选 0 项") && text.includes("请选择一个账号"),
+      "Filtering should clear hidden selections and unrelated details");
+    const inlineSearch = await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const kind = document.querySelector('[data-platform-filter="kind"]');
+      kind.value = "";
+      const input = document.querySelector('[data-platform-filter="query"]');
+      input.focus();
+      input.value = "reader";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      const audit = document.querySelector('.account-detail-header a[href*="account="]');
+      return input === document.activeElement && !!document.querySelector('.account-detail-header [data-system-open="assign"]') &&
+        new URLSearchParams(audit.hash.split("?")[1]).get("account").startsWith("ldap:cn=reader");
+    })()`, returnByValue: true });
+    if (!inlineSearch.result?.value) throw new Error("Unique account search did not restore details, focus, or the account audit shortcut");
+    await assertText(cdp, (text) => text.includes("生效权限及来源") && text.includes("用户组 运维") &&
+      text.includes("直接授予"), "User detail omitted permission origins");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="account-action"]').click()` });
     await assertText(cdp, (text) => text.includes("确认停用") && text.includes("确认"), "Account disable did not open its confirmation");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
@@ -650,7 +678,10 @@ try {
     await assertText(cdp, (text) => text.includes("已保存") && text.includes("配置已启用"), "LDAP save did not show confirmation in its own panel");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="group:ops"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="role:guest-readonly"]').click()` });
+    await assertText(cdp, (text) => text.includes("预置角色的权限固定") && text.includes("历史诊断查看"), "Group link did not open the shared read-only role viewer");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-system-close]').click();
+      document.querySelector('[data-system-open="group:ops"]').click()` });
     const rolePreselected = await cdp.send("Runtime.evaluate", { returnByValue: true,
       expression: `document.querySelector('dialog[open] input[name="roles"]').checked` });
     if (!rolePreselected.result?.value) throw new Error("Group editor did not preload existing role associations");
@@ -662,26 +693,48 @@ try {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
       form.elements.name.value = "浏览器检查";
+      const realFetch = window.fetch;
+      window.fetch = (input, options) => {
+        if (!String(input).startsWith("/api/v1/admin/namespace-business?cluster=")) return realFetch(input, options);
+        window.fetch = realFetch;
+        return Promise.resolve(new Response("", { status: 503 }));
+      };
       const cluster = form.querySelector('[name="cluster"]');
       cluster.value = "local";
       cluster.dispatchEvent(new Event("change", { bubbles: true }));
     })()` });
+    await assertText(cdp, (text) => text.includes("命名空间暂不可用") && text.includes("重试加载"),
+      "Namespace directory failure did not give a retry");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      form.querySelector("[data-scope-add]").click();
+      if (form.querySelector("[data-saved-scope]")) throw new Error("Namespace failure added an overbroad grant");
+      form.querySelector("[data-scope-retry]").click();
+    })()` });
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const loaded = await cdp.send("Runtime.evaluate", { returnByValue: true,
-        expression: `Boolean(document.querySelector('dialog[open] select[name="namespace"] option[value="payments"]'))` });
+        expression: `Boolean(document.querySelector('dialog[open] input[name="namespace"][value="payments"]'))` });
       if (loaded.result?.value) break;
       if (attempt === 39) throw new Error("Role editor did not populate namespaces");
       await sleep(100);
     }
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-preview"]').click()` });
     await assertText(cdp, (text) => text.includes("请添加至少一项授权范围"), "Saving used an uncommitted scope");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("dialog[open] form");
-      form.elements.namespace.value = "payments";
-      form.querySelector("[data-scope-add]").click();
-      form.requestSubmit(form.querySelector('button[value="role-save"]'));
+      for (const name of ["payments", "monitoring"]) form.querySelector('input[name="namespace"][value="' + name + '"]').click();
+      form.querySelector('[data-scope-add="preview"]').click();
     })()` });
-    await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("保存角色"), "Role editor did not keep the form open on conflict");
+    await assertText(cdp, (text) => text.includes("新增权限 · 2 项") && text.includes("payments") && text.includes("monitoring") && text.includes("确认保存"),
+      "Role preview did not display both selected namespaces");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      form.querySelector("[data-role-back]").click();
+      if (form.querySelectorAll("[data-saved-scope]").length !== 2) throw new Error("Preview lost the draft");
+      form.querySelector('button[value="role-preview"]').click();
+      form.querySelector('button[value="role-save"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("确认保存"), "Role editor did not keep the form open on conflict");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("reader") && text.includes("删除用户"), "User deletion is missing from the selection bar");
@@ -1074,14 +1127,15 @@ async function assertAccountDetailLayout(cdp, width) {
           const value = row.querySelector("dd").getBoundingClientRect();
           return Math.abs(row.getBoundingClientRect().right - bindings.right) <= 1 && value.left > label.right;
         }),
-        footerAligned: Math.abs(bindingAction.right - bindings.right) <= 1,
+        headerActions: bindingAction.bottom < bindings.top && bindingAction.width > 0 &&
+          detail.querySelector(".account-detail-header a").textContent === "账号审计",
         wrapsDN: [...dn.getClientRects()].every((line) => line.right <= bounds.right + 1),
       };
     })()`,
     returnByValue: true,
   });
   const layout = response.result?.value;
-  if (!layout || layout.overflow || !layout.aligned || !layout.actionSeparated || !layout.rowsFillPanel || !layout.footerAligned || !layout.wrapsDN) {
+  if (!layout || layout.overflow || (width >= 560 && (!layout.aligned || !layout.actionSeparated)) || !layout.rowsFillPanel || !layout.headerActions || !layout.wrapsDN) {
     throw new Error(`Account detail layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
   }
 }

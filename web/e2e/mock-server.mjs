@@ -322,6 +322,7 @@ createServer(async (request, response) => {
       if (fixtureSuperAdministrator && targetsReader && hasExpectedRoles && ["grant", "revoke"].includes(change.action)) {
         fixtureReaderRoles = change.action === "grant" ? [...new Set([...fixtureReaderRoles, ...change.values])] :
           fixtureReaderRoles.filter((roleId) => !change.values.includes(roleId));
+        response.setHeader("X-Operation-Audit-Ref", "ABCDEFGHIJKLMNOPQRSTUVWXY2");
         return json(response, 200, [{ id: ldapReaderId }]);
       }
       return json(response, 400, { error: "unexpected account assignment" });
@@ -340,8 +341,8 @@ createServer(async (request, response) => {
         return json(response, 200, [{ id: "ops" }]);
       }
       if (change.action === "role-save" && change.name === "浏览器检查" &&
-          change.scopes?.length === 1 && change.scopes[0].environment === "development" &&
-          change.scopes[0].cluster === "local" && change.scopes[0].namespace === "payments") {
+          change.scopes?.length === 2 && change.scopes.every(({ environment, cluster }) => environment === "development" && cluster === "local") &&
+          change.scopes.map(({ namespace }) => namespace).join(",") === "payments,monitoring") {
         response.writeHead(409, { "Content-Type": "text/plain" }).end("角色名称已使用");
         return;
       }
@@ -369,8 +370,12 @@ createServer(async (request, response) => {
       return json(response, 400, { error: "unexpected audit retention configuration" });
     }
     const active = auditFixture.filter(({ risk }) => auditRetention[{ 低: "low", 中: "medium", 高: "high" }[risk]] !== 0);
-    const { account, action, risk, batch, before } = Object.fromEntries(url.searchParams);
-    const items = active.filter((item) => (!account || `${item.actor}${item.target}`.includes(account)) &&
+    const { account, action, risk, batch, before, record } = Object.fromEntries(url.searchParams);
+    if (record === "ABCDEFGHIJKLMNOPQRSTUVWXY2") return json(response, 200, { items: [{
+      id: 9001, actor: "local:admin", at: Math.floor(Date.now() / 1000),
+      action: "授予角色", risk: "高", target: ldapReaderId, result: "成功", reason: "", batch: "",
+    }], total: 1, page: 1, limit: 10, before: 0 });
+    const items = active.filter((item) => !record && (!account || `${item.actor}${item.target}`.includes(account)) &&
       (!action || item.action === action) && (!risk || item.risk === risk) && (!batch || item.batch === batch) && (!before || item.id < Number(before)));
     const metadata = { retention: auditRetention, actions: [...new Set(active.map((item) => item.action))] };
     if (url.searchParams.has("page")) {
