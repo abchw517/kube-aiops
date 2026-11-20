@@ -38,6 +38,7 @@ import {
   renderCorrelationLoading,
   renderCorrelationSection,
 } from "./views/diagnosis/correlation.ts";
+import { bindFindingKnowledge, findingKnowledgePanel } from "./views/diagnosis/finding-knowledge.ts";
 import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
 import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
 import { renderFindingWorkspace } from "./views/diagnosis/finding-list.ts";
@@ -287,7 +288,8 @@ export class PortalApp {
         this.identityAdmin && (await this.loadClusters().catch(() => [])).some((instance) => instance.id === finding.cluster && instance.reviewEnabled);
       if (generation !== this.renderGeneration) return;
       const returnQuery = new URLSearchParams(window.location.hash.split("?")[1]).get("return");
-      this.renderShell(renderFindingDetail(finding, reviewEnabled, returnQuery) + renderCorrelationSection(id));
+      this.renderShell(renderFindingDetail(finding, reviewEnabled, returnQuery) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
+      if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (this.identityAdmin) bindFindingReview(this.root, id, finding.cluster);
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
       if (region) void this.loadCorrelation(id, generation, region);

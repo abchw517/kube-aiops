@@ -1,5 +1,7 @@
 # LLM Wiki 诊断闭环任务拆分
 
+运维知识库下一轮迭代以 [v1.0 评审稿及其拆解](operations-knowledge/04-development-tasks.md) 为评审依据。本文件保留 Phase 3 的设计及已交付接口背景。
+
 诊断详情内的复核和发布以 [DC-T04](diagnosis-console/04-development-tasks.md#dc-t04) 为准。下表的同步队列和索引进度是 Wiki 模块后续任务。
 
 需求编号见 [需求文档](llm-wiki-requirements.md)，测试编号见 [测试用例](llm-wiki-test-cases.md)。P0 为首期闭环开发，P1 为开放生产发布前的验收工作。依赖就绪的任务可并行。表内 R、T 编号省略 WK 前缀。

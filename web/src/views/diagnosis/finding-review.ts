@@ -20,10 +20,7 @@ interface Assessment {
   sources: { source: CorrelationSource; state: SourceState }[];
   citations: { knowledgeId: string; title: string; revision: number }[] | null;
 }
-interface Preview {
-  previewId: string;
-  document: { title: string; body: string; cluster: string; namespace: string };
-}
+
 
 export const findingReviewTrigger = () => '<button type="button" class="button secondary finding-review-trigger" data-review-action="toggle" aria-controls="finding-review" aria-expanded="false">AI 复核</button>';
 
@@ -41,15 +38,6 @@ export function findingReviewPanel(): string {
       <button type="button" class="button" data-review-action="save">保存复核结论</button>
     </div>
     <button type="button" class="button secondary" data-review-action="refresh" hidden>重新载入复核记录</button>
-    <button type="button" class="button secondary" data-review-action="preview" hidden>预览知识发布</button>
-    <div data-review-preview hidden>
-      <h3>知识发布预览</h3>
-      <div data-review-document></div>
-      <div class="finding-review-actions">
-        <button type="button" class="button secondary" data-review-action="cancel-preview">取消</button>
-        <button type="button" class="button" data-review-action="publish">确认发布到知识库</button>
-      </div>
-    </div>
     <details data-review-history hidden><summary>复核历史</summary><div></div></details>
   </section>`;
 }
@@ -90,31 +78,27 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   const observation = reviewElement<HTMLTextAreaElement>(panel, "[data-review-observation]");
   const conclusion = reviewElement<HTMLTextAreaElement>(panel, "[data-review-conclusion]");
   const editor = reviewElement<HTMLElement>(panel, "[data-review-editor]");
-  const preview = reviewElement<HTMLElement>(panel, "[data-review-preview]");
   const history = reviewElement<HTMLDetailsElement>(panel, "[data-review-history]");
   const saved = reviewElement<HTMLElement>(root, "[data-review-saved]");
   const button = (action: string) => reviewElement<HTMLButtonElement>(panel, `[data-review-action="${action}"]`);
   const url = `/api/v1/admin/finding-analysis?${new URLSearchParams({ id, cluster })}`;
   let revisions: Revision[] = [];
   let revision = 0;
-  let canPublish = false;
   let loaded = false;
   let busy = false;
   let assessment: { input: string; controller: AbortController } | undefined;
   let stale = false;
   let dirty = false;
-  let previewId = "";
 
   function updateActions() {
     const reviewingCurrentInput = assessment?.input === observation.value.trim();
     const assessButton = button("assess");
     assessButton.disabled = stale || (busy && (!assessment || reviewingCurrentInput));
     assessButton.textContent = reviewingCurrentInput ? "复核中…" : "重新复核";
-    for (const action of ["save", "refresh", "preview", "publish", "cancel-preview"]) {
+    for (const action of ["save", "refresh"]) {
       button(action).disabled = busy || (stale && action !== "refresh");
     }
     button("refresh").hidden = !stale;
-    button("preview").hidden = !canPublish || revision === 0;
     conclusion.readOnly = busy;
     button("save").hidden = !dirty;
     result.setAttribute("aria-busy", String(Boolean(assessment)));
@@ -172,7 +156,6 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   async function loadHistory(signal?: AbortSignal) {
     const data = await request<{ history: Revision[]; canPublish: boolean }>(undefined, {}, signal);
     signal?.throwIfAborted();
-    canPublish = data.canPublish;
     showHistory(data.history);
     loaded = true;
     stale = false;
@@ -195,11 +178,6 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     const input = observation.value.trim();
     if (stale && action !== "refresh") return;
     if (busy && (action !== "assess" || !assessment || assessment.input === input)) return;
-    if (action === "cancel-preview") {
-      preview.hidden = true;
-      button("preview").focus();
-      return;
-    }
     if (action === "assess" && new TextEncoder().encode(input).length > 4000) {
       status.textContent = "观察内容最多 4000 字节。";
       return;
@@ -218,7 +196,6 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
       switch (action) {
         case "refresh":
           await loadHistory();
-          preview.hidden = true;
           status.textContent = "已载入最新版本，请核对后再操作。";
           break;
         case "save": {
@@ -228,29 +205,9 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
           }
           const item = await request<Revision>("save", { observation: value });
           showHistory([item, ...revisions].slice(0, 5));
-          preview.hidden = true;
           dirty = false;
+          root.querySelector("[data-finding-knowledge]")?.dispatchEvent(new CustomEvent("finding-review-saved", {detail: item.revision}));
           status.textContent = "已保存复核结论";
-          break;
-        }
-        case "preview": {
-          const data = await request<Preview>("preview-publication");
-          previewId = data.previewId;
-          reviewElement(preview, "[data-review-document]").innerHTML =
-            `<p><strong>${escapeHtml(data.document.title)}</strong></p><p>${escapeHtml(data.document.cluster)} / ${escapeHtml(data.document.namespace)}</p>
-            <p class="detail-text">${escapeHtml(data.document.body)}</p>`;
-          preview.hidden = false;
-          status.textContent = "";
-          break;
-        }
-        case "publish": {
-          const doc = await request<{ knowledgeId: string }>("publish", { previewId });
-          preview.hidden = true;
-          status.replaceChildren("已发布到知识库。 ");
-          const link = document.createElement("a");
-          link.href = `#/wiki/${encodeURIComponent(doc.knowledgeId)}`;
-          link.textContent = "查看知识";
-          status.append(link);
           break;
         }
       }

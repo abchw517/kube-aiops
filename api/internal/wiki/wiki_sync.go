@@ -7,14 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
-	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
+	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 )
@@ -32,17 +33,22 @@ type wikiRemoteDirectory struct {
 }
 
 type wikiSyncResult struct {
-	Saved   int `json:"saved"`
-	Skipped int `json:"skipped"`
-	Failed  int `json:"failed"`
-	Missing int `json:"missing"`
+	Saved   int    `json:"saved"`
+	Skipped int    `json:"skipped"`
+	Failed  int    `json:"failed"`
+	Missing int    `json:"missing"`
+	RunID   string `json:"runId,omitempty"`
 }
 
-var wikiSyncBusy = errors.New("sync already running")
+var (
+	wikiSyncBusy         = errors.New("sync already running")
+	errSyncAuthorization = errors.New("wiki sync authorization changed")
+	errSyncCredentials   = errors.New("wiki sync credentials unavailable")
+)
 
 func (a *Service) wikiSyncSource(ctx context.Context, p identity.Principal, id string) (wikiSource, error) {
 	var source wikiSource
-	err := a.store.QueryRowContext(ctx, "SELECT url,cluster,namespace FROM wiki_sources WHERE id=?", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
+	err := a.store.QueryRowContext(ctx, "SELECT url,cluster,namespace FROM wiki_sources WHERE id=? AND NOT EXISTS(SELECT 1 FROM wiki_disabled_sources WHERE id=wiki_sources.id)", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
 	if err != nil {
 		return source, err
 	}
@@ -64,45 +70,59 @@ func (a *Service) handleWikiSync(w http.ResponseWriter, r *http.Request, p ident
 		http.NotFound(w, r)
 		return
 	}
-	result, err := a.syncWikiDirectory(r.Context(), p, id, source)
+	a.executeWikiSync(w, r, p, id, source, "manual", "", "")
+}
+
+func (a *Service) executeWikiSync(w http.ResponseWriter, r *http.Request, p identity.Principal, id string, source wikiSource, trigger, parent, page string) {
+	result, err := a.syncWikiDirectory(r.Context(), p, id, source, trigger, parent, page)
 	if err != nil {
 		if errors.Is(err, wikiSyncBusy) {
 			http.Error(w, "此来源正在同步", http.StatusConflict)
+		} else if errors.Is(err, errSyncAuthorization) {
+			http.NotFound(w, r)
 		} else {
-			http.Error(w, "同步失败，请检查凭据、目录格式或远端连接", http.StatusBadGateway)
+			http.Error(w, safeWikiSyncError(err), http.StatusBadGateway)
 		}
 		return
 	}
 	adminhttp.WriteJSON(w, result)
 }
 
-func (a *Service) syncWikiDirectory(ctx context.Context, p identity.Principal, id string, source wikiSource) (wikiSyncResult, error) {
-	a.wikiSyncMu.Lock()
-	if a.wikiSyncActive[id] {
-		a.wikiSyncMu.Unlock()
-		return wikiSyncResult{}, wikiSyncBusy
+func (a *Service) checkSyncAuthorization(ctx context.Context, p identity.Principal, id string, source wikiSource) error {
+	current, err := a.wikiSyncSource(ctx, p, id)
+	if err != nil || current != source || !currentSession(ctx) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errSyncAuthorization
 	}
-	if a.wikiSyncActive == nil {
-		a.wikiSyncActive = make(map[string]bool)
+	return nil
+}
+
+func (a *Service) syncWikiDirectory(ctx context.Context, p identity.Principal, id string, source wikiSource, trigger, parent, targetPage string) (result wikiSyncResult, runErr error) {
+	if err := a.checkSyncAuthorization(ctx, p, id, source); err != nil {
+		return result, err
 	}
-	a.wikiSyncActive[id] = true
-	a.wikiSyncMu.Unlock()
+	run, err := a.startWikiRun(ctx, id, trigger, parent, targetPage)
+	if err != nil {
+		return result, err
+	}
+	result.RunID = run
 	defer func() {
-		a.wikiSyncMu.Lock()
-		delete(a.wikiSyncActive, id)
-		a.wikiSyncMu.Unlock()
+		if err := a.finishWikiRun(ctx, run, result, runErr); runErr == nil && err != nil {
+			runErr = err
+		}
 	}()
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	credential, err := a.loadWikiCredential(ctx, id, p)
 	if err != nil {
-		return wikiSyncResult{}, err
+		return result, errSyncCredentials
 	}
 	base, err := url.Parse(source.URL)
 	if err != nil {
-		return wikiSyncResult{}, err
+		return result, err
 	}
-	var result wikiSyncResult
 	cursor := base
 	seen := make(map[string]bool)
 	for range 20 {
@@ -110,21 +130,60 @@ func (a *Service) syncWikiDirectory(ctx context.Context, p identity.Principal, i
 		if err != nil {
 			return result, err
 		}
+		if err := a.checkSyncAuthorization(ctx, p, id, source); err != nil {
+			return result, err
+		}
+		latest, err := a.loadWikiCredential(ctx, id, p)
+		if err != nil || latest != credential {
+			return result, errSyncCredentials
+		}
 		for _, page := range batch.Pages {
+			if targetPage != "" && page.ID != targetPage {
+				continue
+			}
+			if seen[page.ID] {
+				continue
+			}
 			seen[page.ID] = true
-			changed, err := a.saveWikiRemotePage(ctx, id, source, page)
+			if err := a.checkSyncAuthorization(ctx, p, id, source); err != nil {
+				return result, err
+			}
+			changed, saveErr := a.saveWikiRemotePage(ctx, id, source, page, run)
 			switch {
-			case err != nil:
+			case errors.Is(saveErr, errSyncAuthorization):
+				return result, saveErr
+			case saveErr != nil:
 				result.Failed++
+				item := wikiRunItem{Status: "failed", Reason: "文档格式无效或无法保存候选"}
+				if validRemotePageID(page.ID) {
+					item.Page = page.ID
+				}
+				if err := saveWikiRunItem(ctx, a.store, run, item); err != nil {
+					return result, err
+				}
 			case changed:
 				result.Saved++
 			default:
 				result.Skipped++
 			}
+			if targetPage != "" {
+				return result, nil
+			}
 		}
 		if batch.Next == "" {
-			result.Missing, err = a.markMissingWikiPages(ctx, id, seen)
-			return result, err
+			if err := a.checkSyncAuthorization(ctx, p, id, source); err != nil {
+				return result, err
+			}
+			if targetPage != "" {
+				result.Failed++
+				return result, saveWikiRunItem(ctx, a.store, run, wikiRunItem{Page: targetPage, Status: "failed", Reason: "远端目录中未找到指定页"})
+			}
+			missing, err := a.markMissingWikiPages(ctx, id, run, seen)
+			if err != nil {
+				return result, err
+			}
+			result.Missing = missing
+			return result, nil
 		}
 		next, err := cursor.Parse(batch.Next)
 		if err != nil || next.Scheme != base.Scheme || next.Host != base.Host || next.Path != base.Path || next.RawPath != base.RawPath || next.User != nil || next.Fragment != "" || next.String() == cursor.String() {
@@ -191,8 +250,20 @@ func (a *Service) handleWikiCheck(w http.ResponseWriter, r *http.Request, p iden
 	adminhttp.WriteJSON(w, map[string]any{"firstPageCount": len(batch.Pages), "hasNext": batch.Next != ""})
 }
 
-func (a *Service) markMissingWikiPages(ctx context.Context, id string, seen map[string]bool) (int, error) {
-	rows, err := a.store.QueryContext(ctx, "SELECT page_id FROM wiki_remote_pages WHERE source_id=? AND missing=0", id)
+func (a *Service) markMissingWikiPages(ctx context.Context, id, run string, seen map[string]bool) (int, error) {
+	tx, err := a.store.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var active bool
+	if err := tx.QueryRowContext(ctx, "SELECT NOT EXISTS(SELECT 1 FROM wiki_disabled_sources WHERE id=?)", id).Scan(&active); err != nil {
+		return 0, err
+	}
+	if !active {
+		return 0, errSyncAuthorization
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT page_id FROM wiki_remote_pages WHERE source_id=? AND missing=0", id)
 	if err != nil {
 		return 0, err
 	}
@@ -212,21 +283,23 @@ func (a *Service) markMissingWikiPages(ctx context.Context, id string, seen map[
 	if err != nil {
 		return 0, err
 	}
-	tx, err := a.store.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
 	for _, page := range missing {
 		if _, err := tx.ExecContext(ctx, "UPDATE wiki_remote_pages SET missing=1 WHERE source_id=? AND page_id=?", id, page); err != nil {
+			return 0, err
+		}
+		if err := saveWikiRunItem(ctx, tx, run, wikiRunItem{Page: page, Status: "missing", Reason: "完整枚举后未找到该页"}); err != nil {
 			return 0, err
 		}
 	}
 	return len(missing), tx.Commit()
 }
 
-func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, source wikiSource, page wikiRemotePage) (bool, error) {
-	if len(page.ID) == 0 || len(page.ID) > 256 || strings.ContainsRune(page.ID, 0) {
+func validRemotePageID(id string) bool {
+	return len(id) > 0 && len(id) <= 256 && !strings.ContainsRune(id, 0)
+}
+
+func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, source wikiSource, page wikiRemotePage, run string) (bool, error) {
+	if !validRemotePageID(page.ID) {
 		return false, errors.New("invalid remote page ID")
 	}
 	doc, err := NormalizeDocument(Document{Cluster: source.Cluster, Namespace: source.Namespace, Environment: "远端 Wiki", Business: sourceID, DocumentType: "操作规程", Title: page.Title, Body: page.Body})
@@ -250,6 +323,13 @@ func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, sourc
 		return false, err
 	}
 	defer tx.Rollback()
+	var disabled bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM wiki_disabled_sources WHERE id=?)", sourceID).Scan(&disabled); err != nil {
+		return false, err
+	}
+	if disabled {
+		return false, errSyncAuthorization
+	}
 	previous, err := LoadDocument(ctx, tx, doc.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
@@ -262,24 +342,24 @@ func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, sourc
 		ON CONFLICT(source_id,page_id) DO UPDATE SET source_url=excluded.source_url,content_hash=excluded.content_hash,missing=0`, sourceID, page.ID, doc.ID, sourceURL, contentHash); err != nil {
 		return false, err
 	}
-	if err == nil && (previousHash == contentHash || (previous.Title == doc.Title && previous.Body == doc.Body)) {
+	if previousHash == contentHash || err == nil && previous.Title == doc.Title && previous.Body == doc.Body {
+		if err := saveWikiRunItem(ctx, tx, run, wikiRunItem{Page: page.ID, Status: "skipped"}); err != nil {
+			return false, err
+		}
 		return false, tx.Commit()
 	}
-	doc.Revision = 1
-	if err == nil {
-		doc.Revision = previous.Revision + 1
-		for _, version := range []Document{previous, doc} {
-			encoded, _ := json.Marshal(version)
-			if _, err := tx.ExecContext(ctx, "INSERT INTO wiki_revisions VALUES(?,?,?) ON CONFLICT DO NOTHING", version.ID, version.Revision, string(encoded)); err != nil {
-				return false, err
-			}
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO wiki_documents VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,created_at=excluded.created_at`,
-		doc.ID, doc.Cluster, doc.Namespace, doc.Environment, doc.Business, doc.DocumentType, doc.Title, doc.Body, doc.CreatedAt); err != nil {
+	doc.Metadata.SourceID = sourceID
+	doc.Metadata.Source = "远端 Wiki · " + sourceID
+	doc.Metadata.Targets = []Target{{Cluster: source.Cluster, Namespace: source.Namespace}}
+	candidateKey := sha256.Sum256([]byte(doc.ID + "\x00" + contentHash + "\x00" + strconv.Itoa(previous.Revision)))
+	candidate := Candidate{ID: hex.EncodeToString(candidateKey[:]), KnowledgeID: doc.ID, Owner: "remote:" + sourceID,
+		Status: draftStatus, Version: 1, BaseRevision: previous.Revision, Document: doc}
+	if err := insertCandidate(ctx, tx, candidate); err != nil {
 		return false, err
 	}
-
+	if err := saveWikiRunItem(ctx, tx, run, wikiRunItem{Page: page.ID, Status: "saved"}); err != nil {
+		return false, err
+	}
 	return true, tx.Commit()
 }
 
@@ -402,9 +482,7 @@ func (a *Service) runDueWikiSchedule(ctx context.Context) {
 		source, err := a.wikiSyncSource(ctx, p, id)
 		if err != nil {
 			next, status = 0, "配置用户权限已失效"
-		} else if _, err := a.loadWikiCredential(ctx, id, p); err != nil {
-			next, status = 0, "配置凭据已失效"
-		} else if result, err := a.syncWikiDirectory(ctx, p, id, source); err == nil {
+		} else if result, err := a.syncWikiDirectory(ctx, p, id, source, "scheduled", "", ""); err == nil {
 			data, _ := json.Marshal(result)
 			status = string(data)
 		}

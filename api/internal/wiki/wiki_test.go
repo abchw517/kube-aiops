@@ -42,6 +42,8 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var remoteCalls atomic.Int32
+	var syncFailure atomic.Bool
+	var addSecondPage atomic.Bool
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, _ := r.BasicAuth()
 		if user != "wiki-alice" || pass != "fixture-alice-wiki-secret" {
@@ -49,20 +51,35 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			return
 		}
 		remoteCalls.Add(1)
-		adminhttp.WriteJSON(w, wikiRemoteDirectory{Pages: []wikiRemotePage{{ID: "page-1", Title: "远端排障", Body: "检查远端仓库"}}})
+		pages := []wikiRemotePage{{ID: "page-1", Title: "远端排障", Body: "检查远端仓库"}}
+		if addSecondPage.Load() {
+			second := wikiRemotePage{ID: "page-2", Title: "第二页", Body: "已修复"}
+			if syncFailure.Load() {
+				second.Body = ""
+			}
+			pages = append(pages, second)
+		}
+		adminhttp.WriteJSON(w, wikiRemoteDirectory{Pages: pages})
 	}))
 	defer remote.Close()
 	service := New(store, admin, admin.Origin())
 	service.wikiTransport = remote.Client().Transport
+	service.SetTargetResolver(func(_ context.Context, cluster, namespace string) (Target, error) {
+		return Target{Cluster: cluster, Namespace: namespace, Environment: "testing"}, nil
+	})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		admin.Handle(w, r, r.PathValue("resource"), sessions)
 	})
+	var revokeDuringAsk func()
 	service.Register(mux, sessions, func(_ context.Context, _ string, data []byte) (string, error) {
 		if !bytes.Contains(data, []byte("镜像拉取")) || bytes.Contains(data, []byte("fixture-password-value")) {
 			t.Fatal("model input does not have the expected sanitized knowledge")
 		}
-		return "请检查仓库凭据。", nil
+		if revokeDuringAsk != nil {
+			revokeDuringAsk()
+		}
+		return `{"answer":"请检查仓库凭据。","citations":["K1","unknown","K1"]}`, nil
 	})
 	handler := sessions.Wrap(mux)
 	request := func(method, path, body string, cookie *http.Cookie, status int) *httptest.ResponseRecorder {
@@ -143,19 +160,45 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		publish := strings.Replace(input, "false", "true", 1)
 		request("POST", imports, strings.Replace(publish, `"dev"`, `"prod"`, 1), alice, 403)
 		request("POST", imports, publish, bob, 403)
-		result := request("POST", imports, publish, alice, 201)
+		request("POST", imports, publish, alice, 409)
 		var doc Document
-		if err := json.Unmarshal(result.Body.Bytes(), &doc); err != nil || doc.ID == "" {
-			t.Fatalf("invalid publish response: %v", err)
+		if err := json.Unmarshal(preview.Body.Bytes(), &doc); err != nil {
+			t.Fatal(err)
 		}
-		request("POST", imports, publish, alice, 200)
+		doc.Metadata = Metadata{Team: "容器平台", ResourceType: "Pod", Applicability: "镜像拉取失败", Signals: []string{"ImagePullBackOff"},
+			ReviewBy: time.Now().AddDate(0, 1, 0).Format(time.DateOnly),
+			Sections: map[string]string{"conditions": "镜像拉取失败", "signals": "ImagePullBackOff", "checks": "检查仓库凭据", "recovery": "Pod Ready", "escalation": "通知容器平台"}}
+		call := func(path string, payload any, want int) Candidate {
+			t.Helper()
+			data, _ := json.Marshal(payload)
+			out := request("POST", path, string(data), alice, want)
+			var result Candidate
+			if want == 200 && json.Unmarshal(out.Body.Bytes(), &result) != nil {
+				t.Fatal(out.Body.String())
+			}
+			return result
+		}
+		create := func(id string, revision int, candidate Document) string {
+			return call("/api/v1/wiki/candidates", map[string]any{"document": candidate, "knowledgeId": id, "baseRevision": revision}, 200).ID
+		}
+		review := func(id string, candidate Document) Candidate {
+			endpoint := "/api/v1/wiki/candidates/" + id
+			call(endpoint, candidateAction{Action: "submit", Version: 1, Document: candidate}, 200)
+			result := call(endpoint, candidateAction{Action: "publish", Version: 2}, 200)
+			call(endpoint, candidateAction{Action: "publish", Version: 2}, 200)
+			return result
+		}
+		published := review(create("", 0, doc), doc)
+		doc.ID = published.KnowledgeID
 		if out := request("GET", knowledge+"?documentType="+url.QueryEscape("排障手册"), "", alice, 200); !strings.Contains(out.Body.String(), `"total":1`) || strings.Contains(out.Body.String(), `"body"`) {
 			t.Fatal(out.Body.String())
 		}
 		path := knowledge + "/" + doc.ID + "/revisions/1"
 		request("GET", path, "", alice, 200)
 		revision := knowledge + "/" + doc.ID + "/revisions"
-		request("POST", revision, `{"expectedRevision":1,"title":"镜像拉取订正","body":"检查仓库凭据"}`, alice, 200)
+		request("POST", revision, `{"expectedRevision":1,"title":"镜像拉取订正","body":"检查仓库凭据"}`, alice, 409)
+		doc.Title = "镜像拉取订正"
+		review(create(doc.ID, 1, doc), doc)
 		request("POST", revision, `{"expectedRevision":1,"title":"旧版本","body":"应被拒绝"}`, alice, 409)
 		if out := request("GET", revision+"/2", "", alice, 200); !strings.Contains(out.Body.String(), `"revision":2`) {
 			t.Fatal(out.Body.String())
@@ -164,7 +207,7 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 
-		const question = `{"question":"镜像拉取失败怎么办","environment":"测试","business":"运维"}`
+		const question = `{"question":"镜像拉取失败怎么办","environment":"testing"}`
 		if out := request("POST", "/api/v1/wiki/ask", question, alice, 200); !strings.Contains(out.Body.String(), "请检查仓库凭据") || !strings.Contains(out.Body.String(), `"revision":2`) {
 			t.Fatal(out.Body.String())
 		}
@@ -172,8 +215,33 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 
+		feedback := knowledge + "/" + doc.ID + "/feedback"
+		request("POST", feedback, `{"revision":1,"section":"does-not-exist","kind":"outdated"}`, alice, 400)
+		request("POST", feedback, `{"revision":1,"kind":"outdated","note":"旧版需核对"}`, bob, 404)
+		request("POST", feedback, `{"revision":1,"kind":"outdated","note":"旧版需核对"}`, alice, 204)
+		request("POST", feedback, `{"revision":2,"kind":"outdated","note":"现行版需核对"}`, alice, 204)
+		request("POST", feedback, `{"revision":2,"kind":"outdated","note":"现行版已补充线索"}`, alice, 204)
+		out := request("GET", feedback, "", root, 200)
+		var entries []feedbackEntry
+		if json.Unmarshal(out.Body.Bytes(), &entries) != nil || len(entries) != 2 || !strings.Contains(out.Body.String(), "现行版已补充线索") {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("GET", "/api/v1/wiki/governance", "", root, 200); !strings.Contains(out.Body.String(), `"pendingFeedback":1`) {
+			t.Fatal(out.Body.String())
+		}
+		request("POST", knowledge+"/"+doc.ID+"/governance", `{"action":"review","revision":2,"reviewBy":"2027-12-01"}`, root, 200)
+		if out := request("GET", "/api/v1/wiki/governance", "", root, 200); strings.Contains(out.Body.String(), `"pendingFeedback"`) {
+			t.Fatal(out.Body.String())
+		}
 		request("GET", path, "", bob, 404)
 		if out := request("GET", knowledge, "", bob, 200); strings.Contains(out.Body.String(), "运维") || !strings.Contains(out.Body.String(), `"total":0`) {
+			t.Fatal(out.Body.String())
+		}
+		revokeDuringAsk = func() {
+			request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[]}`, root, 204)
+		}
+		defer func() { revokeDuringAsk = nil }()
+		if out := request("POST", "/api/v1/wiki/ask", question, alice, 409); strings.Contains(out.Body.String(), "仓库凭据") {
 			t.Fatal(out.Body.String())
 		}
 	})
@@ -200,6 +268,59 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 		request("PUT", source+"/schedule", `{"intervalMinutes":0}`, alice, 204)
+		addSecondPage.Store(true)
+		syncFailure.Store(true)
+		res := request("POST", source+"/sync", "", alice, 200)
+		var failed wikiSyncResult
+		if json.Unmarshal(res.Body.Bytes(), &failed) != nil || failed.RunID == "" || failed.Skipped != 1 || failed.Failed != 1 {
+			t.Fatal(res.Body.String())
+		}
+		path := source + "/runs/" + failed.RunID
+		if out := request("GET", path+"?failed=true", "", alice, 200); !strings.Contains(out.Body.String(), `"pageId":"page-2"`) ||
+			strings.Contains(out.Body.String(), `"pageId":"page-1"`) {
+			t.Fatal(out.Body.String())
+		}
+		reopened, err := identitystore.Open(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var status string
+		err = reopened.QueryRow("SELECT status FROM wiki_sync_runs WHERE id=?", failed.RunID).Scan(&status)
+		reopened.Close()
+		if err != nil || status != "partial" {
+			t.Fatalf("missing persisted failed run: %q %v", status, err)
+		}
+		request("GET", path, "", bob, 404)
+		request("POST", path+"/retry", `{"pageId":"page-2"}`, bob, 404)
+		request("POST", path+"/retry", `{"pageId":"page-1"}`, alice, 404)
+		syncFailure.Store(false)
+		if _, err := store.ExecContext(t.Context(), "UPDATE wiki_sync_runs SET finished_at=100 WHERE status='succeeded'"); err != nil {
+			t.Fatal(err)
+		}
+		if out := request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 200); !strings.Contains(out.Body.String(), `"saved":1`) ||
+			!strings.Contains(out.Body.String(), `"skipped":0`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 200); !strings.Contains(out.Body.String(), `"skipped":1`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("GET", source+"/runs", "", alice, 200); !strings.Contains(out.Body.String(), `"lastSucceeded":100`) {
+			t.Fatal(out.Body.String())
+		}
+		run, err := service.startWikiRun(t.Context(), "ops", "manual", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		request("POST", source+"/sync", "", alice, 409)
+		if _, err := store.ExecContext(t.Context(), "UPDATE wiki_sync_runs SET lease_until=0 WHERE id=?", run); err != nil {
+			t.Fatal(err)
+		}
+		if out := request("GET", source+"/runs/"+run, "", alice, 200); !strings.Contains(out.Body.String(), `"status":"interrupted"`) {
+			t.Fatal(out.Body.String())
+		}
+		request("POST", source+"/runs/"+run+"/retry", `{}`, alice, 200)
+		request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[]}`, root, 204)
+		request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 404)
 	})
 }
 

@@ -7,28 +7,34 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"github.com/abchw517/kube-aiops/api/internal/sanitizer"
 )
 
 type Document struct {
-	Revision     int    `json:"revision,omitempty"`
-	ID           string `json:"knowledgeId,omitempty"`
-	Cluster      string `json:"cluster"`
-	Namespace    string `json:"namespace"`
-	Environment  string `json:"environment"`
-	Business     string `json:"business"`
-	DocumentType string `json:"documentType"`
-	Title        string `json:"title"`
-	Body         string `json:"body,omitempty"`
-	CreatedAt    string `json:"createdAt,omitempty"`
+	Revision        int           `json:"revision,omitempty"`
+	ID              string        `json:"knowledgeId,omitempty"`
+	Cluster         string        `json:"cluster"`
+	Namespace       string        `json:"namespace"`
+	Environment     string        `json:"environment"`
+	Business        string        `json:"business"`
+	DocumentType    string        `json:"documentType"`
+	Title           string        `json:"title"`
+	Body            string        `json:"body,omitempty"`
+	CreatedAt       string        `json:"createdAt,omitempty"`
+	Metadata        Metadata      `json:"metadata"`
+	Match           string        `json:"matchReason,omitempty"`
+	Withdrawn       bool          `json:"withdrawn,omitempty"`
+	Links           []findingLink `json:"links,omitempty"`
+	ScopePending    bool          `json:"scopePending,omitempty"`
+	CurrentRevision int           `json:"currentRevision,omitempty"`
+	PendingFeedback int           `json:"pendingFeedback,omitempty"`
 }
 
 func (a *Service) wikiAllowed(r *http.Request, principal identity.Principal, capability authorization.Capability, doc Document) (bool, error) {
@@ -69,29 +75,7 @@ func (a *Service) handleWikiImport(w http.ResponseWriter, r *http.Request, princ
 		return
 	}
 
-	hashInput, _ := json.Marshal(doc)
-	digest := sha256.Sum256(hashInput)
-	doc.ID = hex.EncodeToString(digest[:])
-	doc.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	doc.Revision = 1
-	result, err := a.store.ExecContext(r.Context(), `INSERT INTO wiki_documents
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-		doc.ID, doc.Cluster, doc.Namespace, doc.Environment, doc.Business, doc.DocumentType, doc.Title, doc.Body, doc.CreatedAt)
-	if err != nil {
-		http.Error(w, "无法保存文档", http.StatusServiceUnavailable)
-		return
-	}
-	inserted, err := result.RowsAffected()
-	if err != nil || (inserted == 0 && a.store.QueryRowContext(r.Context(),
-		"SELECT created_at FROM wiki_documents WHERE id=?", doc.ID).Scan(&doc.CreatedAt) != nil) {
-		http.Error(w, "无法确认保存状态", http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if inserted > 0 {
-		w.WriteHeader(http.StatusCreated)
-	}
-	adminhttp.WriteJSON(w, doc)
+	draftRequired(w)
 }
 
 func NormalizeDocument(doc Document) (Document, error) {
@@ -117,8 +101,8 @@ func NormalizeDocument(doc Document) (Document, error) {
 	default:
 		return Document{}, errors.New("文档类型无效")
 	}
-	if doc.Title == "" || doc.Body == "" || doc.Environment == "" || doc.Business == "" {
-		return Document{}, errors.New("需要正文、标题、环境及业务线")
+	if doc.Title == "" || doc.Body == "" {
+		return Document{}, errors.New("需要正文和标题")
 	}
 	return doc, nil
 }
@@ -139,53 +123,41 @@ func (a *Service) handleWikiDocuments(w http.ResponseWriter, r *http.Request, pr
 			return
 		}
 	}
-	rows, err := a.store.QueryContext(r.Context(), `SELECT id, cluster, namespace, environment, business, document_type, title, created_at
-		 ,COALESCE((SELECT MAX(revision) FROM wiki_revisions WHERE knowledge_id=id),1) FROM wiki_documents ORDER BY created_at DESC, id`)
+	filtersForCursor := r.URL.Query()
+	filtersForCursor.Del("page")
+	filtersForCursor.Del("cursor")
+	digest := sha256.Sum256([]byte(principal.Subject + "\x00" + filtersForCursor.Encode()))
+	cursorKey := hex.EncodeToString(digest[:8])
+	if cursor := query.Get("cursor"); cursor != "" {
+		key, number, ok := strings.Cut(cursor, ".")
+		next, err := strconv.Atoi(number)
+		if !ok || key != cursorKey || next < 1 || next > 10000 || err != nil {
+			http.Error(w, "搜索条件已变更，请从首页重新查询", 400)
+			return
+		}
+		page = next
+	}
+	if len(query.Get("q")) > 512 {
+		http.Error(w, "搜索词过长", 400)
+		return
+	}
+	results, options, err := a.searchDocuments(r.Context(), principal, query, false, nil)
 	if err != nil {
-		http.Error(w, "无法读取文档列表", http.StatusServiceUnavailable)
+		http.Error(w, "无法读取知识库，请重试", 503)
 		return
 	}
-	defer rows.Close()
-	items := make([]Document, 0, 20)
-	total := 0
-	options := map[string][]string{"environment": {}, "business": {}, "documentType": {}}
-	seen := map[string]map[string]bool{"environment": {}, "business": {}, "documentType": {}}
-	for rows.Next() {
-		var doc Document
-		if err := rows.Scan(&doc.ID, &doc.Cluster, &doc.Namespace, &doc.Environment, &doc.Business, &doc.DocumentType, &doc.Title, &doc.CreatedAt, &doc.Revision); err != nil {
-			http.Error(w, "无法读取文档列表", http.StatusServiceUnavailable)
-			return
-		}
-		allowed, err := a.wikiAllowed(r, principal, authorization.CapabilityWikiRead, doc)
-		if err != nil {
-			http.Error(w, "无法校验知识库权限", http.StatusServiceUnavailable)
-			return
-		}
-		if !allowed {
-			continue
-		}
-		matches := true
-		for key, value := range map[string]string{"environment": doc.Environment, "business": doc.Business, "documentType": doc.DocumentType} {
-			if !seen[key][value] {
-				seen[key][value] = true
-				options[key] = append(options[key], value)
-			}
-			if filter := query.Get(key); filter != "" && filter != value {
-				matches = false
-			}
-		}
-		if matches {
-			total++
-			if total > (page-1)*20 && len(items) < 20 {
-				items = append(items, doc)
-			}
-		}
+	start := min(len(results), (page-1)*20)
+	end := min(len(results), start+20)
+	items := results[start:end]
+	for i := range items {
+		items[i].Body = ""
+		items[i].Metadata.Sections = nil
 	}
-	if rows.Err() != nil {
-		http.Error(w, "无法读取文档列表", http.StatusServiceUnavailable)
-		return
+	out := map[string]any{"items": items, "total": len(results), "page": page, "pageSize": 20, "filters": options}
+	if end < len(results) {
+		out["nextCursor"] = cursorKey + "." + strconv.Itoa(page+1)
 	}
-	adminhttp.WriteJSON(w, map[string]any{"items": items, "total": total, "page": page, "pageSize": 20, "filters": options})
+	adminhttp.WriteJSON(w, out)
 }
 
 func (a *Service) handleWikiDocument(w http.ResponseWriter, r *http.Request, principal identity.Principal) {
@@ -194,30 +166,60 @@ func (a *Service) handleWikiDocument(w http.ResponseWriter, r *http.Request, pri
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	revision, err := strconv.Atoi(r.PathValue("revision"))
-	if err != nil || revision < 1 {
-		http.NotFound(w, r)
-		return
-	}
-	doc, err := LoadDocument(r.Context(), a.store.DB, r.PathValue("id"))
+	ctx := r.Context()
+	current, err := LoadDocument(ctx, a.store.DB, r.PathValue("id"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	allowed, err := a.wikiAllowed(r, principal, authorization.CapabilityWikiRead, doc)
-	if err != nil || !allowed {
-		http.NotFound(w, r)
-		return
-	}
-	if revision != doc.Revision {
-		var encoded string
-		if err := a.store.QueryRowContext(r.Context(), "SELECT document FROM wiki_revisions WHERE knowledge_id=? AND revision=?", doc.ID, revision).Scan(&encoded); err != nil ||
-			json.Unmarshal([]byte(encoded), &doc) != nil {
+	revision := current.Revision
+	if raw := r.PathValue("revision"); raw != "" {
+		revision, err = strconv.Atoi(raw)
+		if err != nil || revision < 1 {
 			http.NotFound(w, r)
 			return
 		}
 	}
+	doc, err := a.readableVersion(ctx, principal, current, revision)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	doc.CurrentRevision = current.Revision
+	a.projectTargets(ctx, principal, &doc)
+	doc.Links, _ = a.knowledgeLinks(ctx, principal, doc.ID)
 	adminhttp.WriteJSON(w, doc)
+}
+
+func (a *Service) loadRevision(ctx context.Context, current Document, revision int) (Document, error) {
+	if revision == current.Revision {
+		return current, nil
+	}
+	var snapshot Document
+	var encoded string
+	if err := a.store.QueryRowContext(ctx, "SELECT document FROM wiki_revisions WHERE knowledge_id=? AND revision=?", current.ID, revision).Scan(&encoded); err != nil {
+		return Document{}, err
+	}
+	err := json.Unmarshal([]byte(encoded), &snapshot)
+	return snapshot, err
+}
+
+func (a *Service) readableVersion(ctx context.Context, principal identity.Principal, current Document, revision int) (Document, error) {
+	allowed, err := a.canRead(ctx, principal, current, nil, false)
+	if err != nil || !allowed || current.Withdrawn {
+		return Document{}, sql.ErrNoRows
+	}
+	doc, err := a.loadRevision(ctx, current, revision)
+	if err != nil {
+		return Document{}, err
+	}
+	if revision != current.Revision {
+		allowed, err = a.canRead(ctx, principal, doc, nil, false)
+		if err != nil || !allowed {
+			return Document{}, sql.ErrNoRows
+		}
+	}
+	return doc, nil
 }
 
 type wikiRowQuery interface {
@@ -226,9 +228,7 @@ type wikiRowQuery interface {
 
 func LoadDocument(ctx context.Context, db wikiRowQuery, id string) (Document, error) {
 	doc := Document{ID: id}
-	err := db.QueryRowContext(ctx, `SELECT cluster, namespace, environment, business, document_type, title, body, created_at,
-		COALESCE((SELECT MAX(revision) FROM wiki_revisions WHERE knowledge_id=id),1)
-		FROM wiki_documents WHERE id=?`, id).Scan(&doc.Cluster, &doc.Namespace, &doc.Environment, &doc.Business, &doc.DocumentType, &doc.Title, &doc.Body, &doc.CreatedAt, &doc.Revision)
+	err := readPublished(db.QueryRowContext(ctx, publishedQuery+" WHERE d.id=?", id), &doc)
 	return doc, err
 }
 
@@ -238,54 +238,15 @@ func (a *Service) handleWikiRevision(w http.ResponseWriter, r *http.Request, pri
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	var input struct {
-		Revision int    `json:"expectedRevision"`
-		Title    string `json:"title"`
-		Body     string `json:"body"`
-	}
-	if !adminhttp.Decode(w, r, &input) || input.Revision < 1 {
-		http.Error(w, "修订请求无效", http.StatusBadRequest)
-		return
-	}
-	ctx := r.Context()
-	tx, err := a.store.BeginTx(ctx, nil)
-	if err != nil {
-		http.Error(w, "无法创建修订", http.StatusServiceUnavailable)
-		return
-	}
-	defer tx.Rollback()
-	old, err := LoadDocument(ctx, tx, r.PathValue("id"))
+	doc, err := LoadDocument(r.Context(), a.store.DB, r.PathValue("id"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	allowed, err := a.wikiAllowed(r, principal, authorization.CapabilityWikiPublish, old)
-	if err != nil || !allowed {
+	allowed, _ := a.wikiAllowed(r, principal, authorization.CapabilityWikiPublish, doc)
+	if !allowed {
 		http.NotFound(w, r)
 		return
 	}
-	if input.Revision != old.Revision {
-		http.Error(w, "文档已更新，请重新加载", http.StatusConflict)
-		return
-	}
-	next := old
-	next.Title, next.Body = input.Title, input.Body
-	next, err = NormalizeDocument(next)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	next.ID, next.Revision, next.CreatedAt = old.ID, old.Revision+1, time.Now().UTC().Format(time.RFC3339Nano)
-	for _, doc := range []Document{old, next} {
-		encoded, _ := json.Marshal(doc)
-		if _, err := tx.ExecContext(ctx, "INSERT INTO wiki_revisions VALUES(?,?,?) ON CONFLICT DO NOTHING", doc.ID, doc.Revision, string(encoded)); err != nil {
-			http.Error(w, "无法保存修订", http.StatusServiceUnavailable)
-			return
-		}
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE wiki_documents SET title=?,body=?,created_at=? WHERE id=?", next.Title, next.Body, next.CreatedAt, next.ID); err != nil || tx.Commit() != nil {
-		http.Error(w, "无法保存修订", http.StatusServiceUnavailable)
-		return
-	}
-	adminhttp.WriteJSON(w, next)
+	draftRequired(w)
 }

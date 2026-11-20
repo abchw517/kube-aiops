@@ -46,6 +46,9 @@ func TestPortalWikiAskUsesScopedEvidenceAndModel(t *testing.T) {
 		if _, err := store.ExecContext(t.Context(), "INSERT INTO wiki_documents VALUES (?, 'local', ?, 'test', 'ops', '排障手册', '镜像拉取手册', ?, '2026-11-17T00:00:00Z')", doc.id, doc.namespace, doc.body); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := store.ExecContext(t.Context(), "INSERT INTO wiki_publications VALUES(?,0,?)", doc.id, `{"reviewedAt":"2026-11-17"}`); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	modelRequests := make(chan string, 1)
@@ -67,7 +70,7 @@ func TestPortalWikiAskUsesScopedEvidenceAndModel(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"请检查镜像仓库。"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"{\"answer\":\"请检查镜像仓库。\",\"citations\":[\"K1\",\"invented\"]}"}}]}`))
 	}))
 	defer model.Close()
 
