@@ -165,9 +165,9 @@
               <h3>待验证项</h3><p id="demo-gap"></p>
               <h3>下一步</h3><p id="demo-next"></p>
               <details><summary>Wiki 参考</summary><p>历史案例可提供排查路径。</p></details>
-              <details><summary>补充观察或追问</summary><label>现场观察（选填）<textarea id="demo-observation"></textarea></label><button type="button" id="demo-retry">重新复核</button></details>
-              <label>复核结论<textarea id="demo-conclusion"></textarea></label><button type="button" id="demo-save">保存复核结论</button>
             </div>
+            <details id="demo-input"><summary>补充观察或追问</summary><label>现场观察或问题（选填）<textarea id="demo-observation" rows="3" maxlength="4000" placeholder="例如：10 分钟前 PVC 仍处于 Pending"></textarea></label><button type="button" id="demo-retry">重新复核</button></details>
+            <div id="demo-editor" hidden><label>复核结论<textarea id="demo-conclusion"></textarea></label><button type="button" id="demo-save">保存复核结论</button></div>
             <button type="button" id="demo-preview" hidden>预览知识发布</button>
             <div id="demo-publish-panel" hidden><h3>知识发布预览</h3><p id="demo-wiki"></p><button type="button" id="demo-publish">确认发布到知识库</button></div>
           </section>
@@ -291,33 +291,47 @@
     let demoVersion = 0;
     let demoRun = 0;
     const demoHistory = new Map();
+    let demoPendingObservation;
+    function updateDemoReviewActions() {
+      const busy = demoPendingObservation !== undefined;
+      const reviewingCurrent = busy && demoPendingObservation === find("demo-observation").value.trim();
+      find("demo-retry").disabled = reviewingCurrent;
+      find("demo-retry").textContent = reviewingCurrent ? "复核中…" : "重新复核";
+      find("demo-save").disabled = busy;
+      find("demo-conclusion").readOnly = busy;
+      find("demo-preview").disabled = busy;
+      find("demo-publish").disabled = busy;
+    }
     function runDemoReview() {
-      if (!demoRecord) return;
+      const observation = find("demo-observation").value.trim();
+      if (!demoRecord || observation === demoPendingObservation) return;
       const run = ++demoRun;
-      find("demo-review").hidden = false;
-      find("demo-start").setAttribute("aria-expanded", "true");
-      find("demo-result").hidden = true;
-      find("demo-status").textContent = "正在复核关联证据…";
+      demoPendingObservation = observation;
+      updateDemoReviewActions();
+      find("demo-status").textContent = observation ? "正在复核补充的信息…" : "正在复核关联证据…";
       setTimeout(() => {
         if (run !== demoRun) return;
         const pvc = demoRecord.id === "volume";
-        const observation = find("demo-observation").value.trim();
         const judgment = pvc ? "发现时 PVC 引用了不存在的 StorageClass，当前状态仍待验证。" : "原始诊断与历史事件方向一致，资源当前状态仍待验证。";
         find("demo-judgment").textContent = judgment + (observation ? " 已纳入待核实的人工观察。" : "");
         find("demo-gap").textContent = pvc ? "PVC 实际引用的 storageClassName 和当前集群中同名存储类。" : "当前工作负载状态与最新事件。";
         find("demo-next").textContent = pvc ? "核对 PVC 的 spec.storageClassName，再查询同名 StorageClass。" : "在原集群查看资源状态与近期事件。";
         find("demo-conclusion").value = judgment;
-        find("demo-status").textContent = "";
+        find("demo-status").textContent = observation !== find("demo-observation").value.trim()
+          ? "补充内容已保留，可点击「重新复核」提交。" : "";
         find("demo-result").hidden = false;
-      }, 450);
+        find("demo-editor").hidden = false;
+        demoPendingObservation = undefined;
+        updateDemoReviewActions();
+      }, 700);
     }
     find("demo-start").addEventListener("click", () => {
-      if (!find("demo-review").hidden) {
-        demoRun++;
-        find("demo-review").hidden = true;
-        find("demo-start").setAttribute("aria-expanded", "false");
-      } else runDemoReview();
+      const panel = find("demo-review");
+      panel.hidden = !panel.hidden;
+      find("demo-start").setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden && demoPendingObservation === undefined && find("demo-result").hidden) runDemoReview();
     });
+    find("demo-observation").addEventListener("input", updateDemoReviewActions);
     find("demo-retry").addEventListener("click", runDemoReview);
     find("demo-jump").addEventListener("click", () => find("demo-evidence").focus());
     function showDemoSaved() {
@@ -352,7 +366,12 @@
       find("demo-start").setAttribute("aria-expanded", "false");
       find("demo-review").hidden = true;
       find("demo-publish-panel").hidden = true;
+      find("demo-result").hidden = true;
+      find("demo-editor").hidden = true;
+      find("demo-input").open = false;
       find("demo-observation").value = "";
+      demoPendingObservation = undefined;
+      updateDemoReviewActions();
       find("demo-original").textContent = record?.problem || "暂无诊断说明";
       find("demo-evidence").textContent = record ? "Kubernetes 事件 · " + formatDate.format(new Date(record.time)) + " · " + record.problem : "暂无证据";
       showDemoSaved();
