@@ -13,7 +13,11 @@
   - Phase 1.4.4: Sanitizer — **Completed**
   - Phase 1.4.5: Production Gates — **Completed**
 - Phase 2: Observability Correlation — **Completed**
-- Phase 3: RCA Agent + Runbook — **Planned**
+- Operations Knowledge P0/P1 — **Merged to main** in [PR #103](https://github.com/abchw517/kube-aiops/pull/103) (merge commit `018165b`). Includes scoped search, review candidates, publication and withdrawal, cited Q&A, feedback, and Wiki sync execution records. See [implementation and acceptance](operations-knowledge/api-contract.md).
+- System Management Workflows — **Merged to main** in [PR #104](https://github.com/abchw517/kube-aiops/pull/104) (merge commit `8f1cdc8`). Includes direct assignment from user details, role scope previews with multi-namespace selection, and navigation to the resulting audit record. See the [module acceptance cases](system-management/05-unit-test-cases.md).
+- Phase 3–5: RCA Agent + Runbook, human-approved remediation, and controlled auto-remediation — **Planned**. See the [roadmap](phase-3-5-roadmap.md).
+
+The production pilot requires validation against the target catalog, independent reviewers, the configured AI provider and the company Wiki where enabled. See the [deployment acceptance steps](install-deployment.md#运维知识库生产试点验收).
 
 ## Phase 1.3 Completion Evidence
 

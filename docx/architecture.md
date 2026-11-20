@@ -13,39 +13,20 @@ Phase 4   HITL Remediation         — Planned
 Phase 5   Controlled Auto Remediation — Planned
 ```
 
-See the [Phase 2 completion record](phase-2-completion.md) for the verified runtime baseline and acceptance coverage.
+See the [project phase status](phase-status.md) for delivered features and the [Phase 2 completion record](phase-2-completion.md) for the evidence correlation baseline.
 
 ## End-to-End Architecture
 
-```text
-User / SRE
-    |
-    v
-Web Portal
-    |
-    | generated TypeScript Client only
-    v
-Portal Backend API
-    |
-    +----------------------+--------------------------+
-    |                      |                          |
-    v                      v                          v
-Safe Kubernetes        Finding Model          Phase 2 Correlation
-Projection                 ^                         Engine
-                           |                          |
-                    Result Adapter        +----------+----------------+
-                           ^               |          |                |
-                           |               v          v                v
-                    K8sGPT Result CR   Events     Prometheus      VictoriaLogs
-                           ^                                        |
-                           |                                        v
-                    K8sGPT Engine                             Alertmanager
-                           ^
-                           |
-                    K8sGPT Operator
-```
+The [README topology](../README.md#架构拓扑) shows the deployment and service dependencies. The Portal API assembles the following flows.
 
-Phase 2 source adapters remain server-side. The browser never talks directly to Kubernetes, Prometheus, VictoriaLogs or Alertmanager.
+| Flow | Source and processing | Result |
+| --- | --- | --- |
+| Cluster discovery and diagnosis | The local and remote direct modes use Kubernetes API reads. The reporting mode sends Result snapshots from a remote CronJob over HTTPS. The Portal applies the current identity and cluster scope. | Findings and read-only resource projections |
+| Evidence and AI review | The correlation service queries Events, Prometheus, VictoriaLogs and Alertmanager within the Finding scope and a bounded time window. Optional AI review reads approved Engine model configuration and combines the available evidence and applicable knowledge. | Correlation bundle and versioned review saved in SQLite |
+| Operations knowledge | A saved Finding review or an import can produce a candidate in SQLite. Reviewers confirm publication. Search and Q&A use visible published knowledge, and Q&A links to a version and chapter. Optional HTTPS Wiki synchronization produces candidates and run records. | Searchable knowledge, feedback and governance history |
+| System and resource administration | Local or LDAP identity feeds the Portal session and authorization layer. Effective diagnostic scopes use direct and group-inherited roles and the resource catalog. | Scoped access, resource directory and operation audit |
+
+The browser uses the same-origin Portal endpoint. Kubernetes, observability sources, LDAP, the AI provider and optional remote Wiki are backend connections.
 
 ## Security Composition
 
@@ -73,7 +54,7 @@ Production startup fails closed when mandatory security components are missing. 
 
 ## Contract Boundary
 
-OpenAPI remains the single external contract source:
+OpenAPI defines the diagnostic query contract:
 
 ```text
 api/openapi.yaml
@@ -87,7 +68,7 @@ web/src/api/client.ts
 Portal views
 ```
 
-Portal code must not define a second copy of Finding, Summary, CorrelationBundle, Cluster, Namespace or error DTOs and must not issue direct handwritten API requests.
+Diagnostic views use the generated Finding, Summary, CorrelationBundle, Cluster, Namespace and error DTOs. Authenticated administrative and Wiki routes are registered under `api/internal/portal/` and `api/internal/wiki/`. The P0/P1 Wiki routes are documented in the [module contract](operations-knowledge/api-contract.md).
 
 ## Finding Domain Flow
 
@@ -137,7 +118,7 @@ Phase 2 does not expose arbitrary PromQL, LogsQL, Alertmanager API calls or Kube
 
 The Portal is built into static assets and served by a non-root Nginx container on port 8080. The production routing model should keep the Portal and Backend behind the same origin, with `/api/` routed to Portal Backend and all other Portal paths routed to the static service.
 
-The static container does not contain Kubernetes credentials and does not communicate with Kubernetes or observability backends directly.
+The Gateway routes same-origin API requests to the Portal Backend service and static requests to the Web service. For SQLite-backed production deployments, one API replica mounts the persistent volume and uses the Recreate deployment strategy. See [production deployment](install-deployment.md#生产部署) for configuration and upgrades.
 
 ## Phase Boundaries
 

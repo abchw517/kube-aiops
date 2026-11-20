@@ -1,5 +1,44 @@
 # kube-aiops 模块开发规范
 
+## 本地开发与验证
+
+从仓库根目录运行。Go 工具链基线为 1.26.5，Web 需要 Node.js 22+（含 npm、npx），契约检查需要 Python 3 和 [OpenAPI 依赖](../tools/openapi/requirements.txt)，浏览器回归需要 Chromium 或 Chrome。
+
+```bash
+make portal-deps
+export PATH="${KUBE_AIOPS_TOOLS_DIR:-$HOME/.local/share/kube-aiops/tools}/bin:$PATH"
+python3 -m venv .build/doc-venv
+source .build/doc-venv/bin/activate
+python -m pip install -r tools/openapi/requirements.txt
+
+make platform-check
+make api-test
+make api-contract-check
+make web-check
+make web-e2e
+make portal-demo-check
+```
+
+`make portal-deps` 优先使用现有工具链，可在受支持的 Linux 主机下载缺失版本。首次构建需获取 Go 模块和 npm 工具依赖。可用 `CHROME_BIN=/path/to/chromium make web-e2e` 指定浏览器。E2E 使用本地 mock API 和固定的 4173 端口，运行前先停止占用该端口的 Demo。
+
+| 开发场景 | 命令与核对项 |
+| --- | --- |
+| 诊断查询与证据 | `make portal-demo` 运行真实 Go API 和样例数据。在浏览器验证列表、详情和四类证据。 |
+| 系统管理与知识库 | `make web-e2e` 覆盖浏览器流程。真实登录、权限收敛、生产双人审核、模型和远端 Wiki 在预发验证。 |
+| API 与 SQLite | `go test ./api/internal/identitystore ./api/internal/permissions ./api/internal/portal ./api/internal/diagnosis ./api/internal/wiki`。针对已有部署，以脱敏数据库副本验证迁移、权限和版本行为。 |
+| 诊断查询接口变更 | 更新 `api/openapi.yaml`，运行 `make api-client-generate` 和 `make api-contract-check`。运维知识库会话接口同时更新[模块契约](operations-knowledge/api-contract.md)。 |
+| 发布前 | 执行 `make preflight`，按[部署指南](install-deployment.md)从同一源码提交构建 API 与 Web 并验证目标镜像。 |
+
+## 模块代码与验收入口
+
+| 模块 | API / Web 代码 | 功能验收 |
+| --- | --- | --- |
+| 诊断控制台 | `api/internal/diagnosis/`、`web/src/views/diagnosis/` | [诊断验收用例](diagnosis-console/05-unit-test-cases.md) |
+| 运维知识库 | `api/internal/wiki/`、`web/src/views/wiki/` | [知识库验收用例](operations-knowledge/05-unit-test-cases.md)、[生产试点](install-deployment.md#运维知识库生产试点验收) |
+| 资源管理 | `api/internal/portal/`、`web/src/views/resources/` 与 `web/src/views/clusters/` | [资源管理验收用例](resource-management/05-unit-test-cases.md) |
+| 系统管理 | `api/internal/permissions/`、`web/src/views/permissions/` | [系统管理验收用例](system-management/05-unit-test-cases.md) |
+| SQLite 迁移 | `api/internal/identitystore/` | [存量数据库升级](install-deployment.md#存量部署升级) |
+
 ## 目录与文档
 
 每个功能模块在仓库 `docx/<module>/` 下建立独立目录。目录使用小写英文及连字符。沿用项目 Markdown 格式，模块内文档按顺序编号。
