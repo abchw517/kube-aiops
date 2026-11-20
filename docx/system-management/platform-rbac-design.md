@@ -1,5 +1,7 @@
 # kube-aiops 平台全局权限设计
 
+全平台权限迭代参见 [平台访问控制 PRD 评审稿](../platform-access-control/00-prd.md)。
+
 | 项目 | 约定 |
 | --- | --- |
 | 版本 | v1.0 设计评审稿 |

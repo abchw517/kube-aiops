@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>平台访问控制 · kube-aiops</title>
+<style>
+:root{font:15px/1.6 "Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif;color:#172f43;background:#eff4f8;--nav:#122837;--line:#d7e3ec;--teal:#006d61;--muted:#4a6276;--blue:#234ab8}*{box-sizing:border-box}body{margin:0}a{color:var(--blue);text-underline-offset:.2em}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}[hidden]{display:none!important}:focus-visible{outline:3px solid #2784bc;outline-offset:3px}
+.top,.row,.actions,.tabs{display:flex;align-items:center;gap:.72rem;flex-wrap:wrap}.top{padding:.58rem 1.2rem;color:white;background:var(--nav);min-height:59px;justify-content:space-between}.brand{font-weight:750}.brand i{background:#a2e6d4;color:#12433e;display:inline-grid;place-items:center;width:34px;height:34px;margin-right:.6rem;border-radius:8px;font-style:normal}.top label{color:#cfe1ed}.top select{min-height:34px}
+.layout{display:grid;grid-template-columns:194px minmax(0,1fr);min-height:calc(100vh - 59px)}nav{background:var(--nav);padding:.8rem}.main-nav a{display:block;color:#e1edf4;text-decoration:none;border-inline-start:3px solid transparent;padding:.57rem .65rem;border-radius:6px}.main-nav a.active{background:#21465a;border-color:#64d7c2}main{max-width:1350px;width:100%;padding:clamp(.9rem,3.2vw,2.9rem);margin:0 auto;min-width:0}
+h1,h2,h3,p,ul{margin:0}h1{font-size:clamp(1.5rem,3.1vw,2.23rem);line-height:1.2}h2{font-size:1.12rem}h3{font-size:1rem}ul{padding-left:1.2rem}.heading{display:flex;justify-content:space-between;align-items:end;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem}.heading p,.meta{color:var(--muted);font-size:.88rem}.heading p{margin-top:.4rem}.panel{background:white;border:1px solid var(--line);border-radius:10px;padding:1rem 1.15rem;min-width:0}.stack>*+*{margin-top:.85rem}.grid{display:grid;grid-template-columns:minmax(240px,.42fr) minmax(0,1fr);gap:1rem;align-items:start}.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.72rem}
+label{font-size:.87rem;color:#365268}input,select{border:1px solid #9db3c5;color:#172f43;background:white;border-radius:6px;padding:.4rem .55rem;min-height:38px;max-width:100%}label.field{display:grid;gap:.32rem}.field input,.field select{width:100%;min-width:0}.btn{border:1px solid #b9cddd;background:white;color:#274569;min-height:38px;border-radius:6px;padding:.42rem .65rem;font-weight:700;font-size:.86rem;display:inline-flex;align-items:center;text-decoration:none}.btn:hover{background:#f1f6ff}.btn.primary{color:white;background:var(--blue);border-color:var(--blue)}.btn.danger{color:#a32443}
+.chip{font-size:.75rem;font-weight:700;background:#e9f1f8;color:#344f65;padding:.13rem .42rem;border-radius:4px}.good{background:#dcf3ec;color:#0f5d50}.warn{background:#fff2d9;color:#775024}.bad{background:#fae8ed;color:#962f47}.notice{padding:.73rem .85rem;border-radius:7px;background:#edf4fa}.notice.good,.notice.warn,.notice.bad{border-inline-start:3px solid currentColor}.choice{display:block;padding:.55rem .6rem;border:1px solid var(--line);background:white;border-radius:6px;color:#20425f;text-decoration:none}.choice[aria-current=true]{border-color:#6caea9;background:#f0faf8;color:#005f57}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;text-align:left;font-size:.86rem}th,td{vertical-align:top;padding:.63rem;border-bottom:1px solid var(--line)}th{background:#f1f6fb;white-space:nowrap}td{overflow-wrap:anywhere}.tabs{border-bottom:1px solid var(--line);gap:.2rem;margin-bottom:.9rem}.tabs a{padding:.5rem .68rem;color:#426174;text-decoration:none;border-bottom:2px solid transparent}.tabs a.active{border-color:var(--teal);color:var(--teal);font-weight:750}.card{padding:.7rem .85rem;border:1px solid var(--line);border-radius:6px;background:#f8fbfd}
+dialog{width:min(640px,calc(100% - 1.6rem));max-height:85vh;padding:1.3rem;border-radius:10px;border:1px solid var(--line);color:#172f43}dialog::backdrop{background:#132b4075}
+@media(max-width:850px){.layout{grid-template-columns:150px minmax(0,1fr)}.grid{grid-template-columns:1fr}}
+@media(max-width:610px){.layout{display:block}.main-nav{display:flex;flex-wrap:wrap;gap:.22rem}.main-nav a{padding:.34rem .55rem;font-size:.83rem}.pair{grid-template-columns:1fr}.panel{padding:.8rem}}
+</style>
+</head>
+<body>
+<header class="top"><span class="brand"><i aria-hidden="true">K</i>kube-aiops</span><div class="row"><label for="actor">演示操作人</label><select id="actor"><option value="admin">系统管理员</option><option value="super">超级管理员</option><option value="alice">LDAP 值班人员</option></select></div></header>
+<div class="layout">
+<nav class="main-nav" aria-label="平台模块">
+<a href="#/modules/diagnosis" data-nav="diagnosis">诊断控制台</a>
+<a href="#/modules/wiki" data-nav="wiki">运维知识库</a>
+<a href="#/modules/resources" data-nav="resources">资源管理</a>
+<a href="#/users" data-nav="system">系统管理</a>
+</nav>
+<main id="app" aria-label="权限原型"></main>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+<script>
+"use strict";
+const app=document.querySelector("#app");
+const dialog=document.querySelector("#dialog");
+const actor=document.querySelector("#actor");
+const keys={
+  "findings:read": {label:"查看历史诊断", phase:"P0"},
+  "wiki:read":{label:"阅读运维知识",phase:"P1"},
+  "wiki:publish":{label:"发布运维知识",phase:"既有"},
+  "resources:manage":{label:"修改资源配置",phase:"系统"},
+  "admin:audit":{label:"查看全局审计",phase:"系统"}
+};
+const scopes={
+  test:{env:"测试",label:"测试 / test-a / checkout",valid:true},
+  prod:{env:"生产",label:"生产 / prod-a / 支付 / checkout",valid:true},
+  other:{env:"生产",label:"生产 / prod-a / 云帆 / wallet",valid:true},
+  all:{env:"平台",label:"全平台",valid:true}
+};
+const roles={
+  shift:{name:"测试值班",grants:[["findings:read","test"]]},
+  direct:{name:"测试诊断值班备份",grants:[["findings:read","test"]]},
+  pay:{name:"生产支付值班",grants:[["findings:read","prod"]]},
+  wiki:{name:"测试 Wiki 试点",grants:[["wiki:read","test"]]},
+  legacy:{name:"历史策略夹具",fixed:true,grants:[["wiki:publish","test"],["wiki:read","prod"]]},
+  guest:{name:"访客只读",fixed:true,grants:[["findings:read","test"]]},
+  system:{name:"系统管理员",fixed:true,grants:Object.keys(keys).map((key)=>[key,"all"])}
+};
+const groups={duty:{name:"测试值班组",roles:["shift"]},payment:{name:"支付值班组",roles:["pay"]}};
+const users={
+  alice:{name:"李晨",kind:"LDAP 员工",groups:["duty","payment"],roles:["direct"],active:true},
+  legacy:{name:"旧策略测试账号",kind:"历史策略夹具",groups:[],roles:["legacy"],active:true},
+  guest:{name:"本地访客",kind:"本地访客",groups:[],roles:["guest"],active:true},
+  admin:{name:"系统管理员",kind:"本地管理员",groups:[],roles:["system"],active:true},
+  super:{name:"超级管理员",kind:"初始化管理员",groups:[],roles:["system"],active:true},
+};
+const audit=[];
+let pilot=false;
+let message="";
+const esc=(s="")=>String(s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+const label=(key)=>keys[key]?.label||key;
+const tag=(s,t="")=>'<span class="chip '+t+'">'+esc(s)+'</span>';
+const opt=(list,value)=>list.map(([id,name])=>'<option value="'+esc(id)+'"'+(id===value?' selected':'')+'>'+esc(name)+'</option>').join("");
+const btn=(text,action,id="",tone="")=>'<button class="btn '+tone+'" type="button" data-action="'+action+'" data-id="'+esc(id)+'">'+esc(text)+'</button>';
+const link=(text,route)=>'<a class="btn" href="'+route+'">'+esc(text)+'</a>';
+const admin=()=>actor.value==="admin"||actor.value==="super";
+function paths(id){
+  const user=users[id], rows=[];
+  if(!user?.active)return rows;
+  const collect=(roleId,source)=>{
+    const role=roles[roleId];
+    for(const [key,scope] of role.grants){
+      if((key==="wiki:read"&&!pilot&&!role.fixed) || !scopes[scope]?.valid)continue;
+      rows.push({key,scope,source:source+" → "+role.name});
+    }
+  };
+  user.roles.forEach((role)=>collect(role,"直接授予"));
+  user.groups.forEach((id)=>groups[id].roles.forEach((role)=>collect(role,groups[id].name)));
+  return rows;
+}
+function check(id,key,scope){
+  if(!users[id]?.active)return {rows:[],reason:"账号当前不可用"};
+  if(!scopes[scope]?.valid)return {rows:[],reason:"资源归属已失效"};
+  const rows=paths(id).filter((row)=>row.key===key&&(row.scope===scope||row.scope==="all"));
+  return {rows,reason:rows.length?"动作与目标范围同时匹配":"该动作未在当前目标范围获得授权"};
+}
+function heading(title,description="",controls=""){
+  return '<header class="heading"><div><h1 tabindex="-1">'+title+'</h1>'+(description?'<p>'+description+'</p>':"")+'</div><div class="actions">'+controls+'</div></header>';
+}
+function tabs(active){
+  return '<div class="tabs" aria-label="系统管理">'+[["users","用户管理"],["roles","角色配置"],["groups","用户组"],["audit","操作审计"]].map(([id,name])=>
+    '<a'+(id===active?' class="active" aria-current="page"':'')+' href="#/'+id+'">'+name+'</a>').join("")+'</div>';
+}
+function begin(page,title,desc,controls=""){
+  return heading(title,desc,controls)+tabs(page)+(message?'<p class="notice" role="status" style="margin-bottom:.7rem">'+esc(message)+'</p>':"");
+}
+function listChoices(data,current,prefix){
+  return Object.entries(data).map(([id,item])=>'<a class="choice" aria-current="'+(id===current)+'" href="#/'+prefix+'/'+id+'">'+esc(item.name)+'</a>').join("");
+}
+function table(headers,rows){
+  return '<div class="table-wrap"><table><thead><tr>'+headers.map((item)=>'<th scope="col">'+item+'</th>').join("")+'</tr></thead><tbody>'+
+    rows.map((row)=>'<tr>'+row.map((cell)=>'<td>'+cell+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
+}
+function userPage(id){
+  const user=users[id], aggregate=new Map();
+  for(const row of paths(id)){
+    const name=row.key+" "+row.scope, entry=aggregate.get(name)||{...row, sources:[]};
+    entry.sources.push(row.source);aggregate.set(name,entry);
+  }
+  const mutable=id==="alice";
+  return begin("users","用户管理","查看账号来源、关联关系和实际生效权限。",link("模拟检查","#/simulate/"+id))+
+    '<div class="grid"><aside class="panel stack"><h2>账号</h2>'+listChoices(users,id,"users")+'</aside>'+
+    '<div class="panel stack"><div class="row"><h2>'+esc(user.name)+'</h2>'+tag(user.kind)+tag(user.active?"正常":"已停用",user.active?"good":"warn")+'</div>'+
+    '<h3>关联关系</h3><div class="pair"><div class="card stack"><strong>直接角色</strong><p>'+esc(user.roles.map((role)=>roles[role].name).join("、")||"无")+
+    '</p>'+(mutable&&user.roles.includes("direct")?btn("撤销直接角色","remove-direct","direct","danger"):"")+'</div>'+
+    '<div class="card"><strong>用户组</strong><p>'+esc(user.groups.map((group)=>groups[group].name).join("、")||"无")+'</p></div></div>'+
+    '<h3>生效权限</h3>'+(aggregate.size?table(["动作","范围","全部来源"],[...aggregate.values()].map((row)=>[label(row.key),scopes[row.scope].label,
+      row.sources.map((source)=>'<div>'+esc(source)+'</div>').join("")])):'<p class="notice">当前无生效权限。</p>')+'</div></div>';
+}
+function rolePage(id){
+  const role=roles[id];
+  const edit=role.fixed?'<p class="notice">当前角色只读。</p>':'<form id="grant-form" class="stack" data-role="'+id+'"><div class="pair">'+
+    '<label class="field">权限动作<select name="key">'+opt(Object.entries(keys).filter(([key])=>key==="findings:read" || key==="wiki:read"&&pilot).map(([key])=>[key,label(key)]))+'</select></label>'+
+    '<label class="field">环境<select name="environment"><option>测试</option><option>生产</option></select></label>'+
+    '<label class="field">范围<select name="scope">'+opt(Object.entries(scopes).filter(([,value])=>value.env==="测试").map(([key,value])=>[key,value.label]))+'</select></label></div>'+
+    '<div class="actions"><button class="btn primary">预览变更</button></div></form>';
+  return begin("roles","角色配置","每条权限同时包含动作和范围。")+
+    '<div class="grid"><aside class="panel stack"><h2>角色</h2>'+listChoices(roles,id,"roles")+'</aside><section class="panel stack"><div class="row"><h2>'+esc(role.name)+'</h2>'+
+    tag(role.fixed?"固定角色":"数据角色",role.fixed?"":"good")+'</div>'+
+    (role.grants.length?table(["权限动作","资源范围","阶段"],role.grants.map(([key,scope])=>[label(key),scopes[scope].label,keys[key].phase])):'<p class="notice">此角色目前没有权限。</p>')+edit+'</section></div>';
+}
+function groupPage(id){
+  const group=groups[id];
+  return begin("groups","用户组","用户组通过关联角色为 LDAP 成员分配权限。")+
+    '<div class="grid"><aside class="panel stack"><h2>用户组</h2>'+listChoices(groups,id,"groups")+'</aside><section class="panel stack"><h2>'+esc(group.name)+'</h2>'+
+    '<div class="card"><strong>成员</strong><p>'+esc(Object.values(users).filter((user)=>user.groups.includes(id)).map((user)=>user.name).join("、")||"无")+'</p></div>'+
+    '<h3>关联角色</h3>'+group.roles.map((item)=>'<div class="row">'+tag(roles[item].name)+btn("解除关联","remove-role",id+":"+item,"danger")+'</div>').join("")+
+    '<form id="group-form" class="stack" data-group="'+id+'"><label class="field">添加数据角色<select name="role">'+opt(Object.entries(roles).filter(([,role])=>!role.fixed).map(([key,role])=>[key,role.name]))+
+    '</select></label><button class="btn primary">添加到组</button></form></section></div>';
+}
+function simulator(id){
+  return begin("users","权限模拟","检查指定用户的一项动作，保留所有命中来源。",link("返回用户权限","#/users/"+id))+
+    '<section class="panel stack"><form id="simulate-form" class="stack"><div class="pair"><label class="field">用户<select name="user">'+opt(Object.entries(users).map(([key,u])=>[key,u.name]),id)+'</select></label>'+
+    '<label class="field">动作<select name="key">'+opt(Object.entries(keys).map(([key,value])=>[key,value.label]))+'</select></label>'+
+    '<label class="field">目标<select name="scope">'+opt(Object.entries(scopes).map(([key,value])=>[key,value.label]))+'</select></label></div><button class="btn primary">检查权限</button></form>'+
+    '<div id="decision" role="status"></div></section>';
+}
+function auditPage(){
+  return begin("audit","操作审计","查看本次原型中的权限变更。")+
+    '<section class="panel stack"><div class="card">默认保留 · 低 3 天 · 中 5 天 · 高 7 天'+(actor.value==="super"?" · 超级管理员可维护":" · 当前身份只可查看")+'</div>'+
+    (audit.length?table(["操作人","动作","对象","变更"],audit.map((row)=>row.map(esc))):'<p class="notice">尚无已保存的变更。</p>')+'</section>';
+}
+function modulePage(module){
+  const names={diagnosis:"诊断控制台",wiki:"运维知识库",resources:"资源管理"};
+  const key={diagnosis:"findings:read",wiki:"wiki:read",resources:"resources:manage"}[module];
+  const target=module==="resources"?"all":"test";
+  const result=check(actor.value,key,target), allowed=result.rows.length>0;
+  return heading(names[module],"模块动作与数据范围预览。")+
+    '<section class="panel stack"><div class="row"><h2>'+label(key)+'</h2>'+tag(allowed?"可用":"无权",allowed?"good":"bad")+'</div>'+
+    '<p>'+esc(scopes[target].label)+'</p><p class="notice">'+esc(result.reason)+'</p>'+
+    (module==="wiki"&&admin()?btn(pilot?"停止 Wiki 只读试点":"启用 Wiki 只读试点","pilot","","primary"):"")+
+    (module==="wiki"?'<p class="meta">试点为测试值班组关联「测试 Wiki 试点」角色。LDAP 人员仅能阅读已发布的测试知识。</p>':"")+
+    (module==="wiki"&&allowed?'<div class="card"><strong>测试手册 · PVC Pending</strong><p>已发布，适用于 test-a / checkout。</p></div>':"")+
+    (module==="wiki"&&allowed&&!admin()?'<p class="notice">已有阅读权限。发布和模型问答未授予。</p>':"")+'</section>';
+}
+function render(){
+  const [route="users",id]=location.hash.slice(2).split("/");
+  const page=["users","roles","groups","audit","simulate","modules"].includes(route)?route:"users";
+  document.querySelectorAll("[data-nav]").forEach((item)=>{const selected=item.dataset.nav===(page==="modules"?id:"system");item.classList.toggle("active",selected);if(selected)item.setAttribute("aria-current","page");else item.removeAttribute("aria-current");});
+  app.innerHTML=page==="modules"&&["diagnosis","wiki","resources"].includes(id)?modulePage(id):!admin()?heading("系统管理","当前身份没有管理权限。",link("打开运维知识库","#/modules/wiki")):
+    page==="roles"?rolePage(roles[id]?id:"shift"):page==="groups"?groupPage(groups[id]?id:"duty"):page==="audit"?auditPage():page==="simulate"?simulator(users[id]?id:"alice"):userPage(users[id]?id:"alice");
+}
+function record(action,target,detail){audit.unshift([users[actor.value].name,action,target,detail]);}
+function modal(title,body){dialog.innerHTML='<div class="stack"><h2 id="dialog-title">'+title+'</h2>'+body+'</div>';if(!dialog.open)dialog.showModal();}
+function finish(text){message=text;if(dialog.open)dialog.close();render();}
+window.addEventListener("hashchange",()=>{message="";if(dialog.open)dialog.close();render();app.querySelector("h1")?.focus();});
+actor.addEventListener("change",()=>{message="";if(dialog.open)dialog.close();render();});
+app.addEventListener("change",(event)=>{
+  const field=event.target;
+  if(field.form?.id==="grant-form" && field.name==="environment"){
+    field.form.elements.scope.innerHTML=opt(Object.entries(scopes).filter(([,value])=>value.env===field.value).map(([key,value])=>[key,value.label]));
+  }
+});
+document.addEventListener("click",(event)=>{
+  const control=event.target.closest("[data-action]");
+  if(!control)return;
+  const {action,id}=control.dataset;
+  if(action==="cancel"){dialog.close();return;}
+  if(!admin())return;
+  if(action==="remove-direct"&&users.alice.roles.includes(id)){
+    users.alice.roles=users.alice.roles.filter((role)=>role!==id);record("撤销直接角色","李晨",roles[id].name);finish("已撤销直接来源，其他有效授权继续生效。");
+  }
+  if(action==="remove-role"){
+    const [group,role]=id.split(":");
+    groups[group].roles=groups[group].roles.filter((item)=>item!==role);record("解除组角色",groups[group].name,roles[role].name);finish("组角色已解除。");
+  }
+  if(action==="pilot"){
+    pilot=!pilot;
+    groups.duty.roles=groups.duty.roles.filter((role)=>role!=="wiki");
+    if(pilot)groups.duty.roles.push("wiki");
+    record(pilot?"启用试点":"停止试点","测试值班组","测试 Wiki 阅读");finish("试点授权已更新。");
+  }
+  if(action==="confirm"){
+    const [role,key,scope]=id.split("|");
+    if(roles[role].fixed||!scopes[scope].valid)return;
+    if(!roles[role].grants.some(([item,target])=>item===key&&target===scope)){
+      roles[role].grants.push([key,scope]);record("新增角色权限",roles[role].name,label(key)+" · "+scopes[scope].label);
+    }
+    finish("权限已保存，从下一次请求起生效。");
+  }
+});
+document.addEventListener("submit",(event)=>{
+  event.preventDefault();
+  if(!admin())return;
+  const form=event.target,data=new FormData(form);
+  if(form.id==="simulate-form"){
+    const result=check(data.get("user"),data.get("key"),data.get("scope"));
+    document.querySelector("#decision").innerHTML='<div class="notice '+(result.rows.length?"good":"bad")+'"><strong>'+(result.rows.length?"允许":"拒绝")+
+      '</strong> · '+esc(result.reason)+(result.rows.length?'<ul>'+result.rows.map((row)=>'<li>'+esc(row.source)+'</li>').join("")+'</ul>':"")+'</div>';
+  }
+  if(form.id==="grant-form"){
+    const role=form.dataset.role,key=data.get("key"),scope=data.get("scope");
+    if(roles[role].fixed || !scopes[scope].valid)return;
+    const impacted=Object.values(users).filter((user)=>user.roles.includes(role)||user.groups.some((group)=>groups[group].roles.includes(role))).length;
+    modal("权限变更预览",'<p>新增 '+esc(label(key))+' · '+esc(scopes[scope].label)+'</p><p class="meta">受影响账号 '+impacted+' 个</p><div class="actions">'+btn("取消","cancel")+btn("确认保存","confirm",[role,key,scope].join("|"),"primary")+'</div>');
+  }
+  if(form.id==="group-form"){
+    const group=groups[form.dataset.group],id=data.get("role");
+    if(roles[id].fixed)return;
+    if(group.roles.includes(id)){finish("此组已关联该角色。");return;}
+    group.roles.push(id);record("添加组角色",group.name,roles[id].name);finish("已关联角色。");
+  }
+});
+render();
+</script>
+</body>
+</html>
