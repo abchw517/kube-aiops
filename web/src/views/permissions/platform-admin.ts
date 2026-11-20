@@ -2,8 +2,8 @@ import { escapeHtml as h } from "../../components/html.ts";
 
 import { auditLocation, auditRecordReference } from "./audit-data.ts";
 import { roleReferences, scopeDifference, type Scope } from "./platform-scopes.ts";
-import { bindPermissionCatalog, catalogSource, clearSelectedPermissions, describePermission, loadPermissionCatalog,
-  renderPermissionCatalog, selectedPermissions, type InterfaceGrant, type PermissionCatalog } from "./permission-catalog.ts";
+import { bindPermissionCatalog, catalogSource, describePermission, loadPermissionCatalog,
+  renderPermissionCatalog, selectedPermissions, updateCatalogGrants, type InterfaceGrant, type PermissionCatalog } from "./permission-catalog.ts";
 type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null; grants?: InterfaceGrant[] };
 type Group = { id: string; name: string; description?: string; roles: string[] | null };
 type Account = {
@@ -244,6 +244,7 @@ async function renderAccess(tab?: string): Promise<string> {
     loadPermissionCatalog().catch(() => null),
   ]);
   const groups = tab === "groups";
+  const labels = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, point.label] as const)));
   const available = access.roles.filter((role) => role.id !== systemAdministratorRole);
   const groupEditor = (group?: Group) => editor(`group:${group?.id ?? ""}`, group ? "编辑用户组" : "新建用户组",
     operationForm("access", group?.id ?? "", `<label>用户组名称<input name="name" required maxlength="128" value="${h(group?.name)}"></label>
@@ -258,7 +259,7 @@ async function renderAccess(tab?: string): Promise<string> {
           <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
           <h3>已配置权限</h3>
           <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant)).join("")}</div>
+          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, labels.get(grant.code))).join("")}</div>
           <p class="system-scope-empty">尚未添加权限范围。</p>
           ${catalog ? '<div data-role-catalog-host></div>' : '<p>接口权限目录暂不可用。</p>'}
           ${scopeInputs(clusters.items, businesses)}
@@ -450,7 +451,8 @@ function openPlatformEditor(panel: HTMLElement, key: string): void {
     if (host && source) {
       const catalog = JSON.parse(source) as PermissionCatalog;
       host.innerHTML = renderPermissionCatalog(true);
-      bindPermissionCatalog(host, catalog);
+      const roleForm = host.closest("form");
+      bindPermissionCatalog(host, catalog, roleForm ? savedGrants(roleForm) : []);
     }
     dialog.showModal();
     if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
@@ -492,7 +494,11 @@ export function handlePlatformClick(event: MouseEvent): void {
     const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
     if (retry) void refreshScope(retry);
   }
-  if (target.closest("[data-role-grant-remove]") && !dialog?.hasAttribute("aria-busy")) target.closest("[data-role-grant]")?.remove();
+  if (form && target.closest("[data-role-grant-remove]") && !dialog?.hasAttribute("aria-busy")) {
+    target.closest("[data-role-grant]")?.remove();
+    updateCatalogGrants(form, savedGrants(form));
+    form.querySelector<HTMLButtonElement>("[data-role-grant-remove], [data-pc-module]")?.focus();
+  }
   if (target.closest("[data-scope-remove]") && !dialog?.hasAttribute("aria-busy")) {
     target.closest("[data-saved-scope]")?.remove();
   }
@@ -665,7 +671,7 @@ function addInterfaceGrants(form: HTMLFormElement): void {
     return previous.has(grantKey(grant)) ? [] : [grantRow(grant, point.label)];
   }));
   list.insertAdjacentHTML("beforeend", additions.join(""));
-  clearSelectedPermissions(form);
+  updateCatalogGrants(form, savedGrants(form), true);
   for (const box of form.querySelectorAll<HTMLInputElement>('[data-scope] input[type="checkbox"]')) box.checked = false;
   status.textContent = additions.length ? `已添加 ${additions.length} 项接口授权。` : "所选接口授权已在清单中。";
 }

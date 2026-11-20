@@ -467,6 +467,8 @@ tbody tr:hover { background: #f5f8fd; }
 .permission-point { display: block; max-width: 100%; text-align: left; overflow-wrap: anywhere; margin-bottom: .22rem; padding: .24rem .38rem; font: inherit; font-size: .78rem; line-height: 1.4; color: #31527b; background: #f7faff; border: 1px solid #dae4f2; border-radius: .28rem; }
 .permission-point[data-risk="高风险"], .permission-catalog-detail [data-risk="高风险"] { color: #794909; background: #fff3dc; }
 .permission-point[aria-pressed="true"] { color: #164d98; border-color: #6992d0; background: #edf4ff; }
+.permission-point[data-pc-configured="true"] { box-shadow: inset 2px 0 #3277c2; }
+.permission-catalog-detail dd ul { margin: 0; padding-inline-start: 1rem; }
 .permission-empty { color: #657b94; }
 .permission-catalog-count { margin: .55rem .8rem; font-size: .8rem; }
 .permission-catalog-detail { padding: .85rem; }

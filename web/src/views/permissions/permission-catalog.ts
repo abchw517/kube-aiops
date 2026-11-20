@@ -54,7 +54,7 @@ export function renderPermissionCatalog(edit = false): string {
           <input type="search" data-pc-query aria-label="搜索权限目录" placeholder="搜索功能、权限编码或接口">
           <select data-pc-toolkit aria-label="工具集合"></select>
           <select data-pc-filter aria-label="权限筛选"><option value="">全部权限</option><option value="risk">高风险</option>
-          ${edit ? '<option value="selected">已勾选</option>' : ""}</select>
+          ${edit ? '<option value="selected">待加入清单</option><option value="configured">已配置权限</option>' : ""}</select>
         </div>
         <div class="catalog-table-wrap permission-catalog-table" role="region" aria-label="功能点增删改查矩阵" tabindex="0">
           <table class="catalog-table"><thead><tr><th scope="col">功能点</th>
@@ -72,16 +72,17 @@ type State = {
   module: string;
   points: Map<string, Point>;
   selected: Set<string>;
+  configured: InterfaceGrant[];
   active?: string;
 };
 
 const states = new WeakMap<HTMLElement, State>();
 
-export function bindPermissionCatalog(container: HTMLElement, catalog: PermissionCatalog): void {
+export function bindPermissionCatalog(container: HTMLElement, catalog: PermissionCatalog, configured: InterfaceGrant[] = []): void {
   const root = container.querySelector<HTMLElement>("[data-pc-root]");
   if (!root) return;
   const state: State = {
-    catalog, module: Object.keys(catalog.modules)[0] ?? "", selected: new Set(),
+    catalog, module: Object.keys(catalog.modules)[0] ?? "", selected: new Set(), configured,
     points: new Map(catalog.rows.flatMap(feature => feature.points.map(point => [point.code, { ...point, feature }]))),
   };
   states.set(root, state);
@@ -150,12 +151,14 @@ function draw(root: HTMLElement, state: State): void {
   const query = root.querySelector<HTMLInputElement>("[data-pc-query]")?.value.trim().toLowerCase() ?? "";
   const toolkit = root.querySelector<HTMLSelectElement>("[data-pc-toolkit]")?.value ?? "";
   const filter = root.querySelector<HTMLSelectElement>("[data-pc-filter]")?.value;
+  const configuredCodes = new Set(state.configured.map(grant => grant.code));
   const features = state.catalog.rows.filter(row => row.module === state.module && (!toolkit || row.toolkit === toolkit))
     .map(row => {
       const match = `${row.name} ${row.desc} ${row.toolkit}`.toLowerCase().includes(query);
       return { ...row, points: row.points.filter(p =>
         (match || [p.code, p.label, p.method, p.path, p.rule].join(" ").toLowerCase().includes(query)) &&
-        (filter !== "risk" || p.risk === "高风险") && (filter !== "selected" || state.selected.has(p.code))) };
+        (filter !== "risk" || p.risk === "高风险") && (filter !== "selected" || state.selected.has(p.code)) &&
+        (filter !== "configured" || configuredCodes.has(p.code))) };
     }).filter(row => row.points.length > 0);
   const visible = features.flatMap(row => row.points);
   if (!visible.some(p => p.code === state.active)) state.active = visible[0]?.code;
@@ -167,7 +170,8 @@ function draw(root: HTMLElement, state: State): void {
     return `${head}<tr><th scope="row">${h(row.name)}<small>${h(row.desc)}</small></th>${columns.map(([key]) => {
       const actions = row.points.filter(p => p.action === key);
       return `<td>${actions.map(p => `<button type="button" class="permission-point" data-risk="${h(p.risk)}" data-pc-point="${h(p.code)}"
-         aria-pressed="${p.code === state.active}">${state.selected.has(p.code) ? "✓ " : ""}${h(p.label)}</button>`).join("") ||
+         aria-pressed="${p.code === state.active}"${configuredCodes.has(p.code) ? ' data-pc-configured="true"' : ""}>
+         ${state.selected.has(p.code) ? "✓ " : ""}${h(p.label)}${configuredCodes.has(p.code) ? " · 已配置" : ""}</button>`).join("") ||
          '<span class="permission-empty" title="当前无此类动作">—</span>'}</td>`;
     }).join("")}</tr>`;
   }).join("") || '<tr><td colspan="5">暂无匹配权限。</td></tr>';
@@ -177,13 +181,17 @@ function draw(root: HTMLElement, state: State): void {
     details.textContent = "请选择一个权限点查看详情。";
     return;
   }
+  const scopeLabels: Record<string, string> = { development: "研发", testing: "测试", staging: "预发布", production: "生产" };
+  const configured = state.configured.filter(grant => grant.code === point.code).map(({ scope }) =>
+    [scopeLabels[scope.environment] ?? scope.environment, scope.cluster, scope.business, scope.namespace].filter(Boolean).join(" / ") || point.feature.scope);
   details.innerHTML = `<p class="permission-ancestry">${h(point.feature.toolkit)} / ${h(point.feature.name)}</p>
     <h4>${h(point.label)}</h4><span class="system-badge" data-risk="${h(point.risk)}">${h(point.risk)}</span>
     ${point.restricted ? '<span class="system-badge">现有管理身份</span>' : ""}
     <dl><div><dt>权限编码</dt><dd><code>${h(point.code)}</code></dd></div>
     <div><dt>方法与路径</dt><dd><strong>${h(point.method)}</strong> <code>${h(point.path)}</code></dd></div>
     <div><dt>分流与约束</dt><dd>${h(point.rule || "按实际资源范围校验。")}</dd></div>
-    <div><dt>适用范围</dt><dd>${h(point.feature.scope)}</dd></div></dl>
+    <div><dt>适用范围</dt><dd>${h(point.feature.scope)}</dd></div>
+    ${configured.length ? `<div><dt>已配置范围</dt><dd><ul>${configured.map(scope => `<li>${h(scope)}</li>`).join("")}</ul></dd></div>` : ""}</dl>
     ${edit && !point.restricted ? `<button type="button" class="button secondary" data-pc-toggle>${state.selected.has(point.code) ? "取消勾选" : "勾选当前动作"}</button>` : ""}`;
 }
 
@@ -197,12 +205,13 @@ export function selectedPermissions(form: HTMLFormElement): Point[] {
   });
 }
 
-export function clearSelectedPermissions(form: HTMLFormElement): void {
+export function updateCatalogGrants(form: HTMLFormElement, configured: InterfaceGrant[], clearSelection = false): void {
   const root = form.querySelector<HTMLElement>("[data-pc-root]");
   if (!root) return;
   const state = states.get(root);
   if (state) {
-    state.selected.clear();
+    state.configured = configured;
+    if (clearSelection) state.selected.clear();
     draw(root, state);
   }
 }

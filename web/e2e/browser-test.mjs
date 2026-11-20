@@ -715,6 +715,22 @@ try {
     await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计"), "Saving interface grants did not show the audit shortcut");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
     await assertText(cdp, text => text.includes("接口授权检查") && !text.includes("角色保存结果"), "Role list did not refresh after confirming the save");
+    const configuredScope = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      document.querySelector('[data-system-open="role:interface-audit"]').click();
+      const form = document.querySelector("dialog[open] form");
+      form.querySelector('[data-pc-module="system"]').click();
+      const filter = form.querySelector("[data-pc-filter]");
+      filter.value = "configured";
+      filter.dispatchEvent(new Event("change", { bubbles: true }));
+      const point = form.querySelector('[data-pc-point="system.audit.list"]');
+      const visible = Boolean(point?.hasAttribute("data-pc-configured")) &&
+        form.querySelector("[data-pc-details]").textContent.includes("已配置范围");
+      form.querySelector("[data-role-grant-remove]").click();
+      const removed = !form.querySelector('[data-pc-point="system.audit.list"]');
+      document.querySelector("dialog[open] footer [data-system-close]").click();
+      return visible && removed;
+    })()` });
+    if (!configuredScope.result?.value) throw new Error("Role editor did not show or refresh configured interface scopes");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
       (text) => text.includes("新建角色") && text.includes("访客只读"), "Role tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
