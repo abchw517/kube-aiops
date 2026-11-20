@@ -1,3 +1,4 @@
+import type { WikiFeedback } from "./wiki-feedback.ts";
 import { escapeHtml } from "../../components/html.ts";
 import { authorizationDeniedState } from "../../components/states.ts";
 
@@ -6,7 +7,7 @@ export interface Source { cluster: string; namespace: string; id: string; revisi
 export interface WikiDocument {
   knowledgeId?: string;
   revision?: number;
-  currentRevision?: number;
+  currentRevision?: number; pendingFeedback?: number;
   title: string;
   cluster: string;
   namespace: string;
@@ -44,16 +45,37 @@ export async function wikiJSON<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function knowledgeLink(id: string, revision?: number): string {
-  return `#/wiki/${encodeURIComponent(id)}${revision ? `?revision=${revision}` : ""}`;
+export function knowledgeLink(id: string, revision?: number, section?: string): string {
+  const params = new URLSearchParams();
+  if (revision) params.set("revision", String(revision));
+  if (section) params.set("section", section);
+  return `#/wiki/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
+}
+
+export const wikiSectionKeys = (doc: WikiDocument): string[] => {
+  const keys = Object.keys(sections[doc.documentType] ?? {}).filter((key) => doc.metadata?.sections?.[key]?.trim());
+  return keys.length ? keys : ["body"];
+};
+
+export function wikiSectionLabel(key: string, docType?: string): string {
+  if (key === "body") return "正文";
+  return sections[docType ?? ""]?.[key] ?? Object.values(sections).find((entry) => key in entry)?.[key] ?? key;
+}
+
+export function reviewReminder(value?: string): string {
+  if (!value) return "复核日期待补齐";
+  const today = new Date();
+  const upcoming = new Date(today.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+  if (value < today.toISOString().slice(0, 10)) return "已到期待复核";
+  return value <= upcoming ? "即将复核" : "";
 }
 
 export function renderWikiSections(doc: WikiDocument): string {
   const fields = doc.metadata?.sections ?? {};
-  const entries = Object.entries(sections[doc.documentType] ?? {}).filter(([key]) => fields[key]);
+  const entries = Object.entries(sections[doc.documentType] ?? {}).filter(([key]) => fields[key]?.trim());
   return entries.length ? entries.map(([key, title]) =>
-    `<section><h3>${h(title)}</h3><p class="wiki-document-body">${h(fields[key])}</p></section>`).join("") :
-    `<p class="wiki-document-body">${h(doc.body ?? "")}</p>`;
+    `<section id="wiki-section-${h(key)}" tabindex="-1"><h3>${h(title)}</h3><p class="wiki-document-body">${h(fields[key])}</p></section>`).join("") :
+    `<section id="wiki-section-body" tabindex="-1"><h3>正文</h3><p class="wiki-document-body">${h(doc.body ?? "")}</p></section>`;
 }
 
 function chapterFields(type: string, values: Record<string, string> = {}): string {
@@ -100,8 +122,8 @@ export async function renderWikiGovernance(path: string, params: URLSearchParams
     const text: Record<string, string> = { ...statusLabels, overdue: "待复核", withdrawn: "已撤回", scopePending: "范围待确认" };
     const listing = ["published", "overdue", "withdrawn", "scopePending"].includes(state)
       ? published.filter((doc) => state === "withdrawn" ? doc.withdrawn : state === "scopePending" ? doc.scopePending : !doc.withdrawn &&
-        (state === "published" || !doc.metadata?.reviewBy || doc.metadata.reviewBy < new Date().toISOString().slice(0, 10)))
-        .map((doc) => `<li><a href="#/wiki/manage/${h(doc.knowledgeId)}">${h(doc.title)}</a> · v${doc.revision}${doc.metadata?.team ? ` · ${h(doc.metadata.team)}` : ""}</li>`)
+        (state === "published" || doc.pendingFeedback || reviewReminder(doc.metadata?.reviewBy)))
+        .map((doc) => `<li><a href="#/wiki/manage/${h(doc.knowledgeId)}">${h(doc.title)}</a> · v${doc.revision}${doc.pendingFeedback ? ` · ${doc.pendingFeedback} 条待复核反馈` : ""}${reviewReminder(doc.metadata?.reviewBy) ? ` · ${h(reviewReminder(doc.metadata?.reviewBy))}` : ""}${doc.metadata?.team ? ` · ${h(doc.metadata.team)}` : ""}</li>`)
       : candidates.filter((entry) => entry.status === state).map((entry) =>
         `<li><a href="#/wiki/draft/${h(entry.id)}">${h(entry.document.title || "未命名草稿")}</a> · ${statusLabels[entry.status]}${!entry.document.environment ? " · 范围待确认" : ""}</li>`);
     return `<section class="panel wiki-card"><div class="wiki-toolbar"><h2>知识治理</h2><div class="system-actions"><a href="#/wiki">返回知识库</a><a href="#/wiki/draft/new" class="button">新建知识</a></div></div>
@@ -117,9 +139,12 @@ export async function renderWikiGovernance(path: string, params: URLSearchParams
   if (!/^[a-f0-9]{64}$/.test(id)) return authorizationDeniedState();
   if (path.startsWith("#/wiki/manage/")) {
     const doc = await wikiJSON<WikiDocument>(`${url}/knowledge/${id}/governance`);
+    const feedback = await wikiJSON<WikiFeedback[]>(`${url}/knowledge/${id}/feedback`);
     return `<section class="panel wiki-card"><a href="#/wiki/governance">返回知识治理</a><h2>${h(doc.title)} · v${doc.revision}</h2>
       ${doc.withdrawn ? "<p>已撤回。仅治理人员可查看历史。</p>" : ""}
       ${renderWikiSections(doc)}
+      <section><h3>版本反馈</h3>${feedback.length ? `<ul>${feedback.map((entry) =>
+        `<li>v${entry.revision}${entry.section ? ` · ${h(wikiSectionLabel(entry.section, doc.documentType))}` : ""} · ${entry.kind === "outdated" ? "需复核" : "有帮助"}${entry.resolved ? " · 已处理" : ""}${entry.note ? `<p>${h(entry.note)}</p>` : ""}</li>`).join("")}</ul>` : "<p>暂无反馈。</p>"}</section>
       <a class="button secondary" href="#/wiki/draft/new?knowledgeId=${id}">创建修订</a>
       ${doc.withdrawn ? "" : `<form data-wiki-manage class="wiki-import-form" data-id="${id}" data-revision="${doc.revision}">
         <label>责任团队<input name="team" value="${h(doc.metadata?.team ?? "")}"></label>

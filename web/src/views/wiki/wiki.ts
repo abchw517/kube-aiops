@@ -1,8 +1,9 @@
+import { bindWikiFeedback, renderFeedback } from "./wiki-feedback.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
 
 import { authorizationDeniedState } from "../../components/states.ts";
 
-import { bindWikiGovernance, knowledgeLink, renderWikiGovernance, renderWikiSections, type WikiDocument } from "./governance.ts";
+import { bindWikiGovernance, knowledgeLink, renderWikiGovernance, renderWikiSections, reviewReminder, wikiSectionKeys, wikiSectionLabel, type WikiDocument } from "./governance.ts";
 import { bindWikiTools, renderWikiTools } from "./wiki-tools.ts";
 
 const endpoint = "/api/v1/wiki/knowledge";
@@ -22,6 +23,10 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string |
   if (id) {
     const doc = await response.json() as WikiDocument;
     const metadata = doc.metadata;
+    const keys = wikiSectionKeys(doc);
+    const requested = query.get("section") ?? "";
+    const active = keys.includes(requested) ? requested : "";
+    const reminder = reviewReminder(metadata?.reviewBy);
     const sources = [metadata?.finding, ...(doc.links ?? [])].filter((src) => src !== undefined);
     return `<section class="panel wiki-card"><div class="wiki-toolbar"><a href="#/wiki">返回知识库</a>
       ${admin ? `<a class="button secondary" href="#/wiki/draft/new?knowledgeId=${id}">创建修订</a>` : ""}</div>
@@ -32,7 +37,12 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string |
         ${metadata.sections?.checks ? `<h3>先查什么</h3><p class="wiki-document-body">${escapeHtml(metadata.sections.checks)}</p>` : ""}
         ${metadata.sections?.recovery ? `<h3>恢复判断</h3><p class="wiki-document-body">${escapeHtml(metadata.sections.recovery)}</p>` : ""}</section>` : ""}
       ${metadata?.targets?.length ? `<p>可见目标 ${metadata.targets.map((target) => escapeHtml(`${target.cluster}/${target.namespace}`)).join("、")}</p>` : ""}
+      ${reminder ? `<p class="system-notice">${escapeHtml(reminder)}，使用前请核对适用范围。</p>` : ""}
+      ${requested && !active ? '<p role="status">此版本没有所选章节，已显示全文。</p>' : ""}
+      ${keys.length > 1 ? `<nav class="system-subtabs" aria-label="知识章节">${keys.map((key) =>
+        `<a href="${knowledgeLink(id, doc.revision, key)}"${active === key ? ' aria-current="location"' : ""}>${escapeHtml(wikiSectionLabel(key, doc.documentType))}</a>`).join("")}</nav>` : ""}
       ${renderWikiSections(doc)}
+      ${renderFeedback(id, doc.revision ?? 1, active)}
       ${sources.length ? `<section><h3>关联诊断</h3><ul>${sources.map((source) =>
         `<li><a href="#/findings/${encodeURIComponent(source.id)}?cluster=${encodeURIComponent(source.cluster)}">${escapeHtml(source.id)}</a> · 复核 v${source.revision}</li>`).join("")}</ul></section>` : ""}
     </section>`;
@@ -70,6 +80,13 @@ export async function renderWiki(hash: string, admin: boolean): Promise<string |
 
 export function bindWiki(root: HTMLElement, reload: () => void): void {
   bindWikiTools(root);
+  bindWikiFeedback(root);
+  const section = new URLSearchParams(window.location.hash.split("?", 2)[1]).get("section");
+  const target = section && /^[a-z]+$/.test(section) ? document.getElementById(`wiki-section-${section}`) : null;
+  if (target && root.contains(target)) {
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start" });
+  }
   bindWikiGovernance(root, reload);
   root.querySelector<HTMLFormElement>("[data-wiki-filters]")?.addEventListener("submit", (event) => {
     event.preventDefault();

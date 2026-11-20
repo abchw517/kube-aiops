@@ -70,7 +70,7 @@ func TestPortalWikiAskUsesScopedEvidenceAndModel(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"请检查镜像仓库。"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"{\"answer\":\"请检查镜像仓库。\",\"citations\":[\"K1\",\"invented\"]}"}}]}`))
 	}))
 	defer model.Close()
 

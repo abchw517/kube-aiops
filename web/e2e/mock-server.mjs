@@ -124,6 +124,8 @@ createServer(async (request, response) => {
   const wikiID = "a".repeat(64);
   const wikiDoc = {knowledgeId: wikiID, title: "镜像拉取排障", environment: "测试", business: "运维", documentType: "排障手册"};
   const candidateID = "b".repeat(64);
+  const syncRun = {id: "fixture-run", status: "partial", trigger: "manual", started: 1795150900,
+    saved: 1, skipped: 0, failed: 1, missing: 0};
   if (url.pathname === "/api/v1/wiki/finding" && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, {items: [{...wikiDoc, revision: 1, matchReason: "命中 ContainerBackOff"}], links: [], status: "ready", canDraft: true});
     const chunks = [];
@@ -139,7 +141,7 @@ createServer(async (request, response) => {
     return json(response, 200, knowledgeCandidate);
   }
   if (url.pathname === "/api/v1/wiki/candidates") return json(response, 200, knowledgeCandidate ? [knowledgeCandidate] : []);
-  if (url.pathname === "/api/v1/wiki/governance") return json(response, 200, [wikiDoc]);
+  if (url.pathname === "/api/v1/wiki/governance") return json(response, 200, [{...wikiDoc, pendingFeedback: 1}]);
   if (url.pathname === `/api/v1/wiki/candidates/${candidateID}` && knowledgeCandidate) {
     if (request.method === "GET") return json(response, 200, knowledgeCandidate);
     const chunks = [];
@@ -159,12 +161,34 @@ createServer(async (request, response) => {
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
     if (input.question === "镜像拉取怎么排查？") {
-      return json(response, 200, {answer: "请验证仓库权限。", citations: [{...wikiDoc, revision: 1}]});
+      return json(response, 200, {answer: "请验证仓库权限。", citations: [{...wikiDoc, revision: 1, section: "checks"}]});
+    }
+    if (input.question === "旧范围提问") {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return json(response, 200, {answer: "这个旧范围回答不应显示", citations: []});
     }
     return json(response, 400, {error: "invalid fixture question"});
   }
   if ([`/api/v1/wiki/knowledge/${wikiID}/revisions/1`, `/api/v1/wiki/knowledge/${wikiID}`].includes(url.pathname)) {
-    return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
+    return json(response, 200, {...wikiDoc, revision: 1, metadata: {sections: {checks: "验证仓库权限", recovery: "确认 Pod Ready"}}});
+  }
+  if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/feedback` && request.method === "POST") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (input.revision !== 1 || input.section !== "checks" || input.kind !== "outdated") return json(response, 400, {});
+    response.writeHead(204).end();
+    return;
+  }
+  if (url.pathname === "/api/v1/wiki/sources/ops/runs") return json(response, 200, { items: [syncRun], lastSucceeded: syncRun.started - 3600 });
+  if (url.pathname === "/api/v1/wiki/sources/ops/runs/fixture-run") {
+    return json(response, 200, {run: syncRun, items: [{pageId: "page-2", status: "failed", reason: "文档格式无效"}], more: false});
+  }
+  if (url.pathname === "/api/v1/wiki/sources/ops/runs/fixture-run/retry" && request.method === "POST") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    return json(response, input.pageId === "page-2" ? 200 : 400, {saved: 1, skipped: 0, failed: 0, missing: 0});
   }
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
     admin: true, superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,

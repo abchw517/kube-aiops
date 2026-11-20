@@ -205,6 +205,11 @@ func Open(path string) (*Store, error) {
 			PRIMARY KEY(finding_key, knowledge_id)
 		);
 		CREATE TABLE IF NOT EXISTS wiki_disabled_sources (id TEXT PRIMARY KEY);
+		CREATE TABLE IF NOT EXISTS wiki_feedback (
+			knowledge_id TEXT NOT NULL, revision INTEGER NOT NULL, section TEXT NOT NULL,
+			provider TEXT NOT NULL, subject TEXT NOT NULL, kind TEXT NOT NULL, note TEXT NOT NULL, updated_at INTEGER NOT NULL, resolved INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(knowledge_id,revision,section,provider,subject)
+		);
 		CREATE TABLE IF NOT EXISTS wiki_sources (
 			id TEXT PRIMARY KEY NOT NULL,
 			url TEXT NOT NULL,
@@ -221,6 +226,17 @@ func Open(path string) (*Store, error) {
 			PRIMARY KEY(source_id, page_id)
 		);
 		CREATE INDEX IF NOT EXISTS wiki_remote_knowledge ON wiki_remote_pages(knowledge_id, source_id);
+		CREATE TABLE IF NOT EXISTS wiki_sync_runs (
+			id TEXT PRIMARY KEY, source_id TEXT NOT NULL, trigger TEXT NOT NULL, status TEXT NOT NULL,
+			retry_of TEXT NOT NULL DEFAULT '', page_id TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL,
+			finished_at INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS wiki_sync_runs_source ON wiki_sync_runs(source_id,started_at);
+		CREATE UNIQUE INDEX IF NOT EXISTS wiki_sync_runs_active ON wiki_sync_runs(source_id) WHERE status='running';
+		CREATE TABLE IF NOT EXISTS wiki_sync_run_items (
+			id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, page_id TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS wiki_sync_run_items_run ON wiki_sync_run_items(run_id,status,id);
 		CREATE TABLE IF NOT EXISTS wiki_sync_schedules (
 			source_id TEXT PRIMARY KEY,
 			provider TEXT NOT NULL,

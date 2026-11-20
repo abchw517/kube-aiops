@@ -53,3 +53,9 @@
 .wiki-governance-diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 16px; }
 .wiki-governance-diff > div { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .wiki-governance-list li { margin-block: 10px; }
+
+[id^="wiki-section-"] { scroll-margin-top: calc(var(--topbar-height) + 18px); }
+.wiki-sync-runs { display: grid; gap: 10px; padding-top: 14px; }
+.wiki-run-list { list-style: none; padding: 0; display: grid; gap: 8px; margin: 0; }
+.wiki-run-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.wiki-sync-runs td { overflow-wrap: anywhere; }

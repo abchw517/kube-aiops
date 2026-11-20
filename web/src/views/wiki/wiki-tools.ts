@@ -1,3 +1,6 @@
+import { knowledgeLink, wikiSectionLabel } from "./governance.ts";
+import { bindWikiRuns, renderWikiRuns } from "./wiki-runs.ts";
+
 type WikiFormAction = (fields: FormData, status: HTMLElement, event: SubmitEvent) => Promise<void>;
 
 function bindWikiTool(root: HTMLElement, selector: string, action: WikiFormAction): void {
@@ -12,16 +15,18 @@ function bindWikiTool(root: HTMLElement, selector: string, action: WikiFormActio
     try {
       await action(new FormData(form), status, event);
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : "请求失败";
+      if (form.isConnected && !(error instanceof DOMException && error.name === "AbortError")) {
+        status.textContent = error instanceof Error ? error.message : "请求失败";
+      }
     } finally {
       form.inert = false;
     }
   });
 }
 
-async function wikiRequest(url: string, method: string, body?: unknown): Promise<Response> {
+async function wikiRequest(url: string, method: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
   const response = await fetch(url, {
-    method, body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
+    signal, method, body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
     headers: body !== undefined && !(body instanceof FormData) ? {"Content-Type": "application/json"} : undefined,
   });
   if (!response.ok) throw new Error((await response.text()).trim() || "请求失败");
@@ -55,23 +60,39 @@ export function renderWikiTools(admin: boolean): string {
     <label>Cron（可选）<input name="cron" placeholder="0 2 * * *"></label>
     <label>时区<input name="zone" value="Asia/Shanghai"></label>
     <button type="submit" value="schedule" class="button secondary">保存定时计划</button><p role="status"></p>
-  </form></details>`;
+  </form>${renderWikiRuns()}</details>`;
 }
 
 export function bindWikiTools(root: HTMLElement): void {
   const dialog = root.querySelector<HTMLDialogElement>("[data-wiki-dialog]");
   const log = root.querySelector<HTMLElement>("[data-wiki-dialog-log]");
   const prior: string[] = [];
+  let pending: AbortController | undefined;
+  dialog?.addEventListener("close", () => pending?.abort());
   root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", () => dialog?.showModal());
   root.querySelector("[data-close-wiki-ask]")?.addEventListener("click", () => dialog?.close());
   bindWikiTool(root, "[data-wiki-ask]", async (fields, status) => {
-    const query = new URLSearchParams(window.location.hash.split("?", 2)[1]);
+    const location = window.location.hash;
+    const query = new URLSearchParams(location.split("?", 2)[1]);
     const question = String(fields.get("question"));
-    const response = await wikiRequest("/api/v1/wiki/ask", "POST", {
-      question, prior: prior.slice(-8), environment: query.get("environment") ?? "",
-      business: query.get("business") ?? "", documentType: query.get("documentType") ?? "",
-    });
-    const data = await response.json() as {answer: string; citations: {knowledgeId: string; title: string; revision: number}[]};
+    const controller = new AbortController();
+    pending = controller;
+    const cancel = () => controller.abort();
+    window.addEventListener("hashchange", cancel, { once: true });
+    let data: {answer: string; citations: {knowledgeId: string; title: string; revision: number; section?: string}[]};
+    try {
+      const response = await wikiRequest("/api/v1/wiki/ask", "POST", {
+        question, prior: prior.slice(-8), environment: query.get("environment") ?? "",
+        business: query.get("business") ?? "", documentType: query.get("documentType") ?? "",
+        resourceType: query.get("resourceType") ?? "",
+      }, controller.signal);
+      data = await response.json() as typeof data;
+    } finally {
+      window.removeEventListener("hashchange", cancel);
+      pending = undefined;
+      if (controller.signal.aborted) status.textContent = "";
+    }
+    if (controller.signal.aborted || !dialog?.open || !status.isConnected || window.location.hash !== location) return;
     prior.push(question);
     const item = document.createElement("section");
     const prompt = document.createElement("p");
@@ -82,8 +103,8 @@ export function bindWikiTools(root: HTMLElement): void {
     item.append(prompt, answer);
     for (const citation of data.citations) {
       const link = document.createElement("a");
-      link.href = `#/wiki/${encodeURIComponent(citation.knowledgeId)}?revision=${citation.revision}`;
-      link.textContent = citation.title;
+      link.href = knowledgeLink(citation.knowledgeId, citation.revision, citation.section);
+      link.textContent = `${citation.title} · v${citation.revision}${citation.section ? ` · ${wikiSectionLabel(citation.section)}` : ""}`;
       item.append(link, document.createTextNode(" "));
     }
     log?.append(item);
@@ -130,6 +151,7 @@ export function bindWikiTools(root: HTMLElement): void {
     }
     status.textContent = "转换完成，请逐项确认。";
   });
+  const reloadRuns = bindWikiRuns(root, wikiRequest);
   const sourceInput = root.querySelector<HTMLInputElement>("[data-wiki-sync] [name=id]");
   sourceInput?.addEventListener("change", () => {
     const load = root.querySelector<HTMLButtonElement>('[data-wiki-sync] [value="load"]');
@@ -168,13 +190,16 @@ export function bindWikiTools(root: HTMLElement): void {
       }
       if (plan.nextRun) status.textContent += ` 下次运行：${new Date(plan.nextRun * 1000).toLocaleString("zh-CN")}`;
     } else if (action === "sync") {
-      const response = await wikiRequest(`${base}/sync`, "POST");
-      const result = await response.json() as {saved: number; skipped: number; failed: number; missing: number};
-      status.textContent = `已生成候选 ${result.saved}，已跳过 ${result.skipped}，失败 ${result.failed}，新增来源缺失 ${result.missing}。`;
+      try {
+        const response = await wikiRequest(`${base}/sync`, "POST");
+        const result = await response.json() as {saved: number; skipped: number; failed: number; missing: number};
+        status.textContent = `已生成候选 ${result.saved}，已跳过 ${result.skipped}，失败 ${result.failed}，新增来源缺失 ${result.missing}。`;
+      } finally { await reloadRuns?.(); }
     } else if (action === "disable") {
       if (!window.confirm("停用后该来源的内容将退出普通阅读与推荐，确认继续？")) return;
       await wikiRequest(base, "DELETE");
       status.textContent = "来源已停用。";
+      await reloadRuns?.();
     } else if (action === "schedule") {
       await wikiRequest(`${base}/schedule`, "PUT", {intervalMinutes: Number(fields.get("interval")), cron: fields.get("cron"), timeZone: fields.get("zone")});
       status.textContent = "定时计划已保存。";

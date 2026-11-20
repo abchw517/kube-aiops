@@ -42,6 +42,8 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var remoteCalls atomic.Int32
+	var syncFailure atomic.Bool
+	var addSecondPage atomic.Bool
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, _ := r.BasicAuth()
 		if user != "wiki-alice" || pass != "fixture-alice-wiki-secret" {
@@ -49,7 +51,15 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			return
 		}
 		remoteCalls.Add(1)
-		adminhttp.WriteJSON(w, wikiRemoteDirectory{Pages: []wikiRemotePage{{ID: "page-1", Title: "远端排障", Body: "检查远端仓库"}}})
+		pages := []wikiRemotePage{{ID: "page-1", Title: "远端排障", Body: "检查远端仓库"}}
+		if addSecondPage.Load() {
+			second := wikiRemotePage{ID: "page-2", Title: "第二页", Body: "已修复"}
+			if syncFailure.Load() {
+				second.Body = ""
+			}
+			pages = append(pages, second)
+		}
+		adminhttp.WriteJSON(w, wikiRemoteDirectory{Pages: pages})
 	}))
 	defer remote.Close()
 	service := New(store, admin, admin.Origin())
@@ -61,11 +71,15 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		admin.Handle(w, r, r.PathValue("resource"), sessions)
 	})
+	var revokeDuringAsk func()
 	service.Register(mux, sessions, func(_ context.Context, _ string, data []byte) (string, error) {
 		if !bytes.Contains(data, []byte("镜像拉取")) || bytes.Contains(data, []byte("fixture-password-value")) {
 			t.Fatal("model input does not have the expected sanitized knowledge")
 		}
-		return "请检查仓库凭据。", nil
+		if revokeDuringAsk != nil {
+			revokeDuringAsk()
+		}
+		return `{"answer":"请检查仓库凭据。","citations":["K1","unknown","K1"]}`, nil
 	})
 	handler := sessions.Wrap(mux)
 	request := func(method, path, body string, cookie *http.Cookie, status int) *httptest.ResponseRecorder {
@@ -201,8 +215,33 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 
+		feedback := knowledge + "/" + doc.ID + "/feedback"
+		request("POST", feedback, `{"revision":1,"section":"does-not-exist","kind":"outdated"}`, alice, 400)
+		request("POST", feedback, `{"revision":1,"kind":"outdated","note":"旧版需核对"}`, bob, 404)
+		request("POST", feedback, `{"revision":1,"kind":"outdated","note":"旧版需核对"}`, alice, 204)
+		request("POST", feedback, `{"revision":2,"kind":"outdated","note":"现行版需核对"}`, alice, 204)
+		request("POST", feedback, `{"revision":2,"kind":"outdated","note":"现行版已补充线索"}`, alice, 204)
+		out := request("GET", feedback, "", root, 200)
+		var entries []feedbackEntry
+		if json.Unmarshal(out.Body.Bytes(), &entries) != nil || len(entries) != 2 || !strings.Contains(out.Body.String(), "现行版已补充线索") {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("GET", "/api/v1/wiki/governance", "", root, 200); !strings.Contains(out.Body.String(), `"pendingFeedback":1`) {
+			t.Fatal(out.Body.String())
+		}
+		request("POST", knowledge+"/"+doc.ID+"/governance", `{"action":"review","revision":2,"reviewBy":"2027-12-01"}`, root, 200)
+		if out := request("GET", "/api/v1/wiki/governance", "", root, 200); strings.Contains(out.Body.String(), `"pendingFeedback"`) {
+			t.Fatal(out.Body.String())
+		}
 		request("GET", path, "", bob, 404)
 		if out := request("GET", knowledge, "", bob, 200); strings.Contains(out.Body.String(), "运维") || !strings.Contains(out.Body.String(), `"total":0`) {
+			t.Fatal(out.Body.String())
+		}
+		revokeDuringAsk = func() {
+			request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[]}`, root, 204)
+		}
+		defer func() { revokeDuringAsk = nil }()
+		if out := request("POST", "/api/v1/wiki/ask", question, alice, 409); strings.Contains(out.Body.String(), "仓库凭据") {
 			t.Fatal(out.Body.String())
 		}
 	})
@@ -229,6 +268,59 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 		request("PUT", source+"/schedule", `{"intervalMinutes":0}`, alice, 204)
+		addSecondPage.Store(true)
+		syncFailure.Store(true)
+		res := request("POST", source+"/sync", "", alice, 200)
+		var failed wikiSyncResult
+		if json.Unmarshal(res.Body.Bytes(), &failed) != nil || failed.RunID == "" || failed.Skipped != 1 || failed.Failed != 1 {
+			t.Fatal(res.Body.String())
+		}
+		path := source + "/runs/" + failed.RunID
+		if out := request("GET", path+"?failed=true", "", alice, 200); !strings.Contains(out.Body.String(), `"pageId":"page-2"`) ||
+			strings.Contains(out.Body.String(), `"pageId":"page-1"`) {
+			t.Fatal(out.Body.String())
+		}
+		reopened, err := identitystore.Open(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var status string
+		err = reopened.QueryRow("SELECT status FROM wiki_sync_runs WHERE id=?", failed.RunID).Scan(&status)
+		reopened.Close()
+		if err != nil || status != "partial" {
+			t.Fatalf("missing persisted failed run: %q %v", status, err)
+		}
+		request("GET", path, "", bob, 404)
+		request("POST", path+"/retry", `{"pageId":"page-2"}`, bob, 404)
+		request("POST", path+"/retry", `{"pageId":"page-1"}`, alice, 404)
+		syncFailure.Store(false)
+		if _, err := store.ExecContext(t.Context(), "UPDATE wiki_sync_runs SET finished_at=100 WHERE status='succeeded'"); err != nil {
+			t.Fatal(err)
+		}
+		if out := request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 200); !strings.Contains(out.Body.String(), `"saved":1`) ||
+			!strings.Contains(out.Body.String(), `"skipped":0`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 200); !strings.Contains(out.Body.String(), `"skipped":1`) {
+			t.Fatal(out.Body.String())
+		}
+		if out := request("GET", source+"/runs", "", alice, 200); !strings.Contains(out.Body.String(), `"lastSucceeded":100`) {
+			t.Fatal(out.Body.String())
+		}
+		run, err := service.startWikiRun(t.Context(), "ops", "manual", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		request("POST", source+"/sync", "", alice, 409)
+		if _, err := store.ExecContext(t.Context(), "UPDATE wiki_sync_runs SET lease_until=0 WHERE id=?", run); err != nil {
+			t.Fatal(err)
+		}
+		if out := request("GET", source+"/runs/"+run, "", alice, 200); !strings.Contains(out.Body.String(), `"status":"interrupted"`) {
+			t.Fatal(out.Body.String())
+		}
+		request("POST", source+"/runs/"+run+"/retry", `{}`, alice, 200)
+		request("PUT", "/api/v1/admin/policy", `{"version":"v1","rules":[]}`, root, 204)
+		request("POST", path+"/retry", `{"pageId":"page-2"}`, alice, 404)
 	})
 }
 

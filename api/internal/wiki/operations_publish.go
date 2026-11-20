@@ -204,8 +204,10 @@ func (a *Service) governDocument(w http.ResponseWriter, r *http.Request, p ident
 	}
 	metadata, _ := json.Marshal(doc.Metadata)
 	if _, err = tx.ExecContext(ctx, `INSERT INTO wiki_publications VALUES(?,?,?) ON CONFLICT(knowledge_id)
-		DO UPDATE SET metadata=excluded.metadata,withdrawn=excluded.withdrawn`, doc.ID, withdrawn, string(metadata)); err != nil ||
-		writeWikiAudit(ctx, tx, p, action, doc, withdrawn) != nil || tx.Commit() != nil {
+		DO UPDATE SET metadata=excluded.metadata,withdrawn=excluded.withdrawn`, doc.ID, withdrawn, string(metadata)); err == nil && !withdrawn {
+		_, err = tx.ExecContext(ctx, "UPDATE wiki_feedback SET resolved=1 WHERE knowledge_id=? AND revision=?", doc.ID, doc.Revision)
+	}
+	if err != nil || writeWikiAudit(ctx, tx, p, action, doc, withdrawn) != nil || tx.Commit() != nil {
 		http.Error(w, "无法更新状态", 503)
 		return
 	}
@@ -247,6 +249,13 @@ func (a *Service) governanceList(w http.ResponseWriter, r *http.Request, p ident
 		doc.ScopePending, _ = a.unresolvedLegacyScope(r.Context(), doc)
 		doc.Body = ""
 		doc.Metadata.Sections = nil
+		if !doc.Withdrawn {
+			if err := a.store.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM wiki_feedback
+				WHERE knowledge_id=? AND revision=? AND kind='outdated' AND resolved=0`, doc.ID, doc.Revision).Scan(&doc.PendingFeedback); err != nil {
+				http.Error(w, "无法读取复核提醒", 503)
+				return
+			}
+		}
 		out = append(out, doc)
 	}
 	adminhttp.WriteJSON(w, out)

@@ -34,6 +34,7 @@ type Document struct {
 	Links           []findingLink `json:"links,omitempty"`
 	ScopePending    bool          `json:"scopePending,omitempty"`
 	CurrentRevision int           `json:"currentRevision,omitempty"`
+	PendingFeedback int           `json:"pendingFeedback,omitempty"`
 }
 
 func (a *Service) wikiAllowed(r *http.Request, principal identity.Principal, capability authorization.Capability, doc Document) (bool, error) {
@@ -167,40 +168,58 @@ func (a *Service) handleWikiDocument(w http.ResponseWriter, r *http.Request, pri
 	}
 	ctx := r.Context()
 	current, err := LoadDocument(ctx, a.store.DB, r.PathValue("id"))
-	if err != nil || current.Withdrawn {
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	allowed, err := a.canRead(ctx, principal, current, nil, false)
-	if err != nil || !allowed {
-		http.NotFound(w, r)
-		return
-	}
-	doc := current
+	revision := current.Revision
 	if raw := r.PathValue("revision"); raw != "" {
-		revision, err := strconv.Atoi(raw)
+		revision, err = strconv.Atoi(raw)
 		if err != nil || revision < 1 {
 			http.NotFound(w, r)
 			return
 		}
-		if revision != current.Revision {
-			var encoded string
-			if err := a.store.QueryRowContext(ctx, "SELECT document FROM wiki_revisions WHERE knowledge_id=? AND revision=?", doc.ID, revision).Scan(&encoded); err != nil ||
-				json.Unmarshal([]byte(encoded), &doc) != nil {
-				http.NotFound(w, r)
-				return
-			}
-			allowed, err := a.canRead(ctx, principal, doc, nil, false)
-			if err != nil || !allowed {
-				http.NotFound(w, r)
-				return
-			}
-		}
+	}
+	doc, err := a.readableVersion(ctx, principal, current, revision)
+	if err != nil {
+		http.NotFound(w, r)
+		return
 	}
 	doc.CurrentRevision = current.Revision
 	a.projectTargets(ctx, principal, &doc)
 	doc.Links, _ = a.knowledgeLinks(ctx, principal, doc.ID)
 	adminhttp.WriteJSON(w, doc)
+}
+
+func (a *Service) loadRevision(ctx context.Context, current Document, revision int) (Document, error) {
+	if revision == current.Revision {
+		return current, nil
+	}
+	var snapshot Document
+	var encoded string
+	if err := a.store.QueryRowContext(ctx, "SELECT document FROM wiki_revisions WHERE knowledge_id=? AND revision=?", current.ID, revision).Scan(&encoded); err != nil {
+		return Document{}, err
+	}
+	err := json.Unmarshal([]byte(encoded), &snapshot)
+	return snapshot, err
+}
+
+func (a *Service) readableVersion(ctx context.Context, principal identity.Principal, current Document, revision int) (Document, error) {
+	allowed, err := a.canRead(ctx, principal, current, nil, false)
+	if err != nil || !allowed || current.Withdrawn {
+		return Document{}, sql.ErrNoRows
+	}
+	doc, err := a.loadRevision(ctx, current, revision)
+	if err != nil {
+		return Document{}, err
+	}
+	if revision != current.Revision {
+		allowed, err = a.canRead(ctx, principal, doc, nil, false)
+		if err != nil || !allowed {
+			return Document{}, sql.ErrNoRows
+		}
+	}
+	return doc, nil
 }
 
 type wikiRowQuery interface {
