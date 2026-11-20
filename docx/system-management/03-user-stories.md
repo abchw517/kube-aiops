@@ -1,6 +1,6 @@
 # 系统管理 · 用户故事
 
-- 需求基线 [首版 PRD](00-prd.md)
+- 需求基线 [系统管理 PRD](00-prd.md)
 - 交互参考 [HTML 原型](prototype.html)
 - [模块开发规范](../development-standard.md)
 - [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [开发任务](04-development-tasks.md) · [单元测试用例](05-unit-test-cases.md)
@@ -222,3 +222,15 @@
 - 仅管理员可操作资源管理。
 - 真实节点状态或首条真实 K8sGPT 诊断任一成功即锁定。
 - 首采后环境不可变更。
+
+### SM-US18
+
+作为系统管理员，我希望从搜索结果直接进入授权。唯一匹配时无需点击账号，停用与权限限制仍可区分，能搜索并屏蔽已关联项，批量结果逐项可见。对应 [SM-T18](04-development-tasks.md#sm-t18) 和 [SM-UT18](05-unit-test-cases.md#sm-ut18)。
+
+### SM-US19
+
+作为角色维护者，我希望一次添加同业务线的多个命名空间。一次加入，预览能核对增减和受影响账号；返回不丢草稿；跨业务范围和并发覆盖会被拒绝。对应 [SM-T19](04-development-tasks.md#sm-t19) 和 [SM-UT19](05-unit-test-cases.md#sm-ut19)。
+
+### SM-US20
+
+作为管理员，我希望从授权结果打开确切的单条审计或批次汇总，也能从用户详情按账号查询。记录已清理时得到明确提示。对应 [SM-T20](04-development-tasks.md#sm-t20) 和 [SM-UT20](05-unit-test-cases.md#sm-ut20)。
