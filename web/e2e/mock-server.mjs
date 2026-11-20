@@ -206,9 +206,16 @@ createServer(async (request, response) => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
       if (input.observation && ++observationRequests === 1) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
       if (input.observation && observationRequests === 2) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT", upstreamStatus: 504 });
+      if (input.observation && observationRequests === 3) {
+        response.writeHead(504, { "Content-Type": "text/html" }).end("<h1>Gateway Timeout</h1>");
+        return;
+      }
       return json(response, 200, {
         assessment: { state: "insufficient", judgment: input.observation ? "镜像仓库返回 403，仍需核对当前响应。" : "已有历史事件支持排查镜像仓库。", gaps: "当前镜像仓库响应", next: "核对最近一次拉取事件" },
-        evidence: [{ source: "kubernetes-events", signalId: "event-critical", title: "ContainerBackOff", time: "2026-09-02T02:59:00Z", historical: true }],
+        evidence: [
+          { source: "kubernetes-events", signalId: "event-critical", title: "ContainerBackOff", time: "2026-09-02T02:59:00Z", historical: true },
+          { source: "prometheus", signalId: "stale-metric", title: "上轮指标", historical: true },
+        ],
         evidenceState: "available", sources: [{ source: "prometheus", state: "unavailable" }],
         citations: [{ knowledgeId: "fixture-knowledge", revision: 1, title: "镜像拉取案例" }],
       });

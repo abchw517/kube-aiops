@@ -84,7 +84,7 @@ export function renderCorrelationEvidence(bundle: CorrelationBundle): string {
         const state = bundle.sources.find((status) => status.source === source)?.state ?? "unavailable";
         const signals = bundle.signals.filter((signal) => signal.source === source);
         const badge = `<span class="source-state source-state-${escapeHtml(state)}">${escapeHtml(stateLabels[state])}</span>`;
-        return `<details class="evidence-source" aria-label="${name}">
+        return `<details class="evidence-source" data-evidence-source="${source}" aria-label="${name}">
           <summary class="evidence-source-heading">
             <span class="evidence-source-name">${name}</span>
             <span class="evidence-source-count">${signals.length} 条证据</span>${badge}

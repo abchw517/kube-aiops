@@ -242,10 +242,12 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     const [source, signal] = JSON.parse(control.dataset.reviewJump) as [string, string];
     const evidence = [...root.querySelectorAll<HTMLElement>("[data-evidence-signal]")]
       .find((row) => row.dataset.evidenceSignal === signal && row.dataset.evidenceSource === source);
-    const target = source === "K8sGPT" ? root.querySelector<HTMLElement>("[data-finding-explanation]") :
-      evidence ?? root.querySelector<HTMLElement>("#correlation-heading");
-    const sourceDetails = evidence?.closest<HTMLDetailsElement>("details.evidence-source");
+    const sourceDetails = evidence?.closest<HTMLDetailsElement>("details.evidence-source") ??
+      [...root.querySelectorAll<HTMLDetailsElement>("details.evidence-source[data-evidence-source]")]
+        .find((details) => details.dataset.evidenceSource === source);
     if (sourceDetails) sourceDetails.open = true;
+    const target = source === "K8sGPT" ? root.querySelector<HTMLElement>("[data-finding-explanation]") :
+      evidence ?? sourceDetails?.querySelector<HTMLElement>("summary") ?? root.querySelector<HTMLElement>("#correlation-heading");
     target?.focus();
     target?.scrollIntoView({ block: "center" });
   });

@@ -172,7 +172,9 @@
             <p role="status" id="demo-status"></p>
             <div id="demo-result" hidden>
               <h3>当前判断</h3><p class="review-state">证据不足</p><p id="demo-judgment"></p>
-              <h3>证据依据</h3><p><button type="button" id="demo-jump">查看 Kubernetes 事件 · 历史记录</button></p>
+              <h3>证据依据</h3>
+              <button type="button" id="demo-jump">查看 Kubernetes 事件 · 历史记录</button>
+              <button type="button" id="demo-jump-metric" hidden>查看 Prometheus · 历史记录</button>
               <h3>待验证项</h3><p id="demo-gap"></p>
               <h3>下一步</h3><p id="demo-next"></p>
               <details><summary>Wiki 参考</summary><p>历史案例可提供排查路径。</p></details>
@@ -201,7 +203,7 @@
             </ul>
             <p id="demo-event-empty" hidden>此时间窗口内暂无证据。</p>
           </details>
-          <details class="evidence-source">
+          <details class="evidence-source" id="demo-metrics">
             <summary>Prometheus <small>0 条证据</small><span class="evidence-state">暂不可用</span></summary>
             <p>此来源暂不可用，未能获取证据。</p>
           </details>
@@ -393,6 +395,13 @@
       find("demo-evidence").focus();
       find("demo-evidence").scrollIntoView({ block: "center" });
     });
+    find("demo-jump-metric").addEventListener("click", () => {
+      const source = find("demo-metrics");
+      source.open = true;
+      const title = source.querySelector("summary");
+      title.focus();
+      title.scrollIntoView({ block: "center" });
+    });
     function showDemoSaved() {
       const saved = demoRecord && demoHistory.get(demoRecord.cluster + "/" + demoRecord.id);
       demoVersion = saved?.version || 0;
@@ -433,6 +442,7 @@
       demoObservationTimedOut = false;
       updateDemoReviewActions();
       const image = record?.id === "image-pull";
+      find("demo-jump-metric").hidden = !image;
       find("demo-original").textContent = image ? "镜像拉取失败。镜像仓库返回 403，需检查访问权限和节点容器运行时。" : record?.problem || "暂无诊断说明";
       for (const source of document.querySelectorAll(".evidence-grid > details")) source.open = false;
       find("demo-event-list").hidden = !record;

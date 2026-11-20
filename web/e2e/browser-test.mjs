@@ -320,6 +320,13 @@ try {
       return target.closest("details.evidence-source")?.open && target.dataset.evidenceSignal;
     })()` });
     if (clickedEvidence.result?.value !== "event-critical") throw new Error("Review citation did not focus the original event");
+    const fallbackEvidence = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      [...document.querySelectorAll("[data-review-jump]")].find(button => button.textContent.includes("Prometheus")).click();
+      const events = document.querySelector('details[aria-label="Kubernetes 事件"]');
+      const metrics = document.querySelector('details[aria-label="Prometheus"]');
+      return events.open && metrics.open && document.activeElement === metrics.querySelector("summary");
+    })()` });
+    if (!fallbackEvidence.result?.value) throw new Error("Stale citation did not open and focus its own source without closing existing evidence");
     const awaitingObservation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const button = document.querySelector('[data-review-action="assess"]');
       button.click();
@@ -333,6 +340,13 @@ try {
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("模型服务返回超时（HTTP 504）") && text.includes("观察内容已保留"),
       "Upstream timeout was not distinguished from the app deadline");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("网关等待超时") && text.includes("观察内容已保留") &&
+      text.includes("已有历史事件支持排查镜像仓库") && text.includes("K8sGPT 原始说明"),
+      "Outer gateway timeout did not preserve the existing review or provide its own message");
+    const retainedObservation = await cdp.send("Runtime.evaluate", { returnByValue: true,
+      expression: `document.querySelector("[data-review-observation]").value` });
+    if (retainedObservation.result?.value !== "仓库返回 403") throw new Error("A repeated timeout discarded the observation");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("镜像仓库返回 403，仍需核对"), "Retry did not use the operator observation");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
