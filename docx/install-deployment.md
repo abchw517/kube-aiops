@@ -2,6 +2,8 @@
 
 在已有 Kubernetes 集群中按顺序完成 [预检](#1-依赖和预检) → [安装 K8sGPT](#2-安装-k8sgpt) → [准备镜像](#3-准备-api-和-web-镜像) → [部署 API 与 Web Portal](#4-部署-api-与-web-portal)。已有 K8sGPT 部署时，先核对其 Namespace、实例名和 Result。API 清单默认读取 `k8sgpt-operator-system/k8sgpt-engine`，使用其他实例时，按实际配置调整 API 清单中的 `K8SGPT_NAMESPACE` 和 `K8SGPT_NAME`，并核对 ServiceAccount 的读取权限。
 
+开发机工具链和本地回归见 [开发指南](development-standard.md#本地开发与验证)。已有 Portal 的发布直接走 [存量部署升级](#存量部署升级)。
+
 ## 从旧目录布局升级
 
 升级前检查 CI、镜像构建脚本和文档链接中硬编码的路径。
@@ -71,6 +73,8 @@ make platform-check
 ```
 
 安装和验收使用 Helm 3，工具缓存位置可通过 `KUBE_AIOPS_TOOLS_DIR` 指定。安装身份需要管理项目 CRD、Namespace、Secret、Lease、RBAC 和工作负载，并可模拟 ServiceAccount 进行授权检查。
+
+早期部署若需迁移 Legacy RBAC 所有权，首次执行 `MIGRATE_LEGACY_OWNERSHIP=true make install`。安装器验证角色规则、绑定主体和所有权后才迁移。
 
 ## 2. 安装 K8sGPT
 
@@ -246,7 +250,7 @@ mkdir -p "$release_dir"
 registry=mharbor-cs.cloud.kemai.cn/kube-aiops
 ```
 
-按目标节点架构设置 `platforms`，可用 `kubectl get nodes -L kubernetes.io/arch` 查看。混合架构示例为 `linux/amd64,linux/arm64`。对外发布使用已提交身份集成的源码版本。
+按目标节点架构设置 `platforms`，可用 `kubectl get nodes -L kubernetes.io/arch` 查看。混合架构示例为 `linux/amd64,linux/arm64`。API 和 Web 使用同一个已提交的源码版本。含运维知识库 P0/P1 和系统管理新流程的基线为包含 [#103](https://github.com/abchw517/kube-aiops/pull/103) 与 [#104](https://github.com/abchw517/kube-aiops/pull/104) 的提交。
 
 ```bash
 platforms=linux/amd64
@@ -338,9 +342,9 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
 
-管理员在诊断详情展开 **AI 复核**，查看模型对关联证据的判断、待验证项和下一步。可以补充现场观察后重新复核。API 在当前诊断的集群、命名空间、资源和时间窗口内查询关联证据，例如 Kubernetes 事件以及已配置的 Prometheus、VictoriaLogs 和 Alertmanager。请勿提交凭据或个人敏感信息。
+管理员在诊断详情点击 **AI 分析** 或展开 **AI 复核**，查看模型对关联证据的判断、待验证项和下一步。可以补充现场观察后重新复核。API 在当前诊断的集群、命名空间、资源和时间窗口内查询关联证据，例如 Kubernetes 事件以及已配置的 Prometheus、VictoriaLogs 和 Alertmanager。请勿提交凭据或个人敏感信息。
 
-核对并编辑复核结论后，点击 **保存复核结论**。需要沉淀知识时，可另行预览并确认发布。若结论已被其他人更新，请先加载最新版本。
+核对并编辑复核结论后，点击 **保存复核结论**。在同一诊断的 **相关知识 → 沉淀知识** 下，选择 **创建故障案例草稿**，或者关联一份已有的排障手册。若复核结论已被更新，先加载最新版本。草稿经脱敏预览、送审和人工确认后发布，详见 [运维知识库生产试点验收](#运维知识库生产试点验收)。
 
 诊断复核的模型请求默认等待 35 秒。可在 API 容器环境变量中设置 `FINDING_AI_PROVIDER_TIMEOUT`，取值范围为 `5s` 到 `40s`，本地和手动接入实例共用该配置。复核总时限为 50 秒，其中关联证据查询最多占 5 秒。HTTP 响应写入时限为 55 秒，入口代理应为此路由预留至少 60 秒。知识库问答继续受自身 30 秒总时限约束。
 
@@ -532,7 +536,13 @@ curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
 
 ## 生产部署
 
-配置本地账号或 LDAP 后，从同一源码构建并发布生产镜像，再按前面的现有集群步骤部署。使用已验证的镜像 digest、发布清单和权限策略，按目标环境配置域名、证书和 Secret 引用。
+新部署先准备已验证的 API/Web 镜像 digest、域名、证书和 Secret 引用，再按下节初始化。已有 Portal 从 [存量部署升级](#存量部署升级) 开始。
+
+### 存量部署升级
+
+1. 归档当前 API/Web 镜像 digest、路由、网络策略、配置和 Secret 引用。用现有备份工具对 `AUTH_SQLITE_PATH` 指向的数据库做一致性备份，例如使用 SQLite 在线备份。也可在停止 API 写入后用存储快照备份整个卷。备份包含账号、LDAP、权限策略、资源目录、诊断复核、知识库和操作审计。若使用卷上的自动生成直连密钥，备份时包含与数据库同目录的 `<SQLite 文件名>.cluster-credentials.key`。已通过 Secret 挂载的直连、LDAP 和 Wiki 密钥保留对应版本。
+2. 将备份恢复到隔离的预发 PVC，用新镜像启动单副本 API 验证开库迁移。预发限制到生产 Wiki 和上报写入入口的访问，核对同步计划及来源后再启用需要的试点计划。检查存量用户、LDAP 登录、角色和用户组绑定、审计分页与详情、诊断复核版本、旧知识直链和查询范围。旧知识缺少复核记录时，授权账号仍可浏览，需要重新送审后才会用于推荐与问答。
+3. 从同一提交构建 API/Web，复用现有 PVC、`AUTH_ORIGIN` 和密钥挂载，保持 API 单副本和 `Recreate` 策略。正常升级沿用管理员和 LDAP 配置。先 [应用清单并等待就绪](#应用清单并等待就绪)，再执行 [验收、发布与回滚](#验收发布与回滚)。会话保存在 API 进程内，更新后重新登录。
 
 ### 生产身份接入
 
@@ -540,7 +550,7 @@ curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
 
 #### 1. 创建 SQLite PVC
 
-API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API 与 Web Portal](#4-部署-api-与-web-portal) 中的镜像渲染，准备本次发布的 `api.yaml`、`web.yaml` 和 `web-service.yaml`，暂缓应用 Deployment。
+API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API 与 Web Portal](#4-部署-api-与-web-portal) 中的镜像渲染，准备本次发布的 `api.yaml`、`web.yaml` 和 `web-service.yaml`，在准备好身份存储和入口配置后再应用 Deployment。
 
 ```bash
 kubectl apply -f deploy/api/namespace.yaml
@@ -609,22 +619,15 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。SQLite 已存在管理员时会保留该账号和密码。
 
-#### 4. 创建本地用户并配置权限
+#### 4. 创建测试用户并配置权限
 
-1. 进入 **系统管理 → 用户管理**，创建 `portal-operator`，设置至少 12 字节的密码，并填写所属组 `operators`。
-2. 进入 **系统管理 → 权限配置 → 添加角色**。按下表填写，然后点 **保存角色**。
+1. 在 **资源管理 → 集群接入** 中确认测试实例已启用并能列出命名空间。例如，选用已登记为研发环境的本地或测试实例，并确认存在 `dev` 命名空间。预发布和生产请先为目标命名空间维护业务线归属。
+2. 用本地 `admin` 进入 **系统管理 → 用户管理 → 创建访客**，创建 `portal-operator` 并设置临时密码。访客首次登录后完成改密，再用内置「访客只读」角色检查研发和测试的历史诊断。使用独立会话验证该账号无法读取预发布或生产 Finding。本地账号使用预置角色。
+3. 如需验证自定义角色，先按下节启用 LDAP，并让测试员工完成首次登录。进入 **系统管理 → 权限配置 → 角色配置**，选择 **新建角色**，填写名称「生产应用诊断观察员」，选择生产实例、业务线和明确命名空间。同一实例和业务线可一次勾选多个命名空间，点击 **添加并预览**，核对增减与引用后 **确认保存**。研发和测试也可授予整个环境或整个实例。
+4. 打开 LDAP 员工的用户详情，点击 **分配或撤销 → 直接角色**，或先在 **权限配置 → 用户组** 创建组并关联角色，再给员工分配该组。通过用户详情核对直接和继承权限来源。通过授权结果的 **查看本次审计** 打开对应记录，或从用户详情按账号进入审计。
+5. 用独立会话验证该员工可查看已授权的生产诊断列表、汇总和详情。对照同一生产实例的其他命名空间，确认范围外结果不可见。撤销授权后，从该员工的会话重新查询，确认访问随之收回。若同一范围还有其他授权来源，先核对用户详情中的生效权限。
 
-   | 配置项 | 示例 |
-   | --- | --- |
-   | 角色名称 | 开发环境观察员 |
-   | 权限模块 | 勾选 **集群列表**、**命名空间列表**、**诊断列表**、**诊断汇总**、**诊断详情**、**资源详情** 和 **关联证据** |
-   | 集群 ID | `local` |
-   | 命名空间 | `dev`。多个命名空间用逗号分隔，`*` 表示所选集群的全部命名空间 |
-   | 本地组 | `operators`。也可以在 **本地用户** 中直接填写账号，每行一个 |
-
-   集群列表用于选择已接入的平台集群，命名空间列表用于发现所选集群下的命名空间名称。诊断结果、详情和证据按角色指定的命名空间授权。已有策略显示在 **已有策略规则** 中并继续生效，其中的显式拒绝优先。
-
-3. 在独立浏览器会话用 `portal-operator` 登录。确认列表、汇总、详情和证据只返回授权命名空间的数据。尝试切换到其他命名空间，确认请求被拒绝。另用未分配权限的测试账号验证诊断请求返回 `403`，退出后刷新页面应重新要求登录。
+范围角色当前用于历史诊断查看。AI 复核、关联证据、知识库与平台管理按现行接口授权。旧模块策略仍作用于使用该策略的存量身份，对这些身份继续验证已有规则和显式拒绝。知识库试点账号和验证步骤见 [生产试点验收](#运维知识库生产试点验收)。
 
 #### 5. 按需接入 LDAP / Active Directory
 
@@ -693,9 +696,7 @@ openssl s_client -connect "${ldap_host}:636" -servername "$ldap_host" \
 | LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
 | LDAP 测试用户名 | 例如 `alice`，仅用于本次测试 |
 
-进入 **系统管理 → 权限配置**，编辑需要授予同样权限的角色，在 **LDAP 组** 填写完整 DN，例如 `CN=kube-aiops-readers,OU=Groups,DC=example,DC=com`。多个组每行填写一个。LDAP 的 `memberOf` 对应用户的直接组。
-
-在独立浏览器会话选择登录框下方的 **LDAP / Active Directory 登录**，用属于目标组的测试账号验证登录与授权。再用可认证但不属于授权组的账号验证诊断访问返回 `403`。LDAP 密码由域控验证，SQLite 保存 LDAP 用户 DN、登录名、组和最近登录时间。
+在独立浏览器会话选择 **LDAP / Active Directory 登录**，用测试员工验证认证。新目录账号出现在 **系统管理 → 用户管理** 后，由管理员分配平台用户组或直接角色。用该员工复验授权范围，并用未分配自定义角色的员工确认预发布和生产诊断不可见。现有 LDAP 策略使用 `memberOf` 时，应核对原策略中的完整组 DN 和该用户的直接组；平台用户组的角色继承通过 Portal 用户关联管理。LDAP 密码由域控验证。
 
 #### 6. 核对部署结果
 
@@ -706,6 +707,59 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --tail=100
 ```
 
 API 和 Web 应各自就绪，PVC 为 `Bound`。若 API 在启动时退出，核对 `AUTH_ORIGIN`、PVC 写权限和引导配置。若 LDAP 登录返回服务不可用，核对域控连通性、证书链、搜索账号凭据和过滤器。完成验收后按发布流程开放入口，并将 PVC 纳入备份。
+
+### 运维知识库生产试点验收
+
+知识库随生产模式 API 和 SQLite 启动，使用同一个 PVC 和 Portal 会话。试点先准备实际集群实例与命名空间，预发布和生产需配置业务线归属。准备两位独立的有权管理员，以及一个普通账号用于权限验证。本地 `admin` 可通过「用户管理 → 创建系统管理员」建立第二个试点审核账号，该账号首次登录时需完成改密。生产范围的发布、扩大已有范围，或首次发布到多个目标，需要由草稿创建者以外的有权管理员确认。
+
+以下场景在目标环境依次演练。
+
+| 场景 | 操作和预期 |
+| --- | --- |
+| 诊断沉淀 | 在已启用 AI 复核的实例打开 Finding，保存复核结论。进入 **相关知识 → 沉淀知识 → 创建故障案例草稿**，核对来源 Finding、复核版本和适用范围。已有手册可在此关联到指定知识版本。 |
+| 审核和发布 | 在草稿中完成必填章节，选择「脱敏预览」并「提交审核」。生产由另一位有权管理员进入 **运维知识库 → 知识治理**，核对后 **确认发布**。草稿送审期间不进入检索。 |
+| 检索和问答 | 用症状、报错或事件 Reason 搜索，检查环境、业务线、资源类型和知识类型筛选。打开 **AI 知识问答**，核对引用可跳转到对应文档版本和章节。缺少可信引用时应显示证据不足。问答复用本地 Engine 模型配置，按 [启用 AI 分析](#启用诊断详情的-ai-分析) 设置端点和权限。 |
+| 反馈和治理 | 阅读者在版本内提交有用或过时反馈，发布者查看反馈、登记复核或撤回。撤回后复查普通直链、检索、问答与 Finding 推荐。检查发布、复核、撤回的审计记录是否符合风险等级保留策略。 |
+| 隔离和升级 | 用普通账号验证超范围诊断和知识不会出现在列表、引用或直链中。对迁移前已发布的条目核对原 ID 与授权范围。 |
+
+#### 可选配置远端 Wiki 同步
+
+当前连接器通过 HTTPS 和 HTTP Basic 读取目录。响应的 `pages` 数组中，每篇文档包含 `id`、`title` 和 Markdown `body`，翻页由 `next` 指定。公司 Wiki 使用不同认证或目录协议时，需先在测试目录确认适配。API Pod 需能访问远端地址并信任其证书。同步为本地候选草稿，按同一流程审核发布。
+
+先在受控运维主机生成独立的 32 字节 Base64 密钥，并创建 Secret。已有同步部署直接复用原密钥。
+
+```bash
+umask 077
+wiki_key_file=/secure/kube-aiops-wiki-credential-key
+openssl rand -base64 32 > "$wiki_key_file"
+kubectl --context "$target_context" -n kube-aiops-system create secret generic kube-aiops-wiki-credential-key \
+  --from-file=key="$wiki_key_file"
+```
+
+把以下片段合并到 `api.yaml`，保留原有身份存储、环境变量和挂载。
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: WIKI_CREDENTIAL_ENCRYPTION_KEY_FILE
+              value: /etc/kube-aiops/wiki/key
+          volumeMounts:
+            - name: wiki-credential-key
+              mountPath: /etc/kube-aiops/wiki
+              readOnly: true
+      volumes:
+        - name: wiki-credential-key
+          secret:
+            secretName: kube-aiops-wiki-credential-key
+```
+
+应用 API 清单并等待就绪。进入 **运维知识库 → 远端 Wiki 同步**，先由管理员填写来源编号、目录 URL 和目标实例 / 命名空间，点击 **注册来源**。执行人填写自己的只读 Wiki 账号，**测试连接 → 保存绑定 → 立即同步**。在执行记录检查逐页结果及最近整源成功时间，分别验证单页失败重试与整源重试。试点通过后再按需保存定时计划，后台计划使用可重新校验权限的本地身份。保留数据库和该密钥的配套备份。
+
+接口与验收用例见 [运维知识库 P0/P1 接口与上线验收](operations-knowledge/api-contract.md)。
 
 ### 挂载 HTTPS 入口
 
@@ -797,10 +851,12 @@ test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%
 | --- | --- |
 | 认证和授权 | 具备目标能力的账号读取列表、详情和关联证据成功；无权账号对同一受保护资源收到 `403`；跨命名空间请求无法读取范围外的数据 |
 | K8sGPT 和证据 | `make verify` 通过；用实际 Result 对照 Finding 详情，验证已启用数据源及其状态 |
+| 系统管理 | 访客首次改密，直授和组继承可核对，角色多选与预览可保存，授权结果可打开审计详情 |
+| 运维知识库 | 草稿、送审、发布、版本引用和撤回通过预发验收。启用问答或远端同步时完成真实联调 |
 | 审计 | API 审计记录能关联到同一次请求，日志中无明文凭据 |
 | 稳定性 | API 和 Web rollout 完成，探针稳定；Operator 无新增 OOM 重启，主要请求的错误率和延迟符合本次发布标准 |
 
-生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。若上一版仍使用合并的 `route.yaml`，按实际归档恢复上一版清单和网络策略。确认旧 Route 已被 Gateway 接受后，移除本次新建的两条 Route，复验旧入口。
+生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，先核对上一版能否读取升级后的数据库，以及能否正确执行已撤回、停用和授权变更。回退前暂停知识发布、同步和授权变更，保留当前数据库快照。若需恢复升级前备份，先核对发布窗口内新增版本、撤回、权限和审计变更，并在重新开放流量前复验，避免旧版本重新分发已撤回知识。确认数据兼容或完成受控恢复后，再恢复上一版清单与策略。若上一版仍使用合并的 `route.yaml`，按实际归档恢复上一版清单和网络策略。确认旧 Route 已被 Gateway 接受后，移除本次新建的两条 Route，复验旧入口。
 
 ```bash
 previous=/path/to/previous-approved-release
@@ -828,7 +884,9 @@ make verify
 | Engine 已就绪但 Finding 为空 | 分析周期、Provider 凭据、K8sGPT Result 及 Result 的实例标签 |
 | API 的 `/readyz` 返回 503 | Result CRD、K8sGPT Namespace 和 API ServiceAccount 的 Result 读取权限 |
 | 页面打开但 API 返回 HTML 或 404 | 同源入口的 `/api/v1/` 转发路径和 API Service 端口 |
-| LDAP 搜索密码或测试按钮未出现 | 从包含 PR #61 的同一提交构建并发布 API 和 Web 镜像，使用新的镜像 digest 更新两个 Deployment，等待 rollout 完成后重新加载页面 |
+| 新功能入口缺失或返回 404 | 对照发布记录检查 API 和 Web 是否来自同一提交。确认两个 Deployment 的运行镜像 digest 与预期一致。再核对页面入口、身份权限和 API 是否启用了 SQLite |
+| 诊断显示「范围待确认」 | 检查实例环境、目标命名空间是否可发现，以及预发/生产命名空间是否有有效业务线归属 |
+| Wiki 问答或同步失败 | 问答核对本地 Engine 复核开关、端点和 RBAC。同步核对连接器协议、HTTPS 证书、密钥挂载、本人绑定和目标范围，检查执行记录的单页状态 |
 | LDAP 配置无法保存 | 在浏览器 Network 检查 `PUT /api/v1/admin/ldap`。成功应返回 204，测试请求应返回 JSON。更换 LDAP 地址或搜索 DN 后重新填写密码，并确认 API 使用 SQLite 身份存储 |
 | 证据来源为 `disabled` | 对应 `*_URL` 是否已设置 |
 | 证据来源为 `partial` 或 `unavailable` | Pod 到上游的连通性、TLS、凭据、集群标签和查询窗口 |
@@ -904,9 +962,9 @@ spec:
 
 ### Web 管理多环境集群接入
 
-使用生产模式和 SQLite，打开 **系统管理 → 集群接入**。每个实例使用不可变的实例 ID，填写环境、业务、集群名称和实例显示名。例如 `生产 / 云帆 / 云帆应用集群 / 上海`，实例 ID 为 `prod-yunfan-sh01`。诊断台按这四级选择实例，详情及证据链接携带实例 ID。通过文件注册的旧实例继续可用，其 ID 不可被 Web 重复使用。
+使用生产模式和 SQLite，打开 **资源管理 → 集群接入**。每个实例使用不可变的实例 ID，填写环境、业务线、集群名称和实例显示名。例如 `生产 / 云帆 / 云帆应用集群 / 上海`，实例 ID 为 `prod-yunfan-sh01`。诊断台按这四级选择实例，详情及证据链接携带实例 ID。通过文件注册的旧实例继续可用，其 ID 不可被 Web 重复使用。
 
-**手动配置**：先将目标集群的专用只读 token 和 CA 挂载到中心 API 容器的 `/etc/kube-aiops/clusters/<实例 ID>/token` 和 `ca.crt`。在 Web 填写 HTTPS API 地址及实际 Engine 名称、命名空间，先点「测试连接」，成功后启用。中心的出站访问应限制在受管集群和经批准的数据源。手动实例可以配置 Prometheus、VictoriaLogs 和 Alertmanager，集群标签值使用实例 ID；共享数据源的标签需唯一。
+**外部集群直连**：在「新增集群」填写 HTTPS API 地址、Engine 名称及命名空间。选择使用内嵌 CA 和静态凭据的 kubeconfig、专用只读 ServiceAccount Token 加 CA，或客户端证书私钥加 CA。先点「测试连接」，成功后保存并校验。凭据加密存入 SQLite。部署可挂载稳定的 `CLUSTER_CREDENTIAL_KEY_FILE`，已有部署保留原密钥或卷上的同库密钥文件。中心的出站访问应限制在受管集群和经批准的数据源。手动实例可以配置 Prometheus、VictoriaLogs 和 Alertmanager，集群标签值使用实例 ID；共享数据源的标签需唯一。
 
 **采集上报**：在 Web 预登记实例并启用，保存后会显示一次实例上报凭据。将凭据写入受控文件，在目标集群的 Engine 命名空间创建采集 Secret：
 
@@ -917,4 +975,4 @@ kubectl -n k8sgpt-operator-system create secret generic kube-aiops-collector \
 
 拷贝 [采集 CronJob 示例](../deploy/collector/cronjob.yaml)，替换 API 镜像、中心 HTTPS 地址、实例 ID 和 Engine 参数，再应用到目标集群。实例首次提交快照后显示在线，每分钟上报当前有效 Result。完整空快照表示当前无诊断，采集失败保留最后一份快照；超过三分钟未收到快照标记为离线。中心只保存凭据哈希，停用实例可阻止查询和继续上报。采集组件只读取指定 Engine 命名空间的 Results，不上传 Kubernetes 凭据。采集实例的 Kubernetes 资源详情和原生 Event 尚未上报，可配置独立指标、日志、告警证据源。
 
-**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。
+**权限与 AI**：按环境与实例配置诊断角色范围。上线前一并核对存量模块策略中的通配授权。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。新增实例后，检查显式实例授权是否覆盖。预发布和生产需维护目标命名空间的业务线归属。
