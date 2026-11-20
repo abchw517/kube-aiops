@@ -236,6 +236,9 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	go admin.RunAuditRetention(ctx)
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
 	wikis := wiki.New(store, admin, admin.Origin())
+	if managed != nil {
+		wikis.SetTargetResolver(managed.wikiTarget)
+	}
 	go wikis.RunSchedule(ctx)
 	return func(next http.Handler) http.Handler {
 		return sessions.Wrap(wrapAdmin(admin, wikis, sessions, next, review, managed))

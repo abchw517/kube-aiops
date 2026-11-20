@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,7 +43,7 @@ var wikiSyncBusy = errors.New("sync already running")
 
 func (a *Service) wikiSyncSource(ctx context.Context, p identity.Principal, id string) (wikiSource, error) {
 	var source wikiSource
-	err := a.store.QueryRowContext(ctx, "SELECT url,cluster,namespace FROM wiki_sources WHERE id=?", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
+	err := a.store.QueryRowContext(ctx, "SELECT url,cluster,namespace FROM wiki_sources WHERE id=? AND NOT EXISTS(SELECT 1 FROM wiki_disabled_sources WHERE id=wiki_sources.id)", id).Scan(&source.URL, &source.Cluster, &source.Namespace)
 	if err != nil {
 		return source, err
 	}
@@ -250,6 +251,13 @@ func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, sourc
 		return false, err
 	}
 	defer tx.Rollback()
+	var disabled bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM wiki_disabled_sources WHERE id=?)", sourceID).Scan(&disabled); err != nil {
+		return false, err
+	}
+	if disabled {
+		return false, errors.New("Wiki source disabled")
+	}
 	previous, err := LoadDocument(ctx, tx, doc.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
@@ -262,24 +270,18 @@ func (a *Service) saveWikiRemotePage(ctx context.Context, sourceID string, sourc
 		ON CONFLICT(source_id,page_id) DO UPDATE SET source_url=excluded.source_url,content_hash=excluded.content_hash,missing=0`, sourceID, page.ID, doc.ID, sourceURL, contentHash); err != nil {
 		return false, err
 	}
-	if err == nil && (previousHash == contentHash || (previous.Title == doc.Title && previous.Body == doc.Body)) {
+	if previousHash == contentHash || err == nil && previous.Title == doc.Title && previous.Body == doc.Body {
 		return false, tx.Commit()
 	}
-	doc.Revision = 1
-	if err == nil {
-		doc.Revision = previous.Revision + 1
-		for _, version := range []Document{previous, doc} {
-			encoded, _ := json.Marshal(version)
-			if _, err := tx.ExecContext(ctx, "INSERT INTO wiki_revisions VALUES(?,?,?) ON CONFLICT DO NOTHING", version.ID, version.Revision, string(encoded)); err != nil {
-				return false, err
-			}
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO wiki_documents VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,created_at=excluded.created_at`,
-		doc.ID, doc.Cluster, doc.Namespace, doc.Environment, doc.Business, doc.DocumentType, doc.Title, doc.Body, doc.CreatedAt); err != nil {
+	doc.Metadata.SourceID = sourceID
+	doc.Metadata.Source = "远端 Wiki · " + sourceID
+	doc.Metadata.Targets = []Target{{Cluster: source.Cluster, Namespace: source.Namespace}}
+	candidateKey := sha256.Sum256([]byte(doc.ID + "\x00" + contentHash + "\x00" + strconv.Itoa(previous.Revision)))
+	candidate := Candidate{ID: hex.EncodeToString(candidateKey[:]), KnowledgeID: doc.ID, Owner: "remote:" + sourceID,
+		Status: draftStatus, Version: 1, BaseRevision: previous.Revision, Document: doc}
+	if err := insertCandidate(ctx, tx, candidate); err != nil {
 		return false, err
 	}
-
 	return true, tx.Commit()
 }
 

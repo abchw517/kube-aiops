@@ -1,12 +1,17 @@
 package portal
 
 import (
+	"context"
+	"errors"
+	"net/http"
+
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis"
+	"github.com/abchw517/kube-aiops/api/internal/diagnosis/finding"
+	"github.com/abchw517/kube-aiops/api/internal/httpapi"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/identity"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
-	"net/http"
 )
 
 func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, next http.Handler, review *diagnosis.Review, managed *onboarding) http.Handler {
@@ -70,6 +75,10 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			}
 			if selected.Enabled() {
 				ctx := wikis.WithFindingLookup(identity.WithPrincipal(r.Context(), p), p)
+				ctx = wiki.WithSessionRecheck(ctx, func(ctx context.Context) bool {
+					current, err := s.Authenticate(ctx, r)
+					return err == nil && current.Subject == p.Subject && current.Provider == p.Provider
+				})
 				selected.ServeHTTP(w, r.WithContext(wikis.WithFindingPublish(ctx, p)))
 				return
 			}
@@ -82,6 +91,21 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			return
 		}
 		a.Handle(w, r, resource, s)
+	})
+	wikis.SetFindingLookup(func(ctx context.Context, cluster, id string) (finding.Finding, string, error) {
+		var backend httpapi.Backend
+		if managed != nil {
+			if target, ok := managed.scopedCluster(cluster); ok {
+				backend = target.Backend
+			}
+		} else if cluster == "local" && review != nil {
+			backend = review.Backend
+		}
+		if backend == nil {
+			return finding.Finding{}, "", errors.New("finding source unavailable")
+		}
+		item, err := backend.GetFinding(ctx, id)
+		return item, diagnosis.ReviewKey(item), err
 	})
 	wikis.Register(mux, s, review.AskWiki)
 	mux.Handle("/", next)

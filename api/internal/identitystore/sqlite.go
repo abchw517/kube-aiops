@@ -190,6 +190,21 @@ func Open(path string) (*Store, error) {
 			document TEXT NOT NULL,
 			PRIMARY KEY(knowledge_id, revision)
 		);
+		CREATE TABLE IF NOT EXISTS wiki_publications (
+			knowledge_id TEXT PRIMARY KEY, withdrawn INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
+		);
+		CREATE TABLE IF NOT EXISTS wiki_candidates (
+			id TEXT PRIMARY KEY, knowledge_id TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL,
+			version INTEGER NOT NULL, base_revision INTEGER NOT NULL, document TEXT NOT NULL,
+			updated_at INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX IF NOT EXISTS wiki_candidates_knowledge ON wiki_candidates(knowledge_id, status);
+		CREATE TABLE IF NOT EXISTS wiki_finding_links (
+			finding_key TEXT NOT NULL, knowledge_id TEXT NOT NULL, wiki_revision INTEGER NOT NULL,
+			review_revision INTEGER NOT NULL, cluster TEXT NOT NULL, namespace TEXT NOT NULL, finding_id TEXT NOT NULL,
+			PRIMARY KEY(finding_key, knowledge_id)
+		);
+		CREATE TABLE IF NOT EXISTS wiki_disabled_sources (id TEXT PRIMARY KEY);
 		CREATE TABLE IF NOT EXISTS wiki_sources (
 			id TEXT PRIMARY KEY NOT NULL,
 			url TEXT NOT NULL,
@@ -205,6 +220,7 @@ func Open(path string) (*Store, error) {
 			missing INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY(source_id, page_id)
 		);
+		CREATE INDEX IF NOT EXISTS wiki_remote_knowledge ON wiki_remote_pages(knowledge_id, source_id);
 		CREATE TABLE IF NOT EXISTS wiki_sync_schedules (
 			source_id TEXT PRIMARY KEY,
 			provider TEXT NOT NULL,

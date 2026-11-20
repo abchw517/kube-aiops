@@ -304,17 +304,19 @@ try {
     })()` });
     await assertText(cdp, (text) => text.includes("已保存复核结论") && text.includes("人工确认：镜像仓库拒绝访问") && !text.includes("已发布到知识库"),
       "Saving a review did not keep publication independent");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="preview"]').click()` });
-    await assertText(cdp, (text) => text.includes("知识发布预览") && text.includes("local / payments") && !text.includes("已发布到知识库"),
-      "Saved conclusion was not previewed before publication");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="publish"]').click()` });
-    await assertText(cdp, (text) => text.includes("已发布到知识库") && text.includes("已保存复核结论"),
-      "Independent publication did not surface success");
-    await cdp.send("Runtime.evaluate", {
-      expression: `document.querySelector('a[href="#/wiki"]').click()`,
-    });
-    await assertText(cdp, (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新增知识"),
-      "Wiki navigation did not load the knowledge list");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-knowledge-action="draft"]').click()` });
+    await assertText(cdp, (text) => text.includes("编辑知识草稿") && text.includes("已保存") === false && text.includes("提交审核"),
+      "Finding did not create a separate editable knowledge candidate");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("[data-wiki-candidate]");
+      form.elements.namedItem("section-recovery").value = "已确认 Pod Ready";
+      form.querySelector('button[value="submit"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("知识治理") && text.includes("待审核") && text.includes("镜像拉取案例草稿"),
+      "Draft did not enter the review queue");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/wiki?q=ImagePullBackOff",
+      (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新建知识"),
+      "Wiki search did not load the knowledge list");
     const wikiDialog = await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-wiki-dialog]").open',
       returnByValue: true,
@@ -332,7 +334,7 @@ try {
     await assertText(cdp, (text) => text.includes("请验证仓库权限。"), "Wiki question answer did not render");
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-close-wiki-ask]").click()'});
     await cdp.send("Runtime.evaluate", {
-      expression: `document.querySelector('a[href^="#/wiki/"]').click()`,
+      expression: `document.querySelector('.wiki-card table a[href^="#/wiki/"]').click()`,
     });
     await assertText(cdp, (text) => text.includes("验证仓库权限"), "Wiki detail did not render");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",

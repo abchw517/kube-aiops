@@ -6,7 +6,7 @@ import (
 	"errors"
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"net/http"
-	"slices"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -33,6 +33,18 @@ type Citation struct {
 
 type wikiLookupKey struct{}
 type wikiEvidenceKey struct{}
+type wikiRecheckKey struct{}
+type sessionRecheckKey struct{}
+
+func WithSessionRecheck(ctx context.Context, check func(context.Context) bool) context.Context {
+	return context.WithValue(ctx, sessionRecheckKey{}, check)
+}
+func currentSession(ctx context.Context) bool {
+	check, ok := ctx.Value(sessionRecheckKey{}).(func(context.Context) bool)
+	return !ok || check(ctx)
+}
+
+type recheck func(context.Context, []Citation) bool
 type wikiLookup func(context.Context, finding.Finding) []Citation
 
 type findingPublishKey struct{}
@@ -54,8 +66,10 @@ func CanPublishFinding(ctx context.Context, item finding.Finding) bool {
 }
 
 func (a *Service) WithFindingLookup(ctx context.Context, p identity.Principal) context.Context {
+	ctx = withTargetCache(ctx)
+	ctx = context.WithValue(ctx, wikiRecheckKey{}, recheck(func(ctx context.Context, citations []Citation) bool { return a.citationsVisible(ctx, p, citations) }))
 	return context.WithValue(ctx, wikiLookupKey{}, wikiLookup(func(ctx context.Context, item finding.Finding) []Citation {
-		docs, _ := a.searchWiki(ctx, p, Document{Cluster: item.Cluster, Namespace: item.Namespace}, item.Problem+" "+item.Resource.Kind)
+		docs, _ := a.searchWiki(ctx, p, Document{Cluster: item.Cluster, Namespace: item.Namespace, Metadata: Metadata{ResourceType: item.Resource.Kind}}, item.Problem+" "+item.Resource.Kind)
 		return docs
 	}))
 }
@@ -72,58 +86,49 @@ func Evidence(ctx context.Context) []Citation {
 	return docs
 }
 
+func EvidenceCurrent(ctx context.Context) bool {
+	check, ok := ctx.Value(wikiRecheckKey{}).(recheck)
+	return currentSession(ctx) && (!ok || check(ctx, Evidence(ctx)))
+}
+
+func (a *Service) citationsVisible(ctx context.Context, p identity.Principal, citations []Citation) bool {
+	ctx = withTargetCache(ctx)
+	for _, cite := range citations {
+		doc, err := LoadDocument(ctx, a.store.DB, cite.ID)
+		if err != nil || doc.Revision != cite.Revision {
+			return false
+		}
+		allowed, err := a.canRead(ctx, p, doc, nil, true)
+		if err != nil || !allowed {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Service) searchWiki(ctx context.Context, p identity.Principal, scope Document, question string) ([]Citation, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	terms := wikiSearchTerms(question)
-	type match struct {
-		Citation
-		score int
+	query := url.Values{"q": {question}, "environment": {scope.Environment}, "business": {scope.Business}, "documentType": {scope.DocumentType}}
+	var target *Target
+	if scope.Cluster != "" && scope.Namespace != "" {
+		if a.resolve == nil {
+			return nil, nil
+		}
+		actual, err := a.currentTarget(ctx, scope.Cluster, scope.Namespace)
+		if err != nil || actual.Environment == "" {
+			return nil, err
+		}
+		target = &actual
+		query.Set("resourceType", scope.Metadata.ResourceType)
 	}
-	matches := make([]match, 0, 5)
-	rows, err := a.store.QueryContext(ctx, `SELECT id, cluster, namespace, title, body, COALESCE((SELECT MAX(revision) FROM wiki_revisions WHERE knowledge_id=id),1)
-		FROM wiki_documents WHERE (?='' OR cluster=?) AND (?='' OR namespace=?)
-		AND (?='' OR environment=?) AND (?='' OR business=?) AND (?='' OR document_type=?)
-		ORDER BY created_at DESC, id`, scope.Cluster, scope.Cluster, scope.Namespace, scope.Namespace,
-		scope.Environment, scope.Environment, scope.Business, scope.Business, scope.DocumentType, scope.DocumentType)
+	matches, _, err := a.searchDocuments(ctx, p, query, true, target)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var doc Document
-		if err := rows.Scan(&doc.ID, &doc.Cluster, &doc.Namespace, &doc.Title, &doc.Body, &doc.Revision); err != nil {
-			return nil, err
-		}
-		decision, err := a.Authorize(ctx, authorization.DecisionRequest{Principal: p, Capability: authorization.CapabilityWikiRead, Scope: authorization.NamespaceScope(doc.Cluster, doc.Namespace)})
-		if err != nil {
-			return nil, err
-		}
-		if !decision.Allowed {
-			continue
-		}
-		score := 0
-		fullText := strings.ToLower(doc.Title + "\n" + doc.Body)
-		for _, term := range terms {
-			if strings.Contains(fullText, term) {
-				score++
-			}
-		}
-		if score == 0 || (len(matches) == 5 && score <= matches[4].score) {
-			continue
-		}
-		matches = append(matches, match{Citation{doc.ID, doc.Title, sanitizer.WikiText(doc.Body, 1800), doc.Revision}, score})
-		slices.SortStableFunc(matches, func(a, b match) int { return b.score - a.score })
-		if len(matches) > 5 {
-			matches = matches[:5]
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]Citation, 0, len(matches))
-	for _, item := range matches {
-		result = append(result, item.Citation)
+	result := make([]Citation, 0, min(len(matches), 5))
+	for _, match := range matches[:min(5, len(matches))] {
+		result = append(result, Citation{match.ID, match.Title, sanitizer.WikiText(match.Body, 1800), match.Revision})
 	}
 	return result, nil
 }
@@ -200,6 +205,10 @@ func (a *Service) handleWikiAsk(w http.ResponseWriter, r *http.Request, p identi
 		http.Error(w, "模型请求过多，请稍后重试", http.StatusTooManyRequests)
 		return
 	case err == nil:
+		if !currentSession(r.Context()) || !a.citationsVisible(r.Context(), p, citations) {
+			http.Error(w, "知识版本或权限已变更，请重试", 409)
+			return
+		}
 		for i := range citations {
 			citations[i].Excerpt = ""
 		}

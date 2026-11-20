@@ -54,6 +54,9 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 	defer remote.Close()
 	service := New(store, admin, admin.Origin())
 	service.wikiTransport = remote.Client().Transport
+	service.SetTargetResolver(func(_ context.Context, cluster, namespace string) (Target, error) {
+		return Target{Cluster: cluster, Namespace: namespace, Environment: "testing"}, nil
+	})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		admin.Handle(w, r, r.PathValue("resource"), sessions)
@@ -143,19 +146,45 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		publish := strings.Replace(input, "false", "true", 1)
 		request("POST", imports, strings.Replace(publish, `"dev"`, `"prod"`, 1), alice, 403)
 		request("POST", imports, publish, bob, 403)
-		result := request("POST", imports, publish, alice, 201)
+		request("POST", imports, publish, alice, 409)
 		var doc Document
-		if err := json.Unmarshal(result.Body.Bytes(), &doc); err != nil || doc.ID == "" {
-			t.Fatalf("invalid publish response: %v", err)
+		if err := json.Unmarshal(preview.Body.Bytes(), &doc); err != nil {
+			t.Fatal(err)
 		}
-		request("POST", imports, publish, alice, 200)
+		doc.Metadata = Metadata{Team: "容器平台", ResourceType: "Pod", Applicability: "镜像拉取失败", Signals: []string{"ImagePullBackOff"},
+			ReviewBy: time.Now().AddDate(0, 1, 0).Format(time.DateOnly),
+			Sections: map[string]string{"conditions": "镜像拉取失败", "signals": "ImagePullBackOff", "checks": "检查仓库凭据", "recovery": "Pod Ready", "escalation": "通知容器平台"}}
+		call := func(path string, payload any, want int) Candidate {
+			t.Helper()
+			data, _ := json.Marshal(payload)
+			out := request("POST", path, string(data), alice, want)
+			var result Candidate
+			if want == 200 && json.Unmarshal(out.Body.Bytes(), &result) != nil {
+				t.Fatal(out.Body.String())
+			}
+			return result
+		}
+		create := func(id string, revision int, candidate Document) string {
+			return call("/api/v1/wiki/candidates", map[string]any{"document": candidate, "knowledgeId": id, "baseRevision": revision}, 200).ID
+		}
+		review := func(id string, candidate Document) Candidate {
+			endpoint := "/api/v1/wiki/candidates/" + id
+			call(endpoint, candidateAction{Action: "submit", Version: 1, Document: candidate}, 200)
+			result := call(endpoint, candidateAction{Action: "publish", Version: 2}, 200)
+			call(endpoint, candidateAction{Action: "publish", Version: 2}, 200)
+			return result
+		}
+		published := review(create("", 0, doc), doc)
+		doc.ID = published.KnowledgeID
 		if out := request("GET", knowledge+"?documentType="+url.QueryEscape("排障手册"), "", alice, 200); !strings.Contains(out.Body.String(), `"total":1`) || strings.Contains(out.Body.String(), `"body"`) {
 			t.Fatal(out.Body.String())
 		}
 		path := knowledge + "/" + doc.ID + "/revisions/1"
 		request("GET", path, "", alice, 200)
 		revision := knowledge + "/" + doc.ID + "/revisions"
-		request("POST", revision, `{"expectedRevision":1,"title":"镜像拉取订正","body":"检查仓库凭据"}`, alice, 200)
+		request("POST", revision, `{"expectedRevision":1,"title":"镜像拉取订正","body":"检查仓库凭据"}`, alice, 409)
+		doc.Title = "镜像拉取订正"
+		review(create(doc.ID, 1, doc), doc)
 		request("POST", revision, `{"expectedRevision":1,"title":"旧版本","body":"应被拒绝"}`, alice, 409)
 		if out := request("GET", revision+"/2", "", alice, 200); !strings.Contains(out.Body.String(), `"revision":2`) {
 			t.Fatal(out.Body.String())
@@ -164,7 +193,7 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 			t.Fatal(out.Body.String())
 		}
 
-		const question = `{"question":"镜像拉取失败怎么办","environment":"测试","business":"运维"}`
+		const question = `{"question":"镜像拉取失败怎么办","environment":"testing"}`
 		if out := request("POST", "/api/v1/wiki/ask", question, alice, 200); !strings.Contains(out.Body.String(), "请检查仓库凭据") || !strings.Contains(out.Body.String(), `"revision":2`) {
 			t.Fatal(out.Body.String())
 		}

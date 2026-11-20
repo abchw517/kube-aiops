@@ -57,7 +57,11 @@ func (a *Service) wikiSessionHandler(s *identity.Sessions, handle func(http.Resp
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		handle(w, r, principal)
+		ctx := WithSessionRecheck(withTargetCache(r.Context()), func(ctx context.Context) bool {
+			current, err := s.Authenticate(ctx, r)
+			return err == nil && current.Subject == principal.Subject && current.Provider == principal.Provider
+		})
+		handle(w, r.WithContext(ctx), principal)
 	}
 }
 
@@ -66,6 +70,32 @@ func (a *Service) wikiSessionHandler(s *identity.Sessions, handle func(http.Resp
 func (a *Service) handleWikiSource(w http.ResponseWriter, r *http.Request, principal identity.Principal, id string) {
 	if !permissions.IsAdministrator(principal) {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		ctx := r.Context()
+		tx, err := a.store.BeginTx(ctx, nil)
+		if err != nil {
+			http.Error(w, "无法停用来源", 503)
+			return
+		}
+		defer tx.Rollback()
+		doc := Document{ID: id}
+		if err := tx.QueryRowContext(ctx, "SELECT cluster,namespace FROM wiki_sources WHERE id=?", id).Scan(&doc.Cluster, &doc.Namespace); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		result, err := tx.ExecContext(ctx, "INSERT INTO wiki_disabled_sources(id) VALUES(?) ON CONFLICT(id) DO NOTHING", id)
+		if err != nil {
+			http.Error(w, "无法停用来源", 503)
+			return
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed == 1 && writeWikiAudit(ctx, tx, principal, "停用知识来源", doc, true) != nil || tx.Commit() != nil {
+			http.Error(w, "无法停用来源", 503)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if r.Method != http.MethodPut {

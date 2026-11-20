@@ -148,15 +148,13 @@ func TestFindingReviewPersistsAndUsesHistory(t *testing.T) {
 		t.Fatal("summarizing published Wiki content before confirmation")
 	}
 	confirmation := `{"action":"confirm","revision":3,"draftId":"` + draft.DraftID + `"}`
-	result := request("POST", confirmation, 200)
-	if !strings.Contains(result, `"knowledgeId"`) || !strings.Contains(result, `"revision":4`) {
+	result := request("POST", confirmation, 409)
+	if !strings.Contains(result, "WIKI_DRAFT_REQUIRED") {
 		t.Fatal(result)
 	}
-	request("POST", confirmation, 409)
-	if err := store.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM wiki_documents").Scan(&count); err != nil || count != 1 {
-		t.Fatal("expected exactly one confirmed Wiki document")
+	if err := store.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM wiki_documents").Scan(&count); err != nil || count != 0 {
+		t.Fatal("legacy confirmation bypassed knowledge governance")
 	}
-
 }
 
 func reviewPublishContext(ctx context.Context, store *identitystore.Store, allowed bool) context.Context {
@@ -252,23 +250,14 @@ func TestEvidenceAssessmentAndIndependentPublication(t *testing.T) {
 		t.Fatalf("original explanation or saved revision missing: %+v, %v", finding, err)
 	}
 	request("POST", `{"action":"preview-publication","revision":1}`, false, 403)
-	raw := request("POST", `{"action":"preview-publication","revision":1}`, true, 200)
-	var preview struct{ PreviewID string }
-	if err := json.Unmarshal([]byte(raw), &preview); err != nil || preview.PreviewID == "" || !strings.Contains(raw, "值班员已确认") {
+	raw := request("POST", `{"action":"preview-publication","revision":1}`, true, 409)
+	if !strings.Contains(raw, "WIKI_DRAFT_REQUIRED") {
 		t.Fatal(raw)
 	}
+	request("POST", `{"action":"publish","revision":1}`, true, 409)
 	checkRows(1, 0)
-	request("POST", `{"action":"publish","revision":1,"previewId":"old"}`, true, 409)
-	publish := `{"action":"publish","revision":1,"previewId":"` + preview.PreviewID + `"}`
-	request("POST", publish, false, 403)
-	first := request("POST", publish, true, 200)
-	if repeat := request("POST", publish, true, 200); first != repeat {
-		t.Fatal("repeated publication changed the document")
-	}
-	checkRows(1, 1)
 	request("POST", `{"action":"save","revision":1,"observation":"复核修订"}`, true, 200)
-	request("POST", publish, true, 409)
-	checkRows(2, 1)
+	checkRows(2, 0)
 	if providerCalls != 3 {
 		t.Fatalf("expected only three model calls, got %d", providerCalls)
 	}

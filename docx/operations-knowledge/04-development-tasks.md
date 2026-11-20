@@ -1,6 +1,6 @@
 # 运维知识库 · 开发任务
 
-[PRD v1.0](00-prd.md) · [页面](01-pages.md) · [功能](02-features.md) · [用户故事](03-user-stories.md) · [测试用例](05-unit-test-cases.md)
+[PRD v1.0](00-prd.md) · [页面](01-pages.md) · [功能](02-features.md) · [用户故事](03-user-stories.md) · [测试用例](05-unit-test-cases.md) · [P0 接口与上线验收](api-contract.md)
 
 ## 依赖与交付批次
 

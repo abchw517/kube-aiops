@@ -9,7 +9,7 @@ const longRegistryURL = `https://registry.example.com/v2/library/${"registry-pat
 
 const reviewHistory = [];
 let observationRequests = 0;
-let reviewPublished = false;
+let knowledgeCandidate;
 
 const findings = [
   {
@@ -123,6 +123,34 @@ createServer(async (request, response) => {
   }
   const wikiID = "a".repeat(64);
   const wikiDoc = {knowledgeId: wikiID, title: "镜像拉取排障", environment: "测试", business: "运维", documentType: "排障手册"};
+  const candidateID = "b".repeat(64);
+  if (url.pathname === "/api/v1/wiki/finding" && url.searchParams.get("id") === "finding-critical") {
+    if (request.method === "GET") return json(response, 200, {items: [{...wikiDoc, revision: 1, matchReason: "命中 ContainerBackOff"}], links: [], status: "ready", canDraft: true});
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (input.action !== "draft" || input.reviewRevision !== 1) return json(response, 409, {});
+    knowledgeCandidate = {
+      id: candidateID, knowledgeId: candidateID, version: 1, baseRevision: 0, status: "draft",
+      document: {title: "镜像拉取案例草稿", cluster: "local", namespace: "payments", documentType: "故障复盘",
+        metadata: {finding: {id: "finding-critical", revision: 1}, resourceType: "Pod",
+          sections: {impact: "Pod 无法拉取镜像", conclusion: reviewHistory[0].conclusion}}},
+    };
+    return json(response, 200, knowledgeCandidate);
+  }
+  if (url.pathname === "/api/v1/wiki/candidates") return json(response, 200, knowledgeCandidate ? [knowledgeCandidate] : []);
+  if (url.pathname === "/api/v1/wiki/governance") return json(response, 200, [wikiDoc]);
+  if (url.pathname === `/api/v1/wiki/candidates/${candidateID}` && knowledgeCandidate) {
+    if (request.method === "GET") return json(response, 200, knowledgeCandidate);
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks).toString());
+    if (input.action === "submit" && input.version === 1 && input.document.metadata.sections.recovery) {
+      knowledgeCandidate = {...knowledgeCandidate, status: "review", version: 2, document: {...input.document, environment: "testing"}};
+      return json(response, 200, knowledgeCandidate);
+    }
+    return json(response, 409, {});
+  }
   if (url.pathname === "/api/v1/wiki/knowledge") {
     return json(response, 200, {items: [wikiDoc], filters: {environment: ["测试"], business: ["运维"], documentType: ["排障手册"]}, page: 1, total: 1, pageSize: 20});
   }
@@ -135,7 +163,7 @@ createServer(async (request, response) => {
     }
     return json(response, 400, {error: "invalid fixture question"});
   }
-  if (url.pathname === `/api/v1/wiki/knowledge/${wikiID}/revisions/1`) {
+  if ([`/api/v1/wiki/knowledge/${wikiID}/revisions/1`, `/api/v1/wiki/knowledge/${wikiID}`].includes(url.pathname)) {
     return json(response, 200, {...wikiDoc, body: "验证仓库权限"});
   }
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
@@ -161,13 +189,6 @@ createServer(async (request, response) => {
     if (input.action === "save" && input.observation === "人工确认：镜像仓库拒绝访问") {
       reviewHistory.unshift({ revision: input.revision + 1, conclusion: input.observation });
       return json(response, 200, reviewHistory[0]);
-    }
-    if (input.action === "preview-publication" && reviewHistory.length && !reviewPublished) {
-      return json(response, 200, { previewId: "fixture-preview", document: { title: "故障复盘", body: reviewHistory[0].conclusion, cluster: "local", namespace: "payments" } });
-    }
-    if (input.action === "publish" && input.previewId === "fixture-preview") {
-      reviewPublished = true;
-      return json(response, 200, { knowledgeId: "fixture-knowledge" });
     }
     return json(response, 400, { error: "invalid fixture evidence" });
   }

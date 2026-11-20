@@ -64,7 +64,7 @@ func New(backend httpapi.Backend, store *identitystore.Store, engineAI func(cont
 	}, nil
 }
 
-func reviewKey(item finding.Finding) string {
+func ReviewKey(item finding.Finding) string {
 	parts := []any{item.Cluster, item.Namespace, item.ID, item.Resource, item.CreatedAt}
 	if item.Cluster != "local" && item.ResultUID != "" {
 		parts = []any{item.Cluster, item.ResultUID}
@@ -79,7 +79,7 @@ func (f *Review) GetFinding(ctx context.Context, id string) (finding.Finding, er
 		return item, err
 	}
 	var latest string
-	err = f.store.QueryRowContext(ctx, "SELECT conclusion, revision FROM finding_reviews WHERE finding_key=? ORDER BY revision DESC LIMIT 1", reviewKey(item)).Scan(&latest, &item.ReviewRevision)
+	err = f.store.QueryRowContext(ctx, "SELECT conclusion, revision FROM finding_reviews WHERE finding_key=? ORDER BY revision DESC LIMIT 1", ReviewKey(item)).Scan(&latest, &item.ReviewRevision)
 	if err == nil {
 		item.OriginalDetails = new(string)
 		*item.OriginalDetails = item.Details
@@ -125,7 +125,7 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	key := reviewKey(item)
+	key := ReviewKey(item)
 	item, err = sanitizer.Default().Finding(item)
 	if err != nil {
 		http.Error(w, "诊断无法安全读取", 502)
@@ -227,20 +227,14 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.saveReview(ctx, w, item, key, current, input.Observation)
 		return
 	}
-	if input.Action == "preview-publication" || input.Action == "publish" {
-		if current == 0 {
-			http.Error(w, "请先保存复核结论", 400)
-			return
-		}
-		f.publishSavedReview(ctx, w, item, key, history[0], input.Action == "publish", input.PreviewID)
-		return
-	}
-	if input.Action == "confirm" {
+	if input.Action == "preview-publication" || input.Action == "publish" || input.Action == "confirm" {
 		if !wiki.CanPublishFinding(ctx, item) {
-			http.Error(w, "无权向此范围发布知识", 403)
+			http.Error(w, "无权维护此范围", 403)
 			return
 		}
-		f.confirmWikiReview(ctx, w, item, key, current, input.DraftID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		adminhttp.WriteJSON(w, map[string]string{"code": "WIKI_DRAFT_REQUIRED", "message": "请从诊断详情创建知识草稿"})
 		return
 	}
 	if len(input.Baseline) > 8192 {
@@ -301,6 +295,10 @@ func (f *Review) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		adminhttp.WriteJSON(w, map[string]string{"code": code})
+		return
+	}
+	if !wiki.EvidenceCurrent(ctx) {
+		http.Error(w, "知识版本或权限已变更，请重试", 409)
 		return
 	}
 	if input.Action == "assess" {

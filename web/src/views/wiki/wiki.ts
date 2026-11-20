@@ -2,89 +2,75 @@ import { escapeHtml, formatTimestamp } from "../../components/html.ts";
 
 import { authorizationDeniedState } from "../../components/states.ts";
 
+import { bindWikiGovernance, knowledgeLink, renderWikiGovernance, renderWikiSections, type WikiDocument } from "./governance.ts";
 import { bindWikiTools, renderWikiTools } from "./wiki-tools.ts";
 
 const endpoint = "/api/v1/wiki/knowledge";
-const filters = [["environment", "环境"], ["business", "业务线"], ["documentType", "类型"]] as const;
-
-interface WikiDocument {
-  knowledgeId?: string;
-  revision?: number;
-  title: string;
-  cluster: string;
-  namespace: string;
-  environment: string;
-  business: string;
-  documentType: string;
-  body?: string;
-  createdAt?: string;
-}
+const filters = [["environment", "环境"], ["business", "业务线"], ["resourceType", "资源类型"], ["documentType", "知识类型"]] as const;
 
 /** 渲染知识库页面，返回 null 表示应用需要显示登录界面。 */
 export async function renderWiki(hash: string, admin: boolean): Promise<string | null> {
   const [path, search] = hash.split("?", 2);
   const id = path?.match(/^#\/wiki\/([a-f0-9]{64})$/)?.[1];
   const query = new URLSearchParams(search);
-  const revision = Number(query.get("revision")) || 1;
-  const response = await fetch(id ? `${endpoint}/${id}/revisions/${revision}` : `${endpoint}?${query}`);
+  if (/^#\/wiki\/(governance|draft\/|manage\/)/.test(path ?? "")) return renderWikiGovernance(path ?? "", query);
+  const revision = Number(query.get("revision")) || 0;
+  const response = await fetch(id ? `${endpoint}/${id}${revision ? `/revisions/${revision}` : ""}` : `${endpoint}?${query}`);
   if (response.status === 401) return null;
   if (response.status === 403) return authorizationDeniedState();
   if (!response.ok) return '<section class="panel" role="alert">无法读取知识库内容。<a href="#/wiki">返回知识库</a></section>';
   if (id) {
     const doc = await response.json() as WikiDocument;
-    return `<section class="panel wiki-card"><a href="#/wiki">返回知识库</a>
-      <h2>${escapeHtml(doc.title)}</h2><p>${escapeHtml(doc.environment)} / ${escapeHtml(doc.business)} / ${escapeHtml(doc.documentType)}</p>
-      <div class="wiki-document-body">${escapeHtml(doc.body)}</div>
-      <details><summary>订正文档</summary><form data-wiki-revision class="wiki-import-form">
-      <input type="hidden" name="revision" value="${doc.revision ?? revision}">
-      <label>标题<input name="title" value="${escapeHtml(doc.title)}" required></label>
-      <label>正文<textarea name="body" required rows="8">${escapeHtml(doc.body)}</textarea></label>
-      <p role="status"></p><button type="submit" class="button">确认发布修订</button>
-      </form></details></section>`;
+    const metadata = doc.metadata;
+    const sources = [metadata?.finding, ...(doc.links ?? [])].filter((src) => src !== undefined);
+    return `<section class="panel wiki-card"><div class="wiki-toolbar"><a href="#/wiki">返回知识库</a>
+      ${admin ? `<a class="button secondary" href="#/wiki/draft/new?knowledgeId=${id}">创建修订</a>` : ""}</div>
+      <h2>${escapeHtml(doc.title)}</h2><p>${escapeHtml(doc.environment)} / ${escapeHtml(doc.business || "无业务线")} / ${escapeHtml(doc.documentType)} · v${doc.revision ?? 1}</p>
+      ${doc.currentRevision && doc.currentRevision !== doc.revision ? `<p class="system-notice">这是历史版本。<a href="${knowledgeLink(id)}">查看当前版本</a></p>` : ""}
+      <p>责任团队 ${escapeHtml(metadata?.team ?? "待补齐")} · 下次复核 ${escapeHtml(metadata?.reviewBy ?? "历史待复核")}</p>
+      ${metadata?.applicability ? `<section class="wiki-quick-check"><h3>适用条件</h3><p>${escapeHtml(metadata.applicability)}</p>
+        ${metadata.sections?.checks ? `<h3>先查什么</h3><p class="wiki-document-body">${escapeHtml(metadata.sections.checks)}</p>` : ""}
+        ${metadata.sections?.recovery ? `<h3>恢复判断</h3><p class="wiki-document-body">${escapeHtml(metadata.sections.recovery)}</p>` : ""}</section>` : ""}
+      ${metadata?.targets?.length ? `<p>可见目标 ${metadata.targets.map((target) => escapeHtml(`${target.cluster}/${target.namespace}`)).join("、")}</p>` : ""}
+      ${renderWikiSections(doc)}
+      ${sources.length ? `<section><h3>关联诊断</h3><ul>${sources.map((source) =>
+        `<li><a href="#/findings/${encodeURIComponent(source.id)}?cluster=${encodeURIComponent(source.cluster)}">${escapeHtml(source.id)}</a> · 复核 v${source.revision}</li>`).join("")}</ul></section>` : ""}
+    </section>`;
   }
-  const data = await response.json() as {items: WikiDocument[]; filters: Record<string, string[]>; page: number; pageSize: number; total: number};
+  const data = await response.json() as {items: WikiDocument[]; filters: Record<string, string[]>; page: number; pageSize: number; total: number; nextCursor?: string};
   const pageLink = (page: number) => {
     const next = new URLSearchParams(query);
-    next.set("page", String(page));
+    next.delete("cursor");
+    if (page === data.page + 1 && data.nextCursor) next.set("cursor", data.nextCursor);
+    else next.set("page", String(page));
     return escapeHtml(next.toString());
   };
   return `<div class="wiki-workspace"><section class="panel wiki-card" aria-labelledby="wiki-list-title">
     <div class="wiki-toolbar"><h2 id="wiki-list-title">知识文档 <small>${data.total} 篇</small></h2>
-      <button type="button" class="button" data-open-wiki-ask>AI 知识问答</button></div>
-    <form data-wiki-filters class="wiki-filters">
+      <div class="system-actions"><button type="button" class="button secondary" data-open-wiki-ask>AI 知识问答</button>
+      ${admin ? '<a class="button" href="#/wiki/draft/new">新建知识</a><a class="button secondary" href="#/wiki/governance">知识治理</a>' : ""}</div></div>
+    <form data-wiki-filters class="wiki-filters"><label>搜索知识<input type="search" name="q" maxlength="512" value="${escapeHtml(query.get("q") ?? "")}" placeholder="报错、事件 Reason 或中文症状"></label>
       ${filters.map(([key, label]) => `<label>${label}<select name="${key}"><option value="">全部</option>${
         (data.filters[key] ?? []).map((value) => `<option value="${escapeHtml(value)}"${query.get(key) === value ? " selected" : ""}>${escapeHtml(value)}</option>`).join("")
       }</select></label>`).join("")}
-      <button type="submit" class="button">筛选</button>
+      <button type="submit" class="button">搜索</button>
       <a class="button secondary" href="#/wiki">重置</a>
     </form>
     ${data.items.length ? `<div class="table-wrap" role="region" aria-labelledby="wiki-list-title" tabindex="0"><table><thead><tr><th scope="col">标题</th><th scope="col">环境</th><th scope="col">业务线</th><th scope="col">类型</th><th scope="col">更新时间</th></tr></thead><tbody>
-    ${data.items.map((doc) => `<tr><td><a href="#/wiki/${encodeURIComponent(doc.knowledgeId ?? "")}?revision=${doc.revision ?? 1}">${escapeHtml(doc.title)}</a></td>
+    ${data.items.map((doc) => `<tr><td><a href="#/wiki/${encodeURIComponent(doc.knowledgeId ?? "")}?revision=${doc.revision ?? 1}">${escapeHtml(doc.title)}</a><p>${escapeHtml(doc.metadata?.applicability ?? "历史条目")}</p>${doc.matchReason ? `<small>${escapeHtml(doc.matchReason)}</small>` : ""}</td>
       <td>${escapeHtml(doc.environment)}</td><td>${escapeHtml(doc.business)}</td><td>${escapeHtml(doc.documentType)}</td><td>${formatTimestamp(doc.createdAt)}</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="wiki-empty"><strong>${query.size ? "暂无符合筛选条件的文档" : "知识库暂无文档"}</strong><p>${query.size ? "可重置筛选查看全部文档。" : "可从下方新增知识、批量导入或同步远端 Wiki。"}</p></div>`}
+    </tbody></table></div>` : `<div class="wiki-empty"><strong>${query.size ? "暂无符合筛选条件的文档" : "知识库暂无文档"}</strong><p>${query.size ? "可重置筛选查看全部文档。" : "已发布的知识会显示在此处。"}</p></div>`}
     ${data.page > 1 || data.page * data.pageSize < data.total ? `<nav class="pagination" aria-label="文档分页">
       ${data.page > 1 ? `<a class="button secondary" href="#/wiki?${pageLink(data.page - 1)}">上一页</a>` : ""}
       ${data.page * data.pageSize < data.total ? `<a class="button secondary" href="#/wiki?${pageLink(data.page + 1)}">下一页</a>` : ""}
     </nav>` : ""}
   </section>
-  <section class="wiki-management" aria-labelledby="wiki-management-title"><h2 id="wiki-management-title">知识管理</h2><details class="panel wiki-tool"><summary>新增知识</summary>
-    <form data-wiki-import class="wiki-import-form">
-      <label>集群实例<input name="cluster" required value="local"></label>
-      <label>命名空间<input name="namespace" required></label>
-      <label>环境<input name="environment" required></label>
-      <label>业务线<input name="business" required></label>
-      <label>类型<select name="documentType"><option>排障手册</option><option>故障复盘</option><option>操作规程</option><option>常见问题</option></select></label>
-      <label>标题<input name="title" placeholder="留空时从正文提取" maxlength="256"></label>
-      <label>导入 Markdown 或 TXT<input data-wiki-file type="file" accept=".md,.markdown,.txt"></label>
-      <label>正文<textarea name="body" rows="8" required></textarea></label>
-      <p data-wiki-status role="status"></p>
-      <div><button class="button secondary" type="submit">预览并整理</button> <button class="button" type="submit" value="publish" disabled>确认发布</button></div>
-    </form>
-  </details>${renderWikiTools(admin)}</section></div>`;
+  <section class="wiki-management" aria-label="知识工具">${renderWikiTools(admin)}</section></div>`;
 }
 
 export function bindWiki(root: HTMLElement, reload: () => void): void {
   bindWikiTools(root);
+  bindWikiGovernance(root, reload);
   root.querySelector<HTMLFormElement>("[data-wiki-filters]")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
@@ -93,68 +79,4 @@ export function bindWiki(root: HTMLElement, reload: () => void): void {
     window.location.hash = `#/wiki?${query}`;
   });
 
-  const form = root.querySelector<HTMLFormElement>("[data-wiki-import]");
-  const status = form?.querySelector<HTMLElement>("[data-wiki-status]");
-  const publishButton = form?.querySelector<HTMLButtonElement>('button[value="publish"]');
-  if (!form || !status || !publishButton) return;
-  form.addEventListener("input", () => {
-    publishButton.disabled = true;
-    status.textContent = "内容已修改，请重新预览。";
-  });
-  form.querySelector<HTMLInputElement>("[data-wiki-file]")?.addEventListener("change", async (event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    const body = form.elements.namedItem("body");
-    if (!file || !(body instanceof HTMLTextAreaElement)) return;
-    if (!/\.(md|markdown|txt)$/i.test(file.name) || file.size > 48 * 1024) {
-      status.textContent = "请选择不超过 48 KiB 的 Markdown 或 TXT 文件。";
-      return;
-    }
-    try {
-      const content = await file.text();
-      if (input.files?.[0] === file) {
-        body.value = content;
-        publishButton.disabled = true;
-        status.textContent = "文件已读入，请预览后发布。";
-      }
-    } catch {
-      status.textContent = "无法读取文件。";
-    }
-  });
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const publish = event.submitter === publishButton;
-    const fields = Object.fromEntries(new FormData(form));
-    const buttons = Array.from(form.querySelectorAll("button"));
-    form.inert = true;
-    for (const button of buttons) button.disabled = true;
-    status.textContent = publish ? "正在保存…" : "正在整理…";
-    try {
-      const response = await fetch("/api/v1/wiki/imports", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({document: fields, publish}),
-      });
-      if (!response.ok) {
-        status.textContent = await response.text();
-        return;
-      }
-      const result = await response.json() as WikiDocument;
-      if (publish) {
-        reload();
-        return;
-      }
-      for (const [name, value] of Object.entries(result)) {
-        const field = form.elements.namedItem(name);
-        if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) field.value = String(value);
-      }
-      status.textContent = "已整理为 Wiki 文档，请核对后发布。";
-      publishButton.disabled = false;
-    } catch {
-      status.textContent = "请求失败，请重试。";
-    } finally {
-      form.inert = false;
-      for (const button of buttons) if (button !== publishButton || publish) button.disabled = false;
-    }
-  });
 }

@@ -37,7 +37,7 @@ export function renderWikiTools(admin: boolean): string {
     </form></dialog>
   <details class="panel wiki-tool"><summary>批量导入</summary><form data-wiki-batch class="wiki-import-form">
     <label>集群实例<input name="cluster" required value="local"></label><label>命名空间<input name="namespace" required></label>
-    <label>环境<input name="environment" required></label><label>业务线<input name="business" required></label>
+
     <label>类型<select name="documentType"><option>排障手册</option><option>故障复盘</option><option>操作规程</option><option>常见问题</option></select></label>
     <label>文档<input name="files" type="file" accept=".md,.markdown,.txt,.docx" multiple required></label>
     <p role="status"></p><button class="button" type="submit">生成逐文件预览</button></form><div data-wiki-batch-list></div></details>
@@ -50,6 +50,7 @@ export function renderWikiTools(admin: boolean): string {
     <button type="submit" value="check" class="button secondary">测试连接</button>
     <button type="submit" value="credential" class="button secondary">保存绑定</button>
     <button type="submit" value="sync" class="button">立即同步</button>
+    ${admin ? '<button type="submit" value="disable" class="button secondary catalog-danger">停用来源</button>' : ""}
     <label>定时间隔（分钟，0 为关闭）<input type="number" name="interval" min="0" max="10080" value="0"></label>
     <label>Cron（可选）<input name="cron" placeholder="0 2 * * *"></label>
     <label>时区<input name="zone" value="Asia/Shanghai"></label>
@@ -107,12 +108,13 @@ export function bindWikiTools(root: HTMLElement): void {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "button";
-        button.textContent = "确认发布此文档";
+        button.textContent = "创建草稿";
         button.addEventListener("click", async () => {
           button.disabled = true;
           try {
-            await wikiRequest("/api/v1/wiki/imports", "POST", {document: row.document, publish: true});
-            button.textContent = "已发布";
+            const imported = await wikiRequest("/api/v1/wiki/candidates", "POST", {document: row.document});
+            const candidate = await imported.json() as {id: string};
+            window.location.hash = `#/wiki/draft/${candidate.id}`;
           } catch (error) {
             status.textContent = error instanceof Error ? error.message : "发布失败";
             button.disabled = false;
@@ -168,20 +170,14 @@ export function bindWikiTools(root: HTMLElement): void {
     } else if (action === "sync") {
       const response = await wikiRequest(`${base}/sync`, "POST");
       const result = await response.json() as {saved: number; skipped: number; failed: number; missing: number};
-      status.textContent = `已保存 ${result.saved}，已跳过 ${result.skipped}，失败 ${result.failed}，新增来源缺失 ${result.missing}。`;
+      status.textContent = `已生成候选 ${result.saved}，已跳过 ${result.skipped}，失败 ${result.failed}，新增来源缺失 ${result.missing}。`;
+    } else if (action === "disable") {
+      if (!window.confirm("停用后该来源的内容将退出普通阅读与推荐，确认继续？")) return;
+      await wikiRequest(base, "DELETE");
+      status.textContent = "来源已停用。";
     } else if (action === "schedule") {
       await wikiRequest(`${base}/schedule`, "PUT", {intervalMinutes: Number(fields.get("interval")), cron: fields.get("cron"), timeZone: fields.get("zone")});
       status.textContent = "定时计划已保存。";
     }
-  });
-  bindWikiTool(root, "[data-wiki-revision]", async (fields, status) => {
-    const id = window.location.hash.split(/[/?]/)[2];
-    if (!id) return;
-    const response = await wikiRequest(`/api/v1/wiki/knowledge/${encodeURIComponent(id)}/revisions`, "POST", {
-      expectedRevision: Number(fields.get("revision")), title: fields.get("title"), body: fields.get("body"),
-    });
-    const doc = await response.json() as {revision: number};
-    window.location.hash = `#/wiki/${encodeURIComponent(id)}?revision=${doc.revision}`;
-    status.textContent = "修订已保存。";
   });
 }
