@@ -679,8 +679,12 @@ try {
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="role:guest-readonly"]').click()` });
     await assertText(cdp, (text) => text.includes("预置角色的权限固定") && text.includes("历史诊断查看"), "Group link did not open the shared read-only role viewer");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-system-close]').click();
-      document.querySelector('[data-system-open="group:ops"]').click()` });
+    await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: `new Promise(resolve => {
+      const dialog = document.querySelector("dialog[open]");
+      dialog.addEventListener("close", resolve, { once: true });
+      dialog.querySelector("[data-system-close]").click();
+    })` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="group:ops"]').click()` });
     const rolePreselected = await cdp.send("Runtime.evaluate", { returnByValue: true,
       expression: `document.querySelector('dialog[open] input[name="roles"]').checked` });
     if (!rolePreselected.result?.value) throw new Error("Group editor did not preload existing role associations");

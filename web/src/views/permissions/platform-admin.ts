@@ -435,7 +435,10 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
         <button class="button${auditReference ? " secondary" : ""}" type="button" data-system-close>完成并刷新</button>
         ${auditReference ? `<a class="button" href="${h(auditLocation({ record: auditReference }))}">查看本次审计</a>` : ""}</footer>`;
       const hash = window.location.hash;
-      dialog.addEventListener("close", () => {
+      const afterClose = () => {
+        // A close event queued by a previous editor can arrive after this result opens.
+        if (dialog.open) return;
+        dialog.removeEventListener("close", afterClose);
         if (!dialog.isConnected || window.location.hash !== hash) return;
         if (form.dataset.id && hash.startsWith("#/admin/users")) {
           const detail = `#/admin/users/${encodeURIComponent(form.dataset.id)}`;
@@ -445,7 +448,8 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
           }
         }
         reload();
-      }, { once: true });
+      };
+      dialog.addEventListener("close", afterClose);
       dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
     } else if (action === "delete" && window.location.hash !== "#/admin/users") {
       dialog?.close();
