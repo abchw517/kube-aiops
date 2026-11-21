@@ -6,7 +6,7 @@ type ScopeDimension = (typeof scopeDimensions)[number];
 
 export type FindingFilters = Pick<
   ListFindingsParams,
-  "cluster" | "namespace" | "kind" | "severity"
+  "cluster" | "namespace" | "kind" | "severity" | "problem"
 > & Partial<Record<ScopeDimension, string>>;
 
 const severityValues = new Set<Severity>(["critical", "warning", "info"]);
@@ -22,6 +22,7 @@ export function parseFindingFilters(hash: string): FindingFilters {
     group: cleanValue(params.get("group")),
     namespace: cleanValue(params.get("namespace")),
     kind: cleanValue(params.get("kind")),
+    problem: cleanValue(params.get("problem")),
     severity: severity && severityValues.has(severity) ? severity : undefined,
   };
 }
@@ -33,7 +34,7 @@ export function toDetailCluster(hash: string): string {
 
 export function serializeFindingFilters(filters: FindingFilters): string {
   const params = new URLSearchParams();
-  for (const key of ["cluster", ...scopeDimensions, "namespace", "kind", "severity"] as const) {
+  for (const key of ["cluster", ...scopeDimensions, "namespace", "kind", "severity", "problem"] as const) {
     const value = cleanValue(filters[key]);
     if (value) params.set(key, value);
   }

@@ -157,3 +157,108 @@
   .summary-breakdown { grid-template-columns: minmax(0, 1fr); }
   .summary-breakdown > section + section { padding-top: 14px; padding-inline-start: 0; border-top: 1px solid var(--line); border-inline-start: 0; }
 }
+
+.diagnostic-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-block: -8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.diagnostic-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 650;
+}
+.diagnostic-nav a[aria-current="page"] {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.diagnostic-toolbar, .diagnostic-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-block: 0 16px;
+}
+.diagnostic-toolbar { justify-content: space-between; }
+.diagnostic-toolbar p, .diagnostic-source-note { color: var(--muted); }
+.diagnostic-toolbar p { margin: 0; }
+.diagnostic-search { margin-block: 12px 0; }
+.diagnostic-search input {
+  width: min(24rem, 100%);
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+}
+.finding-workspace.diagnostic-event-workspace { grid-template-columns: minmax(0, 1fr); }
+.diagnostic-event-scope { display: block; color: var(--muted); overflow-wrap: anywhere; }
+
+.incident-filters, .incident-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  align-items: end;
+  gap: 12px;
+}
+.incident-filters, .incident-create, .incident-header, .incident-evidence, .incident-timeline, .incident-trend {
+  padding: clamp(14px, 2vw, 22px);
+  margin-block: 0 16px;
+}
+.incident-filters label, .incident-form-grid label { display: grid; gap: 4px; min-width: 0; }
+.incident-filters input, .incident-filters select, .incident-form-grid input,
+.incident-form-grid select, .incident-form-grid textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  padding: 6px 9px;
+}
+.incident-form-grid textarea { min-height: 80px; resize: vertical; }
+.incident-form-wide { grid-column: 1 / -1; }
+.incident-table table { min-width: 610px; }
+.incident-table small { display: block; margin: 4px 0; color: var(--muted); }
+.incident-trend dl, .incident-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+.incident-trend dt, .incident-info dt { color: var(--muted); }
+.incident-trend dd, .incident-info dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.incident-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.incident-source, .incident-actions {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-block: 10px;
+}
+.incident-source summary, .incident-actions summary { cursor: pointer; padding: 4px 0; }
+.incident-source summary span { margin-inline-start: 8px; color: var(--muted); }
+.incident-evidence-row { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.incident-evidence-row pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.incident-timeline-list > li { margin-block: 12px; overflow-wrap: anywhere; }
+
+[data-rca-start] textarea, [data-rca-save] textarea {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-block: 4px 12px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  resize: vertical;
+}
+.rca-evidence-option { display: block; margin-block: 0.5rem; }
+.rca-conclusion dd { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rca-conclusion dt { font-weight: 650; }
+.topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
+.topology-nodes { display: grid; gap: 8px; }
+.topology-node { text-align: left; display: grid; gap: 3px; overflow-wrap: anywhere; }
+.topology-node[aria-pressed="true"] { border-color: currentColor; }
+.topology-node span { font-size: 0.875rem; }
+[data-datasource-form], [data-policy-form] { margin-block-start: 16px; }
+[data-datasource-form] [hidden] { display: none; }
+@media (max-width: 680px) { .topology-layout { grid-template-columns: 1fr; } }

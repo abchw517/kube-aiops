@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: kube-aiops Portal Backend API
-  version: 2.1.1
+  version: 2.3.0
   description: >-
-    Read-only Portal Backend contract with provider-neutral identity, authorization, audit,
+    Portal Backend contract with provider-neutral identity, authorization, audit,
     sanitization, and bounded Phase 2 observability correlation. Correlation never exposes raw
     PromQL, LogsQL, upstream URLs, raw logs, raw Kubernetes objects, or mutation capabilities.
 servers:
@@ -14,6 +14,7 @@ tags:
   - name: Kubernetes
   - name: Findings
   - name: Correlation
+  - name: Incidents
 paths:
   /healthz:
     get:
@@ -264,7 +265,1379 @@ paths:
           $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/diagnostics/overview:
+    get:
+      tags:
+      - Incidents
+      operationId: getIncidentOverview
+      summary: Read authorized incident aggregates
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Read authorized incident aggregates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: environmentId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: businessId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: clusterId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: platform
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: severity
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/IncidentSeverity'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/IncidentStatus'
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+  /api/v1/diagnostics/incidents:
+    get:
+      tags:
+      - Incidents
+      operationId: listIncidents
+      summary: List authorized incidents
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: List authorized incidents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: environmentId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: businessId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: clusterId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: platform
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: severity
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/IncidentSeverity'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/IncidentStatus'
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      tags:
+      - Incidents
+      operationId: createIncident
+      summary: Create a scoped incident
+      security:
+      - PortalSession: []
+      responses:
+        '201':
+          description: Create a scoped incident
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: Idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '409':
+          description: State or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIncidentInput'
+  /api/v1/diagnostics/incidents/{id}:
+    get:
+      tags:
+      - Incidents
+      operationId: getIncident
+      summary: Read an authorized incident
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Read an authorized incident
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentDetail'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      tags:
+      - Incidents
+      operationId: updateIncident
+      summary: Update an incident with an expected version
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Update an incident with an expected version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '409':
+          description: State or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: Stale version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: If-Match required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIncidentInput'
+  /api/v1/diagnostics/incidents/{id}/timeline:
+    get:
+      tags:
+      - Incidents
+      operationId: listIncidentTimeline
+      summary: Read incident timeline
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Read incident timeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentTimelinePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/evidence:
+    get:
+      tags:
+      - Incidents
+      operationId: listIncidentEvidence
+      summary: Read sanitized evidence summaries
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Read sanitized evidence summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEvidencePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/evidence/{evidenceId}:
+    get:
+      tags:
+      - Incidents
+      operationId: getIncidentEvidence
+      summary: Read one sanitized evidence snapshot
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Read one sanitized evidence snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEvidenceDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: evidenceId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/collect:
+    post:
+      tags:
+      - Incidents
+      operationId: collectIncidentEvidence
+      summary: Collect scoped evidence using configured sources
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Collect scoped evidence using configured sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '409':
+          description: State or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: Stale version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: If-Match required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/merge:
+    post:
+      tags:
+      - Incidents
+      operationId: mergeIncidents
+      summary: Merge two eligible incidents
+      security:
+      - PortalSession: []
+      responses:
+        '200':
+          description: Merge two eligible incidents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '409':
+          description: State or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: Stale version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: If-Match required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeIncidentInput'
+  /api/v1/diagnostics/incidents/{id}/split:
+    post:
+      tags:
+      - Incidents
+      operationId: splitIncident
+      summary: Move selected evidence into a child incident
+      security:
+      - PortalSession: []
+      responses:
+        '201':
+          description: Move selected evidence into a child incident
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+          headers:
+            ETag:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '409':
+          description: State or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: Stale version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: If-Match required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SplitIncidentInput'
+  /api/v1/diagnostics/incidents/{id}/rca-runs:
+    get:
+      tags:
+      - Incidents
+      operationId: listRcaRuns
+      summary: 列出故障根因分析任务
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 列出故障根因分析任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RCATaskPage'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      tags:
+      - Incidents
+      operationId: startRcaRun
+      summary: 启动故障根因分析
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '202':
+          description: 启动故障根因分析
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RCATask'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RCAInput'
+  /api/v1/diagnostics/incidents/{id}/rca-runs/{runId}:
+    get:
+      tags:
+      - Incidents
+      operationId: getRcaRun
+      summary: 查看分析任务与结论版本
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 查看分析任务与结论版本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RCATask'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/rca-runs/{runId}/cancel:
+    post:
+      tags:
+      - Incidents
+      operationId: cancelRcaRun
+      summary: 取消排队或运行中的分析
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '204':
+          description: 取消排队或运行中的分析
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/incidents/{id}/rca-runs/{runId}/conclusion:
+    patch:
+      tags:
+      - Incidents
+      operationId: saveRcaConclusion
+      summary: 保存人工修订的分析结论
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 保存人工修订的分析结论
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RCARevision'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: 版本不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: 需要 If-Match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RCAConclusion'
+  /api/v1/diagnostics/incidents/{id}/topology:
+    get:
+      tags:
+      - Incidents
+      operationId: getIncidentTopology
+      summary: 查看当前故障可见的资源关系
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 查看当前故障可见的资源关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentTopology'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 4
+  /api/v1/diagnostics/incidents/{id}/topology/links:
+    post:
+      tags:
+      - Incidents
+      operationId: saveTopologyLink
+      summary: 登记或解除一条资源关系
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '204':
+          description: 登记或解除一条资源关系
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopologyInput'
+  /api/v1/diagnostics/datasources:
+    get:
+      tags:
+      - Incidents
+      operationId: listDiagnosticDatasources
+      summary: 列出可见诊断数据源
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 列出可见诊断数据源
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourcePage'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      tags:
+      - Incidents
+      operationId: createDiagnosticDatasource
+      summary: 创建有范围的数据源
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '201':
+          description: 创建有范围的数据源
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticDatasource'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasourceInput'
+  /api/v1/diagnostics/datasources/{datasourceId}:
+    patch:
+      tags:
+      - Incidents
+      operationId: updateDiagnosticDatasource
+      summary: 更新数据源配置或启停
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 更新数据源配置或启停
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticDatasource'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: 版本不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: 需要 If-Match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: datasourceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasourceInput'
+  /api/v1/diagnostics/datasources/{datasourceId}/test:
+    post:
+      tags:
+      - Incidents
+      operationId: testDiagnosticDatasource
+      summary: 测试数据源并同步白名单资产
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 测试数据源并同步白名单资产
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticDatasource'
+        '412':
+          description: 版本不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: 需要 If-Match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: datasourceId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/datasources/{datasourceId}/assets:
+    get:
+      tags:
+      - Incidents
+      operationId: listDiagnosticAssets
+      summary: 查看已同步的配置资产
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 查看已同步的配置资产
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticAssets'
+      parameters:
+      - name: datasourceId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/v1/diagnostics/ingress/{connectorId}/signals:
+    post:
+      tags:
+      - Incidents
+      operationId: ingestDiagnosticSignal
+      x-portal-client: false
+      summary: 接收已映射资产的标准化信号
+      security:
+      - DiagnosticIngress: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '202':
+          description: 接收已映射资产的标准化信号
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: connectorId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngressInput'
+  /api/v1/diagnostics/policies:
+    get:
+      tags:
+      - Incidents
+      operationId: listDiagnosticPolicies
+      summary: 列出可见诊断策略
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 列出可见诊断策略
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyPage'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: continue
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      tags:
+      - Incidents
+      operationId: createDiagnosticPolicy
+      summary: 创建诊断策略
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '201':
+          description: 创建诊断策略
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticPolicy'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyInput'
+  /api/v1/diagnostics/policies/{policyId}:
+    patch:
+      tags:
+      - Incidents
+      operationId: updateDiagnosticPolicy
+      summary: 更新策略和启停状态
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 更新策略和启停状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticPolicy'
+        '409':
+          description: 当前状态与请求冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: 版本不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: 需要 If-Match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: policyId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyInput'
+  /api/v1/diagnostics/policies/{policyId}/runs:
+    get:
+      tags:
+      - Incidents
+      operationId: listDiagnosticPolicyRuns
+      summary: 查看诊断策略运行记录
+      security:
+      - PortalSession: []
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '200':
+          description: 查看诊断策略运行记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyExecutions'
+      parameters:
+      - name: policyId
+        in: path
+        required: true
+        schema:
+          type: string
 components:
+  securitySchemes:
+    DiagnosticIngress:
+      type: http
+      scheme: bearer
+    PortalSession:
+      type: apiKey
+      in: cookie
+      name: __Host-kube-aiops-session
   parameters:
     ClusterPath:
       name: cluster
@@ -404,6 +1777,855 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    RCAInput:
+      type: object
+      required: []
+      properties:
+        observation:
+          type: string
+        evidenceIds:
+          type: array
+          items:
+            type: string
+    RCAConclusion:
+      type: object
+      required:
+      - state
+      - judgment
+      - references
+      - gaps
+      - next
+      properties:
+        state:
+          type: string
+        judgment:
+          type: string
+        references:
+          type: array
+          items:
+            type: string
+        gaps:
+          type: string
+        next:
+          type: string
+    RCARevision:
+      type: object
+      required:
+      - version
+      - actor
+      - at
+      - conclusion
+      properties:
+        version:
+          type: integer
+        actor:
+          type: string
+        at:
+          type: string
+          format: date-time
+        conclusion:
+          $ref: '#/components/schemas/RCAConclusion'
+    RCATask:
+      type: object
+      required:
+      - id
+      - incidentId
+      - state
+      - evidence
+      - actor
+      - version
+      - createdAt
+      - revisions
+      properties:
+        id:
+          type: string
+        incidentId:
+          type: string
+        state:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          - timed_out
+          - canceled
+        observation:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncidentEvidence'
+        actor:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RCARevision'
+        policyId:
+          type: string
+        policyVersion:
+          type: integer
+    RCATaskPage:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RCATask'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+    TopologyNode:
+      type: object
+      required:
+      - id
+      - name
+      - kind
+      - scope
+      - resourceId
+      - platform
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        scope:
+          $ref: '#/components/schemas/IncidentScope'
+        resourceId:
+          type: string
+        incidentId:
+          type: string
+        state:
+          type: string
+        platform:
+          type: string
+    TopologyLink:
+      type: object
+      required:
+      - source
+      - target
+      - relation
+      - confidence
+      - reason
+      - actor
+      - recordedAt
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        relation:
+          type: string
+        confidence:
+          type: string
+        reason:
+          type: string
+        actor:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        evidenceId:
+          type: string
+    IncidentTopology:
+      type: object
+      required:
+      - root
+      - nodes
+      - edges
+      - coverage
+      - truncated
+      properties:
+        root:
+          type: string
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyLink'
+        coverage:
+          type: string
+        truncated:
+          type: boolean
+    TopologyInput:
+      type: object
+      required:
+      - relation
+      - reason
+      properties:
+        targetIncidentId:
+          type: string
+        targetAssetId:
+          type: string
+        relation:
+          type: string
+        reason:
+          type: string
+        confidence:
+          type: string
+        evidenceId:
+          type: string
+        remove:
+          type: boolean
+    DatasourceConfig:
+      type: object
+      required:
+      - kind
+      - assetIds
+      properties:
+        kind:
+          type: string
+          enum:
+          - zabbix
+          - aliyun-ecs
+          - tencent-cvm
+        endpoint:
+          type: string
+        region:
+          type: string
+        assetIds:
+          type: array
+          items:
+            type: string
+    DatasourceInput:
+      type: object
+      required:
+      - name
+      - scope
+      - config
+      - enabled
+      properties:
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/CreateIncidentScope'
+        config:
+          $ref: '#/components/schemas/DatasourceConfig'
+        enabled:
+          type: boolean
+        credentialRef:
+          type: string
+        ingressRef:
+          type: string
+    DiagnosticDatasource:
+      type: object
+      required:
+      - id
+      - name
+      - scope
+      - config
+      - enabled
+      - version
+      - health
+      - credentialConfigured
+      - ingressConfigured
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/IncidentScope'
+        config:
+          $ref: '#/components/schemas/DatasourceConfig'
+        enabled:
+          type: boolean
+        version:
+          type: integer
+        health:
+          type: string
+        message:
+          type: string
+        checkedAt:
+          type: string
+          format: date-time
+        syncedAt:
+          type: string
+          format: date-time
+        credentialConfigured:
+          type: boolean
+        ingressConfigured:
+          type: boolean
+    DatasourcePage:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagnosticDatasource'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+    DiagnosticAsset:
+      type: object
+      required:
+      - id
+      - datasourceId
+      - externalId
+      - name
+      - kind
+      - state
+      - observedAt
+      properties:
+        id:
+          type: string
+        datasourceId:
+          type: string
+        externalId:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        state:
+          type: string
+        region:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+    DiagnosticAssets:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagnosticAsset'
+    IngressInput:
+      type: object
+      required:
+      - incidentId
+      - assetId
+      - externalId
+      - state
+      - observedAt
+      - summary
+      properties:
+        incidentId:
+          type: string
+        assetId:
+          type: string
+        externalId:
+          type: string
+        state:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        summary:
+          type: string
+    PolicyInput:
+      type: object
+      required:
+      - name
+      - scope
+      - enabled
+      - source
+      - template
+      - cooldownSeconds
+      - maxConcurrent
+      properties:
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/CreateIncidentScope'
+        enabled:
+          type: boolean
+        severity:
+          type: string
+        source:
+          type: string
+        template:
+          type: string
+        cooldownSeconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+        maxConcurrent:
+          type: integer
+          minimum: 1
+          maximum: 5
+    DiagnosticPolicy:
+      type: object
+      required:
+      - name
+      - scope
+      - enabled
+      - source
+      - template
+      - cooldownSeconds
+      - maxConcurrent
+      - id
+      - version
+      - effectiveAt
+      - automationAllowed
+      properties:
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/IncidentScope'
+        enabled:
+          type: boolean
+        severity:
+          type: string
+        source:
+          type: string
+        template:
+          type: string
+        cooldownSeconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+        maxConcurrent:
+          type: integer
+          minimum: 1
+          maximum: 5
+        id:
+          type: string
+        version:
+          type: integer
+        effectiveAt:
+          type: string
+          format: date-time
+        automationAllowed:
+          type: boolean
+    PolicyPage:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagnosticPolicy'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+    PolicyExecution:
+      type: object
+      required:
+      - incidentId
+      - runId
+      - version
+      - state
+      - queuedAt
+      properties:
+        incidentId:
+          type: string
+        runId:
+          type: string
+        version:
+          type: integer
+        state:
+          type: string
+        queuedAt:
+          type: string
+          format: date-time
+    PolicyExecutions:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyExecution'
+    IncidentScope:
+      type: object
+      required:
+      - environmentId
+      - clusterId
+      - namespace
+      properties:
+        environmentId:
+          type: string
+        businessId:
+          type: string
+        clusterId:
+          type: string
+        namespace:
+          type: string
+    CreateIncidentScope:
+      type: object
+      required:
+      - clusterId
+      - namespace
+      properties:
+        environmentId:
+          type: string
+        businessId:
+          type: string
+        clusterId:
+          type: string
+        namespace:
+          type: string
+    IncidentStatus:
+      type: string
+      enum:
+      - pending
+      - investigating
+      - recovered
+      - closed
+    IncidentSeverity:
+      type: string
+      enum:
+      - P1
+      - P2
+      - P3
+    Incident:
+      type: object
+      required:
+      - id
+      - displayKey
+      - scope
+      - title
+      - resource
+      - resourceId
+      - severity
+      - status
+      - source
+      - version
+      - firstSeen
+      - lastSeen
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+        displayKey:
+          type: string
+        scope:
+          $ref: '#/components/schemas/IncidentScope'
+        title:
+          type: string
+        description:
+          type: string
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        resourceId:
+          type: string
+        findingId:
+          type: string
+        severity:
+          $ref: '#/components/schemas/IncidentSeverity'
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        ownerGroupId:
+          type: string
+        source:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        mergedInto:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceStatus'
+    CreateIncidentInput:
+      type: object
+      required:
+      - title
+      - scope
+      - severity
+      properties:
+        title:
+          type: string
+          maxLength: 240
+        description:
+          type: string
+          maxLength: 4000
+        scope:
+          $ref: '#/components/schemas/CreateIncidentScope'
+        severity:
+          $ref: '#/components/schemas/IncidentSeverity'
+        findingId:
+          type: string
+        resource:
+          $ref: '#/components/schemas/ResourceRef'
+        resourceId:
+          type: string
+        assetId:
+          type: string
+          description: Asset from a visible datasource in the same scope.
+    UpdateIncidentInput:
+      type: object
+      required:
+      - reason
+      properties:
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        severity:
+          $ref: '#/components/schemas/IncidentSeverity'
+        ownerGroupId:
+          type: string
+        reason:
+          type: string
+          maxLength: 1000
+    IncidentActions:
+      type: object
+      required:
+      - update
+      - correlate
+      - split
+      - evidence
+      properties:
+        update:
+          type: boolean
+        correlate:
+          type: boolean
+        split:
+          type: boolean
+        evidence:
+          type: boolean
+        rca:
+          type: object
+          additionalProperties:
+            type: boolean
+        topology:
+          type: boolean
+        topologyWrite:
+          type: boolean
+    IncidentDetail:
+      type: object
+      required:
+      - incident
+      - actions
+      - version
+      - coverage
+      properties:
+        incident:
+          $ref: '#/components/schemas/Incident'
+        actions:
+          $ref: '#/components/schemas/IncidentActions'
+        version:
+          type: integer
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        coverage:
+          type: string
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+    IncidentTimelineEntry:
+      type: object
+      required:
+      - id
+      - at
+      - actor
+      - kind
+      properties:
+        id:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+        kind:
+          type: string
+        reason:
+          type: string
+        before:
+          type: string
+        after:
+          type: string
+    IncidentEvidence:
+      type: object
+      required:
+      - id
+      - source
+      - kind
+      - observedAt
+      - collectedAt
+      - state
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        kind:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        collectedAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+        summary:
+          type: string
+    IncidentEvidenceDetail:
+      type: object
+      required:
+      - id
+      - source
+      - kind
+      - observedAt
+      - collectedAt
+      - state
+      - signal
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        kind:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        collectedAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+        summary:
+          type: string
+        signal:
+          type: object
+    IncidentPagination:
+      type: object
+      properties:
+        continue:
+          type: string
+    IncidentList:
+      type: object
+      required:
+      - items
+      - pagination
+      - coverage
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+        coverage:
+          type: string
+    IncidentTimelinePage:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncidentTimelineEntry'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+    IncidentEvidencePage:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncidentEvidence'
+        pagination:
+          $ref: '#/components/schemas/IncidentPagination'
+    IncidentOverview:
+      type: object
+      required:
+      - counts
+      - trend
+      - byPlatform
+      - coverage
+      properties:
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        trend:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        byPlatform:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        coverage:
+          type: string
+    MergeIncidentInput:
+      type: object
+      required:
+      - sourceId
+      - sourceVersion
+      - reason
+      properties:
+        sourceId:
+          type: string
+        sourceVersion:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+    SplitIncidentInput:
+      type: object
+      required:
+      - evidenceIds
+      - title
+      - reason
+      properties:
+        evidenceIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 100
+        title:
+          type: string
+        reason:
+          type: string
     StatusResponse:
       type: object
       additionalProperties: false

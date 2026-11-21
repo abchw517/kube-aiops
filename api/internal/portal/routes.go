@@ -8,6 +8,7 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/finding"
+	"github.com/abchw517/kube-aiops/api/internal/diagnosis/incident"
 	"github.com/abchw517/kube-aiops/api/internal/httpapi"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
@@ -16,8 +17,17 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 )
 
-func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, next http.Handler, review *diagnosis.Review, managed *onboarding) http.Handler {
+func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, next http.Handler, review *diagnosis.Review, managed *onboarding, incidentServers ...*incident.Server) http.Handler {
 	mux := http.NewServeMux()
+	var incidents *incident.Server
+	if len(incidentServers) > 0 {
+		incidents = incidentServers[0]
+		if incidents != nil {
+			incidentRoutes := http.NewServeMux()
+			incidents.Register(incidentRoutes)
+			mux.Handle("/api/v1/diagnostics/", httpapi.WithRequestMetadata(incidentRoutes))
+		}
+	}
 	mux.HandleFunc("/api/v1/admin/{resource}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		p, err := s.Authenticate(r.Context(), r)
@@ -35,6 +45,17 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 				"wikiGovernance": "knowledge.governance.list",
 			} {
 				status[field], _ = a.AuthorizeOperation(r.Context(), p, code, "", authorization.GlobalScope(), true)
+			}
+			if incidents != nil {
+				status["incidents"], _ = incidents.Authorize(r.Context(), p, incident.ListPermission, incident.Scope{}, true)
+				status["incidentCreate"], _ = incidents.Authorize(r.Context(), p, incident.CreatePermission, incident.Scope{}, true)
+				for field, code := range map[string]string{
+					"diagnosticDatasources": incident.ConnectorRead, "diagnosticDatasourceWrite": incident.ConnectorWrite,
+					"diagnosticDatasourceTest": incident.ConnectorTest, "diagnosticPolicies": incident.PolicyRead,
+					"diagnosticPolicyWrite": incident.PolicyWrite,
+				} {
+					status[field], _ = incidents.Authorize(r.Context(), p, code, incident.Scope{}, true)
+				}
 			}
 			status["reviewAccess"] = read("finding-analysis")
 			status["interfaceRoleAccount"] = permissions.UsesInterfaceRoles(p)

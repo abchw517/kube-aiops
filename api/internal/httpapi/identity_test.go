@@ -15,7 +15,7 @@ import (
 )
 
 func TestRequestMetadataGenerated(t *testing.T) {
-	handler := requestMetadataMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := WithRequestMetadata(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if RequestIDFromContext(r.Context()) == "" {
 			t.Fatal("expected request ID in context")
 		}
@@ -39,7 +39,7 @@ func TestRequestMetadataGenerated(t *testing.T) {
 }
 
 func TestRequestMetadataPreservesValidInboundIDs(t *testing.T) {
-	handler := requestMetadataMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithRequestMetadata(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
@@ -58,7 +58,7 @@ func TestRequestMetadataPreservesValidInboundIDs(t *testing.T) {
 }
 
 func TestRequestMetadataRejectsUnsafeInboundIDs(t *testing.T) {
-	handler := requestMetadataMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithRequestMetadata(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
@@ -146,7 +146,7 @@ func TestAuthenticationMiddlewareInjectsPrincipal(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	handler := requestMetadataMiddleware(server.authenticationMiddleware(authenticator, next))
+	handler := WithRequestMetadata(server.authenticationMiddleware(authenticator, next))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/findings", nil))

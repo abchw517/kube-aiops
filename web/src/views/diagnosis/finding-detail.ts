@@ -1,20 +1,27 @@
 import type { Finding } from "../../api/generated.ts";
+import { diagnosticListPaths, type DiagnosticListView } from "../../domain/diagnostic-routes.ts";
 import { escapeHtml, formatSeverity, formatTimestamp } from "../../components/html.ts";
 
 import { findingReviewPanel, findingReviewTrigger } from "./finding-review.ts";
 
 const reviewPrefix = "AI 复核结论\n\n";
 
-export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null): string {
+export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null, returnView: DiagnosticListView = "findings", incidentCreate = false): string {
   const query = returnQuery ?? new URLSearchParams({ cluster: finding.cluster }).toString();
+  const namespace = finding.namespace ?? finding.resource.namespace;
+  const createQuery = namespace && incidentCreate ? new URLSearchParams({
+    create: "1", clusterId: finding.cluster, namespace, findingId: finding.id,
+  }) : null;
+  const returnLabel = { findings: "诊断列表", overview: "诊断总览", events: "故障事件" }[returnView];
   return `
     <article class="detail-grid" data-testid="finding-detail">
       <section class="panel detail-main">
-        <a class="back-link" href="#/findings?${escapeHtml(query)}">← 返回诊断列表</a>
+        <a class="back-link" href="${diagnosticListPaths[returnView]}?${escapeHtml(query)}">← 返回${returnLabel}</a>
         <div class="detail-heading">
           <h2>故障信息</h2>
           <span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span>
         </div>
+        ${createQuery ? `<p><a class="button secondary" href="#/diagnostics/events?${escapeHtml(createQuery.toString())}">从诊断结果创建故障</a></p>` : ""}
         <p class="detail-text detail-problem">${escapeHtml(finding.problem)}</p>
         <dl class="detail-list">
           ${detailRow("诊断编号", finding.id)}
