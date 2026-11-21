@@ -175,6 +175,7 @@ func normalizeAlert(alert upstreamAlert, resource finding.ResourceRef, start, en
 	default:
 		severity = ""
 	}
+	occurrence := alert.Fingerprint + "@" + first.UTC().Format(time.RFC3339Nano)
 	if first.Before(start) {
 		first = start
 	}
@@ -182,7 +183,7 @@ func normalizeAlert(alert upstreamAlert, resource finding.ResourceRef, start, en
 		last = end
 	}
 	return correlation.CorrelationSignal{
-		ID: "alertmanager/" + alert.Fingerprint, Source: correlation.SourceAlertmanager, Type: correlation.SignalTypeAlert,
+		ID: "alertmanager/" + alert.Fingerprint, Occurrence: occurrence, Source: correlation.SourceAlertmanager, Type: correlation.SignalTypeAlert,
 		Name: name, Severity: severity, Resource: &resource, Count: 1, Fingerprint: alert.Fingerprint,
 		FirstSeen: first.UTC().Format(time.RFC3339Nano), LastSeen: last.UTC().Format(time.RFC3339Nano),
 		Summary: "Alertmanager state " + state,

@@ -1,3 +1,5 @@
+import { diagnosticListPaths, diagnosticListView } from "../domain/diagnostic-routes.ts";
+
 interface PortalShellState {
   hash: string;
   demoMode: boolean;
@@ -9,6 +11,8 @@ interface PortalShellState {
   canChangePassword: boolean;
   showLogout: boolean;
   signedOut: boolean;
+  diagnosticDatasources?: boolean;
+  diagnosticPolicies?: boolean;
 }
 
 /** 根据应用提供的路由和权限状态渲染控制台外框。 */
@@ -18,7 +22,17 @@ export function renderPortalShell(content: string, state: PortalShellState): str
   const resourcePage = !mustChangePassword && /^#\/resources(?:\/|$)/.test(hash);
   const wikiPage = /^#\/wiki(?:[/?]|$)/.test(hash);
   const detailPage = /^#\/findings\/[^?]+/.test(hash);
-  const title = adminPage ? "系统管理" : resourcePage ? "资源管理" : wikiPage ? "运维知识库" : detailPage ? "诊断详情" : "诊断控制台";
+  const diagnosticView = diagnosticListView(hash);
+  const eventDetail = /^#\/diagnostics\/(?:events|incidents)\/[^?]+/.test(hash);
+  const section = hash.split("?", 1)[0];
+  const currentDatasource = section === "#/diagnostics/datasources";
+  const currentPolicy = section === "#/diagnostics/policies";
+  const subpageTitle = currentDatasource ? "数据源管理" : currentPolicy ? "诊断策略" :
+    section?.endsWith("/topology") && eventDetail ? "关联拓扑" : section?.endsWith("/rca") && eventDetail ? "AI 根因分析" : "";
+  const diagnosticTitle = subpageTitle || (diagnosticView === "overview" ? "诊断总览" :
+    diagnosticView === "events" ? (eventDetail ? "故障详情" : "故障事件") : detailPage ? "诊断详情" : "诊断控制台");
+  const diagnosticPage = !adminPage && !resourcePage && !wikiPage;
+  const title = diagnosticPage ? diagnosticTitle : adminPage ? "系统管理" : resourcePage ? "资源管理" : "运维知识库";
   const currentPage = ' aria-current="page"';
   return `
     <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
@@ -43,6 +57,13 @@ export function renderPortalShell(content: string, state: PortalShellState): str
         ${signedOut
           ? (demoMode ? '<p class="demo-notice">演示数据</p>' : "")
           : `<header class="page-intro"><h1>${title}</h1>${demoMode ? '<p class="demo-notice">演示数据</p>' : ""}</header>`}
+        ${!signedOut && diagnosticPage ? `<nav class="diagnostic-nav" aria-label="诊断中心">
+          <a href="${diagnosticListPaths.overview}"${diagnosticView === "overview" ? currentPage : ""}>诊断总览</a>
+          <a href="${diagnosticListPaths.events}"${diagnosticView === "events" && !eventDetail ? currentPage : ""}>故障事件</a>
+          ${state.diagnosticDatasources ? `<a href="#/diagnostics/datasources"${currentDatasource ? currentPage : ""}>数据源管理</a>` : ""}
+          ${state.diagnosticPolicies ? `<a href="#/diagnostics/policies"${currentPolicy ? currentPage : ""}>诊断策略</a>` : ""}
+          <a href="${diagnosticListPaths.findings}"${diagnosticView === "findings" && !detailPage && !subpageTitle ? currentPage : ""}>原有诊断结果</a>
+        </nav>` : ""}
         ${content}
       </main>
     </div>`;

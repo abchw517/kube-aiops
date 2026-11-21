@@ -99,7 +99,7 @@ func NewHandlerWithOptions(logger *slog.Logger, backend Backend, readyTimeout ti
 	if options.AuditSink != nil {
 		handler = server.auditMiddleware(mux, options.AuditSink, handler)
 	}
-	return requestMetadataMiddleware(handler)
+	return WithRequestMetadata(handler)
 }
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {

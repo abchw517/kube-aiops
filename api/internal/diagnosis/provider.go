@@ -124,3 +124,13 @@ func (f *Review) completeAI(ctx context.Context, ai kubernetes.EngineAIConfig, s
 	}
 	return response.Choices[0].Message.Content, nil
 }
+
+// AnalyzeIncident shares the provider, concurrency slots and time budget of review.
+func (f *Review) AnalyzeIncident(ctx context.Context, prompt string, data []byte) (string, error) {
+	text, err := f.AskWiki(ctx, prompt, data)
+	var failure *providerError
+	if errors.As(err, &failure) && failure.code == "AI_PROVIDER_TIMEOUT" {
+		return "", context.DeadlineExceeded
+	}
+	return text, err
+}

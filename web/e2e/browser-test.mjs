@@ -64,6 +64,7 @@ try {
     await assertSeverityDescriptions(cdp);
     await cdp.send("Emulation.clearDeviceMetricsOverride");
     await assertFindingEnvironment(cdp);
+    await assertDiagnosticCenter(cdp);
 
     await assertPage(
       cdp,
@@ -195,6 +196,12 @@ try {
       );
     }
     await fetch("http://127.0.0.1:4173/test/require-auth");
+    await assertPage(
+      cdp, "http://127.0.0.1:4173/#/diagnostics",
+      (text) => text.includes("需要身份认证") && !text.includes("最近诊断结果"),
+      "Unauthenticated diagnostic overview exposed results",
+    );
+    await assertPage(cdp, "about:blank", (text) => text === "", "Anonymous overview document was not cleared");
     await assertPage(
       cdp, "http://127.0.0.1:4173/#/findings",
       (text) => text.includes("需要身份认证") && text.includes("LDAP / Active Directory"),
@@ -1054,12 +1061,13 @@ try {
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
     await assertText(cdp, (text) => text.includes("集群接入") && !text.includes("上报凭据保存"), "Enrollment did not return to the cluster list");
 
-
+    await assertIncidentLifecycle(cdp);
+    await assertRemainingDiagnosticPages(cdp);
   } finally {
     cdp.close();
   }
 
-  console.log("Finding Portal and correlation evidence browser E2E: PASS");
+  console.log("Diagnostic Center V2 browser E2E: PASS");
 } finally {
   chrome.kill("SIGTERM");
   if (chrome.exitCode === null) await once(chrome, "exit");
@@ -1288,6 +1296,163 @@ async function assertAccountDetailLayout(cdp, width) {
   if (!layout || layout.overflow || (width >= 560 && (!layout.aligned || !layout.actionSeparated)) || !layout.rowsFillPanel || !layout.headerActions || !layout.wrapsDN) {
     throw new Error(`Account detail layout at ${width}px: ${JSON.stringify(response.exceptionDetails ?? layout)}`);
   }
+}
+
+async function assertIncidentLifecycle(cdp) {
+  await fetch("http://127.0.0.1:4173/test/incident-mode");
+  await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics/events?create=1", (text) =>
+    text.includes("人工创建故障") && text.includes("暂无故障"), "Incident mode did not show the create form");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-incident-create]");
+    form.elements.title.value = "订单服务故障";
+    form.elements.clusterId.value = "local";
+    form.elements.clusterId.dispatchEvent(new Event("change"));
+  })()` });
+  await assertText(cdp, (text) => text.includes("default"), "Incident form did not load namespaces");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-incident-create]");
+    form.elements.namespace.value = "default";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, (text) => text.includes("订单服务故障") && text.includes("版本 1") &&
+    text.includes("故障时间线"), "Persisted incident did not open after creation");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector('[data-incident-operation="update"]');
+    form.closest("details").open = true;
+    form.elements.status.value = "investigating";
+    form.elements.reason.value = "确认受影响";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, (text) => text.includes("处理中") && text.includes("版本 2") &&
+    text.includes("确认受影响"), "Incident status and timeline did not refresh");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-collect]").click()' });
+  await assertText(cdp, (text) => text.includes("版本 3") && text.includes("来源部分可用") &&
+    text.includes("VictoriaLogs 日志") && text.includes("Prometheus 指标"), "Incident aggregation did not show source health");
+  const state = await cdp.send("Runtime.evaluate", {
+    expression: `Array.from(document.querySelectorAll(".incident-source"), item => item.open)`, returnByValue: true,
+  });
+  if (state.result?.value?.join(",") !== "false,false,false,false") throw new Error("Expected all incident evidence groups collapsed");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const button = document.querySelector("[data-incident-evidence]");
+    button.closest("details").open = true;
+    button.click();
+  })()` });
+  await assertText(cdp, (text) => text.includes("Unhealthy"), "Evidence detail did not load on demand");
+}
+
+async function assertRemainingDiagnosticPages(cdp) {
+  const origin = "http://127.0.0.1:4173";
+  await assertPage(cdp, `${origin}/#/diagnostics/incidents/fixture-p1/rca`, (text) => text.includes("发起分析") &&
+    text.includes("运行记录"), "RCA page did not load");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-rca-start]");
+    form.elements.observation.value = "已核对发布记录";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, (text) => text.includes("探针失败需要核查容器状态") && text.includes("已核对发布记录"), "RCA result missing");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-rca-task] a[href*="evidence="]').click()` });
+  await assertText(cdp, (text) => text.includes("故障时间线") && text.includes("Unhealthy"), "RCA reference did not open the matching evidence");
+
+  await assertPage(cdp, `${origin}/#/diagnostics/incidents/fixture-p1/topology`, (text) => text.includes("资源节点") &&
+    text.includes("业务主机 fixture"), "Topology page did not show affected resources");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-topology-node="asset:host-fixture"]').click()` });
+  await assertText(cdp, (text) => text.includes("部署记录核对") && text.includes("已确认"), "Topology node details did not show link provenance");
+
+  await assertPage(cdp, `${origin}/#/diagnostics/datasources`, (text) => text.includes("新增数据源") && text.includes("暂无数据源"), "Datasource page did not load");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-datasource-form]");
+    form.closest("details").open = true;
+    form.elements.name.value = "监控数据源 fixture";
+    form.elements.endpoint.value = "https://zabbix.example/api_jsonrpc.php";
+    form.elements.assetIds.value = "10010";
+    form.elements.credentialRef.value = "fixture-inventory.json";
+    form.elements.clusterId.value = "local";
+    form.elements.namespace.value = "default";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, (text) => text.includes("监控数据源 fixture") && text.includes("测试并同步"), "Datasource was not created");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-datasource-test]").requestSubmit()' });
+  await assertText(cdp, (text) => text.includes("已读取配置资产"), "Datasource health did not update");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });
+  await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
+
+  await assertPage(cdp, `${origin}/#/diagnostics/policies`, (text) => text.includes("新增诊断策略") && text.includes("暂无诊断策略"), "Policy page did not load");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-policy-form]");
+    form.closest("details").open = true;
+    form.elements.name.value = "订单服务自动复核";
+    form.elements.clusterId.value = "local";
+    form.elements.namespace.value = "default";
+    form.elements.enabled.checked = true;
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, (text) => text.includes("订单服务自动复核") && text.includes("自动触发"), "Policy was not created");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-policy-runs]").open = true' });
+  await assertText(cdp, (text) => text.includes("succeeded"), "Policy did not show run history");
+}
+
+async function assertDiagnosticCenter(cdp) {
+  const origin = "http://127.0.0.1:4173";
+  await assertPage(cdp, `${origin}/#/findings`, (text) => text.includes("共 3 条诊断结果"), "Legacy list is missing");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.diagnostic-nav a[href="#/diagnostics"]').click()` });
+  await assertText(cdp, (text) => text.includes("最近诊断结果") && text.includes("查看故障事件") &&
+    text.includes("CrashLoopBackOff detected") && text.includes("测试集群容量建议"),
+  "Diagnostic overview did not show the authorized recent Findings");
+
+  await cdp.send("Runtime.evaluate", { expression: `
+    (() => {
+      const select = document.querySelector('select[name="environment"]');
+      select.value = "测试";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()
+  ` });
+  await assertText(cdp, (text) => text.includes("查看故障事件") && text.includes("测试集群容量建议") &&
+    !text.includes("CrashLoopBackOff detected"), "Overview did not preserve the selected scope");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".diagnostic-toolbar a").click()' });
+  await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
+    "Overview-to-events link lost the environment filter");
+
+  await cdp.send("Runtime.evaluate", { expression: `
+    (() => {
+      const input = document.querySelector("#diagnostic-problem");
+      input.value = "找不到的故障信号";
+      input.form.requestSubmit();
+    })()
+  ` });
+  await assertText(cdp, (text) => text.includes("暂无诊断结果"), "Unmatched search should show the empty state");
+  await cdp.send("Runtime.evaluate", { expression: `
+    (() => {
+      const input = document.querySelector("#diagnostic-problem");
+      input.value = "容量";
+      input.form.requestSubmit();
+    })()
+  ` });
+  await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
+    "Searching the event list did not retain the matching Finding");
+  const submitted = await cdp.send("Runtime.evaluate", { expression: "decodeURIComponent(location.hash)", returnByValue: true });
+  if (!submitted.result?.value?.includes("problem=容量")) throw new Error("Problem filter is missing from the event route");
+
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".finding-problem a").click()' });
+  await assertText(cdp, (text) => text.includes("故障详情") && text.includes("测试环境容器资源建议") &&
+    text.includes("返回故障事件"), "Event details did not resolve the remote instance for the duplicated Finding ID");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
+  await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
+    "Event detail did not return to the filtered list");
+  const returned = await cdp.send("Runtime.evaluate", {
+    expression: `document.querySelector("#diagnostic-problem").value === "容量" && document.querySelector('select[name="environment"]').value === "测试"`,
+    returnByValue: true,
+  });
+  if (!returned.result?.value) throw new Error("Returning from detail discarded the event filters");
+
+  await assertPage(cdp, `${origin}/#/diagnostics/events?continue=2`, (text) => text.includes("共 3 条故障信号，本页 1 条") &&
+    text.includes("测试集群容量建议"), "Event page did not use its cursor");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".finding-problem a").click()' });
+  await assertText(cdp, (text) => text.includes("测试环境容器资源建议"), "Paginated Finding opened the wrong detail");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
+  await assertText(cdp, (text) => text.includes("本页 1 条") && text.includes("返回首页"), "Event detail discarded the cursor");
+
+  await assertPage(cdp, `${origin}/#/diagnostics/events?cluster=restricted`, (text) => text.includes("无访问权限") &&
+    !text.includes("CrashLoopBackOff detected"), "Forbidden event scope did not fail closed");
 }
 
 async function assertPage(cdp, url, predicate, failureMessage) {

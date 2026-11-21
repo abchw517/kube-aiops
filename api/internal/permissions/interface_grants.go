@@ -128,6 +128,15 @@ func (a *Admin) HasScopedOperation(ctx context.Context, p identity.Principal, co
 // AuthorizeOperation preserves the existing administrator and imported policy paths.
 // Platform accounts use independently scoped role grants.
 func (a *Admin) AuthorizeOperation(ctx context.Context, actor identity.Principal, code string, legacy authorization.Capability, scope authorization.Scope, collection bool) (bool, error) {
+	return a.authorizeOperation(ctx, actor, code, legacy, scope, collection, nil)
+}
+
+// AuthorizeBusinessOperation also requires a business-specific grant to match the resource's own assignment.
+func (a *Admin) AuthorizeBusinessOperation(ctx context.Context, actor identity.Principal, code string, legacy authorization.Capability, scope authorization.Scope, collection bool, business string) (bool, error) {
+	return a.authorizeOperation(ctx, actor, code, legacy, scope, collection, &business)
+}
+
+func (a *Admin) authorizeOperation(ctx context.Context, actor identity.Principal, code string, legacy authorization.Capability, scope authorization.Scope, collection bool, business *string) (bool, error) {
 	point, exists := catalog.Find(code)
 	if !exists || MustChangePassword(actor) {
 		return false, nil
@@ -149,7 +158,7 @@ func (a *Admin) AuthorizeOperation(ctx context.Context, actor identity.Principal
 				return false, nil
 			}
 		}
-		return a.platformOperation(ctx, actor, point, scope, collection)
+		return a.platformOperation(ctx, actor, point, scope, collection, business)
 	default:
 		if legacy == "" {
 			return false, nil
@@ -159,7 +168,7 @@ func (a *Admin) AuthorizeOperation(ctx context.Context, actor identity.Principal
 	}
 }
 
-func (a *Admin) platformOperation(ctx context.Context, actor identity.Principal, point catalog.Point, scope authorization.Scope, collection bool) (bool, error) {
+func (a *Admin) platformOperation(ctx context.Context, actor identity.Principal, point catalog.Point, scope authorization.Scope, collection bool, business *string) (bool, error) {
 	state, err := a.platform(ctx)
 	if err != nil {
 		return false, err
@@ -204,6 +213,9 @@ func (a *Admin) platformOperation(ctx context.Context, actor identity.Principal,
 			continue
 		}
 		if grant.Business != "" {
+			if business != nil && grant.Business != *business {
+				continue
+			}
 			if a.namespaceBusiness == nil {
 				continue
 			}

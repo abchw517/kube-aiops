@@ -26,7 +26,8 @@ type requestMetadataContextKey struct{}
 
 var fallbackRequestIDCounter atomic.Uint64
 
-func requestMetadataMiddleware(next http.Handler) http.Handler {
+// WithRequestMetadata validates and attaches request and correlation identifiers.
+func WithRequestMetadata(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get(RequestIDHeader))
 		if !validRequestMetadataID(requestID) {

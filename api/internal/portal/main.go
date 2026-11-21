@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis"
+	"github.com/abchw517/kube-aiops/api/internal/diagnosis/correlation"
+	"github.com/abchw517/kube-aiops/api/internal/diagnosis/incident"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 	"log/slog"
@@ -124,7 +126,7 @@ func Run() {
 				os.Exit(1)
 			}
 		}
-		wrap, err = configureIdentityHandler(ctx, &bundle, store, review, managed)
+		wrap, err = configureIdentityHandler(ctx, &bundle, store, review, managed, correlator)
 		if err != nil {
 			logger.Error("identity configuration invalid", "reason", "identity_config_invalid", "error", err)
 			os.Exit(1)
@@ -161,6 +163,9 @@ func Run() {
 		if err := managed.initLocal(ctx, backend); err != nil {
 			logger.Error("load local cluster configuration failed", "error", err)
 			os.Exit(1)
+		}
+		if managed.runDiagnostics != nil {
+			go managed.runDiagnostics(ctx)
 		}
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
@@ -212,7 +217,7 @@ func Run() {
 	logger.Info("kube-aiops-api stopped")
 }
 
-func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, store *identitystore.Store, review *diagnosis.Review, managed *onboarding) (func(http.Handler) http.Handler, error) {
+func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, store *identitystore.Store, review *diagnosis.Review, managed *onboarding, correlators ...correlation.Correlator) (func(http.Handler) http.Handler, error) {
 	if store == nil {
 		sessions, err := permissions.Configure(bundle)
 		if sessions == nil {
@@ -239,8 +244,29 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	if managed != nil {
 		wikis.SetTargetResolver(managed.wikiTarget)
 	}
+	var localEvidence correlation.Correlator
+	if len(correlators) > 0 {
+		localEvidence = correlators[0]
+	}
+	incidents, err := configureIncidents(ctx, store, admin, sessions, managed, localEvidence)
+	if err != nil {
+		return nil, err
+	}
+	if incidents != nil {
+		provider := func(i incident.Incident) *diagnosis.Review {
+			if i.Scope.ClusterID == "local" {
+				return review
+			}
+			return managed.review(i.Scope.ClusterID)
+		}
+		incidents.ModelAvailable = func(i incident.Incident) bool { return provider(i).Enabled() }
+		incidents.Model = func(ctx context.Context, i incident.Incident, prompt string, data []byte) (string, error) {
+			return provider(i).AnalyzeIncident(ctx, prompt, data)
+		}
+		managed.runDiagnostics = incidents.RunBackground
+	}
 	go wikis.RunSchedule(ctx)
 	return func(next http.Handler) http.Handler {
-		return sessions.Wrap(wrapAdmin(admin, wikis, sessions, next, review, managed))
+		return sessions.Wrap(wrapAdmin(admin, wikis, sessions, next, review, managed, incidents))
 	}, nil
 }

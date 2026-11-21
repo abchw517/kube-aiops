@@ -60,6 +60,11 @@ let authenticationRequired = false;
 let authenticated = false;
 const ldapReaderId = "ldap:cn=reader,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering," + "ou=regional-infrastructure,dc=example,dc=internal";
 let adminSession = false;
+let incidentMode = false;
+let incidentFixture;
+let rcaFixture;
+let datasourceFixture;
+let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
 const assignmentRoleIds = ["diagnosis-reader", "namespace-auditor", "system-admin"];
@@ -100,6 +105,15 @@ createServer(async (request, response) => {
     authenticated = false;
     response.writeHead(204).end();
     return;
+  }
+  if (url.pathname === "/test/incident-mode") {
+    incidentMode = true;
+    adminSession = authenticated = true;
+    response.writeHead(204).end();
+    return;
+  }
+  if (incidentMode && url.pathname.startsWith("/api/v1/diagnostics/")) {
+    return incidents(request, response, url);
   }
   if (url.pathname === "/test/audit-saves") return json(response, 200, auditSaves);
   if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
@@ -194,6 +208,9 @@ createServer(async (request, response) => {
   }
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
     admin: true, superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,
+    incidents: incidentMode, incidentCreate: incidentMode,
+    diagnosticDatasources: incidentMode, diagnosticDatasourceWrite: incidentMode, diagnosticDatasourceTest: incidentMode,
+    diagnosticPolicies: incidentMode, diagnosticPolicyWrite: incidentMode,
     findingAI: true, manageEnvironments: true, manageBusinessLines: true,
   });
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
@@ -439,12 +456,23 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/clusters") return json(response, 200, { items: clusters });
   if (url.pathname === "/api/v1/clusters/local/namespaces") return json(response, 200, { items: [{ name: "default" }, { name: "payments" }] });
   if (url.pathname === "/api/v1/clusters/test-k8s/namespaces") return json(response, 200, { items: [{ name: "sandbox" }] });
+  if (url.pathname === "/api/v1/clusters/restricted/namespaces" ||
+      (url.pathname.startsWith("/api/v1/findings") && url.searchParams.get("cluster") === "restricted")) {
+    return json(response, 403, { error: { code: "FORBIDDEN" } });
+  }
   if (url.pathname === "/api/v1/findings/summary") {
     const filtered = filterFindings(url);
     return json(response, 200, summarize(filtered));
   }
   if (url.pathname === "/api/v1/findings") {
-    return json(response, 200, { items: filterFindings(url), pagination: { limit: 50 } });
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const offset = Number(url.searchParams.get("continue") ?? "0");
+    const filtered = filterFindings(url);
+    const next = offset + limit;
+    return json(response, 200, {
+      items: filtered.slice(offset, next),
+      pagination: { limit, continue: next < filtered.length ? String(next) : undefined }
+    });
   }
   const correlationPath = url.pathname.match(/^\/api\/v1\/findings\/([^/]+)\/correlation$/);
   if (correlationPath) return correlationResponse(response, decodeURIComponent(correlationPath[1]), url.searchParams.get("cluster") ?? "local");
@@ -510,8 +538,10 @@ function filterFindings(url) {
     const severity = url.searchParams.get("severity");
     const namespace = url.searchParams.get("namespace");
     const kind = url.searchParams.get("kind");
+    const problem = url.searchParams.get("problem")?.toLowerCase();
     return instances.has(item.cluster) && (!severity || item.severity === severity) &&
-      (!namespace || item.namespace === namespace) && (!kind || item.resource.kind === kind);
+      (!namespace || item.namespace === namespace) && (!kind || item.resource.kind === kind) &&
+      (!problem || item.problem.toLowerCase().includes(problem));
   });
 }
 
@@ -523,6 +553,136 @@ function summarize(items) {
     summary.byNamespace[item.namespace] = (summary.byNamespace[item.namespace] ?? 0) + 1;
   }
   return summary;
+}
+
+async function incidents(request, response, url) {
+  const path = url.pathname.slice("/api/v1/diagnostics".length);
+  const method = request.method;
+  if (path === "/overview") {
+    return json(response, 200, { counts: { total: incidentFixture ? 1 : 0, active: incidentFixture ? 1 : 0 },
+      trend: { "2026-11-20": incidentFixture ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
+  }
+  if (path === "/incidents" && method === "GET") {
+    return json(response, 200, { items: incidentFixture ? [incidentFixture] : [], pagination: {}, coverage: "complete" });
+  }
+  if (path === "/incidents" && method === "POST") {
+    const body = await readIncidentBody(request);
+    if (!request.headers["idempotency-key"] || body.scope.clusterId !== "local" || body.scope.namespace !== "default") {
+      return json(response, 400, { error: { message: "invalid create payload" } });
+    }
+    incidentFixture = {
+      id: "fixture-p1", displayKey: "INC-2026-00001", title: body.title, description: body.description,
+      scope: { environmentId: "development", ...body.scope }, status: "pending", severity: body.severity, version: 1,
+      source: "manual", resourceId: "fixture-resource", resource: { kind: "Pod", name: "api-0" },
+      firstSeen: "2026-11-20T00:00:00Z", lastSeen: "2026-11-20T00:00:00Z",
+    };
+    return json(response, 201, incidentFixture);
+  }
+  if (!incidentFixture) return json(response, 404, { error: { message: "missing fixture" } });
+  const pathToIncident = "/incidents/fixture-p1";
+  if (path === pathToIncident && method === "GET") {
+    return json(response, 200, {
+      incident: incidentFixture, version: incidentFixture.version,
+      actions: { update: true, evidence: true, correlate: true, split: true,
+        topology: true, topologyWrite: true, rca: { read: true, run: true, cancel: true, save: true } },
+      counts: { evidence: incidentFixture.version >= 3 ? 1 : 0 },
+      coverage: incidentFixture.version >= 3 ? "partial" : "unavailable",
+    });
+  }
+  if (path === pathToIncident && method === "PATCH") {
+    const body = await readIncidentBody(request);
+    if (request.headers["if-match"] !== '"1"' || body.status !== "investigating") {
+      return json(response, 412, { error: { message: "invalid update" } });
+    }
+    incidentFixture.status = body.status;
+    incidentFixture.version = 2;
+    return json(response, 200, incidentFixture);
+  }
+  if (path.endsWith("/collect") && method === "POST") {
+    if (request.headers["if-match"] !== '"2"') return json(response, 412, { error: { message: "stale version" } });
+    incidentFixture.version = 3;
+    incidentFixture.sources = [
+      { source: "kubernetes-events", state: "available" },
+      { source: "prometheus", state: "available" },
+      { source: "alertmanager", state: "unavailable" },
+      { source: "victorialogs", state: "disabled" },
+    ];
+    return json(response, 200, incidentFixture);
+  }
+  if (path.endsWith("/timeline")) {
+    const items = [{ id: 1, at: incidentFixture.firstSeen, actor: "local:admin", kind: "created", after: "pending" }];
+    if (incidentFixture.version >= 2) items.unshift({ id: 2, at: incidentFixture.firstSeen, actor: "local:admin",
+      kind: "updated", before: "pending", after: "investigating", reason: "确认受影响" });
+    return json(response, 200, { items, pagination: {} });
+  }
+  const evidence = { id: "fixture-event", source: "kubernetes-events", kind: "event",
+    state: "observed", observedAt: incidentFixture.firstSeen, collectedAt: incidentFixture.firstSeen, summary: "探针连续失败" };
+  if (path === `${pathToIncident}/rca-runs`) {
+    if (method === "GET") return json(response, 200, { items: rcaFixture ? [rcaFixture] : [], pagination: {} });
+    const body = await readIncidentBody(request);
+    if (!request.headers["idempotency-key"] || !body.evidenceIds.includes(evidence.id)) return json(response, 400, {});
+    rcaFixture = {
+      id: "fixture-rca", incidentId: incidentFixture.id, state: "succeeded", version: 3, actor: "local:admin",
+      createdAt: incidentFixture.firstSeen, observation: body.observation, evidence: [evidence],
+      revisions: [{ version: 3, actor: "模型", at: incidentFixture.firstSeen,
+        conclusion: { state: "supported", judgment: "探针失败需要核查容器状态", references: [evidence.id], gaps: "确认重启次数", next: "查看容器状态" } }],
+    };
+    return json(response, 202, rcaFixture);
+  }
+  if (path === `${pathToIncident}/rca-runs/fixture-rca`) return json(response, 200, rcaFixture);
+  if (path === `${pathToIncident}/topology`) {
+    const rootID = "incident:fixture-p1";
+    const mine = { id: rootID, name: "api-0", kind: "Pod", platform: "kubernetes",
+      incidentId: incidentFixture.id, state: incidentFixture.status, scope: incidentFixture.scope };
+    const asset = { id: "asset:host-fixture", name: "业务主机 fixture", kind: "Host", platform: "zabbix",
+      scope: incidentFixture.scope };
+    return json(response, 200, { root: rootID, nodes: [mine, asset], coverage: "partial", truncated: false,
+      edges: [{ source: rootID, target: asset.id, relation: "runs_on", confidence: "confirmed",
+        reason: "部署记录核对", actor: "local:admin", recordedAt: incidentFixture.firstSeen }] });
+  }
+  if (path === "/datasources") {
+    if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
+    const body = await readIncidentBody(request);
+    if (!body.credentialRef || !body.config.assetIds.includes("10010")) return json(response, 400, {});
+    datasourceFixture = { id: "fixture-ds", name: body.name, scope: incidentFixture.scope, config: body.config,
+      version: 1, enabled: true, health: "untested", credentialConfigured: true, ingressConfigured: false };
+    return json(response, 201, datasourceFixture);
+  }
+  if (path === "/datasources/fixture-ds/test") {
+    if (request.headers["if-match"] !== '"1"') return json(response, 412, {});
+    datasourceFixture = { ...datasourceFixture, version: 2, health: "available", message: "已读取配置资产。",
+      checkedAt: incidentFixture.firstSeen, syncedAt: incidentFixture.firstSeen };
+    return json(response, 200, datasourceFixture);
+  }
+  if (path === "/datasources/fixture-ds/assets") {
+    return json(response, 200, { items: [{ id: "fixture-asset", name: "已同步主机", kind: "Host", state: "monitored",
+      observedAt: incidentFixture.firstSeen, externalId: "10010", datasourceId: "fixture-ds" }] });
+  }
+  if (path === "/policies") {
+    if (method === "GET") return json(response, 200, { items: policyFixture ? [policyFixture] : [], pagination: {} });
+    const body = await readIncidentBody(request);
+    if (!body.enabled || body.template !== "evidence_rca") return json(response, 400, {});
+    policyFixture = { ...body, id: "fixture-policy", scope: incidentFixture.scope, version: 1, automationAllowed: true,
+      effectiveAt: incidentFixture.firstSeen };
+    return json(response, 201, policyFixture);
+  }
+  if (path === "/policies/fixture-policy/runs") {
+    return json(response, 200, { items: [{ incidentId: incidentFixture.id, runId: "fixture-rca",
+      version: 1, state: "succeeded", queuedAt: incidentFixture.firstSeen }] });
+  }
+  if (path.endsWith("/evidence")) {
+    return json(response, 200, { items: incidentFixture.version >= 3 ? [evidence] : [], pagination: {} });
+  }
+  if (path.endsWith("/evidence/fixture-event")) {
+    return json(response, 200, { ...evidence, signal: { id: "fixture-event", name: "Unhealthy" } });
+  }
+  return json(response, 404, { error: { message: "unknown fixture route" } });
+}
+
+async function readIncidentBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 function json(response, status, body) {

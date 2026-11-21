@@ -328,3 +328,21 @@ func storeOperation(ctx context.Context, db auditExecutor, event operation, link
 func (a *Admin) RecordOperation(ctx context.Context, actor, action, risk, target string) {
 	_ = writeOperation(ctx, a.store, operation{Actor: actor, Action: action, Risk: risk, Target: target})
 }
+
+// RecordDiagnosticOperation stores an incident mutation atomically with its timeline.
+func RecordDiagnosticOperation(ctx context.Context, tx *sql.Tx, actor, action, target string) error {
+	label := map[string]string{
+		"created": "创建故障", "updated": "更新故障", "correlated": "采集故障证据",
+		"merged": "归并故障", "merged_into": "接收归并故障", "split": "拆分故障", "split_created": "创建拆分故障",
+		"topology_changed": "维护故障拓扑", "rca_queued": "启动根因分析", "rca_completed": "完成根因分析",
+		"rca_canceled": "取消根因分析", "rca_saved": "保存根因分析结论", "signal_received": "接收连接器信号",
+		"datasource_saved": "维护诊断数据源", "datasource_checked": "测试诊断数据源", "policy_saved": "维护诊断策略",
+	}[action]
+	return writeOperation(ctx, tx, operation{Actor: actor, Action: label, Risk: "中", Target: target})
+}
+
+func (a *Admin) OperationGroupExists(ctx context.Context, id string) (bool, error) {
+	state, err := a.platform(ctx)
+	_, found := state.Groups[id]
+	return found, err
+}
