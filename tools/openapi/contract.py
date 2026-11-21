@@ -14,7 +14,15 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = ROOT / "api" / "openapi.yaml"
-SERVER_PATH = ROOT / "api" / "internal" / "httpapi" / "server.go"
+SERVER_PATHS = [
+    ROOT / "api" / "internal" / "httpapi" / "server.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "http.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "rca_http.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "topology.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "datasource.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "policy.go",
+]
+INCIDENT_MODEL_PATH = ROOT / "api" / "internal" / "diagnosis" / "incident" / "model.go"
 GENERATED_PATH = ROOT / "web" / "src" / "api" / "generated.ts"
 FINDING_MODEL_PATH = ROOT / "api" / "internal" / "diagnosis" / "finding" / "model.go"
 KUBERNETES_MODEL_PATH = ROOT / "api" / "internal" / "kubernetes" / "client.go"
@@ -68,7 +76,7 @@ def validate_openapi(spec: dict[str, Any]) -> None:
 
 
 def extract_server_routes() -> set[tuple[str, str]]:
-    text = SERVER_PATH.read_text(encoding="utf-8")
+    text = "\n".join(path.read_text(encoding="utf-8") for path in SERVER_PATHS)
     return {
         (method, path)
         for method, path in re.findall(r'mux\.HandleFunc\("([A-Z]+) ([^"\\]+)"', text)
@@ -160,6 +168,16 @@ def validate_go_schema_projection(spec: dict[str, Any]) -> None:
         (FINDING_MODEL_PATH, "Page", "FindingPage"),
         (FINDING_MODEL_PATH, "Summary", "FindingSummary"),
         (IDENTITY_MODEL_PATH, "Principal", "Principal"),
+        (INCIDENT_MODEL_PATH, "Scope", "IncidentScope"),
+        (INCIDENT_MODEL_PATH, "Incident", "Incident"),
+        (INCIDENT_MODEL_PATH, "CreateRequest", "CreateIncidentInput"),
+        (INCIDENT_MODEL_PATH, "UpdateRequest", "UpdateIncidentInput"),
+        (INCIDENT_MODEL_PATH, "TimelineEntry", "IncidentTimelineEntry"),
+        (INCIDENT_MODEL_PATH, "Evidence", "IncidentEvidence"),
+        (INCIDENT_MODEL_PATH, "Actions", "IncidentActions"),
+        (INCIDENT_MODEL_PATH, "Detail", "IncidentDetail"),
+        (INCIDENT_MODEL_PATH, "MergeRequest", "MergeIncidentInput"),
+        (INCIDENT_MODEL_PATH, "SplitRequest", "SplitIncidentInput"),
     ]
     schemas = spec.get("components", {}).get("schemas", {})
     for path, struct_name, schema_name in mappings:
@@ -342,23 +360,31 @@ def render_operations(spec: dict[str, Any]) -> tuple[list[str], list[str]]:
         for method, operation in path_item.items():
             if method.lower() not in HTTP_METHODS or not isinstance(operation, dict):
                 continue
+            if operation.get("x-portal-client") is False:
+                continue
             operation_id = operation["operationId"]
             params = operation_parameters(spec, path_item, operation)
             params_name = f"{to_pascal(operation_id)}Params"
-            if params:
+            request_body = resolve_ref(spec, operation.get("requestBody", {}))
+            body_schema = request_body.get("content", {}).get("application/json", {}).get("schema")
+            has_input = bool(params or body_schema)
+            if has_input:
                 param_types.append(f"export interface {params_name} {{")
                 for parameter in params:
                     name = str(parameter["name"])
                     required = bool(parameter.get("required"))
                     optional = "" if required else "?"
                     param_types.append(f"  {json.dumps(name)}{optional}: {ts_type(parameter.get('schema', {}))};")
+                if body_schema:
+                    optional = "" if request_body.get("required") else "?"
+                    param_types.append(f'  "body"{optional}: {ts_type(body_schema)};')
                 param_types.append("}")
                 param_types.append("")
 
             response_schema = success_schema(spec, operation)
             return_type = ts_type(response_schema) if response_schema else "void"
-            required_params = any(bool(p.get("required")) for p in params)
-            if params:
+            required_params = any(bool(p.get("required")) for p in params) or bool(request_body.get("required"))
+            if has_input:
                 signature = f"params: {params_name}" if required_params else f"params: {params_name} = {{}}"
             else:
                 signature = ""
@@ -383,7 +409,21 @@ def render_operations(spec: dict[str, Any]) -> tuple[list[str], list[str]]:
                         methods.append(f"    if ({access} !== undefined) query.set({json.dumps(name)}, String({access}));")
                 methods.append("    const queryString = query.toString();")
                 methods.append("    if (queryString) path += `?${queryString}`;")
-            methods.append(f"    return this.request<{return_type}>(path);")
+            headers = [p for p in params if p.get("in") == "header"]
+            if method.upper() == "GET" and not headers and not body_schema:
+                methods.append(f"    return this.request<{return_type}>(path);")
+            else:
+                methods.append("    const headers: Record<string, string> = {};")
+                for parameter in headers:
+                    name = json.dumps(str(parameter["name"]))
+                    access = f"params[{name}]"
+                    assign = f"headers[{name}] = String({access});"
+                    methods.append("    " + (assign if parameter.get("required") else f"if ({access} !== undefined) {assign}"))
+                options = [f"method: {json.dumps(method.upper())}", "headers"]
+                if body_schema:
+                    methods.append('    headers["Content-Type"] = "application/json";')
+                    options.append("body: JSON.stringify(params.body)")
+                methods.append(f"    return this.request<{return_type}>(path, {{ {', '.join(options)} }});")
             methods.append("  }")
             methods.append("")
     return param_types, methods
@@ -421,10 +461,12 @@ def generate_typescript(spec: dict[str, Any]) -> str:
         "    this.fetchImpl = options.fetch ?? fetch;",
         "  }",
         "",
-        "  private async request<T>(path: string): Promise<T> {",
+        "  private async request<T>(path: string, init?: RequestInit): Promise<T> {",
+        "    const headers = new Headers(init?.headers);",
+        "    headers.set(\"Accept\", \"application/json\");",
         "    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {",
-        "      method: \"GET\",",
-        "      headers: { Accept: \"application/json\" },",
+        "      ...init,",
+        "      headers,",
         "    });",
         "    const body = await response.json().catch(() => undefined);",
         "    if (!response.ok) throw new ApiError(response.status, body);",

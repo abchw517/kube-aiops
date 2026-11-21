@@ -14,6 +14,7 @@ import { invalidateLDAPDraft, renderIdentityAdmin } from "./views/permissions/id
 import { parseAuditRoute, type AuditFilters } from "./views/permissions/audit-data.ts";
 import { bindAudit, loadAudit } from "./views/permissions/audit.ts";
 import { apiClient } from "./api/client.ts";
+import { diagnosticListPaths, diagnosticListView } from "./domain/diagnostic-routes.ts";
 import { renderPortalShell } from "./components/portal-shell.ts";
 import {
   authenticationRequiredState,
@@ -40,6 +41,11 @@ import {
   renderCorrelationSection,
 } from "./views/diagnosis/correlation.ts";
 import { bindFindingKnowledge, findingKnowledgePanel } from "./views/diagnosis/finding-knowledge.ts";
+import { bindIncidentWorkspace, incidentError, incidentEvents, incidentPrefix, loadIncidentWorkspace } from "./views/diagnosis/incident-list.ts";
+import { bindRcaPage, loadRcaPage } from "./views/diagnosis/incident-rca.ts";
+import { bindTopologyPage, loadTopologyPage } from "./views/diagnosis/incident-topology.ts";
+import { bindDatasourcesPage, bindPoliciesPage, datasourcesPath, loadDatasourcesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
+import { bindIncidentDetail, loadIncidentDetail } from "./views/diagnosis/incident-detail.ts";
 import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
 import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
 import { renderFindingWorkspace } from "./views/diagnosis/finding-list.ts";
@@ -61,6 +67,9 @@ export class PortalApp {
   private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
   private findingAI = false;
   private reviewAccess = false;
+  private incidentsAvailable = false;
+  private incidentCreate = false;
+  private diagnosticSettings = { datasources: false, datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
   private mustChangePassword = false;
   private canChangePassword = false;
   private superAdministrator = false;
@@ -104,6 +113,14 @@ export class PortalApp {
     this.root.addEventListener("change", (event) => void updateScopeOptions(event));
     this.root.addEventListener("change", updateLDAP);
     this.root.addEventListener("change", (event) => this.handleFilterChange(event));
+    this.root.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-diagnostic-search")) return;
+      event.preventDefault();
+      const filters = parseFindingFilters(window.location.hash);
+      filters.problem = String(new FormData(form).get("problem") ?? "");
+      this.navigateFindingFilters(filters);
+    });
     window.addEventListener("keydown", (event) => dismissSeverityHelp(event, this.root));
     if (!window.location.hash) window.location.hash = "#/findings";
     void this.route();
@@ -113,6 +130,9 @@ export class PortalApp {
     const generation = ++this.renderGeneration;
     this.findingAI = false;
     this.reviewAccess = false;
+    this.incidentsAvailable = false;
+    this.incidentCreate = false;
+    this.diagnosticSettings = { datasources: false, datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
     if (!demoMode) {
       try {
         const response = await fetch("/api/v1/admin/status");
@@ -131,6 +151,13 @@ export class PortalApp {
           "business-lines": status.manageBusinessLines === true,
         };
         this.findingAI = status.findingAI === true;
+        this.incidentsAvailable = status.incidents === true;
+        this.incidentCreate = status.incidentCreate === true;
+        this.diagnosticSettings = {
+          datasources: status.diagnosticDatasources === true, datasourceWrite: status.diagnosticDatasourceWrite === true,
+          datasourceTest: status.diagnosticDatasourceTest === true, policies: status.diagnosticPolicies === true,
+          policyWrite: status.diagnosticPolicyWrite === true,
+        };
         this.reviewAccess = status.reviewAccess === true || this.identityAdmin;
         this.mustChangePassword = status.mustChangePassword === true;
         this.canChangePassword = status.canChangePassword === true;
@@ -210,10 +237,33 @@ export class PortalApp {
       }
       return;
     }
-    const detailMatch = window.location.hash.match(/^#\/findings\/([^?]+)/);
+    const currentHash = window.location.hash;
+    const diagnosticPath = currentHash.split("?", 1)[0] ?? "";
+    if (diagnosticPath === datasourcesPath || diagnosticPath === policiesPath) {
+      await this.renderDiagnosticSettings(currentHash, generation, diagnosticPath === datasourcesPath);
+      return;
+    }
+    if (diagnosticPath.startsWith(incidentPrefix)) {
+      await this.renderIncidentPage(currentHash, generation, diagnosticPath.slice(incidentPrefix.length));
+      return;
+    }
+    const createFromFinding = diagnosticPath === incidentEvents && this.incidentCreate &&
+      new URLSearchParams(currentHash.split("?")[1]).get("create") === "1";
+    if ((this.incidentsAvailable || createFromFinding) && (diagnosticPath === "#/diagnostics" || diagnosticPath === incidentEvents)) {
+      await this.renderIncidentPage(currentHash, generation);
+      return;
+    }
+    const detailMatch = window.location.hash.match(/^#\/(?:findings|diagnostics\/events)\/([^?]+)/);
     const detailId = detailMatch?.[1];
     if (detailId) {
-      await this.renderDetail(decodeURIComponent(detailId), generation);
+      let id: string;
+      try {
+        id = decodeURIComponent(detailId);
+      } catch {
+        this.renderShell(errorState("诊断记录链接格式无效。"));
+        return;
+      }
+      await this.renderDetail(id, generation);
       return;
     }
     await this.renderList(generation);
@@ -263,8 +313,71 @@ export class PortalApp {
     this.root.querySelector<HTMLElement>("#login-heading")?.focus();
   }
 
+  private async renderDiagnosticSettings(hash: string, generation: number, datasources: boolean): Promise<void> {
+    this.renderShell(loadingState("正在读取诊断配置。"));
+    try {
+      const refresh = () => void this.route();
+      if (datasources) {
+        const page = await loadDatasourcesPage(hash, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
+        if (generation !== this.renderGeneration) return;
+        this.renderShell(page.html);
+        bindDatasourcesPage(this.root, page.items, refresh, this.incidentCreate);
+      } else {
+        const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);
+        if (generation !== this.renderGeneration) return;
+        this.renderShell(page.html);
+        bindPoliciesPage(this.root, page.items, refresh);
+      }
+    } catch (error) {
+      if (generation === this.renderGeneration) this.renderIncidentError(error);
+    }
+  }
+
+  private renderIncidentError(error: unknown): void {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) this.renderRequestError(error);
+    else this.renderShell(errorState(incidentError(error)));
+  }
+
+  private async renderIncidentPage(hash: string, generation: number, encodedID?: string): Promise<void> {
+    this.renderShell(loadingState("正在加载故障数据。"));
+    try {
+      if (encodedID !== undefined) {
+        const [segment, tab] = encodedID.split("/");
+        if (!segment) throw new Error("故障 ID 无效。");
+        const id = decodeURIComponent(segment);
+        if (tab === "rca") {
+          const page = await loadRcaPage(id, hash);
+          if (generation !== this.renderGeneration) return;
+          this.renderShell(page.html);
+          bindRcaPage(this.root, id, hash, page);
+          return;
+        }
+        if (tab === "topology") {
+          const page = await loadTopologyPage(id, hash);
+          if (generation !== this.renderGeneration) return;
+          this.renderShell(page.html);
+          bindTopologyPage(this.root, id, hash, page.graph, () => void this.route());
+          return;
+        }
+        const { html, detail } = await loadIncidentDetail(id, hash);
+        if (generation !== this.renderGeneration) return;
+        this.renderShell(html);
+        bindIncidentDetail(this.root, detail, hash, () => void this.route());
+      } else {
+        const html = await loadIncidentWorkspace(hash, diagnosticListView(hash) === "overview", this.incidentCreate, this.incidentsAvailable);
+        if (generation !== this.renderGeneration) return;
+        this.renderShell(html);
+        bindIncidentWorkspace(this.root, hash);
+      }
+    } catch (error) {
+      if (generation === this.renderGeneration) this.renderIncidentError(error);
+    }
+  }
+
   private async renderList(generation: number): Promise<void> {
-    const filters = parseFindingFilters(window.location.hash);
+    const hash = window.location.hash;
+    const filters = parseFindingFilters(hash);
+    const view = diagnosticListView(hash);
     this.renderShell(loadingState("正在加载筛选选项和诊断结果。"));
 
     try {
@@ -275,9 +388,9 @@ export class PortalApp {
         this.renderShell(authorizationDeniedState());
         return;
       }
-      const cursor = this.pageCursor();
+      const cursor = view === "overview" ? undefined : new URLSearchParams(hash.split("?")[1]).get("continue") ?? undefined;
       const [page, summary, namespaces] = await Promise.all([
-        apiClient.listFindings({ ...toListParams(filters), continue: cursor }),
+        apiClient.listFindings(view === "overview" ? { ...toListParams(filters), limit: 5 } : { ...toListParams(filters), continue: cursor }),
         apiClient.summarizeFindings(toSummaryParams(filters)),
         this.loadFindingNamespaces(clusters, filters),
       ]);
@@ -299,16 +412,13 @@ export class PortalApp {
         summary,
         knownKinds: [...this.knownKinds],
         cursor,
+        view,
       }));
       bindSeverityHelp(this.root);
     } catch (error) {
       if (generation !== this.renderGeneration) return;
       this.renderRequestError(error);
     }
-  }
-
-  private pageCursor(): string | undefined {
-    return new URLSearchParams(window.location.hash.split("?")[1]).get("continue") ?? undefined;
   }
 
   private async renderDetail(id: string, generation: number): Promise<void> {
@@ -319,8 +429,11 @@ export class PortalApp {
       const reviewEnabled = finding.cluster === "local" ? this.findingAI :
         this.reviewAccess && (await this.loadClusters().catch(() => [])).some((instance) => instance.id === finding.cluster && instance.reviewEnabled);
       if (generation !== this.renderGeneration) return;
-      const returnQuery = new URLSearchParams(window.location.hash.split("?")[1]).get("return");
-      this.renderShell(renderFindingDetail(finding, reviewEnabled, returnQuery) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
+      const hash = window.location.hash;
+      const params = new URLSearchParams(hash.split("?")[1]);
+      const view = diagnosticListView(hash);
+      const returnView = view === "events" && params.get("from") === "overview" ? "overview" : view;
+      this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
@@ -379,7 +492,7 @@ export class PortalApp {
   private renderShell(content: string, signedOut = false): void {
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
-      active.closest(".topbar, .workspace-nav, .skip-link") ? active : null;
+      active.closest(".topbar, .workspace-nav, .diagnostic-nav, .skip-link") ? active : null;
     const mainFocused = active instanceof HTMLElement && active.id === "portal-content" && this.root.contains(active);
     this.root.innerHTML = renderPortalShell(content, {
       hash: window.location.hash,
@@ -390,10 +503,12 @@ export class PortalApp {
       canChangePassword: this.canChangePassword,
       showLogout: this.showLogout,
       signedOut,
+      diagnosticDatasources: this.diagnosticSettings.datasources,
+      diagnosticPolicies: this.diagnosticSettings.policies,
     });
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     if (activeLink) {
-      const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .workspace-nav a, .skip-link"));
+      const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .workspace-nav a, .diagnostic-nav a, .skip-link"));
       links.find((link) => link.className === activeLink.className && link.href === activeLink.href)
         ?.focus({ preventScroll: true });
     }
@@ -416,7 +531,7 @@ export class PortalApp {
     }
     if (action === "clear-filters") {
       const { cluster, environment, business, group } = parseFindingFilters(window.location.hash);
-      window.location.hash = `#/findings?${serializeFindingFilters({ cluster, environment, business, group })}`;
+      this.navigateFindingFilters({ cluster, environment, business, group });
     }
   }
 
@@ -435,7 +550,7 @@ export class PortalApp {
     const scopeKey = [...scopeDimensions, "cluster" as const].find((key) => key === target.dataset.filter);
     if (scopeKey) {
       const next = changeFindingScope(this.clusters ?? [], filters, scopeKey, value);
-      window.location.hash = `#/findings?${serializeFindingFilters(next)}`;
+      this.navigateFindingFilters(next);
       return;
     }
     switch (target.dataset.filter) {
@@ -452,7 +567,12 @@ export class PortalApp {
         return;
     }
 
-    window.location.hash = `#/findings?${serializeFindingFilters(filters)}`;
+    this.navigateFindingFilters(filters);
+  }
+
+  private navigateFindingFilters(filters: FindingFilters): void {
+    const view = diagnosticListView(window.location.hash);
+    window.location.hash = `${diagnosticListPaths[view]}?${serializeFindingFilters(filters)}`;
   }
 
   private async login(event: Event): Promise<void> {

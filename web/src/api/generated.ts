@@ -1,5 +1,337 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: fcc1e7e3 de059255 2190905b 3bae2e6f 613dfeea faab7ebe 0885ec66 87626c45
+// Contract source SHA-256 groups: 365a3240 10d9c371 18b96872 0a5d9b47 5f3ed1fc 68768475 ceaa08a5 99b788f2
+
+export interface RCAInput {
+  "observation"?: string;
+  "evidenceIds"?: Array<string>;
+}
+
+export interface RCAConclusion {
+  "state": string;
+  "judgment": string;
+  "references": Array<string>;
+  "gaps": string;
+  "next": string;
+}
+
+export interface RCARevision {
+  "version": number;
+  "actor": string;
+  "at": string;
+  "conclusion": RCAConclusion;
+}
+
+export interface RCATask {
+  "id": string;
+  "incidentId": string;
+  "state": "queued" | "running" | "succeeded" | "failed" | "timed_out" | "canceled";
+  "observation"?: string;
+  "evidence": Array<IncidentEvidence>;
+  "actor": string;
+  "version": number;
+  "createdAt": string;
+  "startedAt"?: string;
+  "finishedAt"?: string;
+  "errorCode"?: string;
+  "revisions": Array<RCARevision>;
+  "policyId"?: string;
+  "policyVersion"?: number;
+}
+
+export interface RCATaskPage {
+  "items": Array<RCATask>;
+  "pagination": IncidentPagination;
+}
+
+export interface TopologyNode {
+  "id": string;
+  "name": string;
+  "kind": string;
+  "scope": IncidentScope;
+  "resourceId": string;
+  "incidentId"?: string;
+  "state"?: string;
+  "platform": string;
+}
+
+export interface TopologyLink {
+  "source": string;
+  "target": string;
+  "relation": string;
+  "confidence": string;
+  "reason": string;
+  "actor": string;
+  "recordedAt": string;
+  "evidenceId"?: string;
+}
+
+export interface IncidentTopology {
+  "root": string;
+  "nodes": Array<TopologyNode>;
+  "edges": Array<TopologyLink>;
+  "coverage": string;
+  "truncated": boolean;
+}
+
+export interface TopologyInput {
+  "targetIncidentId"?: string;
+  "targetAssetId"?: string;
+  "relation": string;
+  "reason": string;
+  "confidence"?: string;
+  "evidenceId"?: string;
+  "remove"?: boolean;
+}
+
+export interface DatasourceConfig {
+  "kind": "zabbix" | "aliyun-ecs" | "tencent-cvm";
+  "endpoint"?: string;
+  "region"?: string;
+  "assetIds": Array<string>;
+}
+
+export interface DatasourceInput {
+  "name": string;
+  "scope": CreateIncidentScope;
+  "config": DatasourceConfig;
+  "enabled": boolean;
+  "credentialRef"?: string;
+  "ingressRef"?: string;
+}
+
+export interface DiagnosticDatasource {
+  "id": string;
+  "name": string;
+  "scope": IncidentScope;
+  "config": DatasourceConfig;
+  "enabled": boolean;
+  "version": number;
+  "health": string;
+  "message"?: string;
+  "checkedAt"?: string;
+  "syncedAt"?: string;
+  "credentialConfigured": boolean;
+  "ingressConfigured": boolean;
+}
+
+export interface DatasourcePage {
+  "items": Array<DiagnosticDatasource>;
+  "pagination": IncidentPagination;
+}
+
+export interface DiagnosticAsset {
+  "id": string;
+  "datasourceId": string;
+  "externalId": string;
+  "name": string;
+  "kind": string;
+  "state": string;
+  "region"?: string;
+  "observedAt": string;
+}
+
+export interface DiagnosticAssets {
+  "items": Array<DiagnosticAsset>;
+}
+
+export interface IngressInput {
+  "incidentId": string;
+  "assetId": string;
+  "externalId": string;
+  "state": string;
+  "observedAt": string;
+  "summary": string;
+}
+
+export interface PolicyInput {
+  "name": string;
+  "scope": CreateIncidentScope;
+  "enabled": boolean;
+  "severity"?: string;
+  "source": string;
+  "template": string;
+  "cooldownSeconds": number;
+  "maxConcurrent": number;
+}
+
+export interface DiagnosticPolicy {
+  "name": string;
+  "scope": IncidentScope;
+  "enabled": boolean;
+  "severity"?: string;
+  "source": string;
+  "template": string;
+  "cooldownSeconds": number;
+  "maxConcurrent": number;
+  "id": string;
+  "version": number;
+  "effectiveAt": string;
+  "automationAllowed": boolean;
+}
+
+export interface PolicyPage {
+  "items": Array<DiagnosticPolicy>;
+  "pagination": IncidentPagination;
+}
+
+export interface PolicyExecution {
+  "incidentId": string;
+  "runId": string;
+  "version": number;
+  "state": string;
+  "queuedAt": string;
+}
+
+export interface PolicyExecutions {
+  "items": Array<PolicyExecution>;
+}
+
+export interface IncidentScope {
+  "environmentId": string;
+  "businessId"?: string;
+  "clusterId": string;
+  "namespace": string;
+}
+
+export interface CreateIncidentScope {
+  "environmentId"?: string;
+  "businessId"?: string;
+  "clusterId": string;
+  "namespace": string;
+}
+
+export type IncidentStatus = "pending" | "investigating" | "recovered" | "closed";
+
+export type IncidentSeverity = "P1" | "P2" | "P3";
+
+export interface Incident {
+  "id": string;
+  "displayKey": string;
+  "scope": IncidentScope;
+  "title": string;
+  "description"?: string;
+  "resource": ResourceRef;
+  "resourceId": string;
+  "findingId"?: string;
+  "severity": IncidentSeverity;
+  "status": IncidentStatus;
+  "ownerGroupId"?: string;
+  "source": string;
+  "version": number;
+  "firstSeen": string;
+  "lastSeen": string;
+  "createdAt": string;
+  "updatedAt": string;
+  "mergedInto"?: string;
+  "sources"?: Array<SourceStatus>;
+}
+
+export interface CreateIncidentInput {
+  "title": string;
+  "description"?: string;
+  "scope": CreateIncidentScope;
+  "severity": IncidentSeverity;
+  "findingId"?: string;
+  "resource"?: ResourceRef;
+  "resourceId"?: string;
+  "assetId"?: string;
+}
+
+export interface UpdateIncidentInput {
+  "status"?: IncidentStatus;
+  "severity"?: IncidentSeverity;
+  "ownerGroupId"?: string;
+  "reason": string;
+}
+
+export interface IncidentActions {
+  "update": boolean;
+  "correlate": boolean;
+  "split": boolean;
+  "evidence": boolean;
+  "rca"?: Record<string, boolean>;
+  "topology"?: boolean;
+  "topologyWrite"?: boolean;
+}
+
+export interface IncidentDetail {
+  "incident": Incident;
+  "actions": IncidentActions;
+  "version": number;
+  "counts"?: Record<string, number>;
+  "coverage": string;
+  "candidates"?: Array<Incident>;
+}
+
+export interface IncidentTimelineEntry {
+  "id": number;
+  "at": string;
+  "actor": string;
+  "kind": string;
+  "reason"?: string;
+  "before"?: string;
+  "after"?: string;
+}
+
+export interface IncidentEvidence {
+  "id": string;
+  "source": string;
+  "kind": string;
+  "observedAt": string;
+  "collectedAt": string;
+  "state": string;
+  "summary"?: string;
+}
+
+export interface IncidentEvidenceDetail {
+  "id": string;
+  "source": string;
+  "kind": string;
+  "observedAt": string;
+  "collectedAt": string;
+  "state": string;
+  "summary"?: string;
+  "signal": Record<string, unknown>;
+}
+
+export interface IncidentPagination {
+  "continue"?: string;
+}
+
+export interface IncidentList {
+  "items": Array<Incident>;
+  "pagination": IncidentPagination;
+  "coverage": string;
+}
+
+export interface IncidentTimelinePage {
+  "items": Array<IncidentTimelineEntry>;
+  "pagination": IncidentPagination;
+}
+
+export interface IncidentEvidencePage {
+  "items": Array<IncidentEvidence>;
+  "pagination": IncidentPagination;
+}
+
+export interface IncidentOverview {
+  "counts": Record<string, number>;
+  "trend": Record<string, number>;
+  "byPlatform": Record<string, number>;
+  "coverage": string;
+}
+
+export interface MergeIncidentInput {
+  "sourceId": string;
+  "sourceVersion": number;
+  "reason": string;
+}
+
+export interface SplitIncidentInput {
+  "evidenceIds": Array<string>;
+  "title": string;
+  "reason": string;
+}
 
 export interface StatusResponse {
   "status": string;
@@ -207,6 +539,167 @@ export interface GetFindingCorrelationParams {
   "cluster"?: string;
 }
 
+export interface GetIncidentOverviewParams {
+  "environmentId"?: string;
+  "businessId"?: string;
+  "clusterId"?: string;
+  "platform"?: string;
+  "namespace"?: string;
+  "severity"?: IncidentSeverity;
+  "status"?: IncidentStatus;
+  "source"?: string;
+  "q"?: string;
+  "from"?: string;
+  "to"?: string;
+}
+
+export interface ListIncidentsParams {
+  "environmentId"?: string;
+  "businessId"?: string;
+  "clusterId"?: string;
+  "platform"?: string;
+  "namespace"?: string;
+  "severity"?: IncidentSeverity;
+  "status"?: IncidentStatus;
+  "source"?: string;
+  "q"?: string;
+  "from"?: string;
+  "to"?: string;
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface CreateIncidentParams {
+  "Idempotency-Key": string;
+  "body": CreateIncidentInput;
+}
+
+export interface GetIncidentParams {
+  "id": string;
+}
+
+export interface UpdateIncidentParams {
+  "id": string;
+  "If-Match": string;
+  "body": UpdateIncidentInput;
+}
+
+export interface ListIncidentTimelineParams {
+  "id": string;
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface ListIncidentEvidenceParams {
+  "id": string;
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface GetIncidentEvidenceParams {
+  "id": string;
+  "evidenceId": string;
+}
+
+export interface CollectIncidentEvidenceParams {
+  "id": string;
+  "If-Match": string;
+}
+
+export interface MergeIncidentsParams {
+  "id": string;
+  "If-Match": string;
+  "body": MergeIncidentInput;
+}
+
+export interface SplitIncidentParams {
+  "id": string;
+  "If-Match": string;
+  "body": SplitIncidentInput;
+}
+
+export interface ListRcaRunsParams {
+  "id": string;
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface StartRcaRunParams {
+  "id": string;
+  "Idempotency-Key": string;
+  "body": RCAInput;
+}
+
+export interface GetRcaRunParams {
+  "id": string;
+  "runId": string;
+}
+
+export interface CancelRcaRunParams {
+  "id": string;
+  "runId": string;
+}
+
+export interface SaveRcaConclusionParams {
+  "id": string;
+  "runId": string;
+  "If-Match": string;
+  "body": RCAConclusion;
+}
+
+export interface GetIncidentTopologyParams {
+  "id": string;
+  "depth"?: number;
+}
+
+export interface SaveTopologyLinkParams {
+  "id": string;
+  "body": TopologyInput;
+}
+
+export interface ListDiagnosticDatasourcesParams {
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface CreateDiagnosticDatasourceParams {
+  "body": DatasourceInput;
+}
+
+export interface UpdateDiagnosticDatasourceParams {
+  "datasourceId": string;
+  "If-Match": string;
+  "body": DatasourceInput;
+}
+
+export interface TestDiagnosticDatasourceParams {
+  "datasourceId": string;
+  "If-Match": string;
+}
+
+export interface ListDiagnosticAssetsParams {
+  "datasourceId": string;
+}
+
+export interface ListDiagnosticPoliciesParams {
+  "limit"?: number;
+  "continue"?: string;
+}
+
+export interface CreateDiagnosticPolicyParams {
+  "body": PolicyInput;
+}
+
+export interface UpdateDiagnosticPolicyParams {
+  "policyId": string;
+  "If-Match": string;
+  "body": PolicyInput;
+}
+
+export interface ListDiagnosticPolicyRunsParams {
+  "policyId": string;
+}
+
 export interface ApiClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
@@ -228,10 +721,12 @@ export class KubeAIOpsApiClient {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  private async request<T>(path: string): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const headers = new Headers(init?.headers);
+    headers.set("Accept", "application/json");
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      ...init,
+      headers,
     });
     const body = await response.json().catch(() => undefined);
     if (!response.ok) throw new ApiError(response.status, body);
@@ -313,6 +808,235 @@ export class KubeAIOpsApiClient {
     const queryString = query.toString();
     if (queryString) path += `?${queryString}`;
     return this.request<CorrelationBundle>(path);
+  }
+
+  async getIncidentOverview(params: GetIncidentOverviewParams = {}): Promise<IncidentOverview> {
+    let path = `/api/v1/diagnostics/overview`;
+    const query = new URLSearchParams();
+    if (params["environmentId"] !== undefined) query.set("environmentId", String(params["environmentId"]));
+    if (params["businessId"] !== undefined) query.set("businessId", String(params["businessId"]));
+    if (params["clusterId"] !== undefined) query.set("clusterId", String(params["clusterId"]));
+    if (params["platform"] !== undefined) query.set("platform", String(params["platform"]));
+    if (params["namespace"] !== undefined) query.set("namespace", String(params["namespace"]));
+    if (params["severity"] !== undefined) query.set("severity", String(params["severity"]));
+    if (params["status"] !== undefined) query.set("status", String(params["status"]));
+    if (params["source"] !== undefined) query.set("source", String(params["source"]));
+    if (params["q"] !== undefined) query.set("q", String(params["q"]));
+    if (params["from"] !== undefined) query.set("from", String(params["from"]));
+    if (params["to"] !== undefined) query.set("to", String(params["to"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<IncidentOverview>(path);
+  }
+
+  async listIncidents(params: ListIncidentsParams = {}): Promise<IncidentList> {
+    let path = `/api/v1/diagnostics/incidents`;
+    const query = new URLSearchParams();
+    if (params["environmentId"] !== undefined) query.set("environmentId", String(params["environmentId"]));
+    if (params["businessId"] !== undefined) query.set("businessId", String(params["businessId"]));
+    if (params["clusterId"] !== undefined) query.set("clusterId", String(params["clusterId"]));
+    if (params["platform"] !== undefined) query.set("platform", String(params["platform"]));
+    if (params["namespace"] !== undefined) query.set("namespace", String(params["namespace"]));
+    if (params["severity"] !== undefined) query.set("severity", String(params["severity"]));
+    if (params["status"] !== undefined) query.set("status", String(params["status"]));
+    if (params["source"] !== undefined) query.set("source", String(params["source"]));
+    if (params["q"] !== undefined) query.set("q", String(params["q"]));
+    if (params["from"] !== undefined) query.set("from", String(params["from"]));
+    if (params["to"] !== undefined) query.set("to", String(params["to"]));
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<IncidentList>(path);
+  }
+
+  async createIncident(params: CreateIncidentParams): Promise<Incident> {
+    let path = `/api/v1/diagnostics/incidents`;
+    const headers: Record<string, string> = {};
+    headers["Idempotency-Key"] = String(params["Idempotency-Key"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<Incident>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async getIncident(params: GetIncidentParams): Promise<IncidentDetail> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}`;
+    return this.request<IncidentDetail>(path);
+  }
+
+  async updateIncident(params: UpdateIncidentParams): Promise<Incident> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<Incident>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async listIncidentTimeline(params: ListIncidentTimelineParams): Promise<IncidentTimelinePage> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/timeline`;
+    const query = new URLSearchParams();
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<IncidentTimelinePage>(path);
+  }
+
+  async listIncidentEvidence(params: ListIncidentEvidenceParams): Promise<IncidentEvidencePage> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/evidence`;
+    const query = new URLSearchParams();
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<IncidentEvidencePage>(path);
+  }
+
+  async getIncidentEvidence(params: GetIncidentEvidenceParams): Promise<IncidentEvidenceDetail> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/evidence/${encodeURIComponent(String(params["evidenceId"]))}`;
+    return this.request<IncidentEvidenceDetail>(path);
+  }
+
+  async collectIncidentEvidence(params: CollectIncidentEvidenceParams): Promise<Incident> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/collect`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    return this.request<Incident>(path, { method: "POST", headers });
+  }
+
+  async mergeIncidents(params: MergeIncidentsParams): Promise<Incident> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/merge`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<Incident>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async splitIncident(params: SplitIncidentParams): Promise<Incident> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/split`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<Incident>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async listRcaRuns(params: ListRcaRunsParams): Promise<RCATaskPage> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/rca-runs`;
+    const query = new URLSearchParams();
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<RCATaskPage>(path);
+  }
+
+  async startRcaRun(params: StartRcaRunParams): Promise<RCATask> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/rca-runs`;
+    const headers: Record<string, string> = {};
+    headers["Idempotency-Key"] = String(params["Idempotency-Key"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<RCATask>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async getRcaRun(params: GetRcaRunParams): Promise<RCATask> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/rca-runs/${encodeURIComponent(String(params["runId"]))}`;
+    return this.request<RCATask>(path);
+  }
+
+  async cancelRcaRun(params: CancelRcaRunParams): Promise<void> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/rca-runs/${encodeURIComponent(String(params["runId"]))}/cancel`;
+    const headers: Record<string, string> = {};
+    return this.request<void>(path, { method: "POST", headers });
+  }
+
+  async saveRcaConclusion(params: SaveRcaConclusionParams): Promise<RCARevision> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/rca-runs/${encodeURIComponent(String(params["runId"]))}/conclusion`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<RCARevision>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async getIncidentTopology(params: GetIncidentTopologyParams): Promise<IncidentTopology> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/topology`;
+    const query = new URLSearchParams();
+    if (params["depth"] !== undefined) query.set("depth", String(params["depth"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<IncidentTopology>(path);
+  }
+
+  async saveTopologyLink(params: SaveTopologyLinkParams): Promise<void> {
+    let path = `/api/v1/diagnostics/incidents/${encodeURIComponent(String(params["id"]))}/topology/links`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<void>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async listDiagnosticDatasources(params: ListDiagnosticDatasourcesParams = {}): Promise<DatasourcePage> {
+    let path = `/api/v1/diagnostics/datasources`;
+    const query = new URLSearchParams();
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<DatasourcePage>(path);
+  }
+
+  async createDiagnosticDatasource(params: CreateDiagnosticDatasourceParams): Promise<DiagnosticDatasource> {
+    let path = `/api/v1/diagnostics/datasources`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<DiagnosticDatasource>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async updateDiagnosticDatasource(params: UpdateDiagnosticDatasourceParams): Promise<DiagnosticDatasource> {
+    let path = `/api/v1/diagnostics/datasources/${encodeURIComponent(String(params["datasourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<DiagnosticDatasource>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async testDiagnosticDatasource(params: TestDiagnosticDatasourceParams): Promise<DiagnosticDatasource> {
+    let path = `/api/v1/diagnostics/datasources/${encodeURIComponent(String(params["datasourceId"]))}/test`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    return this.request<DiagnosticDatasource>(path, { method: "POST", headers });
+  }
+
+  async listDiagnosticAssets(params: ListDiagnosticAssetsParams): Promise<DiagnosticAssets> {
+    let path = `/api/v1/diagnostics/datasources/${encodeURIComponent(String(params["datasourceId"]))}/assets`;
+    return this.request<DiagnosticAssets>(path);
+  }
+
+  async listDiagnosticPolicies(params: ListDiagnosticPoliciesParams = {}): Promise<PolicyPage> {
+    let path = `/api/v1/diagnostics/policies`;
+    const query = new URLSearchParams();
+    if (params["limit"] !== undefined) query.set("limit", String(params["limit"]));
+    if (params["continue"] !== undefined) query.set("continue", String(params["continue"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<PolicyPage>(path);
+  }
+
+  async createDiagnosticPolicy(params: CreateDiagnosticPolicyParams): Promise<DiagnosticPolicy> {
+    let path = `/api/v1/diagnostics/policies`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<DiagnosticPolicy>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async updateDiagnosticPolicy(params: UpdateDiagnosticPolicyParams): Promise<DiagnosticPolicy> {
+    let path = `/api/v1/diagnostics/policies/${encodeURIComponent(String(params["policyId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<DiagnosticPolicy>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async listDiagnosticPolicyRuns(params: ListDiagnosticPolicyRunsParams): Promise<PolicyExecutions> {
+    let path = `/api/v1/diagnostics/policies/${encodeURIComponent(String(params["policyId"]))}/runs`;
+    return this.request<PolicyExecutions>(path);
   }
 
 }

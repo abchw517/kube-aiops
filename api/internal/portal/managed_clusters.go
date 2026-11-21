@@ -53,10 +53,11 @@ type managedCluster struct {
 }
 
 type onboarding struct {
-	store    *identitystore.Store
-	registry *httpapi.ClusterBackends
-	mu       sync.Mutex
-	local    *kubernetes.Client
+	runDiagnostics func(context.Context)
+	store          *identitystore.Store
+	registry       *httpapi.ClusterBackends
+	mu             sync.Mutex
+	local          *kubernetes.Client
 }
 
 func newOnboarding(store *identitystore.Store, registry *httpapi.ClusterBackends) (*onboarding, error) {

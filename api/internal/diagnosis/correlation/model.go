@@ -71,6 +71,8 @@ type SourceStatus struct {
 }
 
 type CorrelationSignal struct {
+	// Occurrence identifies a provider observation across clipped display windows.
+	Occurrence  string               `json:"-"`
 	ID          string               `json:"id"`
 	Source      CorrelationSource    `json:"source"`
 	Type        SignalType           `json:"type"`

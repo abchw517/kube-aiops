@@ -13,7 +13,7 @@ import {
 test("parses supported Finding filters and rejects unknown severity", () => {
   assert.deepEqual(
     parseFindingFilters("#/findings?cluster=local&namespace=prod&kind=Pod&severity=critical"),
-    { cluster: "local", environment: undefined, business: undefined, group: undefined, namespace: "prod", kind: "Pod", severity: "critical" },
+    { cluster: "local", environment: undefined, business: undefined, group: undefined, namespace: "prod", kind: "Pod", severity: "critical", problem: undefined },
   );
   assert.equal(parseFindingFilters("#/findings?severity=unknown").severity, undefined);
 });

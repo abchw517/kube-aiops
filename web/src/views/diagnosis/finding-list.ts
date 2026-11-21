@@ -15,6 +15,7 @@ import {
   scopeValue,
   serializeFindingFilters,
 } from "../../domain/filters.ts";
+import { diagnosticDetailLink, diagnosticListPaths, type DiagnosticListView } from "../../domain/diagnostic-routes.ts";
 import { renderSeverityHelp } from "./severity-help.ts";
 
 interface FindingWorkspace {
@@ -25,30 +26,48 @@ interface FindingWorkspace {
   page: FindingPage;
   summary: FindingSummary;
   cursor?: string;
+  view?: DiagnosticListView;
 }
 
 /** 组织诊断列表、筛选、汇总和沿用当前筛选条件的分页链接。 */
 export function renderFindingWorkspace(workspace: FindingWorkspace): string {
-  const { clusters, namespaces, knownKinds, filters, page, summary, cursor } = workspace;
+  const { clusters, namespaces, knownKinds, filters, page, summary, cursor, view = "findings" } = workspace;
   const query = serializeFindingFilters(filters);
-  const nextCursor = page.pagination.continue;
+  const listPath = diagnosticListPaths[view];
+  const nextCursor = view === "overview" ? undefined : page.pagination.continue;
   const nextQuery = new URLSearchParams(query);
   if (nextCursor) nextQuery.set("continue", nextCursor);
   const returnQuery = new URLSearchParams(query);
   if (cursor) returnQuery.set("continue", cursor);
+  const heading = view === "overview" ? "最近诊断结果" :
+    `共 ${summary.total} 条${view === "events" ? "故障信号" : "诊断结果"}${page.items.length !== summary.total ? `，本页 ${page.items.length} 条` : ""}`;
   return `
+    ${view === "overview" ? `<div class="diagnostic-toolbar">
+      <p>按当前授权范围汇总 K8sGPT 诊断结果。</p>
+      <a class="button" href="${diagnosticListPaths.events}?${escapeHtml(query)}">查看故障事件</a>
+    </div>` : ""}
+    ${view === "events" ? '<p class="diagnostic-source-note">当前来源为 K8sGPT。每行对应一条 Finding 信号。</p>' : ""}
     ${renderFilters(clusters, namespaces, knownKinds, filters)}
+    ${view === "events" ? renderProblemSearch(filters.problem) : ""}
     ${renderSummary(summary)}
-    <div class="finding-workspace">
+    <div class="finding-workspace${view === "events" ? " diagnostic-event-workspace" : ""}">
       <div class="finding-results">
-        ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, summary.total, clusters, returnQuery.toString())}
+        ${page.items.length === 0 ? emptyState() : renderFindingTable(page.items, heading, clusters, returnQuery.toString(), view)}
         ${cursor || nextCursor ? `<nav class="pagination" aria-label="诊断结果分页">
-          ${cursor ? `<a class="button secondary" href="#/findings?${escapeHtml(query)}">返回首页</a>` : ""}
-          ${nextCursor ? `<a class="button" href="#/findings?${escapeHtml(nextQuery.toString())}">下一页</a>` : ""}
+          ${cursor ? `<a class="button secondary" href="${listPath}?${escapeHtml(query)}">返回首页</a>` : ""}
+          ${nextCursor ? `<a class="button" href="${listPath}?${escapeHtml(nextQuery.toString())}">下一页</a>` : ""}
         </nav>` : ""}
       </div>
-      ${renderSummaryBreakdown(summary)}
+      ${view === "events" ? "" : renderSummaryBreakdown(summary)}
     </div>`;
+}
+
+function renderProblemSearch(problem?: string): string {
+  return `<form class="diagnostic-search" data-diagnostic-search role="search" aria-label="搜索故障信号">
+    <label for="diagnostic-problem">问题关键词</label>
+    <input id="diagnostic-problem" name="problem" type="search" maxlength="256" value="${escapeHtml(problem)}">
+    <button class="button secondary" type="submit">搜索</button>
+  </form>`;
 }
 
 /** 将集群范围和结果条件分组，沿用原有筛选控件。 */
@@ -107,13 +126,13 @@ function renderSummaryBreakdown(summary: FindingSummary): string {
 }
 
 /** 渲染可通过键盘横向滚动的诊断结果表格。 */
-function renderFindingTable(findings: Finding[], total: number, clusters: Cluster[], returnQuery: string): string {
-  const clusterNames = new Map(clusters.map(({ id, name }) => [id, name]));
+function renderFindingTable(findings: Finding[], heading: string, clusters: Cluster[], returnQuery: string, view: DiagnosticListView): string {
+  const clustersById = new Map(clusters.map((cluster) => [cluster.id, cluster]));
   return `
     <section class="panel table-panel" data-testid="finding-list">
       <div class="section-heading">
         <div>
-          <h2 id="finding-results-heading">共 ${total} 条诊断结果${findings.length !== total ? `，本页 ${findings.length} 条` : ""}</h2>
+          <h2 id="finding-results-heading">${escapeHtml(heading)}</h2>
         </div>
       </div>
       <div class="table-wrap" role="region" aria-labelledby="finding-results-heading" tabindex="0">
@@ -125,29 +144,33 @@ function renderFindingTable(findings: Finding[], total: number, clusters: Cluste
               <th scope="col">资源</th>
               <th scope="col">集群实例</th>
               <th scope="col">命名空间</th>
+              ${view === "events" ? '<th scope="col">来源</th>' : ""}
               <th scope="col">发现时间</th>
             </tr>
           </thead>
           <tbody>
-            ${findings.map((finding) => renderFindingRow(finding, clusterNames, returnQuery)).join("")}
+            ${findings.map((finding) => renderFindingRow(finding, clustersById.get(finding.cluster), returnQuery, view)).join("")}
           </tbody>
         </table>
       </div>
     </section>`;
 }
 
-function renderFindingRow(finding: Finding, clusterNames: Map<string, string>, returnQuery: string): string {
+function renderFindingRow(finding: Finding, cluster: Cluster | undefined, returnQuery: string, view: DiagnosticListView): string {
   const resource = [finding.resource.kind, finding.resource.name]
     .filter(Boolean)
     .join("/");
-  const detailQuery = new URLSearchParams({ cluster: finding.cluster, return: returnQuery });
+  const href = diagnosticDetailLink(finding.id, finding.cluster, view, returnQuery);
   return `
     <tr>
       <td><span class="severity severity-${escapeHtml(finding.severity)}">${escapeHtml(formatSeverity(finding.severity))}</span></td>
-      <td class="finding-problem"><a href="#/findings/${encodeURIComponent(finding.id)}?${escapeHtml(detailQuery.toString())}" title="${escapeHtml(finding.problem)}">${escapeHtml(finding.problem)}</a></td>
+      <td class="finding-problem"><a href="${escapeHtml(href)}" title="${escapeHtml(finding.problem)}">${escapeHtml(finding.problem)}</a></td>
       <td translate="no">${escapeHtml(resource || "—")}</td>
-      <td class="finding-cluster" translate="no">${escapeHtml(clusterNames.get(finding.cluster) ?? finding.cluster)}</td>
+      <td class="finding-cluster" translate="no">${escapeHtml(cluster?.name ?? finding.cluster)}
+        ${view === "events" && (cluster?.environment || cluster?.business) ? `<small class="diagnostic-event-scope">${escapeHtml([cluster.environment, cluster.business].filter(Boolean).join(" / "))}</small>` : ""}
+      </td>
       <td translate="no">${escapeHtml(finding.namespace ?? finding.resource.namespace ?? "—")}</td>
+      ${view === "events" ? `<td>${finding.source === "k8sgpt" ? "K8sGPT" : escapeHtml(finding.source)}</td>` : ""}
       <td class="finding-time">${formatTimestamp(finding.createdAt)}</td>
     </tr>`;
 }
