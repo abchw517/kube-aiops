@@ -28,7 +28,10 @@ func TestPermissionCatalogAndExactWikiActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.ExecContext(t.Context(), `UPDATE platform_identity SET document=? WHERE id=1`,
-		`{"accounts":{"ldap:uid=editor,dc=example":{"id":"ldap:uid=editor,dc=example","username":"editor","kind":"ldap","generation":"v1","roles":["editor"]}},
+		`{"accounts":{
+		    "ldap:uid=editor,dc=example":{"id":"ldap:uid=editor,dc=example","username":"editor","kind":"ldap","generation":"v1","roles":["editor"]},
+		    "ldap:uid=reader,dc=example":{"id":"ldap:uid=reader,dc=example","username":"reader","kind":"ldap","generation":"v1"}
+		  },
 		  "roles":{"editor":{"id":"editor","name":"编辑者","grants":[
 		    {"code":"system.catalog.read","scope":{}},{"code":"system.role.list","scope":{}},{"code":"system.audit.list","scope":{}},
 		    {"code":"knowledge.candidate.read","scope":{"environment":"testing","cluster":"test","namespace":"pay"}},
@@ -46,10 +49,17 @@ func TestPermissionCatalogAndExactWikiActions(t *testing.T) {
 		}
 		return "testing", nil
 	}, nil)
-	p := identity.Principal{Subject: "ldap:uid=editor,dc=example", Provider: "platform-ldap", SessionVersion: "v1"}
-	sessions, err := identity.NewSessions(origin, map[string]identity.PasswordVerifier{"ldap": func(context.Context, string, string) (identity.Principal, error) {
-		return p, nil
-	}})
+	sessions, err := identity.NewSessions(origin, map[string]identity.PasswordVerifier{
+		"ldap": func(_ context.Context, user, _ string) (identity.Principal, error) {
+			if user != "editor" && user != "reader" {
+				return identity.Principal{}, identity.ErrUnauthenticated
+			}
+			return identity.Principal{Subject: "ldap:uid=" + user + ",dc=example", Provider: "platform-ldap", SessionVersion: "v1"}, nil
+		},
+		"local": func(context.Context, string, string) (identity.Principal, error) {
+			return identity.Principal{Subject: "local:admin", Provider: permissions.AdminProvider}, nil
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,4 +116,42 @@ func TestPermissionCatalogAndExactWikiActions(t *testing.T) {
 	call("POST", "/api/v1/wiki/candidates/test-draft", `{"action":"discard","version":1}`, cookie, 403)
 	call("POST", "/api/v1/wiki/candidates/test-draft", `{"action":"unknown","version":1}`, cookie, 400)
 	call("POST", "/api/v1/wiki/candidates/test-draft", edit, cookie, 200)
+
+	adminCookie := call("POST", "/api/v1/auth/login", `{"provider":"local","username":"admin","password":"fixture-password"}`, nil, 204).Result().Cookies()[0]
+	reader := call("POST", "/api/v1/auth/login", `{"provider":"ldap","username":"reader","password":"fixture-password"}`, nil, 204).Result().Cookies()[0]
+	change := func(path string, body map[string]any) string {
+		t.Helper()
+		payload, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := call("POST", path, string(payload), adminCookie, 200)
+		var entries []struct {
+			ID     string `json:"id"`
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &entries); err != nil || len(entries) != 1 || entries[0].ID == "" || entries[0].Reason != "" {
+			t.Fatalf("change failed: %v, %s", err, response.Body)
+		}
+		return entries[0].ID
+	}
+	const accessPath, accountsPath = "/api/v1/admin/access", "/api/v1/admin/accounts"
+	const testDraft, prodDraft = "/api/v1/wiki/candidates/test-draft", "/api/v1/wiki/candidates/prod-draft"
+	const readerID = "ldap:uid=reader,dc=example"
+	call("GET", testDraft, "", reader, 404)
+	roleID := change(accessPath, map[string]any{
+		"action": "role-save", "name": "测试知识草稿只读",
+		"grants": json.RawMessage(`[{"code":"knowledge.candidate.read","scope":{"environment":"testing","cluster":"test","namespace":"pay"}}]`),
+	})
+	call("GET", testDraft, "", reader, 404)
+	change(accountsPath, map[string]any{"action": "grant", "id": readerID, "values": []string{roleID}})
+	call("GET", testDraft, "", reader, 200)
+	call("GET", prodDraft, "", reader, 404)
+	call("POST", testDraft, edit, reader, 403)
+	groupID := change(accessPath, map[string]any{"action": "group-save", "name": "测试知识库读者", "roleIds": []string{roleID}})
+	change(accountsPath, map[string]any{"action": "join", "id": readerID, "values": []string{groupID}})
+	change(accountsPath, map[string]any{"action": "revoke", "id": readerID, "values": []string{roleID}})
+	call("GET", testDraft, "", reader, 200)
+	change(accountsPath, map[string]any{"action": "leave", "id": readerID, "values": []string{groupID}})
+	call("GET", testDraft, "", reader, 404)
 }

@@ -295,37 +295,42 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
       <a href="#/admin/users/${encodeURIComponent(user.id)}">${h(user.username)}</a>${effectivePermissions(user)}</div>`).join("") || "<p>暂无成员。</p>"}</div>`);
   const roleEditor = (role?: Role) => {
     const refs = roleReferences(role?.id, users, access.groups);
-    return editor(`role:${role?.id ?? ""}`, role ? "编辑角色" : "新建角色",
+    return editor(`role:${role?.id ?? ""}`, role ? `编辑角色 · ${role.name}` : "新建角色",
       `<form class="system-form" data-platform="access" data-id="${h(role?.id)}" data-role-edit
           data-role-original="${h(JSON.stringify(role ?? null))}">
+        <p class="system-editor-status" role="status" aria-live="polite"></p>
         <div class="system-editor-body" data-role-draft>
-          <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
+          <div class="role-workspace-actions">
+            <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
+            ${submit("保存角色", "role-preview")}
+          </div>
           <section aria-label="选择接口权限">
             <h3>选择接口权限</h3>
             <div data-role-catalog-host></div>
           </section>
-          <label data-role-scope-kind hidden>本次添加的范围类型
-            <select aria-label="本次添加的范围类型" disabled></select>
-          </label>
-          ${scopeInputs(clusters.items, businesses)}
-          <div class="system-actions"><button type="button" class="button" data-role-add-grants disabled>添加到授权清单</button>
-          <button type="button" class="button secondary" data-scope-add>添加历史诊断范围</button>
-          <button type="button" class="button secondary" data-scope-add="preview">添加历史诊断范围并预览</button></div>
-          <h3>授权清单</h3>
-          <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, points.get(grant.code), true, Boolean(catalog))).join("")}</div>
-          <p class="system-scope-empty">尚未添加权限范围。</p>
+          <section class="role-grant-panel" aria-label="授权清单">
+            <h3>数据范围</h3>
+            <label data-role-scope-kind hidden>本次添加的范围类型
+              <select aria-label="本次添加的范围类型" disabled></select>
+            </label>
+            ${scopeInputs(clusters.items, businesses)}
+            <div class="system-actions"><button type="button" class="button" data-role-add-grants disabled>添加到授权清单</button>
+            <button type="button" class="button secondary" data-scope-add>添加历史诊断范围</button>
+            <button type="button" class="button secondary" data-scope-add="preview">添加历史诊断范围并预览</button></div>
+            <p data-role-grant-status role="status"></p>
+            <h3>授权清单</h3>
+            <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
+            <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, points.get(grant.code), true, Boolean(catalog))).join("")}</div>
+            <p class="system-scope-empty">尚未添加权限范围。</p>
+          </section>
         </div>
         <div class="system-editor-body" data-role-preview hidden>
           <h3 tabindex="-1">核对角色变更</h3>
           <p class="system-notice">直接关联 ${refs.direct} 人 · 关联用户组 ${refs.groups} 个 · 涉及账号 ${refs.affected} 人（去重）</p>
           <div data-role-diff></div>
         </div>
-        <p class="system-editor-status" role="status" aria-live="polite"></p>
-        <footer class="system-dialog-footer">
-          <button type="button" class="button secondary" data-system-close>取消</button>
+        <footer class="system-dialog-footer" data-role-review-actions hidden>
           <button type="button" class="button secondary" data-role-back hidden>返回编辑</button>
-          ${submit("保存角色", "role-preview")}
           <button class="button" type="submit" value="role-save" hidden disabled>确认保存</button>
         </footer>
       </form>`);
@@ -351,9 +356,9 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
       <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色配置</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
-    </nav><div class="catalog-table-wrap" role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
+    </nav><div class="catalog-table-wrap" data-access-list role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
       <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
-      ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div></section>
+      ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div><div data-role-workspace></div></section>
     ${groups ? editableGroup(undefined, access.roles, [], superAdmin) + access.groups.map(group =>
       editableGroup(group, access.roles, membersOf(group), superAdmin) + groupMembers(group) + (canEditGroup(group) ? remove(group, "group") : "")).join("") : roleEditor()}
     ${catalogSource(catalog)}
@@ -432,13 +437,15 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       const auditReference = auditRecordReference(response.headers.get("X-Operation-Audit-Ref"));
       const title = dialog.querySelector("#system-dialog-title");
       if (title) title.textContent = action === "role-save" ? "角色保存结果" : action === "group-save" ? "用户组保存结果" : "授权操作结果";
-      const savedName = action === "group-save" ? String(data.get("name") ?? "") : "";
+      const savedName = action === "group-save" || action === "role-save" ? String(data.get("name") ?? "") : "";
+      const roleAccounts = action === "role-save" ? `<p>权限按角色关联生效。可在用户管理中为 LDAP 员工分配角色，或通过用户组授予。</p>` : "";
       form.outerHTML = `<div class="system-editor-body"><div class="catalog-table-wrap"><table class="catalog-table">
         <thead><tr><th>${groupEditor ? "用户组" : "账号或角色"}</th><th>结果</th><th>说明</th></tr></thead>
         <tbody>${results.map(({ id, reason }) => `<tr><td>${h(savedName || id)}</td><td><span class="system-badge" data-audit-result="${reason ? "失败" : "成功"}">
-          ${reason ? "失败" : "成功"}</span></td><td>${h(reason || (action === "role-save" ? "已保存，角色权限已生效" : "已更新关联关系"))}</td></tr>`).join("")}</tbody>
-        </table></div></div><footer class="system-dialog-footer">
+          ${reason ? "失败" : "成功"}</span></td><td>${h(reason || (action === "role-save" ? "已保存角色与授权范围" : "已更新关联关系"))}</td></tr>`).join("")}</tbody>
+        </table></div>${roleAccounts}</div><footer class="system-dialog-footer">
         <button class="button${auditReference ? " secondary" : ""}" type="button" data-system-close>完成并刷新</button>
+        ${action === "role-save" ? '<a class="button secondary" href="#/admin/users">前往用户管理</a>' : ""}
         ${auditReference ? `<a class="button" href="${h(auditLocation({ record: auditReference }))}">查看本次审计</a>` : ""}</footer>`;
       const hash = window.location.hash;
       const afterClose = () => {
@@ -542,7 +549,7 @@ async function previewGroup(form: HTMLFormElement, data: FormData): Promise<void
   }
 }
 
-function openPlatformEditor(panel: HTMLElement, key: string): void {
+function openPlatformEditor(panel: HTMLElement, key: string, opener: HTMLButtonElement): void {
   const dialog = panel.querySelector<HTMLDialogElement>("[data-system-dialog]");
   if (!dialog || dialog.open) return;
   const template = [...panel.querySelectorAll<HTMLTemplateElement>("[data-system-editor]")]
@@ -580,14 +587,36 @@ function openPlatformEditor(panel: HTMLElement, key: string): void {
     }
     const assignment = dialog.querySelector<HTMLFormElement>("form:has([data-assignment-kind])");
     if (assignment) updateAssignmentOptions(assignment);
-    dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
     const roleForm = dialog.querySelector<HTMLFormElement>("[data-role-edit]");
     const source = panel.querySelector<HTMLElement>("[data-pc-source]")?.dataset.catalog;
+    dialog.oncancel = (event) => {
+      if (dialog.hasAttribute("aria-busy")) event.preventDefault();
+      else if (roleForm?.isConnected && dialog.matches(":modal")) {
+        event.preventDefault();
+        showRolePreview(roleForm, false);
+      }
+    };
     if (roleForm) {
       if (source) mountRoleCatalog(roleForm, JSON.parse(source) as PermissionCatalog);
       else showRoleCatalogRetry(roleForm);
+      const workspace = panel.querySelector<HTMLElement>("[data-role-workspace]");
+      const list = panel.querySelector<HTMLElement>("[data-access-list]");
+      if (workspace && list) {
+        workspace.append(dialog);
+        list.hidden = true;
+        dialog.show();
+        dialog.addEventListener("close", function restoreWorkspace() {
+          if (dialog.open) return;
+          dialog.removeEventListener("close", restoreWorkspace);
+          panel.append(dialog);
+          list.hidden = false;
+          opener.focus({ preventScroll: true });
+        });
+        roleForm.querySelector<HTMLInputElement>('[name="name"]')?.focus();
+      } else dialog.showModal();
+    } else {
+      dialog.showModal();
     }
-    dialog.showModal();
     if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
     for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
   }
@@ -600,10 +629,14 @@ export function handlePlatformClick(event: MouseEvent): void {
   const dialog = panel?.querySelector<HTMLDialogElement>("[data-system-dialog]");
   const opener = target.closest<HTMLButtonElement>("[data-system-open]");
   if (opener && panel && dialog && !dialog.open) {
-    openPlatformEditor(panel, opener.dataset.systemOpen ?? "");
+    openPlatformEditor(panel, opener.dataset.systemOpen ?? "", opener);
     return;
   }
-  if (target.closest("[data-system-close]") && dialog?.open && !dialog.hasAttribute("aria-busy")) dialog.close();
+  if (target.closest("[data-system-close]") && dialog?.open && !dialog.hasAttribute("aria-busy")) {
+    const roleForm = dialog.querySelector<HTMLFormElement>("[data-role-edit]");
+    if (roleForm && dialog.matches(":modal")) showRolePreview(roleForm, false);
+    else dialog.close();
+  }
   const tab = target.closest<HTMLButtonElement>("[data-system-tab]");
   const detail = tab?.closest(".system-detail");
   if (tab && detail) {
@@ -782,6 +815,8 @@ async function retryRoleCatalog(form: HTMLFormElement): Promise<void> {
   try {
     const catalog = await loadPermissionCatalog();
     if (form.isConnected) {
+      const panel = form.closest(".identity-panel");
+      if (panel && !panel.querySelector("[data-pc-source]")) panel.insertAdjacentHTML("beforeend", catalogSource(catalog));
       mountRoleCatalog(form, catalog);
       form.querySelector<HTMLElement>("[data-pc-query]")?.focus();
     }
@@ -805,7 +840,7 @@ function updateRoleScopeKinds(form: HTMLFormElement): void {
 }
 
 function addInterfaceGrants(form: HTMLFormElement): void {
-  const status = platformStatus(form);
+  const status = form.querySelector("[data-role-grant-status]");
   const list = form.querySelector("[data-role-grants]");
   if (!status || !list) return;
   const selected = selectedPermissions(form);
@@ -864,7 +899,7 @@ function addInterfaceGrants(form: HTMLFormElement): void {
 
 function addScopes(form: HTMLFormElement): boolean {
   const list = form.querySelector("[data-scope-list]");
-  const status = platformStatus(form);
+  const status = form.querySelector("[data-role-grant-status]");
   const field = form.querySelector<HTMLElement>("[data-scope]");
   if (!list || !status || !field) return false;
   if (field.hasAttribute("aria-busy") || field.dataset.scopeUnavailable === "true") {
@@ -893,18 +928,25 @@ function addScopes(form: HTMLFormElement): boolean {
 }
 
 function showRolePreview(form: HTMLFormElement, showing: boolean): void {
+  const dialog = form.closest("dialog");
   const draft = form.querySelector<HTMLElement>("[data-role-draft]");
   const preview = form.querySelector<HTMLElement>("[data-role-preview]");
+  const reviewActions = form.querySelector<HTMLElement>("[data-role-review-actions]");
   const previewButton = form.querySelector<HTMLButtonElement>('[value="role-preview"]');
   const confirm = form.querySelector<HTMLButtonElement>('[value="role-save"]');
   const back = form.querySelector<HTMLButtonElement>("[data-role-back]");
-  if (!draft || !preview || !previewButton || !confirm || !back) return;
+  if (!dialog || !draft || !preview || !reviewActions || !previewButton || !confirm || !back) return;
   draft.hidden = showing;
-  preview.hidden = !showing;
+  preview.hidden = reviewActions.hidden = !showing;
   previewButton.hidden = previewButton.disabled = showing;
   confirm.hidden = confirm.disabled = !showing;
   back.hidden = !showing;
   platformStatus(form)?.replaceChildren();
+  if (dialog.parentElement?.hasAttribute("data-role-workspace") && dialog.matches(":modal") !== showing) {
+    dialog.close();
+    if (showing) dialog.showModal();
+    else dialog.show();
+  }
   if (showing) preview.querySelector("h3")?.focus();
   else previewButton.focus();
 }

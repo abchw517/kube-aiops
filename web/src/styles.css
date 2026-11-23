@@ -485,23 +485,57 @@ tbody tr:hover { background: #f5f8fd; }
 .permission-catalog-detail dt, .permission-ancestry { font-size: .75rem; }
 .permission-catalog-detail dd { margin: .18rem 0 0; color: var(--pc-navy); font-size: .82rem; overflow-wrap: anywhere; }
 .permission-catalog-detail code, [data-role-grant] code { overflow-wrap: anywhere; }
-.system-dialog:has([data-role-catalog-host]) { width: min(1100px, calc(100% - 1.4rem)); }
+[data-access-list][hidden] { display: none; }
+[data-role-workspace] > .system-dialog[open]:not(:modal) {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  box-shadow: none;
+}
+.identity-panel:has([data-role-workspace] dialog[open]) .platform-heading [data-system-open="role:"] { display: none; }
+.role-workspace-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; justify-content: space-between; }
+.role-workspace-actions label { width: min(100%, 25rem); }
+.role-grant-panel { display: grid; gap: .7rem; padding: 1rem; border: 1px solid var(--line); border-radius: .55rem; }
+.role-grant-panel :is(h3, p, .platform-scope) { margin: 0; }
+.role-grant-panel [data-role-grant-status] { color: #25476d; }
 [data-role-draft] { grid-template-columns: minmax(0, 1fr); }
+[data-role-draft] .permission-catalog { margin-top: .6rem; }
 [data-role-catalog-host] > .system-notice { margin: .65rem 0 0; }
-.permission-catalog[data-pc-edit="true"] .catalog-table { min-width: 620px; }
-@media (max-width: 900px) { .permission-catalog-workspace { grid-template-columns: minmax(0, 1fr); } }
+.permission-catalog[data-pc-edit="true"] .catalog-table { min-width: 650px; }
+.permission-catalog[data-pc-edit="true"] .permission-catalog-detail { position: sticky; top: .75rem; }
+@media (max-width: 900px) {
+  .permission-catalog-workspace { grid-template-columns: minmax(0, 1fr); }
+  .permission-catalog[data-pc-edit="true"] .permission-catalog-detail { position: static; }
+}
 @media (max-width: 540px) { .permission-catalog-tabs { gap: .75rem; } .permission-catalog-filters input { width: 100%; } }
 
 .permission-selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .55rem; background: #f1f6fd; border: 1px solid #dae4f2; color: #25476d; }
 .permission-catalog label.permission-batch { display: inline-flex; flex-direction: row; align-items: center; gap: .4rem; font-size: .8rem; }
 .permission-selection-toolbar [data-pc-selected] { font-size: .78rem; }
-.permission-action-row { display: flex; align-items: center; gap: .3rem; }
+.permission-action-row { display: flex; align-items: center; gap: .2rem; }
+.permission-catalog[data-pc-edit="true"] .permission-action-row {
+  margin-bottom: .25rem;
+  padding: .05rem .12rem;
+  background: #f7faff;
+  border: 1px solid #dae4f2;
+  border-radius: .35rem;
+}
 .permission-action-row .permission-point { flex: 1; min-width: 0; }
+.permission-catalog[data-pc-edit="true"] .permission-point { margin: 0; border: 0; background: transparent; }
 .permission-action-check { flex: none; display: grid; place-items: center; min-width: 28px; min-height: 28px; cursor: pointer; }
 .permission-action-check:has(:disabled) { cursor: not-allowed; }
 .permission-catalog input[type="checkbox"] { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: #1d56a5; }
 .permission-catalog input[type="checkbox"]:focus-visible { outline: 2px solid var(--pc-blue); outline-offset: 2px; }
-.permission-action-row[data-pc-selected-point="true"] .permission-point { color: #164d98; background: #e8f1ff; border-color: #6992d0; }
+.permission-catalog[data-pc-edit="true"] .permission-action-row:has([data-risk="高风险"]) { background: #fff8eb; border-color: #eddbbb; }
+.permission-catalog[data-pc-edit="true"] .permission-action-row:is([data-pc-selected-point="true"], :has([aria-pressed="true"])) {
+  background: #e8f1ff;
+  border-color: #6992d0;
+}
 .system-admin-impact { border: 1px solid #efcb91; background: #fff6e8; color: #704608; padding: .75rem; border-radius: .4rem; }
 .system-admin-impact p { margin: .25rem 0; }
 .system-badge[data-risk="高风险"] { color: #794909; background: #fff3dc; }
