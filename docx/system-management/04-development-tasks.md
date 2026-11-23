@@ -228,3 +228,13 @@
 
 - API 保留授权响应体，为确实写入且事务提交的事件返回标识。同源内部接口通过 `X-Operation-Audit-Ref` 返回稳定标识，可通过 `GET /api/v1/admin/operations?record=…` 精确查询。SQLite 增量迁移保留存量记录及原分页标识。
 - Web 接通账号筛选和结果详情，复用审计详情及同批次查询。添加现有认证、改密及筛选回归。
+
+### SM-T21
+
+**认证配置布局与登录会话策略** · [SM-P03](01-pages.md#sm-p03) · [SM-F21](02-features.md#sm-f21) · [SM-UT21](05-unit-test-cases.md#sm-ut21)
+
+1. SQLite 使用幂等迁移为新库与存量库初始化 30 分钟策略，持久化范围为 5 至 480。变更策略和写入高风险审计共用事务，记录操作者、时间与新旧分钟值。失败时回滚。
+2. 在管理入口提供 `GET /api/v1/admin/session-policy` 与 `PUT /api/v1/admin/session-policy`。GET 允许已认证且已完成改密的系统管理员。PUT 复用同源检查，仅允许本地超级管理员。请求体为 `{"sessionLifetimeMinutes":60}`，两种成功响应均为 200 和当前策略 JSON。GET 与 PUT 响应使用 `Cache-Control: no-store`。
+3. 服务端返回 400 表示非法输入，401 表示未登录或会话失效，403 表示权限不足或写请求非同源，503 表示策略存储不可用。身份校验通过后读取策略，再以同一时长计算服务端到期时间和 Cookie `Max-Age`。读取失败按 503 处理，已有会话不受配置变更影响。
+4. Web 走原有认证配置路由、权限门禁及表单处理入口。页面外框对照 `portal-ui-prototype.html` 的认证配置页。使用原生 `details` 和 `summary` 展示默认收起的登录会话与 LDAP。折叠状态、标题数值、只读、错误反馈对照 `login-session-policy-prototype.html`。保留 LDAP 草稿、测试凭据处理与验证通过才可启用的流程。
+5. 分别验收 1440px 桌面与 390px 窄屏。对照原型核对顶栏、侧栏、高亮、面包屑、卡片顺序、分栏和折叠状态。运行 Go 会话、SQLite 和路由测试，运行 Web 测试、构建及浏览器认证配置场景。

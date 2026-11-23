@@ -45,6 +45,9 @@ func canEnterAdmin(a *permissions.Admin, r *http.Request, p identity.Principal, 
 	if permissions.IsAdministrator(p) {
 		return true
 	}
+	if resource == "session-policy" {
+		return false
+	}
 	allow := func(code string, scope authorization.Scope, collection bool) bool {
 		allowed, err := a.AuthorizeOperation(r.Context(), p, code, "", scope, collection)
 		return err == nil && allowed

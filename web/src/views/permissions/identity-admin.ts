@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../components/html.ts";
 import { renderPlatform } from "./platform-admin.ts";
 import { renderRoles } from "./roles.ts";
+import { loadSessionPolicy, renderSessionPolicy } from "./session-policy.ts";
 
 const ldapFields = [
   ["url", "LDAP URL"],
@@ -25,7 +26,7 @@ type IdentityAdminView = {
 /** 根据当前会话能力展示认证和账号管理功能。 */
 export async function renderIdentityAdmin(resource: string, view: IdentityAdminView): Promise<string> {
   const { initial, roleID, administrator, superAdmin, canChangePassword, auditContent } = view;
-  const navigation = initial || !administrator ? "" : `<nav class="identity-nav" aria-label="系统管理">
+  const navigation = initial || !administrator || resource === "ldap" ? "" : `<nav class="identity-nav" aria-label="系统管理">
     <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
     <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
     <a href="#/admin/access"${resource === "access" || resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
@@ -35,30 +36,47 @@ export async function renderIdentityAdmin(resource: string, view: IdentityAdminV
   let content: string;
   try {
     content = auditContent ?? (["users", "access"].includes(resource) ? await renderPlatform(resource, roleID, superAdmin)
-      : resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial));
-  } catch {
+      : resource === "policy" ? await renderRoles(roleID) : await renderResource(resource, initial, superAdmin));
+  } catch (error) {
+    if (error instanceof Response && (error.status === 401 || error.status === 403)) throw error;
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }
+  if (resource === "ldap") return `<div class="auth-config">${content}</div>`;
   return `<section class="panel identity-panel system-management">${navigation}${content}
     <dialog class="system-dialog" data-system-dialog aria-labelledby="system-dialog-title"></dialog></section>`;
 }
 
-async function renderResource(resource: string, initial: boolean): Promise<string> {
+async function renderResource(resource: string, initial: boolean, superAdmin: boolean): Promise<string> {
   if (resource === "password") {
     return `<div class="platform-heading"><div><h2>修改密码</h2>
       <p>${initial ? "请先设置新密码，再进入历史诊断。" : "为当前本地账号设置新密码。"}</p></div></div>
       ${form("password", `${initial ? '<p class="system-notice">当前会话仅可用于完成首次改密。</p>' : ""}<label>${initial ? "临时密码" : "当前密码"}<input name="current" type="password" autocomplete="current-password" required></label>
         ${passwordField()}<label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" required></label>`, "保存新密码")}`;
   }
+  const [policy, ldap] = await Promise.allSettled([loadSessionPolicy(), renderLDAP()]);
+  for (const result of [policy, ldap]) {
+    if (result.status === "rejected" && result.reason instanceof Response &&
+        (result.reason.status === 401 || result.reason.status === 403)) throw result.reason;
+  }
+  return renderSessionPolicy(policy.status === "fulfilled" ? policy.value : null, superAdmin) +
+    (ldap.status === "fulfilled" ? ldap.value :
+      '<details class="auth-ldap-card" open><summary>LDAP 连接配置</summary><p class="auth-policy-error" role="alert">无法读取 LDAP 配置，请刷新重试。</p></details>');
+}
+
+/** 保留 LDAP 验证与保存表单，并在折叠标题显示已启用状态。 */
+async function renderLDAP(): Promise<string> {
   const response = await fetch("/api/v1/admin/ldap");
+  if (response.status === 401 || response.status === 403) throw response;
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
     throw new Error("identity configuration unavailable");
   }
   const data = await response.json();
-  return `<div class="platform-heading"><div><h2>认证配置</h2><p>验证待启用的 LDAP 配置后保存。</p></div></div>
+  return `<details class="auth-ldap-card">
+    <summary>LDAP 连接配置 <span class="auth-ldap-state" data-ldap-config-state>${data.url ? "已启用" : "尚未配置"}</span></summary>
+    <div class="auth-ldap-content">
     ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
     <form class="system-ldap" data-identity-resource="ldap">
-    <section class="system-card system-form"><div class="system-card-heading"><h3>LDAP 连接配置</h3><span class="system-badge" data-ldap-config-state>${data.url ? "配置已启用" : "尚未配置"}</span></div><div class="system-field-grid">${ldapFields.map(([key, label]) =>
+    <section class="system-card system-form"><h3>连接参数</h3><div class="system-field-grid">${ldapFields.map(([key, label]) =>
       `<label>${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}"></label>`).join("")}
       <label>LDAP 用户搜索范围<select name="searchScope">
         <option value="subtree">子树</option>
@@ -83,7 +101,7 @@ async function renderResource(resource: string, initial: boolean): Promise<strin
       <button class="button secondary" type="submit" value="test">运行测试</button>
       <fieldset><legend>验证步骤</legend><ol class="system-validation-steps">
       ${ldapSteps.map((step) => `<li><span>${step}</span><span class="system-badge" data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>
-      <small>测试登录不会创建会话、用户记录或角色关联。</small><p data-ldap-test-status role="status" aria-live="polite"></p></section></form>`;
+      <small>测试登录不会创建会话、用户记录或角色关联。</small><p data-ldap-test-status role="status" aria-live="polite"></p></section></form></div></details>`;
 }
 
 function form(resource: string, fields: string, label: string): string {
@@ -126,7 +144,7 @@ export function invalidateLDAPDraft(form: HTMLFormElement, target: EventTarget |
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
       target.name === "testUsername" || target.name === "testPassword") return;
   ldapVerification.delete(form);
-  const state = form.querySelector("[data-ldap-config-state]");
+  const state = form.closest(".auth-ldap-card")?.querySelector("[data-ldap-config-state]");
   if (state) state.textContent = "有未保存变更";
   showLDAPSteps(form);
   const save = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="test"])');
@@ -250,14 +268,14 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     status.textContent = "已保存";
     if (ldap) {
       ldapVerification.delete(form);
-      const state = form.querySelector("[data-ldap-config-state]");
+      const state = form.closest(".auth-ldap-card")?.querySelector("[data-ldap-config-state]");
       const sameDraft = submittedDraft === JSON.stringify(ldapDraft(form));
-      if (state && sameDraft) state.textContent = "配置已启用";
+      if (state && sameDraft) state.textContent = "已启用";
       if (!sameDraft) {
         status.textContent = "已保存提交的配置。当前表单还有未保存变更，请重新测试。";
         return;
       }
-      form.closest("section")?.querySelector("[data-ldap-issue]")?.remove();
+      form.closest(".auth-ldap-card")?.querySelector("[data-ldap-issue]")?.remove();
       const password = form.querySelector<HTMLInputElement>('[name="bindPassword"]');
       if (password) {
         password.value = "";

@@ -233,6 +233,7 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	if err != nil {
 		return nil, err
 	}
+	sessions.SessionLifetimeMinutes = admin.SessionLifetimeMinutes
 	sessions.ValidateSession, sessions.RecordLogin = admin.ValidateSession, admin.RecordLogin
 	if managed != nil {
 		admin.SetScopeResolvers(managed.clusterEnvironment, managed.namespaceBusiness)

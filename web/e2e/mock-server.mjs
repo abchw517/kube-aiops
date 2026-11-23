@@ -12,6 +12,7 @@ let observationRequests = 0;
 let knowledgeCandidate;
 let savedInterfaceGrants;
 let administratorGroupSaved = false;
+let sessionLifetimeMinutes = 30;
 
 const findings = [
   {
@@ -293,6 +294,17 @@ createServer(async (request, response) => {
       return json(response, 200, { token: "fixture-report-token" });
     }
     return json(response, 400, { error: "invalid onboarding fixture" });
+  }
+  if (url.pathname === "/api/v1/admin/session-policy" && adminSession) {
+    if (request.method === "GET") return json(response, 200, { sessionLifetimeMinutes });
+    if (request.method === "PUT") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const input = JSON.parse(Buffer.concat(chunks).toString());
+      if (input.sessionLifetimeMinutes === 90) return json(response, 503, { error: "fixture unavailable" });
+      sessionLifetimeMinutes = input.sessionLifetimeMinutes;
+      return json(response, 200, { sessionLifetimeMinutes });
+    }
   }
   if (url.pathname === "/api/v1/admin/ldap" && adminSession && request.method === "GET") {
     return json(response, 200, { url: "ldaps://example.test", baseDN: "dc=example,dc=test" });

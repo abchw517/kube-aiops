@@ -707,7 +707,29 @@ try {
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="assign"]').click()` });
     await assertText(cdp, (text) => text.includes("分配用户组或角色") && text.includes("授权对象"), "Account assignment did not open from associations");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
-      (text) => text.includes("LDAP 连接配置") && text.includes("测试待启用配置"), "LDAP editor panels did not render");
+      (text) => text.includes("LDAP 连接配置") && text.includes("30 分钟"), "Authentication summaries did not render");
+    await assertAuthenticationLayout(cdp, 1440, 208);
+    await assertAuthenticationLayout(cdp, 390, 0);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector(".auth-session-summary").click();
+      window.saveFixtureSessionMinutes = (value) => {
+        const input = document.querySelector("#session-minutes");
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.form.querySelector("button").click();
+      };
+      window.saveFixtureSessionMinutes("4");
+    })()` });
+    await assertText(cdp, (text) => text.includes("请输入 5 至 480 之间的整数。"), "Invalid duration was not explained");
+    await cdp.send("Runtime.evaluate", { expression: `window.saveFixtureSessionMinutes("90")` });
+    await assertText(cdp, (text) => text.includes("当前设置未更改"), "Session policy save failure was not shown");
+    await cdp.send("Runtime.evaluate", { expression: `window.saveFixtureSessionMinutes("60")` });
+    await assertText(cdp, (text) => text.includes("60 分钟") && text.includes("下次登录时生效"), "Saved duration did not update the summary");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
+      (text) => text.includes("60 分钟"), "Saved duration did not persist after reload");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector(".auth-ldap-card > summary").click()` });
+    await assertText(cdp, (text) => text.includes("测试待启用配置"), "Expanded LDAP editor panels did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
     await assertText(cdp, (text) => text.includes("请输入 LDAP 测试员工账号"), "Missing LDAP employee credentials were not explained");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -732,7 +754,7 @@ try {
     })()`, returnByValue: true });
     if (!ldapFieldsCleared.result?.value) throw new Error("Successful LDAP test did not clear employee credentials");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[type="submit"]:not([value="test"])').click()` });
-    await assertText(cdp, (text) => text.includes("已保存") && text.includes("配置已启用"), "LDAP save did not show confirmation in its own panel");
+    await assertText(cdp, (text) => text.includes("已保存") && text.includes("已启用"), "LDAP save did not show confirmation in its own panel");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="role:guest-readonly"]').click()` });
@@ -1063,6 +1085,23 @@ async function waitForPage(debugPort) {
     await sleep(100);
   }
   throw new Error(`Chrome DevTools endpoint did not become ready: ${lastError ?? "unknown error"}`);
+}
+
+// 按原型验证两块默认折叠、桌面侧栏和移动工作区。
+async function assertAuthenticationLayout(cdp, width, sidebarWidth) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 680 });
+  const result = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
+    session: document.querySelector(".auth-session-card")?.open,
+    ldap: document.querySelector(".auth-ldap-card")?.open,
+    sidebar: document.querySelector(".auth-sidebar")?.getBoundingClientRect().width,
+    overflows: document.documentElement.scrollWidth > innerWidth,
+    active: document.querySelector(".auth-sidebar [aria-current=page]")?.textContent
+  })` });
+  const layout = result.result?.value;
+  if (!layout || layout.session !== false || layout.ldap !== false || layout.sidebar !== sidebarWidth ||
+      layout.overflows || layout.active !== "认证配置") {
+    throw new Error(`Authentication layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
 }
 
 async function createCdpClient(webSocketUrl) {

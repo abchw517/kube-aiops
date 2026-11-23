@@ -215,6 +215,9 @@ func (a *Admin) Handle(w http.ResponseWriter, r *http.Request, resource string, 
 	var err error
 	actor, _ := identity.PrincipalFromContext(ctx)
 	switch {
+	case resource == "session-policy":
+		a.handleSessionPolicy(w, r, actor)
+		return
 	case resource == "accounts" || resource == "access" || resource == "operations":
 		a.handlePlatform(w, r, resource, actor)
 		return
