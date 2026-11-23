@@ -740,6 +740,9 @@ try {
       (text) => text.includes("60 分钟"), "Saved duration did not persist after reload");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector(".auth-ldap-card > summary").click()` });
     await assertText(cdp, (text) => text.includes("测试待启用配置"), "Expanded LDAP editor panels did not render");
+    await assertLDAPEditorLayout(cdp, 1440, false);
+    await assertLDAPEditorLayout(cdp, 390, true);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
     await assertText(cdp, (text) => text.includes("请输入 LDAP 测试员工账号"), "Missing LDAP employee credentials were not explained");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -1122,6 +1125,34 @@ async function assertAuthenticationLayout(cdp, width, sidebarWidth) {
   if (!layout || layout.session !== false || layout.ldap !== false || layout.sidebar !== sidebarWidth ||
       layout.overflows || layout.active !== "认证配置") {
     throw new Error(`Authentication layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
+}
+
+async function assertLDAPEditorLayout(cdp, width, stacked) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 680 });
+  const result = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector('[data-identity-resource="ldap"]');
+    const [connection, validation] = form.querySelectorAll(".auth-ldap-section");
+    const bounds = connection.getBoundingClientRect();
+    const testBounds = validation.getBoundingClientRect();
+    return {
+      stacked: testBounds.top >= bounds.bottom,
+      usable: ["url", "bindDN", "baseDN", "testUsername", "testPassword"].every(name => {
+        const field = form.elements[name];
+        const input = field.getBoundingClientRect();
+        const label = field.closest("label").getBoundingClientRect();
+        return input.top > label.top + 8 && input.width >= label.width - 1 && input.height >= 36;
+      }),
+      clipped: document.documentElement.scrollWidth > innerWidth,
+      advanced: form.querySelector(".auth-ldap-advanced")?.open,
+      steps: validation.querySelectorAll("[data-ldap-step]").length,
+      saveLocked: form.querySelector('button[type="submit"]:not([value="test"])').disabled,
+    };
+  })()` });
+  const layout = result.result?.value;
+  if (!layout || layout.stacked !== stacked || !layout.usable || layout.clipped || layout.advanced ||
+      layout.steps !== 4 || !layout.saveLocked) {
+    throw new Error(`LDAP editor layout at ${width}px: ${JSON.stringify(layout)}`);
   }
 }
 
