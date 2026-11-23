@@ -3,10 +3,7 @@ import { renderPlatform } from "./platform-admin.ts";
 import { renderRoles } from "./roles.ts";
 import { loadSessionPolicy, renderSessionPolicy } from "./session-policy.ts";
 
-const ldapFields = [
-  ["url", "LDAP URL"],
-  ["bindDN", "LDAP 搜索 DN"],
-  ["baseDN", "LDAP 基础 DN"],
+const ldapAdvancedFields = [
   ["userUID", "LDAP 用户 UID"],
   ["userFilter", "LDAP 附加用户过滤器"],
   ["groupAttribute", "LDAP 组成员属性"],
@@ -53,7 +50,7 @@ async function renderResource(resource: string, initial: boolean, superAdmin: bo
   }
   return renderSessionPolicy(policy.status === "fulfilled" ? policy.value : null, superAdmin) +
     (ldap.status === "fulfilled" ? ldap.value :
-      '<details class="auth-ldap-card" open><summary>LDAP 连接配置</summary><p class="auth-policy-error" role="alert">无法读取 LDAP 配置，请刷新重试。</p></details>');
+      '<details class="auth-ldap-card" open><summary class="auth-session-summary">LDAP 连接配置</summary><div class="auth-ldap-content"><p class="auth-policy-error" role="alert">无法读取 LDAP 配置，请刷新重试。</p></div></details>');
 }
 
 /** 保留 LDAP 验证与保存表单，并在折叠标题显示已启用状态。 */
@@ -65,36 +62,58 @@ async function renderLDAP(): Promise<string> {
   }
   const data = await response.json();
   return `<details class="auth-ldap-card">
-    <summary>LDAP 连接配置 <span class="auth-ldap-state" data-ldap-config-state>${data.url ? "已启用" : "尚未配置"}</span></summary>
+    <summary class="auth-session-summary">LDAP 连接配置 <span class="auth-ldap-state" data-ldap-config-state>${data.url ? "已启用" : "尚未配置"}</span></summary>
     <div class="auth-ldap-content">
     ${data.issue ? `<p data-ldap-issue role="alert">LDAP 暂不可用：${escapeHtml(data.issue)}</p>` : ""}
-    <form class="system-ldap" data-identity-resource="ldap">
-    <section class="system-card system-form"><h3>连接参数</h3><div class="system-field-grid">${ldapFields.map(([key, label]) =>
-      `<label>${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}"></label>`).join("")}
-      <label>LDAP 用户搜索范围<select name="searchScope">
+    <form class="auth-ldap-form" data-identity-resource="ldap">
+    <div class="auth-ldap-grid">
+    <section class="auth-ldap-section" aria-labelledby="ldap-connection-heading">
+      <h2 id="ldap-connection-heading">连接参数</h2>
+      <label class="auth-ldap-field">LDAP URL
+        <input name="url" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="ldaps://directory.example.com:636"
+          aria-describedby="ldap-url-hint" value="${escapeHtml(data.url ?? "")}">
+      </label>
+      <small id="ldap-url-hint">填写服务器地址，不含路径或凭据。<code>ldaps://</code> 默认使用 636，域名须匹配证书。<code>ldap://</code> 默认使用 389。</small>
+      <label class="auth-ldap-plain"><input type="checkbox" name="allowPlainLDAP"${data.allowPlainLDAP === true ? " checked" : ""} aria-describedby="ldap-plain-hint"><span>允许明文 LDAP（仅用于 ldap://）</span></label>
+      <small id="ldap-plain-hint">明文连接不会加密搜索账号和员工凭据。</small>
+      <label class="auth-ldap-field">LDAP 搜索 DN<input name="bindDN" value="${escapeHtml(data.bindDN ?? "")}" spellcheck="false"></label>
+      <label class="auth-ldap-field">LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}" aria-describedby="ldap-bind-hint"></label>
+      <small id="ldap-bind-hint">修改 LDAP URL 或搜索 DN 时，需重新填写搜索密码。</small>
+      <label class="auth-ldap-field">LDAP 基础 DN<input name="baseDN" value="${escapeHtml(data.baseDN ?? "")}" spellcheck="false"></label>
+      <details class="auth-ldap-advanced"><summary>用户与组搜索设置</summary>
+      <div class="auth-ldap-fields">${ldapAdvancedFields.map(([key, label]) =>
+        `<label class="auth-ldap-field">${label}<input name="${key}" value="${escapeHtml(data[key] ?? "")}" spellcheck="false"></label>`).join("")}
+      <label class="auth-ldap-field">LDAP 用户搜索范围<select name="searchScope">
         <option value="subtree">子树</option>
         <option value="onelevel"${data.searchScope === "onelevel" ? " selected" : ""}>单层</option>
         <option value="base"${data.searchScope === "base" ? " selected" : ""}>基础对象</option>
       </select></label>
-      <label>LDAP 组搜索范围<select name="groupScope">
+      <label class="auth-ldap-field">LDAP 组搜索范围<select name="groupScope">
         <option value="">默认（子树）</option>
         <option value="subtree"${data.groupScope === "subtree" ? " selected" : ""}>子树</option>
         <option value="onelevel"${data.groupScope === "onelevel" ? " selected" : ""}>单层</option>
         <option value="base"${data.groupScope === "base" ? " selected" : ""}>基础对象</option>
       </select></label>
-      <label>LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}"></label>
-      </div><label><input type="checkbox" name="allowPlainLDAP"${data.allowPlainLDAP === true ? " checked" : ""}> 允许明文 LDAP（仅用于 ldap://）</label>
+      </div>
+      <small>AD 常用 <code>sAMAccountName</code>。用户过滤器已有 <code>%s</code> 模板时，请留空用户 UID。</small></details>
+      <details class="auth-ldap-advanced"><summary>LDAPS 证书配置</summary><p>使用私有 CA 时，将签发 CA 挂载到 API Pod，并通过 <code>AUTH_LDAP_CA_FILE</code> 指定证书文件。</p></details>
+    </section>
+    <section class="auth-ldap-section auth-ldap-verification" aria-labelledby="ldap-verification-heading">
+      <h2 id="ldap-verification-heading">测试待启用配置</h2>
+      <label class="auth-ldap-field">LDAP 测试员工账号<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
+      <label class="auth-ldap-field">LDAP 测试员工密码<input name="testPassword" type="password" maxlength="1024" autocomplete="off" aria-describedby="ldap-test-hint"></label>
+      <small id="ldap-test-hint">使用测试员工自己的 LDAP 密码。测试失败时保留输入以便重试。</small>
+      <button class="button secondary" type="submit" value="test">运行测试</button>
+      <fieldset class="auth-ldap-steps"><legend>验证步骤</legend><ol class="system-validation-steps">
+      ${ldapSteps.map((step) => `<li><span>${step}</span><span class="system-badge" data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>
+      <small>测试登录不会创建会话、用户记录或角色关联。</small><p data-ldap-test-status role="status" aria-live="polite"></p>
+    </section>
+    </div>
+    <footer class="auth-ldap-actions">
       <button class="button" type="submit" aria-describedby="ldap-save-hint" disabled>保存并启用</button>
       <p id="ldap-save-hint" data-ldap-save-hint role="status">${ldapSaveNeedsTest}</p>
-      <details><summary>LDAP 配置说明</summary><p>ldaps:// 使用 TLS 并校验证书。ldap:// 直接连接，搜索账号和员工凭据会以明文传输。AD 通常使用 sAMAccountName。已有 %s 模板时请留空 UID。LDAP 配置及搜索密码保存到 SQLite。使用私有 CA 时可通过部署 Secret 提供 CA 证书。</p></details></section>
-    <section class="system-card system-form"><h3>测试待启用配置</h3>
-      <label>LDAP 测试员工账号<input name="testUsername" maxlength="250" autocomplete="off" placeholder="例如 alice"></label>
-      <label>LDAP 测试员工密码<input name="testPassword" type="password" maxlength="1024" autocomplete="off" aria-describedby="ldap-test-hint"></label>
-      <small id="ldap-test-hint">请使用测试员工自己的 LDAP 密码。测试失败时，当前表单会保留账号和密码，方便重试。</small>
-      <button class="button secondary" type="submit" value="test">运行测试</button>
-      <fieldset><legend>验证步骤</legend><ol class="system-validation-steps">
-      ${ldapSteps.map((step) => `<li><span>${step}</span><span class="system-badge" data-ldap-step>待验证</span></li>`).join("")}</ol></fieldset>
-      <small>测试登录不会创建会话、用户记录或角色关联。</small><p data-ldap-test-status role="status" aria-live="polite"></p></section></form></div></details>`;
+    </footer>
+    </form></div></details>`;
 }
 
 function form(resource: string, fields: string, label: string): string {
@@ -115,12 +134,14 @@ function showLDAPSteps(form: HTMLFormElement, stage = ""): void {
   const failed = failureIndex[stage];
   const items = form.querySelectorAll<HTMLElement>("[data-ldap-step]");
   items.forEach((item, index) => {
-    item.textContent = stage === "success" || (failed !== undefined && index < failed) ? "通过" :
-      index === failed ? "失败" : "待验证";
+    const state = stage === "success" || (failed !== undefined && index < failed) ? "passed" :
+      index === failed ? "failed" : "pending";
+    item.dataset.state = state;
+    item.textContent = state === "passed" ? "通过" : state === "failed" ? "失败" : "待验证";
   });
 }
 
-const ldapSaveNeedsTest = "请填写右侧的测试员工账号和密码，运行测试。四项验证全部通过后可保存。";
+const ldapSaveNeedsTest = "请运行 LDAP 测试。四项验证全部通过后可保存。";
 const ldapVerification = new WeakMap<HTMLFormElement, { token: string; draft: string }>();
 const pendingLDAP = new WeakSet<HTMLFormElement>();
 
@@ -143,7 +164,7 @@ export function invalidateLDAPDraft(form: HTMLFormElement, target: EventTarget |
   const save = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([value="test"])');
   if (save) save.disabled = true;
   const hint = form.querySelector("[data-ldap-save-hint]");
-  if (hint) hint.textContent = "配置已修改。请在右侧重新运行测试后保存。";
+  if (hint) hint.textContent = "配置已修改。请重新运行 LDAP 测试后保存。";
   const status = form.querySelector("[data-ldap-test-status]");
   if (status) status.textContent = "";
 }
@@ -154,7 +175,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
   const hint = ldap ? form.querySelector<HTMLElement>("[data-ldap-save-hint]") : null;
   const status = testingLDAP ? form.querySelector<HTMLElement>("[data-ldap-test-status]") :
     ldap ? hint : form.querySelector<HTMLElement>('[role="status"]');
-  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const button = form.querySelector<HTMLButtonElement>(ldap ? 'button[type="submit"]:not([value="test"])' : 'button[type="submit"]');
   if (!status || !button || (ldap ? pendingLDAP.has(form) : button.disabled)) return;
   const data = new FormData(form);
   const draft = ldap ? ldapDraft(form) : {};
@@ -285,7 +306,7 @@ export async function submitIdentityAdmin(form: HTMLFormElement, signedOut: () =
     if (ldap) {
       pendingLDAP.delete(form);
       if (testingLDAP && hint) hint.textContent = ldapVerification.has(form) ?
-        "四项验证已通过。请点击「保存并启用」。" : "验证未通过。请查看右侧测试结果，处理后重新运行测试。";
+        "四项验证已通过。请点击「保存并启用」。" : "验证未通过。请查看测试结果，处理后重新运行测试。";
     }
     for (const control of buttons) control.disabled = ldap && control === button && !ldapVerification.has(form);
   }

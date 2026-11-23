@@ -3,10 +3,10 @@
 .resource-scope { min-width: 0; padding: 13px; }
 .resource-scope h2 { margin: 0 0 9px; font-size: 15px; }
 .resource-scope input { width: 100%; min-height: 34px; margin-bottom: 8px; padding: 5px 10px; border: 1px solid var(--control-line); border-radius: 5px; }
-.resource-scope summary { margin: 7px 0 3px; font-weight: 650; cursor: pointer; }
+.resource-scope summary { min-height: 34px; padding: 6px 8px; margin-top: 3px; border-radius: 4px; font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
 .resource-scope button { display: block; width: 100%; min-height: 34px; padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); text-align: start; cursor: pointer; overflow-wrap: anywhere; }
 .resource-scope details button { padding-inline-start: 19px; }
-.resource-scope button:hover, .resource-scope [aria-pressed=true] { color: var(--blue); background: var(--accent-soft); }
+.resource-scope :is(button, summary):hover, .resource-scope [aria-current=true] { color: var(--blue); background: var(--accent-soft); }
 .resource-view-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding-inline: 12px; border-bottom: 1px solid var(--line); }
 .resource-view-tabs button { min-height: 40px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
 .resource-view-tabs [aria-pressed=true] { border-color: var(--blue); color: var(--blue); font-weight: 700; }

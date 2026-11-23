@@ -1,8 +1,8 @@
 import { escapeHtml } from "../../components/html.ts";
-import { renderOnboarding } from "../clusters/cluster-onboarding.ts";
+import { clusterManagementTitle, renderOnboarding } from "../clusters/cluster-onboarding.ts";
 
 export const resourcePages = [
-  ["clusters", "集群接入"],
+  ["clusters", clusterManagementTitle],
   ["environments", "环境管理"],
   ["business-lines", "业务线管理"],
 ] as const;

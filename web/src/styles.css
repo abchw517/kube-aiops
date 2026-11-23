@@ -236,8 +236,7 @@ tbody tr:hover { background: #f5f8fd; }
 .system-management .system-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .system-stats .system-card { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 13px 16px; background: #f4f7fc; }
 .system-stats strong { color: var(--blue); font-size: 1.55rem; line-height: 1; font-variant-numeric: tabular-nums; }
-.system-user-layout, .system-ldap { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; gap: 16px; }
-.system-ldap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.system-user-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; gap: 16px; }
 .system-management .system-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; }
 .system-actions, .system-card-heading, .system-validation-steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .system-card-heading, .system-validation-steps li { justify-content: space-between; }
@@ -272,7 +271,7 @@ tbody tr:hover { background: #f5f8fd; }
 .system-choice-list label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .system-choice-list span { overflow-wrap: anywhere; }
 .system-validation-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-@media (max-width: 1040px) { .system-user-layout, .system-ldap { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1040px) { .system-user-layout { grid-template-columns: minmax(0, 1fr); } }
 
 .system-management [hidden] { display: none; }
 
@@ -459,6 +458,7 @@ tbody tr:hover { background: #f5f8fd; }
 .permission-catalog-filters { display: flex; gap: .5rem; flex-wrap: wrap; padding: .7rem .8rem; }
 .permission-catalog-filters input, .permission-catalog-filters select { border: 1px solid var(--pc-border); border-radius: .35rem; background: #fff; padding: .43rem .6rem; color: var(--pc-navy); }
 .permission-catalog-filters input { min-width: 10rem; flex: 1; }
+.system-management .permission-catalog-filters select { width: auto; max-width: 100%; }
 .permission-catalog-table .catalog-table { min-width: 520px; table-layout: fixed; }
 .permission-catalog-table th:first-child:not([colspan]) { width: 26%; }
 .permission-catalog-table td, .permission-catalog-table th { padding: .55rem .55rem; vertical-align: top; }

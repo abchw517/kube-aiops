@@ -36,16 +36,17 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
   const verify = { disabled: false };
   const status = { textContent: "" };
   const hint = { textContent: "" };
+  const steps = Array.from({ length: 4 }, () => ({ dataset: { state: "" }, textContent: "" }));
   const form = {
     dataset: { identityResource: "ldap" },
-    querySelectorAll: () => [save, verify],
+    querySelectorAll: (selector: string) => selector === "[data-ldap-step]" ? steps : [verify, save],
     querySelector: (selector: string) => {
       if (selector.includes("testUsername")) return data.testUsername;
       if (selector.includes("testPassword")) return data.testPassword;
       if (selector.includes("bindPassword")) return data.bindPassword;
       if (selector.includes("data-ldap-save-hint")) return hint;
       if (selector.includes("data-ldap-test-status")) return status;
-      return save;
+      return selector.includes(":not(") ? save : verify;
     },
     closest: () => null,
   } as unknown as HTMLFormElement;
@@ -70,6 +71,7 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
   data.testPassword.value = "fixture-employee";
   await submitIdentityAdmin(form, () => {}, true);
   assert.match(status.textContent, /连接失败/);
+  assert.deepEqual(steps.map(({ textContent }) => textContent), ["失败", "待验证", "待验证", "待验证"]);
   assert.equal(save.disabled, true);
   assert.equal(data.testUsername.value, "employee");
   assert.equal(data.testPassword.value, "fixture-employee");
@@ -85,11 +87,13 @@ test("LDAP activation enables save only for the tested draft and omits the emplo
   assert.equal(data.testUsername.value, "");
   assert.equal(data.testPassword.value, "");
   assert.equal(save.disabled, false);
+  assert.ok(steps.every(({ dataset, textContent }) => dataset.state === "passed" && textContent === "通过"));
   assert.match(hint.textContent, /四项验证已通过/);
 
   data.url.value = "ldaps://changed.example.com";
   invalidateLDAPDraft(form, data.url as unknown as EventTarget);
   assert.equal(save.disabled, true);
+  assert.ok(steps.every(({ dataset }) => dataset.state === "pending"));
   await submitIdentityAdmin(form, () => {});
   assert.equal(requests.length, 3);
 

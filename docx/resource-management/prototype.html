@@ -23,7 +23,7 @@ dialog:has(.ownership-editor) section{min-height:0;overflow:auto}
 .ownership-feedback:empty{display:none}
 </style></head>
 <body><div class="layout"><aside><div class="brand"><i aria-hidden="true">k</i>kube-aiops</div><div class="side"><span>诊断控制台</span><span>运维知识库</span><span class="active" aria-current="page">资源管理</span><span>系统管理</span></div></aside>
-<main><div id="crumb" class="crumb"></div><div class="title"><h1>资源管理</h1><span class="demo">评审原型 · 模拟数据</span></div><div class="card"><div class="tabs" role="tablist" aria-label="资源管理"><button role="tab" data-tab="clusters">集群接入</button><button role="tab" data-tab="env">环境管理</button><button role="tab" data-tab="business">业务线管理</button></div><section class="section" id="panel" role="tabpanel"></section></div></main></div>
+<main><div id="crumb" class="crumb"></div><div class="title"><h1>资源管理</h1><span class="demo">评审原型 · 模拟数据</span></div><div class="card"><div class="tabs" role="tablist" aria-label="资源管理"><button role="tab" data-tab="clusters">Kubernetes 集群管理</button><button role="tab" data-tab="env">环境管理</button><button role="tab" data-tab="business">业务线管理</button></div><section class="section" id="panel" role="tabpanel"></section></div></main></div>
 <dialog aria-labelledby="modal-title" id="modal"></dialog><div id="toast" role="status"></div>
 <script>
 "use strict";
@@ -56,7 +56,7 @@ const pick=(label,name,options,selected)=>'<label>'+label+'<select name="'+name+
 let clusterQuery="", stateFilter="";
 function clusterList(){
  const filtered=sampleClusters.filter(row=>(!stateFilter||row.state===stateFilter)&&(row.name+" "+row.id+" "+row.environment+" "+row.business).toLowerCase().includes(clusterQuery.toLowerCase()));
- $("#panel").innerHTML='<div class="flow-head"><div><h2>集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="actions">'+clusterButton("采集上报","cluster-add-push")+clusterButton("＋ 新增集群","cluster-add","","primary")+'</div></div>'+
+ $("#panel").innerHTML='<div class="flow-head"><div><h2>Kubernetes 集群管理</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="actions">'+clusterButton("采集上报","cluster-add-push")+clusterButton("＋ 新增集群","cluster-add","","primary")+'</div></div>'+
  '<div class="flow-filters"><label>搜索集群<input id="cluster-search" type="search" value="'+esc(clusterQuery)+'" placeholder="名称、ID、环境或业务线"></label>'+
  '<label>采集状态<select id="cluster-state"><option value="">全部状态</option>'+[...new Set(sampleClusters.map(row=>row.state))].map(s=>'<option '+(s===stateFilter?"selected":"")+'>'+esc(s)+'</option>').join("")+'</select></label></div>'+
  '<div class="table-wrap"><table><thead><tr><th>集群</th><th>环境 / 业务线</th><th>集群类型</th><th>采集状态</th><th>操作</th></tr></thead><tbody>'+
@@ -197,7 +197,7 @@ const modal=$("#modal");
 let tab="clusters", submitAction;
 function render(){
  document.querySelectorAll("[data-tab]").forEach(button=>button.setAttribute("aria-selected",String(button.dataset.tab===tab)));
- if(tab==="clusters"){$("#crumb").textContent="资源管理 / 集群接入";clusterList();return}
+ if(tab==="clusters"){$("#crumb").textContent="资源管理 / Kubernetes 集群管理";clusterList();return}
  const label=labels[tab], rows=catalog[tab];
  $("#crumb").textContent="资源管理 / "+label+"管理";
  document.querySelectorAll("[data-tab]").forEach(button=>{

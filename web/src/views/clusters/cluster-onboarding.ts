@@ -3,6 +3,7 @@ import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
 const route = "#/resources/clusters";
+export const clusterManagementTitle = "Kubernetes 集群管理";
 const nodeValidationFailed = "已接入 · 节点校验失败";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],
@@ -102,7 +103,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   if (id && !editable) return '<p role="alert">当前账号只能查看集群接入状态。</p>';
   if (id?.startsWith("ownership-")) {
     const body = await renderNamespaceOwnership(decodeURIComponent(id.slice(10)), modal);
-    return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回集群接入</a>${body}`;
+    return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}`;
   }
   const response = await fetch(endpoint);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
@@ -124,15 +125,14 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
       <aside class="panel resource-scope" aria-labelledby="resource-scope-title">
         <h2 id="resource-scope-title">资源范围</h2>
         <input type="search" data-scope-search aria-label="搜索范围" placeholder="搜索环境或集群">
-        <button type="button" data-cluster-scope="all" aria-pressed="true">全部集群</button>
+        <button type="button" data-cluster-scope="all" aria-current="true">全部集群</button>
         ${[...environmentGroups].map(([environment, group]) => `<details open data-resource-environment>
-          <summary>${escapeHtml(environment)}</summary>
-          <button type="button" data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}" aria-pressed="false">全部${escapeHtml(environment)}集群</button>
-          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}" aria-pressed="false">${clusterLabel(item)}</button>`).join("")}
+          <summary data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}">${escapeHtml(environment)}</summary>
+          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}">${clusterLabel(item)}</button>`).join("")}
         </details>`).join("")}
       </aside>
       <div class="panel catalog-section">
-      <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
+      <div class="cluster-heading"><div><h2 id="cluster-list-title">${clusterManagementTitle}</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
         ${editable ? '<button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>' : ""}
       </div></div>
       <nav class="resource-view-tabs" aria-label="资源视图">
@@ -181,7 +181,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   const item = editing ? items.find((entry) => entry.id === decodeURIComponent(id.slice(rotating ? 7 : 5))) : undefined;
   const mode = item?.mode ?? id;
   if ((editing && (!item || item.deleted)) || (rotating && mode !== "pull") || (mode === "local" && !editing) || (mode !== "pull" && mode !== "push" && mode !== "local")) {
-    return modal ? clusterDialog("集群接入", "<p>实例不存在。</p>") : `<p>实例不存在。</p><a href="${route}">返回集群接入</a>`;
+    return modal ? clusterDialog(clusterManagementTitle, "<p>实例不存在。</p>") : `<p>实例不存在。</p><a href="${route}">返回${clusterManagementTitle}</a>`;
   }
   const catalogs = await Promise.all(["environments", "business-lines"].map(async (kind) => {
     const response = await fetch(`/api/v1/admin/${kind}`);
@@ -234,7 +234,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
       </div>
     </form>`;
   if (modal) return clusterDialog(title, body, false);
-  return `<h2>${title}</h2><a href="${route}">返回集群接入</a>${body}
+  return `<h2>${title}</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}
 
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
     ${item ? renderCollectionRecheck(item) : ""}`;
@@ -379,12 +379,22 @@ export function filterClusterRows(event: Event): void {
 /** 在切换资源范围或视图时同步列表结果。 */
 export function handleResourceWorkspaceClick(event: Event): void {
   if (!(event.target instanceof Element)) return;
-  const button = event.target.closest<HTMLButtonElement>("[data-cluster-scope], [data-resource-tab]");
-  const workspace = button?.closest<HTMLElement>("[data-resource-workspace]");
-  if (!button || !workspace) return;
-  const selection = button.hasAttribute("data-cluster-scope") ? "data-cluster-scope" : "data-resource-tab";
-  workspace.querySelector(`[${selection}][aria-pressed=true]`)?.setAttribute("aria-pressed", "false");
-  button.setAttribute("aria-pressed", "true");
+  const control = event.target.closest<HTMLElement>("[data-cluster-scope], [data-resource-tab]");
+  const workspace = control?.closest<HTMLElement>("[data-resource-workspace]");
+  if (!control || !workspace) return;
+  if (control.hasAttribute("data-cluster-scope")) {
+    const previous = workspace.querySelector("[data-cluster-scope][aria-current=true]");
+    const environment = control.closest<HTMLDetailsElement>("[data-resource-environment]");
+    if (control.matches("summary") && previous !== control && environment) {
+      event.preventDefault();
+      environment.open = true;
+    }
+    previous?.removeAttribute("aria-current");
+    control.setAttribute("aria-current", "true");
+  } else {
+    workspace.querySelector("[data-resource-tab][aria-pressed=true]")?.setAttribute("aria-pressed", "false");
+    control.setAttribute("aria-pressed", "true");
+  }
   filterResourceRows(workspace);
 }
 
@@ -392,7 +402,7 @@ export function handleResourceWorkspaceClick(event: Event): void {
 function filterResourceRows(section: HTMLElement): void {
   const search = section.querySelector<HTMLInputElement>('[data-cluster-filter="query"]')?.value.trim().toLowerCase() ?? "";
   const status = section.querySelector<HTMLSelectElement>('[data-cluster-filter="status"]');
-  const scopes = section.querySelector<HTMLButtonElement>("[data-cluster-scope][aria-pressed=true]")?.dataset;
+  const scopes = section.querySelector<HTMLElement>("[data-cluster-scope][aria-current=true]")?.dataset;
   const namespaces = Boolean(section.querySelector('[data-resource-tab="namespaces"][aria-pressed=true]'));
   const rowSelector = namespaces ? "[data-namespace-row]" : "[data-cluster-row]";
   for (const table of section.querySelectorAll<HTMLElement>("[data-resource-table]")) {
@@ -452,7 +462,7 @@ export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<
   const editor = target.closest<HTMLButtonElement>("[data-cluster-editor]");
   if (editor) {
     dialog.classList.add("cluster-dialog-wide");
-    dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? "集群接入"), '<p role="status">正在加载…</p>');
+    dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? clusterManagementTitle), '<p role="status">正在加载…</p>');
     dialog.showModal();
     const loading = dialog.firstElementChild;
     try {
@@ -463,7 +473,7 @@ export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<
       }
     } catch {
       if (dialog.open && dialog.firstElementChild === loading) {
-        dialog.innerHTML = clusterDialog("集群接入", '<p role="alert">无法加载集群配置，请重试。</p>');
+        dialog.innerHTML = clusterDialog(clusterManagementTitle, '<p role="alert">无法加载集群配置，请重试。</p>');
       }
     }
     return;

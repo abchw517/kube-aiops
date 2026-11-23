@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>权限配置 · kube-aiops</title>
+<script>if (new URLSearchParams(location.search).has("embed")) document.documentElement.classList.add("embedded");</script>
 <style>
+.embedded .top,.embedded .side,.embedded .crumb,.embedded .header { display:none }
+.embedded .layout { display:block; min-height:0 }
+.embedded main { padding:0 }
+.embedded body { background:#eef2f8 }
 :root{font:14px/1.5 "Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;background:#f0f4fa;color:#1d324e;--blue:#1b56aa;--navy:#102642;--line:#d8e3f0;--muted:#506785;--pale:#edf4ff;--white:#fff}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}button:disabled,input:disabled{cursor:not-allowed}a{color:var(--blue)}input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);margin:0;vertical-align:middle}input[type=checkbox]:disabled{opacity:.5}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #3d77c3;outline-offset:2px}
 [hidden]{display:none!important}h1,h2,h3,p{margin:0}h1{font-size:29px;line-height:1.2}h2{font-size:18px}h3{font-size:14px}
@@ -34,7 +39,7 @@ dialog{border:1px solid var(--line);border-radius:11px;padding:0;width:min(600px
 <header class="top"><div class="brand"><b>K</b> kube-aiops</div><div class="identity"><span>交互原型 · 示例数据</span><select id="actor" aria-label="预览身份"><option value="super">超级管理员</option><option value="admin">普通系统管理员</option></select></div></header>
 <div class="layout"><aside class="side" aria-label="平台导航示意"><div>诊断控制台</div><div>运维知识库</div><div>资源管理</div><div class="active">系统管理</div></aside>
 <main>
-<p class="crumb">系统管理 / 权限配置</p><div class="header"><h1>权限配置</h1><p>通过用户组继承角色，按接口动作和数据范围配置授权。</p></div>
+<p class="crumb">系统管理 / 权限配置</p><div class="header"><h1>权限配置</h1><p>通过用户组继承角色，按接口动作和数据范围配置授权。</p><a href="prototype.html">权限目录</a></div>
 <div class="notice" id="notice" role="status" hidden></div>
 <section class="panel">
 <nav class="tabset" aria-label="权限配置"><button type="button" id="rolesTab" aria-pressed="true">角色配置</button><button type="button" id="groupsTab" aria-pressed="false">用户组</button></nav>

@@ -427,8 +427,32 @@ try {
     await cdp.send("Runtime.evaluate", {expression: `document.querySelector('[data-wiki-run-action="retry"][value="page-2"]').click()`});
     await assertText(cdp, (text) => text.includes("本次重试已记录"), "Failed page could not be retried");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
-      (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
+      (text) => text.includes("资源管理") && text.includes("Kubernetes 集群管理") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
+    const clusterLabels = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `[
+      document.querySelector('.portal-sidebar a[aria-current="page"]')?.textContent,
+      document.querySelector("main h1")?.textContent,
+      document.querySelector("#cluster-list-title")?.textContent,
+    ]` });
+    if (clusterLabels.result?.value?.length !== 3 ||
+        !clusterLabels.result.value.every(label => label === "Kubernetes 集群管理")) {
+      throw new Error("Cluster navigation, page title and list heading must all say Kubernetes 集群管理");
+    }
     await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
+    const environmentScopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const rows = [...document.querySelectorAll("[data-cluster-row]")];
+      const environments = [...document.querySelectorAll('summary[data-cluster-scope="environment"]')];
+      return environments.length >= 2 && environments.every(scope => {
+        const group = scope.parentElement;
+        const matches = rows.filter(row => row.dataset.environment === scope.dataset.scopeValue);
+        group.open = false;
+        scope.click();
+        return scope.getAttribute("aria-current") === "true" && group.open &&
+          [...group.querySelectorAll("button")].every(button => button.dataset.clusterScope === "cluster") &&
+          rows.every(row => row.hidden === !matches.includes(row)) &&
+          document.querySelector("[data-cluster-count]").textContent === "共 " + matches.length + " 个集群";
+      });
+    })()` });
+    if (!environmentScopes.result?.value) throw new Error("Environment headings did not directly scope the cluster list");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-cluster-scope="cluster"][data-scope-value="dev-k8s"]').click();
       document.querySelector('[data-resource-tab="namespaces"]').click();
@@ -498,7 +522,7 @@ try {
       form.elements.businessId.dispatchEvent(new Event("change", { bubbles: true }));
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => !text.includes("保存归属") && text.includes("集群接入"), "Namespace ownership did not save and close");
+    await assertText(cdp, (text) => !text.includes("保存归属") && text.includes("Kubernetes 集群管理"), "Namespace ownership did not save and close");
     await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const search = document.querySelector('[data-cluster-filter="query"]');
@@ -740,6 +764,9 @@ try {
       (text) => text.includes("60 分钟"), "Saved duration did not persist after reload");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector(".auth-ldap-card > summary").click()` });
     await assertText(cdp, (text) => text.includes("测试待启用配置"), "Expanded LDAP editor panels did not render");
+    await assertLDAPEditorLayout(cdp, 1440, false);
+    await assertLDAPEditorLayout(cdp, 390, true);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
     await assertText(cdp, (text) => text.includes("请输入 LDAP 测试员工账号"), "Missing LDAP employee credentials were not explained");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -808,9 +835,13 @@ try {
         !document.querySelector('dialog[open] button[value="group-save"]');
     })()` });
     if (!lockedGroup.result?.value) throw new Error("Ordinary administrator could edit or assign an administrator group");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-system-close]").click()' });
     await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
-      (text) => ["权限配置", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'.portal-sidebar a[href="#/admin/access"]\').click()' });
+    await assertText(cdp, text => ["角色配置", "用户组", "批量勾选当前结果", "授权清单", "保存角色"].every(label => text.includes(label)),
+      "Permission management entry did not display the editable matrix from the prototype");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'main a[href="#/admin/access/catalog"]\').click()' });
+    await assertText(cdp, text => ["返回权限配置", "从工具集合查看功能动作和接口授权条件。", "接口权限详情"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-pc-module="knowledge"]').click();
@@ -847,8 +878,8 @@ try {
       tab: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent,
       catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
     })` });
-    if (permissionNames.result?.value?.title !== "权限管理" || permissionNames.result?.value?.tab !== "权限管理" ||
-        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match the new names");
+    if (permissionNames.result?.value?.title !== "权限配置" || permissionNames.result?.value?.tab !== "权限管理" ||
+        permissionNames.result?.value?.catalog !== "权限目录") throw new Error("Permission workspace labels do not match their purpose");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1046,7 +1077,7 @@ try {
       (text) => text.includes("审计保留策略") && text.includes("local:guest") && !text.includes("编辑保留策略"), "Ordinary administrators should only read audit retention");
     await fetch("http://127.0.0.1:4173/test/admin-session");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
-      (text) => text.includes("集群接入") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
+      (text) => text.includes("Kubernetes 集群管理") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });
     await assertText(cdp, (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment dialog did not render");
     await cdp.send("Runtime.evaluate", {
@@ -1062,10 +1093,11 @@ try {
     });
     await assertText(cdp, (text) => text.includes("请将上报凭据保存到采集端 Secret"), "Enrollment did not return credentials");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
-    await assertText(cdp, (text) => text.includes("集群接入") && !text.includes("上报凭据保存"), "Enrollment did not return to the cluster list");
+    await assertText(cdp, (text) => text.includes("Kubernetes 集群管理") && !text.includes("上报凭据保存"), "Enrollment did not return to the cluster list");
 
     await assertIncidentLifecycle(cdp);
     await assertRemainingDiagnosticPages(cdp);
+    await assertPortalFollowupPrototypes(cdp);
     await assertPermissionPrototype(cdp);
   } finally {
     cdp.close();
@@ -1118,6 +1150,41 @@ async function assertAuthenticationLayout(cdp, width, sidebarWidth) {
   if (!layout || layout.session !== false || layout.ldap !== false || layout.sidebar !== sidebarWidth ||
       layout.overflows || layout.active !== "认证配置") {
     throw new Error(`Authentication layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
+}
+
+async function assertLDAPEditorLayout(cdp, width, stacked) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 680 });
+  const result = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector('[data-identity-resource="ldap"]');
+    const [connection, validation] = form.querySelectorAll(".auth-ldap-section");
+    const bounds = connection.getBoundingClientRect();
+    const testBounds = validation.getBoundingClientRect();
+    return {
+      stacked: testBounds.top >= bounds.bottom,
+      usable: ["url", "bindDN", "baseDN", "testUsername", "testPassword"].every(name => {
+        const field = form.elements[name];
+        const input = field.getBoundingClientRect();
+        const label = field.closest("label").getBoundingClientRect();
+        return input.top > label.top + 8 && input.width >= label.width - 1 && input.height >= 36;
+      }),
+      plainAligned: (() => {
+        const field = form.elements.allowPlainLDAP;
+        const checkbox = field.getBoundingClientRect();
+        const text = field.nextElementSibling.getBoundingClientRect();
+        return checkbox.right < text.left &&
+          Math.abs(checkbox.top + checkbox.height / 2 - text.top - text.height / 2) <= 1;
+      })(),
+      clipped: document.documentElement.scrollWidth > innerWidth,
+      advanced: form.querySelector(".auth-ldap-advanced")?.open,
+      steps: validation.querySelectorAll("[data-ldap-step]").length,
+      saveLocked: form.querySelector('button[type="submit"]:not([value="test"])').disabled,
+    };
+  })()` });
+  const layout = result.result?.value;
+  if (!layout || layout.stacked !== stacked || !layout.usable || !layout.plainAligned || layout.clipped || layout.advanced ||
+      layout.steps !== 4 || !layout.saveLocked) {
+    throw new Error(`LDAP editor layout at ${width}px: ${JSON.stringify(layout)}`);
   }
 }
 
@@ -1500,11 +1567,12 @@ async function assertRolePermissionSelection(cdp) {
     return readOnly;
   })()` });
   if (!readOnly.result?.value) throw new Error("Read-only catalog offers grant controls");
-  await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
-    "Role configuration did not render");
+  await cdp.send("Runtime.evaluate", { expression: `[...document.querySelectorAll(".portal-sidebar a")]
+    .find(link => link.textContent.trim() === "权限管理").click()` });
+  await assertText(cdp, text => ["新建角色", "角色配置", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
+    "Permission management navigation did not directly open the editable role workspace");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
-    document.querySelector('[data-system-open="role:"]').click();
-    const form = document.querySelector("dialog[open] form");
+    const form = document.querySelector("dialog[open] [data-role-edit]");
     form.elements.name.value = "接口授权检查";
   })()` });
   await assertText(cdp, text => text.includes("重试加载接口权限"), "Catalog failure removed the role editor recovery entry");
@@ -1615,6 +1683,80 @@ async function assertRolePermissionSelection(cdp) {
     return window.roleSaveRequests;
   })()` });
   if (writes.result?.value !== 1) throw new Error("Role confirmation did not send exactly one save request");
+}
+
+async function assertPortalFollowupPrototypes(cdp) {
+  const portalPrototype = new URL("../../docx/portal-ui-prototype.html", import.meta.url);
+  await assertPage(cdp, `${portalPrototype.href}#/resources/clusters`,
+    text => text.includes("Kubernetes 集群管理") && text.includes("集群列表"), "Global prototype did not show the renamed cluster page");
+  const labels = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `[
+    document.querySelector('#sidebar [aria-current="page"]')?.textContent,
+    document.querySelector("main h1")?.textContent,
+    document.querySelector("[data-filter-region] h2")?.textContent,
+  ]` });
+  if (!labels.result?.value?.every(label => label === "Kubernetes 集群管理")) throw new Error("Global cluster prototype labels are inconsistent");
+  const scopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const counts = {研发: 1, 测试: 1, 预发布: 1, 生产: 2};
+    return Object.entries(counts).every(([name, count]) => {
+      const scope = document.querySelector('summary[data-scope="' + name + '"]');
+      if (!scope) return false;
+      scope.click();
+      const rows = [...document.querySelectorAll("#resource-table [data-row]:not([hidden])")];
+      return rows.length === count && rows.every(row => row.cells[1].textContent === name) &&
+        scope.parentElement.textContent.includes("全部" + name + "集群") === false;
+    });
+  })()` });
+  if (!scopes.result?.value) throw new Error("Global prototype did not filter all environments from their headings");
+
+  await assertPage(cdp, `${portalPrototype.href}#/admin/access`,
+    text => text.includes("权限配置") && text.includes("角色列表") && text.includes("权限目录"), "Global prototype lost the permission workspace");
+  const frame = await cdp.send("Runtime.evaluate", { returnByValue: true,
+    expression: `document.querySelector('iframe[title="角色配置与用户组"]')?.getAttribute("src")` });
+  if (frame.result?.value !== "permission-catalog/group-admin-prototype.html?embed") {
+    throw new Error("Global prototype is not using the PR #111 permission workflow");
+  }
+
+  await assertPage(cdp, `${portalPrototype.href}#/admin/ldap`,
+    text => text.includes("LDAP 连接配置"), "Global LDAP prototype did not render");
+  const ldap = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const details = document.querySelector(".ldap");
+    if (details.open) return false;
+    details.querySelector("summary").click();
+    const form = details.querySelector("form");
+    const save = form.querySelector('[value="save"]');
+    const test = form.querySelector('[value="test"]');
+    if (!save.disabled || form.querySelectorAll("[data-ldap-step]").length !== 4) return false;
+    form.elements.testUsername.value = "alice";
+    form.elements.testPassword.value = "fixture-password";
+    test.click();
+    if (save.disabled || form.elements.testPassword.value !== "") return false;
+    form.elements.url.value = "ldap://directory.example.test:389";
+    form.elements.url.dispatchEvent(new Event("input", { bubbles: true }));
+    if (!save.disabled) return false;
+    const checkbox = form.elements.allowPlain;
+    const copy = checkbox.nextElementSibling;
+    const box = checkbox.getBoundingClientRect();
+    const text = copy.getBoundingClientRect();
+    if (box.height !== 14 || box.right >= text.left ||
+      Math.abs(box.top + box.height / 2 - text.top - text.height / 2) > 1) return false;
+    copy.click();
+    if (!checkbox.checked) return false;
+    form.elements.testUsername.value = "alice";
+    form.elements.testPassword.value = "fixture-password";
+    test.click();
+    save.click();
+    return save.disabled && form.querySelector("[data-ldap-save-message]").textContent.includes("已保存");
+  })()` });
+  if (!ldap.result?.value) throw new Error("Global LDAP prototype did not require verification before saving");
+
+  const resource = new URL("../../docx/resource-management/prototype.html", import.meta.url);
+  await assertPage(cdp, resource.href, text => text.includes("Kubernetes 集群管理") && text.includes("采集状态"),
+    "Resource-management prototype lost the renamed cluster page");
+  const system = new URL("../../docx/system-management/prototype.html#ldap", import.meta.url);
+  await assertPage(cdp, system.href, text => text.includes("LDAP 连接配置"), "System-management LDAP prototype did not render");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-ldap-section] summary").click()` });
+  await assertText(cdp, text => ["LDAP URL", "用户与组搜索设置", "测试员工认证", "保存并启用"].every(label => text.includes(label)),
+    "System-management LDAP prototype did not expand to the redesigned form");
 }
 
 async function assertPermissionPrototype(cdp) {

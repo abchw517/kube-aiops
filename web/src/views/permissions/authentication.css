@@ -6,8 +6,8 @@
 .auth-session-summary:focus-visible { outline-offset: -3px; }
 .auth-session-summary:hover { background: #f5f9ff; }
 .auth-session-summary::after { content: ""; flex: none; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.auth-session-card[open] > .auth-session-summary { border-bottom: 1px solid var(--line); }
-.auth-session-card[open] > .auth-session-summary::after { transform: rotate(225deg); }
+:is(.auth-session-card, .auth-ldap-card)[open] > .auth-session-summary { border-bottom: 1px solid var(--line); }
+:is(.auth-session-card, .auth-ldap-card)[open] > .auth-session-summary::after { transform: rotate(225deg); }
 .auth-session-current { margin-inline-start: auto; color: var(--muted); font-size: 13px; font-weight: 400; }
 .auth-session-current strong { color: var(--blue); white-space: nowrap; }
 .auth-session-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
@@ -26,11 +26,37 @@
 .auth-policy-error { color: #af3546; }
 .auth-policy-status { color: #176c55; }
 .auth-session-settings :is(.auth-policy-error, .auth-policy-status):not(:empty) { margin-top: 6px; }
-.auth-ldap-card { padding: 13px 16px; }
-.auth-ldap-card > summary { font-weight: 650; cursor: pointer; }
+.auth-ldap-card { container-type: inline-size; }
+.auth-ldap-card > .auth-session-summary::after { margin-inline-start: auto; }
 .auth-ldap-state { display: inline-block; padding: 2px 7px; border-radius: 4px; color: #176c55; background: #e8f5ee; font-size: 12px; font-weight: 400; }
-.auth-ldap-content { margin-top: 12px; }
-.auth-ldap-content > [data-ldap-issue] { color: #af3546; }
+.auth-ldap-content { padding: 16px; }
+.auth-ldap-content > [data-ldap-issue] { margin: 0 0 14px; color: #af3546; }
+.auth-ldap-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; gap: 16px; }
+.auth-ldap-section { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 7px; }
+.auth-ldap-section h2 { margin: 0 0 2px; font-size: 1rem; }
+.auth-ldap-section small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.auth-ldap-field { display: grid; min-width: 0; gap: 5px; font-weight: 650; }
+.auth-ldap-field :is(input, select) { width: 100%; min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid #aebed0; border-radius: 5px; color: var(--ink); background: white; font: inherit; font-weight: 400; }
+.auth-ldap-plain { display: flex; align-items: center; gap: 8px; }
+.auth-ldap-plain input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--blue); }
+.auth-ldap-advanced { min-width: 0; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.auth-ldap-advanced summary { cursor: pointer; font-weight: 650; }
+.auth-ldap-advanced p { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.auth-ldap-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; margin-block: 10px; }
+.auth-ldap-verification { background: #f5f8fd; }
+.auth-ldap-verification .button { justify-self: start; }
+.auth-ldap-steps { min-width: 0; padding: 8px 10px 10px; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.auth-ldap-steps legend { color: var(--muted); padding-inline: 4px; }
+.auth-ldap-steps [data-state="passed"] { color: #176c55; background: #e8f5ee; }
+.auth-ldap-steps [data-state="failed"] { color: #af3546; background: #fce9ec; }
+.auth-ldap-verification [role="status"] { margin: 0; overflow-wrap: anywhere; }
+.auth-ldap-verification [role="status"]:empty { display: none; }
+.auth-ldap-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.auth-ldap-actions p { margin: 0; color: var(--muted); }
+
+@container (max-width: 740px) {
+  .auth-ldap-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 680px) {
   .auth-session-body { grid-template-columns: minmax(0, 1fr); }

@@ -283,7 +283,7 @@ createServer(async (request, response) => {
         collection: { nodes: [{ name: "test-worker", ready: "False" }], namespaces: [{ name: "dev-app" }] },
       }, {
         id: "local", name: "本地可恢复集群", mode: "local", enabled: !localConnectionDeleted,
-        deleted: localConnectionDeleted, checkedAt: localCheckedAt, environment: "研发", business: "云帆",
+        deleted: localConnectionDeleted, checkedAt: localCheckedAt, environment: "测试", business: "云帆",
       }]);
     }
     const chunks = [];
