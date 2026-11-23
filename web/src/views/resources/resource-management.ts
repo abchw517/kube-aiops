@@ -1,21 +1,21 @@
 import { escapeHtml } from "../../components/html.ts";
 import { renderOnboarding } from "../clusters/cluster-onboarding.ts";
 
-const tabs = [
+export const resourcePages = [
   ["clusters", "集群接入"],
   ["environments", "环境管理"],
   ["business-lines", "业务线管理"],
 ] as const;
 
-type Tab = typeof tabs[number][0];
+type Tab = typeof resourcePages[number][0];
 type Catalog = Exclude<Tab, "clusters">;
 type Entry = { id: string; name: string };
 export type ResourceAccess = Record<Tab, boolean>;
 
 export function resolveResourceTab(hash: string, access: ResourceAccess): Tab | undefined {
   const requested = hash.split("/")[2];
-  if (requested) return tabs.find(([key]) => key === requested && access[key])?.[0];
-  return tabs.find(([key]) => access[key])?.[0];
+  if (requested) return resourcePages.find(([key]) => key === requested && access[key])?.[0];
+  return resourcePages.find(([key]) => access[key])?.[0];
 }
 
 export function renderCatalog(kind: Catalog, entries: Entry[], editable = true): string {
@@ -73,13 +73,13 @@ export function handleResourceCatalogClick(event: MouseEvent): void {
 }
 
 export async function renderResourceManagement(hash: string, access: ResourceAccess, editable = true): Promise<string> {
-  const selected = resolveResourceTab(hash, access);
+  const path = hash.split("?", 1)[0] ?? "";
+  const selected = resolveResourceTab(path, access);
   if (!selected) return '<p role="alert">无权访问此资源管理页面。</p>';
-  const navigation = tabs.filter(([key]) => access[key]).map(([key, label]) =>
-    `<a href="#/resources/${key}"${key === selected ? ' aria-current="page"' : ""}>${label}</a>`).join("");
+  const id = path.split("/")[3];
   let content: string;
   if (selected === "clusters") {
-    content = await renderOnboarding(hash.split("/")[3], false, editable);
+    content = await renderOnboarding(id, false, editable);
   } else {
     const response = await fetch(`/api/v1/admin/${selected}`);
     if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
@@ -87,8 +87,7 @@ export async function renderResourceManagement(hash: string, access: ResourceAcc
     }
     content = renderCatalog(selected, await response.json() as Entry[], editable);
   }
-  return `<section class="panel identity-panel resource-management">
-    <nav class="identity-nav" aria-label="资源管理">${navigation}</nav>
+  return `<section class="resource-management${selected === "clusters" && !id ? "" : " panel identity-panel"}">
     ${content}
   </section>`;
 }

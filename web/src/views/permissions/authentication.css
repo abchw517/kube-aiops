@@ -1,0 +1,38 @@
+/* 会话与 LDAP 卡片共用控制台设计变量。 */
+.auth-config { display: grid; align-content: start; gap: 16px; }
+.auth-session-card, .auth-ldap-card { min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+.auth-session-summary { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 16px; list-style: none; cursor: pointer; font-weight: 700; }
+.auth-session-summary::-webkit-details-marker { display: none; }
+.auth-session-summary:focus-visible { outline-offset: -3px; }
+.auth-session-summary:hover { background: #f5f9ff; }
+.auth-session-summary::after { content: ""; flex: none; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.auth-session-card[open] > .auth-session-summary { border-bottom: 1px solid var(--line); }
+.auth-session-card[open] > .auth-session-summary::after { transform: rotate(225deg); }
+.auth-session-current { margin-inline-start: auto; color: var(--muted); font-size: 13px; font-weight: 400; }
+.auth-session-current strong { color: var(--blue); white-space: nowrap; }
+.auth-session-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.auth-session-settings, .auth-session-scope { padding: 13px 16px; }
+.auth-session-scope { border-inline-start: 1px solid var(--line); background: #f5f8fd; }
+.auth-session-scope h2 { margin: 0; font-size: 1rem; }
+.auth-session-scope p, .auth-session-settings p { margin: 0; }
+.auth-session-settings label { display: block; margin-bottom: 5px; font-weight: 650; }
+.auth-policy-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.auth-policy-controls input { width: 85px; min-height: 34px; padding: 5px 10px; border: 1px solid #b8c6d7; border-radius: 5px; color: var(--ink); background: white; }
+.auth-policy-controls input[aria-invalid="true"] { border-color: #af3546; }
+.auth-policy-controls .button { min-height: 34px; padding: 5px 10px; border-radius: 5px; background: var(--blue); }
+.auth-policy-controls .button:hover:not(:disabled) { background: #005ab3; }
+.auth-policy-controls .button:disabled { border-color: var(--line); background: #e8eef6; color: var(--muted); cursor: default; }
+.auth-session-settings .auth-policy-hint { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.auth-policy-error { color: #af3546; }
+.auth-policy-status { color: #176c55; }
+.auth-session-settings :is(.auth-policy-error, .auth-policy-status):not(:empty) { margin-top: 6px; }
+.auth-ldap-card { padding: 13px 16px; }
+.auth-ldap-card > summary { font-weight: 650; cursor: pointer; }
+.auth-ldap-state { display: inline-block; padding: 2px 7px; border-radius: 4px; color: #176c55; background: #e8f5ee; font-size: 12px; font-weight: 400; }
+.auth-ldap-content { margin-top: 12px; }
+.auth-ldap-content > [data-ldap-issue] { color: #af3546; }
+
+@media (max-width: 680px) {
+  .auth-session-body { grid-template-columns: minmax(0, 1fr); }
+  .auth-session-scope { border-inline-start: 0; border-top: 1px solid var(--line); }
+}

@@ -3,7 +3,7 @@ import { bindPortalForms } from "./portal-forms.ts";
 import { filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
-import { filterClusterRows, handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
+import { filterClusterRows, handleClusterMaintenanceClick, handleResourceWorkspaceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
 import {
   ApiError,
@@ -17,6 +17,7 @@ import { apiClient } from "./api/client.ts";
 import { diagnosticListPaths, diagnosticListView } from "./domain/diagnostic-routes.ts";
 import { renderPortalShell } from "./components/portal-shell.ts";
 import {
+  authenticationConfigError,
   authenticationRequiredState,
   authorizationDeniedState,
   errorState,
@@ -83,12 +84,14 @@ export class PortalApp {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
       handleResourceCatalogClick(event);
+      handleResourceWorkspaceClick(event);
       void handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
     });
     bindPortalForms(this.root, {
       refresh: () => void this.route(),
+      sessionExpired: () => this.renderAuthenticationExpired(),
       completePasswordChange: () => {
         this.identityAdmin = false;
         this.mustChangePassword = false;
@@ -122,7 +125,7 @@ export class PortalApp {
       this.navigateFindingFilters(filters);
     });
     window.addEventListener("keydown", (event) => dismissSeverityHelp(event, this.root));
-    if (!window.location.hash) window.location.hash = "#/findings";
+    if (!window.location.hash) window.location.hash = diagnosticListPaths.overview;
     void this.route();
   }
 
@@ -134,8 +137,18 @@ export class PortalApp {
     this.incidentCreate = false;
     this.diagnosticSettings = { datasources: false, datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
     if (!demoMode) {
+      const isAuthenticationRoute = window.location.hash === "#/admin/ldap";
       try {
         const response = await fetch("/api/v1/admin/status");
+        if (generation !== this.renderGeneration) return;
+        if (isAuthenticationRoute && response.status === 401) {
+          this.renderAuthenticationExpired();
+          return;
+        }
+        if (isAuthenticationRoute && !response.ok) {
+          this.renderShell(response.status === 403 ? authorizationDeniedState() : authenticationConfigError());
+          return;
+        }
         const status = response.ok ? await response.json() : {};
         if (generation !== this.renderGeneration) return;
         this.identityAdmin = status.admin === true;
@@ -164,6 +177,10 @@ export class PortalApp {
         this.superAdministrator = status.superAdministrator === true;
       } catch {
         if (generation !== this.renderGeneration) return;
+        if (isAuthenticationRoute) {
+          this.renderShell(authenticationConfigError());
+          return;
+        }
       }
       const hash = window.location.hash;
       if (!this.mustChangePassword && !this.canChangePassword && /^#\/admin\/password(?:[/?]|$)/.test(hash)) {
@@ -190,7 +207,7 @@ export class PortalApp {
         return;
       }
       if (!this.mustChangePassword && hash === "#/admin/access/catalog") {
-        this.renderShell(loadingState("正在加载权限目录。"));
+        this.renderShell(loadingState("正在加载权限配置。"));
         try {
           const catalog = await loadPermissionCatalog();
           if (generation !== this.renderGeneration) return;
@@ -202,21 +219,32 @@ export class PortalApp {
           this.renderShell(body);
           bindPermissionCatalog(this.root, catalog);
         } catch {
-          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限目录。请核对访问权限后重试。"));
+          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限配置。请核对访问权限后重试。"));
         }
         return;
       }
       const adminRoute = hash.startsWith("#/admin");
+      if (isAuthenticationRoute && !this.mustChangePassword && !this.identityAdmin) {
+        this.renderShell(authorizationDeniedState());
+        return;
+      }
       if (this.mustChangePassword || (this.identityAdmin && adminRoute) || (this.canChangePassword && hash === "#/admin/password")) {
         const [, , resource = "ldap", roleID] = window.location.hash.split("/");
-        const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, {
-          initial: this.mustChangePassword,
-          roleID,
-          administrator: this.identityAdmin,
-          superAdmin: this.superAdministrator,
-          canChangePassword: this.canChangePassword,
-        });
-        if (generation === this.renderGeneration) this.renderShell(body);
+        try {
+          const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, {
+            initial: this.mustChangePassword,
+            roleID,
+            administrator: this.identityAdmin,
+            superAdmin: this.superAdministrator,
+            canChangePassword: this.canChangePassword,
+          });
+          if (generation === this.renderGeneration) this.renderShell(body);
+        } catch (error) {
+          if (generation !== this.renderGeneration) return;
+          if (error instanceof Response && error.status === 401) this.renderAuthenticationExpired();
+          else this.renderShell(error instanceof Response && error.status === 403
+            ? authorizationDeniedState() : authenticationConfigError());
+        }
         return;
       }
     }
@@ -492,26 +520,40 @@ export class PortalApp {
   private renderShell(content: string, signedOut = false): void {
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
-      active.closest(".topbar, .workspace-nav, .diagnostic-nav, .skip-link") ? active : null;
+      active.closest(".topbar, .portal-sidebar, .skip-link") ? active : null;
+    const activeRegion = activeLink?.closest("nav")?.getAttribute("aria-label");
     const mainFocused = active instanceof HTMLElement && active.id === "portal-content" && this.root.contains(active);
     this.root.innerHTML = renderPortalShell(content, {
       hash: window.location.hash,
       demoMode,
       identityAdmin: this.identityAdmin, permissionCatalog: this.permissionCatalog, auditRead: this.auditRead,
-      canManageResources: Object.values(this.resourceAccess).some(Boolean),
+      resourceAccess: this.resourceAccess,
+      wikiGovernance: this.identityAdmin || this.wikiAccess?.candidates === true || this.wikiAccess?.governance === true,
       mustChangePassword: this.mustChangePassword,
       canChangePassword: this.canChangePassword,
       showLogout: this.showLogout,
       signedOut,
+      incidentsAvailable: this.incidentsAvailable,
       diagnosticDatasources: this.diagnosticSettings.datasources,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     if (activeLink) {
-      const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .workspace-nav a, .diagnostic-nav a, .skip-link"));
-      links.find((link) => link.className === activeLink.className && link.href === activeLink.href)
-        ?.focus({ preventScroll: true });
+      const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .portal-sidebar a, .skip-link"));
+      const replacement = links.find((link) => link.href === activeLink.href &&
+        link.closest("nav")?.getAttribute("aria-label") === activeRegion && link.className === activeLink.className);
+      if (replacement?.getClientRects().length) replacement.focus({ preventScroll: true });
+      else this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     }
+  }
+
+  /** 会话超时后保留认证配置地址，重新登录即可回到当前页面。 */
+  private renderAuthenticationExpired(): void {
+    this.showLogout = false;
+    this.identityAdmin = false;
+    this.mustChangePassword = false;
+    this.renderShell(authenticationRequiredState("会话已过期，请重新登录后查看认证配置。"), true);
+    this.root.querySelector<HTMLElement>("#login-heading")?.focus();
   }
 
   private handleClick(event: Event): void {
@@ -523,6 +565,10 @@ export class PortalApp {
       this.root.querySelector<HTMLElement>("main")?.focus();
     }
     if (action === "logout") void this.logout(target.closest<HTMLButtonElement>("button"));
+    if (action === "toggle-portal-menu") {
+      const opened = this.root.querySelector(".portal-layout")?.classList.toggle("menu-open");
+      target.closest("button")?.setAttribute("aria-expanded", String(Boolean(opened)));
+    }
     if (action === "retry") void this.route();
     if (action === "retry-correlation") {
       const region = target.closest<HTMLElement>("[data-correlation-finding]");

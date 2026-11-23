@@ -41,6 +41,14 @@ export function authorizationDeniedState(): string {
     </section>`;
 }
 
+/** 认证配置加载失败时提供独立的重试入口。 */
+export function authenticationConfigError(): string {
+  return `<section class="state-card error" role="alert">
+    <h2>无法加载认证配置</h2>
+    <button class="button" type="button" data-action="retry">重试</button>
+  </section>`;
+}
+
 export function errorState(message: string): string {
   return `
     <section class="state-card error" role="alert" data-testid="error-state">

@@ -429,6 +429,16 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
       (text) => text.includes("资源管理") && text.includes("集群接入") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
     await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-cluster-scope="cluster"][data-scope-value="dev-k8s"]').click();
+      document.querySelector('[data-resource-tab="namespaces"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("dev-app") && text.includes("共 1 个命名空间") &&
+      !text.includes("本地可恢复集群 ·"), "Namespace view did not follow the selected cluster");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-resource-tab="clusters"]').click();
+      document.querySelector('[data-cluster-scope="all"]').click();
+    })()` });
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-cluster-details]").click()' });
     await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
@@ -566,7 +576,7 @@ try {
     await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
     const nav = await cdp.send("Runtime.evaluate", { expression: `(() => {
       const links = [...document.querySelectorAll(".workspace-nav > a")];
-      const current = links.find((link) => link.getAttribute("aria-current") === "page");
+      const current = links.find((link) => link.getAttribute("aria-current") === "location");
       return {
         labels: links.map((link) => link.textContent).join("/"),
         indents: [...new Set(links.map((link) => getComputedStyle(link).paddingInlineStart))].length,
@@ -576,7 +586,7 @@ try {
       };
     })()`, returnByValue: true });
     const navigation = nav.result?.value;
-    if (navigation?.labels !== "诊断控制台/运维知识库/资源管理/系统管理" || navigation.indents !== 1) {
+    if (navigation?.labels !== "诊断控制台/资源管理/运维知识库/系统管理" || navigation.indents !== 1) {
       throw new Error("The four modules must be peers in the workspace navigation");
     }
     if (navigation.current !== "资源管理" || navigation.selectedBackground === navigation.inactiveBackground) {
@@ -707,7 +717,29 @@ try {
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="assign"]').click()` });
     await assertText(cdp, (text) => text.includes("分配用户组或角色") && text.includes("授权对象"), "Account assignment did not open from associations");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
-      (text) => text.includes("LDAP 连接配置") && text.includes("测试待启用配置"), "LDAP editor panels did not render");
+      (text) => text.includes("LDAP 连接配置") && text.includes("30 分钟"), "Authentication summaries did not render");
+    await assertAuthenticationLayout(cdp, 1440, 208);
+    await assertAuthenticationLayout(cdp, 390, 0);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector(".auth-session-summary").click();
+      window.saveFixtureSessionMinutes = (value) => {
+        const input = document.querySelector("#session-minutes");
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.form.querySelector("button").click();
+      };
+      window.saveFixtureSessionMinutes("4");
+    })()` });
+    await assertText(cdp, (text) => text.includes("请输入 5 至 480 之间的整数。"), "Invalid duration was not explained");
+    await cdp.send("Runtime.evaluate", { expression: `window.saveFixtureSessionMinutes("90")` });
+    await assertText(cdp, (text) => text.includes("当前设置未更改"), "Session policy save failure was not shown");
+    await cdp.send("Runtime.evaluate", { expression: `window.saveFixtureSessionMinutes("60")` });
+    await assertText(cdp, (text) => text.includes("60 分钟") && text.includes("下次登录时生效"), "Saved duration did not update the summary");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
+      (text) => text.includes("60 分钟"), "Saved duration did not persist after reload");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector(".auth-ldap-card > summary").click()` });
+    await assertText(cdp, (text) => text.includes("测试待启用配置"), "Expanded LDAP editor panels did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[value="test"]').click()` });
     await assertText(cdp, (text) => text.includes("请输入 LDAP 测试员工账号"), "Missing LDAP employee credentials were not explained");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -732,7 +764,7 @@ try {
     })()`, returnByValue: true });
     if (!ldapFieldsCleared.result?.value) throw new Error("Successful LDAP test did not clear employee credentials");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-identity-resource="ldap"] button[type="submit"]:not([value="test"])').click()` });
-    await assertText(cdp, (text) => text.includes("已保存") && text.includes("配置已启用"), "LDAP save did not show confirmation in its own panel");
+    await assertText(cdp, (text) => text.includes("已保存") && text.includes("已启用"), "LDAP save did not show confirmation in its own panel");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/groups",
       (text) => text.includes("新建用户组") && text.includes("运维"), "User group tab did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-system-open="role:guest-readonly"]').click()` });
@@ -778,7 +810,7 @@ try {
     if (!lockedGroup.result?.value) throw new Error("Ordinary administrator could edit or assign an administrator group");
     await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
-      (text) => ["权限目录", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
+      (text) => ["权限配置", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-pc-module="knowledge"]').click();
@@ -809,7 +841,14 @@ try {
     })()` });
     if (!configuredScope.result?.value) throw new Error("Role editor did not show or refresh configured interface scopes");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
-      (text) => text.includes("新建角色") && text.includes("访客只读"), "Role tab did not render");
+      (text) => text.includes("权限管理") && text.includes("权限配置") && text.includes("新建角色") && text.includes("访客只读"), "Renamed role workspace did not render");
+    const permissionNames = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
+      title: document.querySelector("main h1")?.textContent,
+      tab: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent,
+      catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
+    })` });
+    if (permissionNames.result?.value?.title !== "权限管理" || permissionNames.result?.value?.tab !== "权限管理" ||
+        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match the new names");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1065,6 +1104,23 @@ async function waitForPage(debugPort) {
   throw new Error(`Chrome DevTools endpoint did not become ready: ${lastError ?? "unknown error"}`);
 }
 
+// 按原型验证两块默认折叠、桌面侧栏和移动工作区。
+async function assertAuthenticationLayout(cdp, width, sidebarWidth) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 680 });
+  const result = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
+    session: document.querySelector(".auth-session-card")?.open,
+    ldap: document.querySelector(".auth-ldap-card")?.open,
+    sidebar: document.querySelector(".portal-sidebar")?.getBoundingClientRect().width,
+    overflows: document.documentElement.scrollWidth > innerWidth,
+    active: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent
+  })` });
+  const layout = result.result?.value;
+  if (!layout || layout.session !== false || layout.ldap !== false || layout.sidebar !== sidebarWidth ||
+      layout.overflows || layout.active !== "认证配置") {
+    throw new Error(`Authentication layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
+}
+
 async function createCdpClient(webSocketUrl) {
   const socket = new WebSocket(webSocketUrl);
   const pending = new Map();
@@ -1303,6 +1359,12 @@ async function assertIncidentLifecycle(cdp) {
     button.click();
   })()` });
   await assertText(cdp, (text) => text.includes("Unhealthy"), "Evidence detail did not load on demand");
+  await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics", (text) =>
+    ["事件级别分布", "近 7 天事件趋势", "最近故障事件", "订单服务故障"].every((label) => text.includes(label)),
+  "Incident overview did not show real fixture metrics and recent incidents");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-trend-point]").click()' });
+  await assertText(cdp, (text) => text.includes("2026-11-20（UTC）共 1 件事件"),
+    "Selecting a date did not reveal its observed count");
 }
 
 async function assertRemainingDiagnosticPages(cdp) {
@@ -1359,7 +1421,7 @@ async function assertRemainingDiagnosticPages(cdp) {
 async function assertDiagnosticCenter(cdp) {
   const origin = "http://127.0.0.1:4173";
   await assertPage(cdp, `${origin}/#/findings`, (text) => text.includes("共 3 条诊断结果"), "Legacy list is missing");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.diagnostic-nav a[href="#/diagnostics"]').click()` });
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.portal-sidebar a[href="#/diagnostics"]').click()` });
   await assertText(cdp, (text) => text.includes("最近诊断结果") && text.includes("查看故障事件") &&
     text.includes("CrashLoopBackOff detected") && text.includes("测试集群容量建议"),
   "Diagnostic overview did not show the authorized recent Findings");

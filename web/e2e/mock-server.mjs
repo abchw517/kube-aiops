@@ -12,6 +12,7 @@ let observationRequests = 0;
 let knowledgeCandidate;
 let savedInterfaceGrants;
 let administratorGroupSaved = false;
+let sessionLifetimeMinutes = 30;
 
 const findings = [
   {
@@ -294,6 +295,17 @@ createServer(async (request, response) => {
     }
     return json(response, 400, { error: "invalid onboarding fixture" });
   }
+  if (url.pathname === "/api/v1/admin/session-policy" && adminSession) {
+    if (request.method === "GET") return json(response, 200, { sessionLifetimeMinutes });
+    if (request.method === "PUT") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const input = JSON.parse(Buffer.concat(chunks).toString());
+      if (input.sessionLifetimeMinutes === 90) return json(response, 503, { error: "fixture unavailable" });
+      sessionLifetimeMinutes = input.sessionLifetimeMinutes;
+      return json(response, 200, { sessionLifetimeMinutes });
+    }
+  }
   if (url.pathname === "/api/v1/admin/ldap" && adminSession && request.method === "GET") {
     return json(response, 200, { url: "ldaps://example.test", baseDN: "dc=example,dc=test" });
   }
@@ -561,8 +573,11 @@ async function incidents(request, response, url) {
   const path = url.pathname.slice("/api/v1/diagnostics".length);
   const method = request.method;
   if (path === "/overview") {
-    return json(response, 200, { counts: { total: incidentFixture ? 1 : 0, active: incidentFixture ? 1 : 0 },
-      trend: { "2026-11-20": incidentFixture ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
+    const severity = url.searchParams.get("severity");
+    const matches = incidentFixture && (!severity || severity === incidentFixture.severity);
+    return json(response, 200, { counts: { total: matches ? 1 : 0, active: matches ? 1 : 0,
+      investigating: matches && incidentFixture.status === "investigating" ? 1 : 0, recovered: 0 },
+      trend: { "2026-11-20": matches ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
   }
   if (path === "/incidents" && method === "GET") {
     return json(response, 200, { items: incidentFixture ? [incidentFixture] : [], pagination: {}, coverage: "complete" });

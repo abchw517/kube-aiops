@@ -18,7 +18,16 @@ import (
 )
 
 const sessionCookie = "__Host-kube-aiops-session"
-const sessionLifetime = 30 * time.Minute
+const (
+	DefaultSessionLifetimeMinutes = 30
+	MinSessionLifetimeMinutes     = 5
+	MaxSessionLifetimeMinutes     = 480
+)
+
+// ValidSessionLifetimeMinutes 校验登录会话有效期是否在平台允许的范围内。
+func ValidSessionLifetimeMinutes(minutes int) bool {
+	return minutes >= MinSessionLifetimeMinutes && minutes <= MaxSessionLifetimeMinutes
+}
 
 type PasswordVerifier func(context.Context, string, string) (Principal, error)
 
@@ -28,13 +37,14 @@ type browserSession struct {
 }
 
 type Sessions struct {
-	origin          string
-	providers       map[string]PasswordVerifier
-	mu              sync.Mutex
-	active          map[[32]byte]browserSession
-	limits          map[string]*loginLimit
-	ValidateSession func(context.Context, Principal) error
-	RecordLogin     func(context.Context, string, string, int)
+	origin                 string
+	providers              map[string]PasswordVerifier
+	mu                     sync.Mutex
+	active                 map[[32]byte]browserSession
+	limits                 map[string]*loginLimit
+	SessionLifetimeMinutes func(context.Context) (int, error)
+	ValidateSession        func(context.Context, Principal) error
+	RecordLogin            func(context.Context, string, string, int)
 }
 
 type loginLimit struct {
@@ -168,12 +178,24 @@ func (s *Sessions) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 每次成功登录只读取一次策略，已签发会话继续使用原截止时间。
+	minutes := DefaultSessionLifetimeMinutes
+	if s.SessionLifetimeMinutes != nil {
+		minutes, err = s.SessionLifetimeMinutes(r.Context())
+		if err != nil || !ValidSessionLifetimeMinutes(minutes) {
+			slog.ErrorContext(r.Context(), "cannot read login session lifetime", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+	}
+	lifetime := time.Duration(minutes) * time.Minute
+
 	var random [32]byte
 	rand.Read(random[:])
 	token := base64.RawURLEncoding.EncodeToString(random[:])
-	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now()
 	for key, session := range s.active {
 		if !now.Before(session.expires) {
 			delete(s.active, key)
@@ -186,9 +208,9 @@ func (s *Sessions) login(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	expires := now.Add(sessionLifetime)
+	expires := now.Add(lifetime)
 	s.active[sha256.Sum256([]byte(token))] = browserSession{principal, expires}
-	writeSessionCookie(w, token, int(sessionLifetime.Seconds()))
+	writeSessionCookie(w, token, int(lifetime.Seconds()))
 	recordSessionPrincipal(w, principal)
 	w.WriteHeader(http.StatusNoContent)
 }

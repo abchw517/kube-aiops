@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kube-aiops 运维控制台原型</title>
+<style>
+:root {
+  color-scheme: light;
+  --top:#202430; --page:#eef2f8; --paper:#fff; --ink:#202b3a; --muted:#58677c;
+  --line:#dce4ee; --blue:#0069d1; --blue-soft:#e4f1ff; --green:#176c55;
+  --amber:#8a510d; --red:#af3546; --side:208px; --head:60px;
+  font:14px/1.55 "Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  background:var(--page); color:var(--ink);
+}
+* { box-sizing:border-box }
+body { margin:0 }
+h1,h2,h3,p,dl,dd,figure { margin:0 }
+a { color:var(--blue); text-decoration:none }
+button,input,select { font:inherit }
+:focus-visible { outline:2px solid #0875df; outline-offset:3px }
+[hidden] { display:none !important }
+button,select,summary { cursor:pointer }
+.skip { position:fixed; z-index:9; left:12px; top:8px; padding:8px 12px; background:white; transform:translateY(-150%) }
+.skip:focus { transform:none }
+.top { position:sticky; top:0; z-index:3; min-height:var(--head); display:flex; align-items:stretch; gap:12px; background:var(--top); color:white }
+.brand { width:var(--side); flex:none; display:flex; align-items:center; gap:10px; padding-inline:20px; color:white; font-size:17px; font-weight:700 }
+.brand-mark { display:grid; place-items:center; width:28px; height:28px; border:1px solid #73bafa; border-radius:7px; background:#0c4d84; color:#eef7ff; font-size:16px }
+.top-nav { display:flex; min-width:0; overflow-x:auto }
+.top-nav a { display:flex; align-items:center; padding:0 17px; border-bottom:2px solid transparent; white-space:nowrap; color:#d7dfed }
+.top-nav a:hover,.top-nav a[aria-current] { background:#303848; color:#fff }
+.top-nav a[aria-current] { border-color:#69b3fc }
+.top :focus-visible { outline-color:#8bc5ff; outline-offset:-3px }
+.preview { display:flex; align-items:center; gap:8px; margin-inline-start:auto; padding-inline:12px 20px; color:#e0e8f4; white-space:nowrap }
+.preview span { background:#3a4558; padding:3px 7px; border-radius:4px; font-size:12px }
+.menu-toggle { display:none }
+.layout { display:grid; grid-template-columns:var(--side) minmax(0,1fr); min-height:calc(100dvh - var(--head)) }
+.sidebar { position:sticky; top:var(--head); align-self:start; height:calc(100dvh - var(--head)); overflow:auto; background:var(--paper); border-right:1px solid var(--line); padding:18px 0 }
+.sidebar h2 { font-size:16px; padding:0 18px; margin-bottom:19px }
+.side-group { color:var(--muted); font-size:12px; margin:18px 18px 5px }
+.side-group:first-of-type { margin-top:0 }
+.side-link { display:flex; align-items:center; gap:9px; min-height:39px; padding:7px 14px 7px 16px; border-left:3px solid transparent; color:var(--ink) }
+.side-link:hover { background:#f3f7fd }
+.side-link[aria-current] { background:var(--blue-soft); border-color:var(--blue); color:var(--blue); font-weight:700 }
+.side-link::before { content:""; width:6px; height:6px; border:1px solid currentColor; border-radius:2px; opacity:.8 }
+.side-link[aria-current]::before { background:currentColor }
+.main { min-width:0; padding:18px 20px 30px }
+.page-head { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px }
+.head-text { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+h1 { font-size:20px; line-height:1.35 }
+.crumb { display:flex; align-items:center; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:12px; padding-inline-start:12px; border-left:1px solid #c2cddd }
+.crumb span[aria-current] { color:var(--ink) }
+.tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.button,input,select { min-height:34px; padding:5px 10px; color:var(--ink); background:#fff; border:1px solid #b8c6d7; border-radius:5px }
+.button:hover { background:#f0f6ff }
+.button.primary { background:var(--blue); border-color:var(--blue); color:white; font-weight:650 }
+.button.primary:hover { background:#005ab3 }
+.button:disabled { background:#e8eef6; border-color:#dce4ee; color:var(--muted); cursor:default }
+input[type=search] { width:min(100%,270px) }
+.stack { display:grid; gap:16px; align-content:start; min-width:0 }
+.panel { min-width:0; border:1px solid var(--line); border-radius:7px; background:var(--paper) }
+.panel-head,.panel-pad { padding:13px 16px }
+.panel-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--line) }
+.panel-head h2,.panel-head h3 { font-size:15px }
+.subtle { color:var(--muted); font-size:12px }
+.metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px }
+.metric { padding:14px 16px; border-top:3px solid var(--accent,var(--blue)) }
+.metric dt { color:var(--muted); font-size:13px }
+.metric dd { margin-top:5px; color:var(--accent,var(--blue)); font-size:29px; line-height:1.16; font-weight:650; font-variant-numeric:tabular-nums }
+.metric dd span { color:var(--muted); font-weight:400; font-size:12px; margin-inline-start:4px }
+.plots { display:grid; grid-template-columns:minmax(0,2fr) minmax(210px,1fr); gap:16px }
+.trend { padding:17px 16px 12px; overflow:hidden }
+.plot-body { display:grid; grid-template-columns:22px minmax(0,1fr); gap:8px }
+.axis { display:flex; flex-direction:column; justify-content:space-between; height:140px; color:var(--muted); font-size:11px; text-align:right }
+.bars { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:end; gap:8px; height:140px; padding:0 6px; border-bottom:1px solid #adbbce; background:repeating-linear-gradient(to top,transparent 0,transparent 34px,#e3eaf3 34px,#e3eaf3 35px) }
+.bar { width:min(34px,100%); height:var(--bar); justify-self:center; border:0; border-radius:3px 3px 0 0; background:#63a8e8 }
+.bar:first-child,.bar:last-child { background:#1676cb }
+.bar:hover,.bar:focus-visible { background:#075797 }
+.days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; margin:5px 6px 0 36px; text-align:center; color:var(--muted); font-size:11px }
+.chart-note { margin:9px 0 0 30px; color:var(--muted); font-size:12px }
+.severity-plot { display:grid; grid-template-columns:112px minmax(0,1fr); gap:15px; align-items:center; min-height:190px; padding:16px }
+.donut { display:grid; place-items:center; width:100%; aspect-ratio:1; border-radius:50%; background:conic-gradient(#d46470 0 25%,#d89a52 25% 58%,#55a2e6 58%) }
+.donut-inner { display:grid; place-content:center; text-align:center; width:70%; aspect-ratio:1; border-radius:50%; background:white }
+.donut-inner strong { font-size:22px; line-height:1.1 }
+.legend { display:grid; gap:7px; margin:0; padding:0; list-style:none; color:var(--muted); font-size:12px }
+.legend li { display:flex; align-items:center; gap:8px }
+.dot { width:8px; height:8px; flex:none; border-radius:2px; background:var(--accent) }
+.scroll { overflow-x:auto }
+table { border-collapse:collapse; width:100%; min-width:470px; font-size:13px }
+th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #e9eef5; vertical-align:middle }
+th { background:#f4f6fa; color:#485b73; font-size:12px; font-weight:650; white-space:nowrap }
+tbody tr:last-child td { border-bottom:0 }
+tbody tr:hover { background:#f8faff }
+.text-action { padding:0; border:0; background:none; color:var(--blue); text-align:left }
+.text-action:hover,a.in-table:hover { text-decoration:underline }
+.badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:12px; white-space:nowrap; color:#245d94; background:#eaf4ff }
+.badge.ok { color:var(--green); background:#e8f5ee }
+.badge.warn { color:var(--amber); background:#fff3e3 }
+.badge.danger { color:var(--red); background:#fcebf0 }
+.empty { text-align:center; padding:30px 14px; color:var(--muted) }
+.split { display:grid; grid-template-columns:218px minmax(0,1fr); gap:16px; align-items:start }
+.scope { padding:13px; min-width:0 }
+.scope h2 { font-size:15px; margin-bottom:9px }
+.scope input { width:100%; margin-bottom:8px }
+.scope summary { margin:7px 0 3px; font-weight:650 }
+.scope-option { display:block; text-align:left; min-height:34px; padding:5px 8px; width:100%; border:0; border-radius:4px; background:transparent; color:var(--ink) }
+.scope details .scope-option { padding-inline-start:19px }
+.scope-option:hover,.scope-option[aria-pressed=true] { color:var(--blue); background:var(--blue-soft) }
+.tabs { display:flex; flex-wrap:wrap; gap:16px; padding:0 16px; border-bottom:1px solid var(--line) }
+.tabs button { min-height:40px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted) }
+.tabs button[aria-pressed=true] { color:var(--blue); border-color:var(--blue); font-weight:700 }
+.doc-row { display:block; width:100%; padding:14px 16px; text-align:left; border:0; border-bottom:1px solid var(--line); background:white; color:var(--ink) }
+.doc-row:last-child { border-bottom:0 }
+.doc-row:hover { background:#f6f9fe }
+.doc-row strong { color:var(--blue); display:block; margin-bottom:3px }
+.doc-row span { display:block; color:var(--muted); font-size:12px }
+.session-summary { display:flex; align-items:center; min-height:54px; padding:9px 16px; gap:10px; list-style:none; font-weight:700 }
+.session-summary::-webkit-details-marker { display:none }
+.session-summary:focus-visible { outline-offset:-3px }
+.session-summary:hover { background:#f5f9ff }
+.session-summary .minute-summary { margin-inline-start:auto; color:var(--muted); font-size:13px; font-weight:400 }
+.session-summary strong { color:var(--blue) }
+.session-summary::after { content:""; width:7px; height:7px; border:solid var(--muted); border-width:0 2px 2px 0; transform:rotate(45deg) }
+.session[open] > .session-summary { border-bottom:1px solid var(--line) }
+.session[open] > .session-summary::after { transform:rotate(225deg) }
+.session-body { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) }
+.session-body aside { background:#f5f8fd; border-left:1px solid var(--line) }
+.session-body input { width:85px }
+.session-body label,.form-label { display:block; font-weight:650; margin-bottom:5px }
+.field-help { color:var(--muted); font-size:12px; margin-top:6px }
+.feedback { margin-top:6px; color:var(--green) }
+.feedback:empty { margin-top:0 }
+.feedback.error { color:var(--red) }
+.ldap { padding:13px 16px }
+.ldap summary { font-weight:650 }
+.ldap dl,.details-list { display:grid; gap:9px; margin-top:10px }
+.ldap dl div,.details-list div { display:grid; grid-template-columns:minmax(90px,1fr) minmax(0,2fr); gap:8px; overflow-wrap:anywhere }
+.ldap dt,.details-list dt { color:var(--muted) }
+dialog { width:min(580px,calc(100% - 24px)); max-height:82dvh; padding:0; border-radius:8px; border:1px solid var(--line); color:var(--ink); background:white }
+dialog::backdrop { background:#18233780 }
+dialog .panel-pad { max-height:65dvh; overflow:auto }
+.detail-body p+p { margin-top:9px }
+@media(max-width:1100px) { .severity-plot { grid-template-columns:86px minmax(0,1fr); gap:11px } }
+@media(max-width:910px) {
+  :root { --side:164px }
+  .top-nav a { padding-inline:10px }
+  .main { padding-inline:14px }
+  .split { grid-template-columns:174px minmax(0,1fr) }
+  .plots { grid-template-columns:minmax(0,1fr) }
+  .severity-plot { min-height:0; grid-template-columns:92px minmax(0,1fr) }
+}
+@media(max-width:680px) {
+  :root { --head:96px }
+  .top { flex-wrap:wrap; align-content:start; column-gap:0; row-gap:0 }
+  .brand { min-height:48px; width:auto; padding-inline:12px }
+  .preview { padding-inline:6px 12px }
+  .top-nav { order:3; width:100%; min-height:48px; padding-inline:5px }
+  .top-nav a { padding-inline:10px }
+  .menu-toggle { display:inline-flex; min-height:32px; align-self:center; margin-inline-end:11px; padding:3px 8px; border:1px solid #8797b0; border-radius:4px; background:transparent; color:white }
+  .layout { display:block }
+  .sidebar { display:none; position:static; height:auto; padding:11px 0; border-bottom:1px solid var(--line) }
+  .layout.menu-open .sidebar { display:block }
+  .sidebar h2 { margin-bottom:8px }
+  .main { padding:12px 10px 22px }
+  .page-head,.head-text { align-items:flex-start; gap:7px }
+  .head-text { flex-direction:column }
+  .crumb { padding-inline-start:0; border:0 }
+  .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
+  .split,.session-body { grid-template-columns:minmax(0,1fr) }
+  .session-body aside { border-left:0; border-top:1px solid var(--line) }
+  .days,.bars { gap:3px }
+  .days { font-size:10px }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="top">
+  <a class="brand" href="#/diagnostics"><span class="brand-mark" aria-hidden="true">K</span>kube-aiops</a>
+  <nav class="top-nav" id="top-nav" aria-label="模块导航"></nav>
+  <div class="preview"><span>原型演示</span></div>
+  <button class="menu-toggle" id="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">栏目</button>
+</header>
+<div class="layout" id="layout">
+  <nav class="sidebar" id="sidebar" aria-label="模块栏目"></nav>
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+<dialog id="detail" aria-labelledby="detail-title">
+  <header class="panel-head"><h2 id="detail-title"></h2><form method="dialog"><button class="button">关闭</button></form></header>
+  <div class="panel-pad detail-body" id="detail-content"></div>
+</dialog>
+<script>
+"use strict";
+
+const modules = [
+  { label:"诊断控制台", groups:[
+    ["诊断工作区", [["/diagnostics","诊断总览"],["/diagnostics/events","故障事件"],["/findings","原有诊断结果"]]],
+    ["诊断配置", [["/diagnostics/datasources","数据源管理"],["/diagnostics/policies","诊断策略"]]]
+  ] },
+  { label:"资源管理", groups:[
+    ["集群资源", [["/resources/clusters","集群接入"]]],
+    ["平台目录", [["/resources/environments","环境管理"],["/resources/business-lines","业务线管理"]]]
+  ] },
+  { label:"运维知识库", groups:[
+    ["知识工作区", [["/wiki","知识检索"],["/wiki/governance","知识治理"]]]
+  ] },
+  { label:"系统管理", groups:[
+    ["身份与访问", [["/admin/ldap","认证配置"],["/admin/users","用户管理"],["/admin/access/roles","权限管理"],["/admin/password","修改密码"]]],
+    ["审计", [["/admin/operations","操作审计"]]]
+  ] },
+];
+const routes = new Map(modules.flatMap(module => module.groups.flatMap(([,items]) =>
+  items.map(([path,title]) => [path,{ module,title }])
+)));
+const defaultPath = "/diagnostics";
+const main = document.getElementById("main");
+const layout = document.getElementById("layout");
+const menu = document.getElementById("menu-toggle");
+const detail = document.getElementById("detail");
+let sessionMinutes = 30;
+
+const incidents = [
+  ["支付接口 5xx 错误率上升","生产","prod-east","payments","高","处理中","14:32"],
+  ["订单处理 Pod 重启","生产","prod-east","orders","中","待确认","13:58"],
+  ["日志采集延迟","预发布","stage-east","observability","中","已恢复","13:20"],
+  ["网关副本不足","生产","prod-west","gateway","高","处理中","12:44"],
+  ["镜像拉取失败","研发","dev-east","sandbox","低","已恢复","11:16"],
+];
+const clusters = [
+  ["prod-east","生产","东区生产集群","已接入","12","14:26"],
+  ["prod-west","生产","西区生产集群","已接入","8","14:25"],
+  ["stage-east","预发布","东区预发布集群","采集异常","6","14:17"],
+  ["dev-east","研发","东区研发集群","已接入","14","14:25"],
+];
+const knowledge = [
+  ["支付接口 5xx 排查手册","生产 · payments · 故障处理","先确认错误率上升范围，再对照网关日志和应用发布记录。"],
+  ["Pod 反复重启排查步骤","通用 · Kubernetes · 故障处理","检查 Pod 事件、退出码与容器上一次启动的日志。"],
+  ["集群采集异常的恢复流程","平台 · 集群接入 · 运维手册","检查凭据有效性、API 连通性及采集权限。"],
+];
+const sampleTables = {
+  "/diagnostics/datasources":[["数据源","类型","范围","状态"],[["集群指标","Prometheus","生产","已启用"],["应用日志","VictoriaLogs","生产","已启用"]]],
+  "/diagnostics/policies":[["策略","信号","范围","状态"],[["高错误率","HTTP 5xx","生产","已启用"],["工作负载异常","Kubernetes 事件","所有环境","已启用"]]],
+  "/resources/environments":[["环境名称","环境 ID"],[["生产","prod"],["预发布","staging"],["研发","dev"]]],
+  "/resources/business-lines":[["业务线名称","业务线 ID"],[["交易平台","commerce"],["运维平台","platform"],["数据服务","data"]]],
+  "/wiki/governance":[["候选知识","来源","状态"],[["订单重启排查补充","故障诊断","待复核"],["采集延迟恢复案例","手工录入","草稿"]]],
+  "/admin/users":[["账号","来源","角色","状态"],[["admin","本地","超级管理员","已启用"],["ops.zhou","LDAP","系统管理员","已启用"],["reviewer","LDAP","知识复核","已启用"]]],
+  "/admin/operations":[["时间","操作者","操作","风险","结果"],[["14:32","admin","修改认证配置","高","成功"],["13:56","ops.zhou","编辑用户组","中","成功"],["12:20","reviewer","提交知识复核","低","成功"]]],
+};
+
+// 仅从已登记的演示路由读取页面，默认进入诊断总览。
+function currentPath() {
+  const requested = location.hash.slice(1);
+  return routes.has(requested) ? requested : defaultPath;
+}
+
+function badge(label,tone = "") { return '<span class="badge '+tone+'">'+label+'</span>'; }
+function linkButton(label,action,index) {
+  return '<button class="text-action" type="button" data-action="'+action+'" data-index="'+index+'">'+label+'</button>';
+}
+function table(headers,rows) {
+  return '<div class="scroll" role="region" aria-label="结果表格" tabindex="0"><table><thead><tr>'+
+    headers.map(header => '<th scope="col">'+header+'</th>').join("")+'</tr></thead><tbody>'+
+    rows.map(row => '<tr data-row>'+row.map(value => '<td>'+value+'</td>').join("")+'</tr>').join("")+
+    '<tr data-empty hidden><td class="empty" colspan="'+headers.length+'">没有符合条件的记录</td></tr></tbody></table></div>';
+}
+function panel(title,body) {
+  return '<section class="panel"><header class="panel-head"><h2>'+title+'</h2></header>'+body+'</section>';
+}
+function search(label) { return '<input type="search" data-search aria-label="'+label+'" placeholder="'+label+'">'; }
+function environmentOptions() {
+  return '<label class="tools">环境<select data-environment><option value="">所有环境</option><option>生产</option><option>预发布</option><option>研发</option></select></label>';
+}
+
+// 渲染表格与筛选容器，事件详情共用同一套模拟记录。
+function incidentRows() {
+  return incidents.map(([name,environment,cluster,namespace,level,status,time],index) => [
+    linkButton(name,"incident",index),environment,cluster,namespace,
+    badge(level,level==="高"?"danger":level==="中"?"warn":""),
+    badge(status,status==="已恢复"?"ok":status==="待确认"?"warn":""),time,
+  ]);
+}
+function eventTable() {
+  return table(["事件","环境","集群","命名空间","级别","状态","最近发生"],incidentRows());
+}
+
+// 诊断总览的图表及指标采用可交互的展示样例。
+function overview() {
+  const metrics = [["故障事件","24","件",""],["处理中","6","件","--accent:#8a510d"],["已恢复","18","件","--accent:#176c55"],["高风险","6","件","--accent:#af3546"]];
+  const days = ["11/17","11/18","11/19","11/20","11/21","11/22","11/23"];
+  const counts = [3,6,2,3,4,1,5];
+  const bars = counts.map((count,index) =>
+    '<button class="bar" type="button" style="--bar:'+(count/8*100)+'%" aria-label="'+days[index]+'，'+count+' 件事件" data-count="'+count+'" data-day="'+days[index]+'"></button>').join("");
+  return '<div class="stack"><dl class="metrics">'+metrics.map(([label,value,unit,accent]) =>
+    '<div class="panel metric" style="'+accent+'"><dt>'+label+'</dt><dd>'+value+'<span>'+unit+'</span></dd></div>').join("")+
+    '</dl><div class="plots">'+panel("近 7 天事件趋势",
+      '<figure class="trend"><div class="plot-body"><div class="axis" aria-hidden="true"><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span></div><div class="bars">'+bars+
+      '</div></div><div class="days" aria-hidden="true">'+days.map(day=>'<span>'+day+'</span>').join("")+
+      '</div><figcaption class="chart-note" id="chart-note" role="status">近 7 天共 24 件事件</figcaption></figure>')+
+    panel("事件级别分布",'<div class="severity-plot"><div class="donut" aria-hidden="true"><div class="donut-inner"><strong>24</strong><span class="subtle">事件</span></div></div>'+
+      '<ul class="legend"><li><span class="dot" style="--accent:#d46470"></span>高风险 6 件</li><li><span class="dot" style="--accent:#d89a52"></span>中风险 8 件</li><li><span class="dot" style="--accent:#55a2e6"></span>低风险 10 件</li></ul></div>')+
+    '</div><section class="panel" data-filter-region><header class="panel-head"><h2>最近故障事件</h2><a href="#/diagnostics/events">查看全部</a></header>'+eventTable()+'</section></div>';
+}
+
+// 在集群工作区集中展示环境范围和可切换的集群、命名空间列表。
+function resources() {
+  const scope = '<aside class="panel scope"><h2>资源范围</h2><input type="search" data-scope-search aria-label="搜索范围" placeholder="搜索环境或集群">'+
+    '<button class="scope-option" data-scope="" aria-pressed="true">全部集群</button>'+
+    ["生产","预发布","研发"].map(environment => '<details open data-scope-group><summary>'+environment+'</summary>'+
+      '<button class="scope-option" data-scope="'+environment+'" aria-pressed="false">全部'+environment+'集群</button>'+
+      clusters.filter(row=>row[1]===environment).map(row=>'<button class="scope-option" data-scope="'+row[0]+'" aria-pressed="false">'+row[0]+'</button>').join("")+
+      '</details>').join("")+'</aside>';
+  return '<div class="split">'+scope+'<section class="panel" data-filter-region><header class="panel-head"><h2>集群资源</h2></header>'+
+    '<div class="tabs" aria-label="资源视图"><button type="button" data-resource-tab="clusters" aria-pressed="true">集群列表</button><button type="button" data-resource-tab="namespaces" aria-pressed="false">命名空间</button></div>'+
+    '<div class="panel-pad">'+search("搜索集群或命名空间")+'</div><div id="resource-table">'+resourceTable("clusters")+'</div></section></div>';
+}
+function resourceTable(tab) {
+  if (tab==="namespaces") return table(["命名空间","集群","环境","业务线","状态"],[
+    ["payments","prod-east","生产","交易平台",badge("正常","ok")],
+    ["orders","prod-east","生产","交易平台",badge("正常","ok")],
+    ["gateway","prod-west","生产","运维平台",badge("正常","ok")],
+    ["observability","stage-east","预发布","运维平台",badge("待同步","warn")],
+    ["sandbox","dev-east","研发","数据服务",badge("正常","ok")],
+  ]);
+  return table(["集群实例","环境","描述","接入状态","命名空间","最近采集"],
+    clusters.map(([name,env,description,state,count,time],index)=>
+      [linkButton(name,"cluster",index),env,description,badge(state,state==="已接入"?"ok":"warn"),count,time]));
+}
+
+// 认证配置沿用已确认的默认折叠状态，并模拟保存结果。
+function authentication() {
+  return '<div class="stack"><details class="panel session"><summary class="session-summary">登录会话<span class="minute-summary">当前有效期 <strong id="saved-minutes">'+sessionMinutes+' 分钟</strong></span></summary>'+
+    '<div class="session-body"><form class="panel-pad" id="duration-form" novalidate><label for="duration">登录有效期（分钟）</label><div class="tools">'+
+    '<input id="duration" type="number" min="5" max="480" step="1" required value="'+sessionMinutes+'" aria-describedby="duration-hint duration-error"><button class="button primary" disabled>保存设置</button></div>'+
+    '<p class="field-help" id="duration-hint">请输入 5 至 480 之间的整数，默认 30 分钟。</p><p class="feedback error" id="duration-error" role="alert"></p><p class="feedback" id="duration-message" role="status"></p></form>'+
+    '<aside class="panel-pad"><h3>生效范围</h3><p>本地账号与 LDAP 账号共用。新设置从下次登录起生效，已登录会话按原时间到期。</p></aside></div></details>'+
+    '<details class="panel ldap"><summary>LDAP 连接配置 '+badge("已启用","ok")+'</summary><dl><div><dt>目录服务</dt><dd>ldaps://directory.example.test:636</dd></div>'+
+    '<div><dt>搜索范围</dt><dd>OU=Employees,DC=example,DC=test</dd></div><div><dt>连接状态</dt><dd>验证通过</dd></div></dl></details></div>';
+}
+
+// 用相同的工作区骨架展示列表、配置表和详情入口。
+function pageContent(path) {
+  if (path===defaultPath) return overview();
+  if (path==="/resources/clusters") return resources();
+  if (path==="/admin/ldap") return authentication();
+  if (path==="/diagnostics/events" || path==="/findings") {
+    const findings = path==="/findings";
+    const content = findings ? table(["资源","命名空间","集群","发现"],[
+      ["deployment/payment-api","payments","prod-east","可用副本数量不足"],
+      ["pod/order-worker","orders","prod-east","容器反复重启"],
+    ]) : eventTable();
+    return '<section class="panel" data-filter-region><header class="panel-head"><h2>'+ (findings?"诊断结果列表":"事件列表")+'</h2>'+search(findings?"搜索资源或命名空间":"搜索事件或集群")+'</header>'+content+'</section>';
+  }
+  if (path==="/wiki") return '<section class="panel" data-filter-region><header class="panel-head"><h2>知识文档</h2>'+search("搜索知识标题或关键词")+
+    '<button class="button" type="button" data-action="ask">AI 知识问答</button></header>'+knowledge.map(([title,meta,description],index)=>
+      '<button class="doc-row" type="button" data-row data-action="knowledge" data-index="'+index+'"><strong>'+title+'</strong><span>'+meta+'</span><span>'+description+'</span></button>'
+    ).join("")+'<p class="empty" data-empty hidden>没有符合条件的知识文档。</p></section>';
+  if (path==="/admin/access/roles") return '<section class="panel" data-filter-region><header class="panel-head"><h2>访问权限</h2>'+
+    '<button class="button" type="button" data-action="catalog">权限配置</button></header><div class="tabs" aria-label="权限视图">'+
+    '<button type="button" data-access-tab="roles" aria-pressed="true">角色配置</button><button type="button" data-access-tab="groups" aria-pressed="false">用户组</button></div>'+
+    '<div id="access-table">'+accessTable("roles")+'</div></section>';
+  if (path==="/admin/password") return panel("本地账号密码",
+    '<div class="panel-pad"><p>在正式页面中，使用当前密码验证身份，再设置并确认新密码。</p><p class="field-help">原型使用模拟账号。</p></div>');
+  const [headers,rows] = sampleTables[path];
+  return '<section class="panel" data-filter-region><header class="panel-head"><h2>记录列表</h2>'+search("搜索列表")+'</header>'+table(headers,rows)+'</section>';
+}
+function accessTable(tab) {
+  return tab==="groups"
+    ? table(["用户组","身份来源","角色","成员"],[["生产运维","LDAP","生产观察员","8"],["知识复核","LDAP","知识复核","4"]])
+    : table(["角色名称","类型","作用范围","关联"],[["系统管理员","预置","全局","1"],["生产观察员","自定义","生产 / payments","8"],["知识复核","自定义","运维知识库","4"]]);
+}
+
+// 按站点层级同步顶部模块、当前栏目和主工作区。
+function render() {
+  const path = currentPath();
+  const {module,title} = routes.get(path);
+  document.title = title+" | kube-aiops 原型";
+  document.getElementById("top-nav").innerHTML = modules.map(item =>
+    '<a href="#'+item.groups[0][1][0][0]+'"'+(item===module?' aria-current="location"':'')+'>'+item.label+'</a>').join("");
+  document.getElementById("sidebar").innerHTML = '<h2>'+module.label+'</h2>'+module.groups.map(([group,items]) =>
+    '<p class="side-group">'+group+'</p>'+items.map(([href,label]) =>
+      '<a class="side-link" href="#'+href+'"'+(href===path?' aria-current="page"':'')+'>'+label+'</a>').join("")).join("");
+  const tools = path==="/diagnostics/events" ? '<div class="tools">'+environmentOptions()+'</div>'
+    : path===defaultPath ? '<div class="tools"><a class="button" href="#/diagnostics/events">进入故障事件</a></div>' : "";
+  main.innerHTML = '<header class="page-head"><div class="head-text"><h1>'+title+'</h1><nav class="crumb" aria-label="面包屑">'+module.label+
+    '<span aria-hidden="true">›</span><span aria-current="page">'+title+'</span></nav></div>'+tools+'</header>'+pageContent(path);
+  layout.classList.remove("menu-open");
+  menu.setAttribute("aria-expanded","false");
+}
+
+// 从当前可见控件计算筛选条件，输入值只参与匹配。
+function filterResults() {
+  const region = main.querySelector("[data-filter-region]");
+  if (!region) return;
+  const query = region.querySelector("[data-search]")?.value.trim().toLowerCase() ?? "";
+  const scope = main.querySelector("[data-scope][aria-pressed=true]")?.dataset.scope ?? "";
+  const environment = main.querySelector("[data-environment]")?.value ?? "";
+  let visible = 0;
+  for (const row of region.querySelectorAll("[data-row]")) {
+    const matchesScope = !scope || [...row.cells].some(cell=>cell.textContent===scope);
+    const matchesEnvironment = !environment || row.cells[1].textContent===environment;
+    row.hidden = !matchesScope || !matchesEnvironment || !row.textContent.toLowerCase().includes(query);
+    if (!row.hidden) visible++;
+  }
+  region.querySelector("[data-empty]").hidden = visible>0;
+}
+
+// 展示原型详情，复用同一对话框处理不同模块的详情。
+function showDetail(action,index) {
+  let title;
+  let body;
+  switch(action) {
+    case "incident": {
+      const [name,environment,cluster,namespace,level,state,time] = incidents[index];
+      title = name;
+      body = facts([["环境",environment],["集群",cluster],["命名空间",namespace],["级别",level],["状态",state],["最近发生",time]])+
+        '<p class="field-help">故障详情可继续查看关联拓扑与 AI 根因分析。</p>';
+      break;
+    }
+    case "cluster": {
+      const [name,env,desc,state,count,time] = clusters[index];
+      title = name;
+      body = facts([["环境",env],["描述",desc],["接入状态",state],["命名空间",count],["最近采集",time]]);
+      break;
+    }
+    case "knowledge": {
+      const [name,scope,description] = knowledge[index];
+      title = name;
+      body = '<p class="subtle">'+scope+'</p><p>'+description+'</p>';
+      break;
+    }
+    case "ask":
+      title = "AI 知识问答";
+      body = '<p><strong>示例问题</strong>　容器反复重启时先看哪些证据？</p><p>先查看 Pod 事件和容器退出码，再检查上一次启动的日志。</p><p class="subtle">引用《Pod 反复重启排查步骤》</p>';
+      break;
+    case "catalog":
+      title = "权限配置";
+      body = facts([["诊断控制台","查看故障事件与证据"],["资源管理","查看集群与命名空间"],["运维知识库","检索与复核知识"],["系统管理","配置权限与查看审计"]]);
+      break;
+    default: return;
+  }
+  document.getElementById("detail-title").textContent = title;
+  document.getElementById("detail-content").innerHTML = body;
+  detail.showModal();
+}
+function facts(entries) {
+  return '<dl class="details-list">'+entries.map(([label,value])=>'<div><dt>'+label+'</dt><dd>'+value+'</dd></div>').join("")+'</dl>';
+}
+
+menu.addEventListener("click",() => {
+  const opened = layout.classList.toggle("menu-open");
+  menu.setAttribute("aria-expanded",String(opened));
+});
+document.querySelector(".skip").addEventListener("click",event=>{
+  event.preventDefault();
+  main.focus();
+});
+window.addEventListener("hashchange",()=>{
+  render();
+  window.scrollTo(0,0);
+  main.focus({preventScroll:true});
+});
+
+main.addEventListener("click",event=>{
+  const button = event.target.closest("button");
+  if (!button) return;
+  const {action,index,scope,resourceTab,accessTab,count,day} = button.dataset;
+  if (action) return showDetail(action,Number(index));
+  if (day) {
+    document.getElementById("chart-note").textContent = day+" 共 "+count+" 件事件";
+  }
+  if (scope!==undefined) {
+    main.querySelector("[data-scope][aria-pressed=true]").setAttribute("aria-pressed","false");
+    button.setAttribute("aria-pressed","true");
+    filterResults();
+  }
+  if (resourceTab || accessTab) {
+    button.parentElement.querySelector("[aria-pressed=true]").setAttribute("aria-pressed","false");
+    button.setAttribute("aria-pressed","true");
+    if (resourceTab) {
+      document.getElementById("resource-table").innerHTML = resourceTable(resourceTab);
+      filterResults();
+    } else {
+      document.getElementById("access-table").innerHTML = accessTable(accessTab);
+    }
+  }
+});
+main.addEventListener("input",event=>{
+  const input = event.target;
+  if (input.matches("[data-search]")) filterResults();
+  if (input.matches("[data-scope-search]")) {
+    const query = input.value.trim().toLowerCase();
+    for (const group of main.querySelectorAll("[data-scope-group]")) {
+      group.hidden = !group.textContent.toLowerCase().includes(query);
+      if (query && !group.hidden) group.open = true;
+    }
+  }
+  if (input.id==="duration") {
+    input.removeAttribute("aria-invalid");
+    document.getElementById("duration-error").textContent = "";
+    document.getElementById("duration-message").textContent = "";
+    input.form.querySelector("button").disabled = input.valueAsNumber===sessionMinutes;
+  }
+});
+main.addEventListener("change",event=>{
+  if (event.target.matches("[data-environment]")) filterResults();
+});
+main.addEventListener("submit",event=>{
+  if (event.target.id!=="duration-form") return;
+  event.preventDefault();
+  const input = document.getElementById("duration");
+  if (!input.validity.valid || !Number.isInteger(input.valueAsNumber)) {
+    input.setAttribute("aria-invalid","true");
+    document.getElementById("duration-error").textContent = "请输入 5 至 480 之间的整数。";
+    input.focus();
+    return;
+  }
+  sessionMinutes = input.valueAsNumber;
+  document.getElementById("saved-minutes").textContent = sessionMinutes+" 分钟";
+  document.getElementById("duration-message").textContent = "已保存，新设置将在下次登录时生效。";
+  event.target.querySelector("button").disabled = true;
+});
+render();
+</script>
+</body>
+</html>

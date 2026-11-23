@@ -1,6 +1,7 @@
 import { apiClient } from "../../api/client.ts";
 import { ApiError, type Cluster, type CreateIncidentInput, type Incident, type IncidentSeverity, type IncidentStatus, type ListIncidentsParams } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
+import { bindIncidentOverview, renderIncidentOverview } from "./incident-overview.ts";
 
 export const incidentEvents = "#/diagnostics/events";
 export const incidentPrefix = "#/diagnostics/incidents/";
@@ -99,7 +100,22 @@ export async function loadIncidentWorkspace(hash: string, overview: boolean, can
   const query = incidentQuery(params);
   const firstQuery = incidentQuery({ ...params, continue: undefined });
   const target = overview ? "#/diagnostics" : incidentEvents;
-  const pageRows = page.items.map((item) => renderIncidentRow(item, clusters, query, overview)).join("");
+  const table = renderIncidentTable(page.items, clusters, query, overview, firstQuery);
+  const filters = renderIncidentFilters(clusters, params, target);
+  const create = canCreate && draft.get("create") === "1" ? createForm(clusters, draft) : "";
+  if (overview) {
+    const platforms = Object.entries(summary.byPlatform);
+    return `<div class="incident-overview">
+      ${create}
+      ${summary.coverage === "partial" ? '<p class="system-notice">统计仅包含当前可获取的故障数据。</p>' : ""}
+      ${await renderIncidentOverview(summary, params)}
+      ${table}
+      <details class="panel incident-overview-more"${firstQuery ? " open" : ""}><summary>故障筛选</summary>${filters}</details>
+      ${platforms.length ? `<details class="panel incident-overview-more"><summary>平台分布</summary><dl>${platforms.map(([platform, count]) =>
+        `<div><dt>${escapeHtml(platformLabels[platform] ?? platform)}</dt><dd>${escapeHtml(count)}</dd></div>`).join("")}</dl></details>` : ""}
+    </div>`;
+  }
+
   const metrics = [
     ["活跃故障", summary.counts.active], ["待确认", summary.counts.pending],
     ["处理中", summary.counts.investigating], ["已恢复", summary.counts.recovered],
@@ -107,11 +123,23 @@ export async function loadIncidentWorkspace(hash: string, overview: boolean, can
   return `
     <div class="diagnostic-toolbar">
       <p>共 ${summary.counts.total ?? 0} 条故障</p>
-      ${overview ? `<a class="button" href="${incidentEvents}?${escapeHtml(firstQuery)}">查看故障事件</a>` :
-        canCreate ? `<a class="button" href="${incidentEvents}?${escapeHtml(firstQuery)}${firstQuery ? "&amp;" : ""}create=1">人工创建故障</a>` : ""}
+      ${canCreate ? `<a class="button" href="${incidentEvents}?${escapeHtml(firstQuery)}${firstQuery ? "&amp;" : ""}create=1">人工创建故障</a>` : ""}
     </div>
-    ${canCreate && draft.get("create") === "1" ? createForm(clusters, draft) : ""}
-    <form class="panel incident-filters" data-incident-filters data-target="${target}" aria-label="故障筛选">
+    ${create}
+    ${filters}
+    <section class="summary-grid" aria-label="故障汇总">
+      ${metrics.map(([label, count], n) => `<div class="metric-card metric-${["total", "critical", "warning", "info"][n]}"><span>${label}</span><strong>${count ?? 0}</strong></div>`).join("")}
+    </section>
+    ${table}
+    ${params.continue || page.pagination.continue ? `<nav class="pagination" aria-label="故障分页">
+      ${params.continue ? `<a class="button secondary" href="${incidentEvents}?${escapeHtml(firstQuery)}">返回首页</a>` : ""}
+      ${page.pagination.continue ? `<a class="button secondary" href="${incidentEvents}?${escapeHtml(incidentQuery({ ...params, continue: page.pagination.continue }))}">下一页</a>` : ""}
+    </nav>` : ""}`;
+}
+
+/** 在列表和总览中保留同一组服务端筛选字段。 */
+function renderIncidentFilters(clusters: Cluster[], params: ListIncidentsParams, target: string): string {
+  return `<form class="panel incident-filters" data-incident-filters data-target="${target}" aria-label="故障筛选">
       <label>环境<select name="environmentId"><option value="">全部环境</option>${options(Object.entries(environmentLabels), params.environmentId)}</select></label>
       <label>集群实例<select name="clusterId"><option value="">全部实例</option>${options(clusters.map(({ id, name }) => [id, name]), params.clusterId)}</select></label>
       <label>命名空间<input name="namespace" value="${escapeHtml(params.namespace)}"></label>
@@ -122,36 +150,42 @@ export async function loadIncidentWorkspace(hash: string, overview: boolean, can
       <label>关键词<input name="q" type="search" maxlength="80" value="${escapeHtml(params.q)}"></label>
       <button class="button secondary" type="submit">筛选</button>
       <a href="${target}">清除筛选</a>
-    </form>
-    <section class="summary-grid" aria-label="故障汇总">
-      ${metrics.map(([label, count], n) => `<div class="metric-card metric-${["total", "critical", "warning", "info"][n]}"><span>${label}</span><strong>${count ?? 0}</strong></div>`).join("")}
-    </section>
-    ${overview && Object.keys(summary.byPlatform).length ? `<section class="panel incident-trend"><h2>平台分布</h2><dl>${Object.entries(summary.byPlatform).map(([platform, count]) =>
-      `<div><dt>${escapeHtml(platformLabels[platform] ?? platform)}</dt><dd>${count}</dd></div>`).join("")}</dl></section>` : ""}
-    ${overview ? `<section class="panel incident-trend"><h2>近七日新发故障（UTC）</h2><dl>${Object.entries(summary.trend)
-      .sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => `<div><dt>${escapeHtml(day.slice(5))}</dt><dd>${count}</dd></div>`).join("")}</dl></section>` : ""}
-    ${pageRows ? `<section class="panel table-panel"><h2 class="section-heading">${overview ? "最近故障" : "故障列表"}</h2>
-      <div class="table-wrap incident-table" role="region" aria-label="故障列表" tabindex="0">
-        <table><thead><tr><th>故障</th><th>级别</th><th>状态</th><th>资源范围</th><th>最近发生</th></tr></thead>
-        <tbody>${pageRows}</tbody></table></div></section>` :
-      '<section class="state-card" data-testid="incident-empty"><h2>暂无故障</h2><p>当前范围内没有符合筛选条件的故障。</p></section>'}
-    ${!overview && (params.continue || page.pagination.continue) ? `<nav class="pagination" aria-label="故障分页">
-      ${params.continue ? `<a class="button secondary" href="${incidentEvents}?${escapeHtml(firstQuery)}">返回首页</a>` : ""}
-      ${page.pagination.continue ? `<a class="button secondary" href="${incidentEvents}?${escapeHtml(incidentQuery({ ...params, continue: page.pagination.continue }))}">下一页</a>` : ""}
-    </nav>` : ""}`;
+    </form>`;
+}
+
+/** 展示最近与完整故障列表，并保留原详情回跳参数。 */
+function renderIncidentTable(items: Incident[], clusters: Cluster[], query: string, overview: boolean, firstQuery: string): string {
+  const title = overview ? "最近故障事件" : "故障列表";
+  const link = firstQuery ? `${incidentEvents}?${escapeHtml(firstQuery)}` : incidentEvents;
+  return `<section class="panel table-panel incident-overview-panel">
+    <header class="incident-overview-heading"><h2 id="incident-table-title">${title}</h2>
+      ${overview ? `<a href="${link}" aria-label="查看全部故障事件">查看全部</a>` : ""}
+    </header>
+    ${items.length ? `<div class="table-wrap incident-table" role="region" aria-labelledby="incident-table-title" tabindex="0">
+      <table><thead><tr><th scope="col">故障</th><th scope="col">环境</th><th scope="col">集群</th>
+        <th scope="col">命名空间</th><th scope="col">级别</th><th scope="col">状态</th><th scope="col">最近发生</th></tr></thead>
+        <tbody>${items.map((item) => renderIncidentRow(item, clusters, query, overview)).join("")}</tbody></table>
+    </div>` : '<p class="incident-overview-empty" data-testid="incident-empty">当前范围内暂无故障。</p>'}
+  </section>`;
 }
 
 function renderIncidentRow(item: Incident, clusters: Cluster[], query: string, overview: boolean): string {
   const cluster = clusters.find(({ id }) => id === item.scope.clusterId)?.name ?? item.scope.clusterId;
+  const severityTone = { P1: "critical", P2: "warning", P3: "info" }[item.severity] ?? "info";
+  const statusTone = { pending: "warning", investigating: "info", recovered: "recovered", closed: "closed" }[item.status] ?? "closed";
   return `<tr>
     <td><a href="${escapeHtml(incidentHref(item.id, query, overview))}">${escapeHtml(item.title)}</a><small>${escapeHtml(item.displayKey)}</small></td>
-    <td>${escapeHtml(item.severity)}</td><td>${escapeHtml(incidentStatusLabels[item.status])}</td>
-    <td>${escapeHtml([environmentLabels[item.scope.environmentId] || item.scope.environmentId, item.scope.businessId, cluster, item.scope.namespace].filter(Boolean).join(" / "))}</td>
+    <td>${escapeHtml(environmentLabels[item.scope.environmentId] ?? item.scope.environmentId) || "—"}</td>
+    <td>${escapeHtml(cluster) || "—"}</td>
+    <td>${escapeHtml(item.scope.namespace) || "—"}${item.scope.businessId ? `<small>${escapeHtml(item.scope.businessId)}</small>` : ""}</td>
+    <td><span class="incident-status incident-status-${severityTone}">${escapeHtml(item.severity)}</span></td>
+    <td><span class="incident-status incident-status-${statusTone}">${escapeHtml(incidentStatusLabels[item.status])}</span></td>
     <td>${formatTimestamp(item.lastSeen)}</td>
   </tr>`;
 }
 
 export function bindIncidentWorkspace(root: HTMLElement, hash: string): void {
+  bindIncidentOverview(root);
   const filters = root.querySelector<HTMLFormElement>("[data-incident-filters]");
   filters?.addEventListener("submit", (event) => {
     event.preventDefault();

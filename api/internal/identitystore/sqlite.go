@@ -47,6 +47,11 @@ func Open(path string) (*Store, error) {
 	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS managed_admin (id INTEGER PRIMARY KEY CHECK (id = 1), password_hash TEXT NOT NULL, initial INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS ldap_settings (id INTEGER PRIMARY KEY CHECK (id = 1), document TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS login_session_policy (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			minutes INTEGER NOT NULL CHECK (typeof(minutes) = 'integer' AND minutes BETWEEN 5 AND 480)
+		);
+		INSERT OR IGNORE INTO login_session_policy (id, minutes) VALUES (1, 30);
 		CREATE TABLE IF NOT EXISTS local_accounts (
 			username TEXT PRIMARY KEY NOT NULL,
 			password_hash TEXT NOT NULL,

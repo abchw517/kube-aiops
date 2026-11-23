@@ -63,7 +63,7 @@ export async function renderRoles(roleID?: string): Promise<string> {
     return role ? roleForm(role, clusters) : '<h2>角色不存在</h2><a href="#/admin/policy">返回角色列表</a>';
   }
 
-  return `<div class="roles-heading"><h2>权限配置</h2><a class="button" href="#/admin/policy/new">添加角色</a></div>
+  return `<div class="roles-heading"><h2>权限管理</h2><a class="button" href="#/admin/policy/new">添加角色</a></div>
     <p><a href="#/admin/access/roles">前往角色配置勾选接口权限</a></p>
     ${roles.length ? `<ul class="role-list">${roles.map((role) => `<li>
       <div><h3>${escapeHtml(role.name)}</h3>

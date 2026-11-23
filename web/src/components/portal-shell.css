@@ -1,103 +1,92 @@
+/* 外框定义模块导航、侧栏和工作区的共同布局。 */
+.portal-console {
+  --sidebar-width: 208px;
+  min-height: 100dvh;
+  font-size: 14px;
+  line-height: 1.55;
+}
 .topbar {
   position: sticky;
   top: 0;
   z-index: 5;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  align-items: stretch;
+  gap: 12px;
   min-height: var(--topbar-height);
-  padding: 9px clamp(12px, 2.1vw, 30px);
   background: var(--nav);
-  color: #fff;
+  color: white;
 }
-
-.brand { display: inline-flex; align-items: center; gap: 11px; color: #fff; }
+.brand { display: flex; align-items: center; gap: 10px; width: var(--sidebar-width); flex: none; padding-inline: 20px; color: white; }
 .brand:hover { text-decoration: none; }
-.brand-name { font-size: 1.0625rem; font-weight: 750; letter-spacing: -.025em; }
+.brand-name { font-size: 17px; font-weight: 700; }
 .brand-mark {
   display: grid;
-  width: 34px;
+  width: 28px;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid #6187bc;
-  border-inline-start: 3px solid #9ab9e2;
+  border: 1px solid #73bafa;
   border-radius: 7px;
-  background: #24538c;
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 800;
+  background: #0c4d84;
+  font-size: 16px;
+  font-weight: 750;
 }
-
-.portal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; }
-.topbar .button.secondary {
-  min-height: 38px;
-  border-color: #647798;
-  background: #243755;
-  color: #fff;
-}
-.topbar .button.secondary:hover:not(:disabled) { background: #364d72; }
-.topbar :focus-visible { outline-color: #aabaff; }
-
-.portal-layout {
-  display: grid;
-  grid-template-columns: 186px minmax(0, 1fr);
-  min-height: calc(100vh - var(--topbar-height));
-}
-.portal-layout:not(:has(.workspace-nav)) { grid-template-columns: minmax(0, 1fr); }
-.workspace-nav {
-  position: sticky;
-  top: var(--topbar-height);
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: calc(100vh - var(--topbar-height));
-  padding: 24px 12px;
-  overflow-y: auto;
-  border-inline-end: 1px solid var(--line);
-  background: #eaf0f8;
-}
+.workspace-nav { display: flex; min-width: 0; overflow-x: auto; }
 .workspace-nav a {
   display: flex;
   align-items: center;
-  min-height: 44px;
-  padding: 8px 12px;
-  border-inline-start: 3px solid transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: .875rem;
-  font-weight: 650;
+  padding-inline: 17px;
+  border-bottom: 2px solid transparent;
+  color: #d7dfed;
+  white-space: nowrap;
 }
-.workspace-nav a:hover, .workspace-nav a[aria-current="page"] {
-  background: var(--accent-soft);
-  color: var(--blue);
-  text-decoration: none;
+.workspace-nav a:hover, .workspace-nav a[aria-current] { background: #303848; color: white; text-decoration: none; }
+.workspace-nav a[aria-current] { border-color: #69b3fc; }
+.portal-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-inline-start: auto; padding-inline-end: 20px; }
+.topbar .button.secondary { min-height: 32px; padding: 3px 8px; border-color: #647798; background: #303848; color: white; font-size: 12px; }
+.topbar .button.secondary:hover:not(:disabled) { background: #3b4960; }
+.topbar :focus-visible { outline-color: #8bc5ff; outline-offset: -3px; }
+.portal-menu-toggle { display: none; }
+
+.portal-layout { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: calc(100dvh - var(--topbar-height)); }
+.portal-layout-single { grid-template-columns: minmax(0, 1fr); }
+.portal-sidebar {
+  position: sticky;
+  top: var(--topbar-height);
+  align-self: start;
+  height: calc(100dvh - var(--topbar-height));
+  overflow: auto;
+  background: var(--surface);
+  border-inline-end: 1px solid var(--line);
+  padding-block: 18px;
 }
-.workspace-nav a[aria-current="page"] { border-inline-start-color: var(--blue); }
-.page-shell {
-  width: min(1440px, 100%);
-  min-width: 0;
-  margin-inline: auto;
-  padding: clamp(20px, 3vw, 36px) clamp(16px, 3vw, 40px) 52px;
-}
-.page-intro {
+.portal-sidebar h2 { margin: 0 18px 19px; font-size: 16px; }
+.portal-sidebar p { margin: 18px 18px 5px; color: var(--muted); font-size: 12px; }
+.portal-sidebar p:first-of-type { margin-top: 0; }
+.portal-sidebar a {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
+  gap: 9px;
+  min-height: 39px;
+  padding: 7px 14px 7px 16px;
+  border-inline-start: 3px solid transparent;
+  color: var(--ink);
 }
-.page-intro h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.25; }
-.demo-notice { margin: 0; padding: 4px 9px; border-radius: 5px; background: var(--accent-soft); color: var(--blue); font-size: .8125rem; }
-.portal-signed-out .page-shell { max-width: 480px; padding-top: clamp(28px, 9vh, 88px); }
+.portal-sidebar a::before { content: ""; width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 2px; }
+.portal-sidebar a:hover { background: #f3f7fd; text-decoration: none; }
+.portal-sidebar [aria-current] { background: var(--accent-soft); border-color: var(--blue); color: var(--blue); font-weight: 700; }
+.portal-sidebar [aria-current]::before { background: currentColor; }
+.portal-sidebar a:focus-visible { outline-offset: -3px; }
+.page-shell { width: 100%; min-width: 0; padding: 18px 20px 30px; }
+.page-intro { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.page-intro h1 { margin: 0; font-size: 20px; line-height: 1.35; }
+.page-intro nav { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding-inline-start: 12px; border-inline-start: 1px solid #c2cddd; color: var(--muted); font-size: 12px; }
+.page-intro nav [aria-current] { color: var(--ink); }
+.page-primary-action { min-height: 34px; margin-inline-start: auto; }
+.demo-notice { margin: 0; padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--blue); font-size: 12px; }
+.portal-signed-out .page-shell { max-width: 480px; margin-inline: auto; padding-top: clamp(28px, 9vh, 88px); }
 .portal-signed-out .state-card { display: block; padding: clamp(20px, 5vw, 32px); text-align: left; }
 .portal-signed-out .state-card h1 { font-size: 1.5rem; line-height: 1.25; }
 .portal-signed-out .login-form { max-width: none; }
-
 .skip-link {
   position: fixed;
   top: 10px;
@@ -110,30 +99,25 @@
 }
 .skip-link:focus { transform: none; }
 
-@media (max-width: 760px) {
-  .portal-layout { grid-template-columns: minmax(0, 1fr); }
-  .workspace-nav {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    height: auto;
-    padding: 6px 12px;
-    overflow: visible;
-    border-inline-end: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .workspace-nav a {
-    min-height: 40px;
-    border-inline-start: 0;
-    border-bottom: 2px solid transparent;
-  }
-  .workspace-nav a[aria-current="page"] { border-bottom-color: var(--blue); }
+@media (max-width: 910px) {
+  .portal-console { --sidebar-width: 164px; }
+  .workspace-nav a { padding-inline: 10px; }
+  .page-shell { padding-inline: 14px; }
 }
-
-@media (max-width: 440px) {
-  .topbar { position: static; gap: 8px; }
-  .topbar .button { padding-inline: 7px; font-size: .8125rem; }
-  .brand-name { font-size: .9375rem; }
-  .brand-mark { width: 30px; }
-  .brand { gap: 8px; }
+@media (max-width: 680px) {
+  .portal-console { --topbar-height: 96px; }
+  .topbar { flex-wrap: wrap; align-content: start; gap: 0; }
+  .topbar:not(:has(.workspace-nav)) { min-height: 48px; }
+  .topbar .brand { min-height: 48px; width: auto; padding-inline: 12px; }
+  .portal-actions { padding-inline-end: 8px; }
+  .workspace-nav { order: 3; width: 100%; min-height: 48px; padding-inline: 5px; }
+  .portal-menu-toggle { display: inline-flex; align-self: center; min-height: 32px; margin-inline-end: 11px; padding: 3px 8px; border: 1px solid #8797b0; border-radius: 4px; background: transparent; color: white; cursor: pointer; }
+  .portal-layout { display: block; }
+  .portal-sidebar { display: none; position: static; height: auto; padding-block: 11px; border-bottom: 1px solid var(--line); }
+  .portal-layout.menu-open .portal-sidebar { display: block; }
+  .portal-sidebar h2 { margin-bottom: 8px; }
+  .page-shell { padding: 12px 10px 22px; }
+  .page-intro { flex-direction: column; align-items: flex-start; gap: 7px; }
+  .page-intro nav { padding-inline-start: 0; border: 0; }
+  .page-primary-action { margin-inline-start: 0; }
 }
