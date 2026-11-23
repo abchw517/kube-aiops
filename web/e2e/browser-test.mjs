@@ -804,7 +804,7 @@ try {
       const audit = [...form.querySelectorAll("[data-role-grant]")].find(row => JSON.parse(row.dataset.roleGrant).code === "system.audit.list");
       audit.querySelector("[data-role-grant-remove]").click();
       const removed = !form.querySelector('[data-pc-point="system.audit.list"]');
-      document.querySelector("dialog[open] footer [data-system-close]").click();
+      document.querySelector("dialog[open] header [data-system-close]").click();
       return visible && removed;
     })()` });
     if (!configuredScope.result?.value) throw new Error("Role editor did not show or refresh configured interface scopes");
@@ -856,7 +856,7 @@ try {
       form.querySelector('button[value="role-save"]').click();
     })()` });
     await assertText(cdp, (text) => text.includes("角色名称已使用") && text.includes("确认保存"), "Role editor did not keep the form open on conflict");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] footer [data-system-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] header [data-system-close]").click()' });
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/users",
       (text) => text.includes("reader") && text.includes("删除用户"), "User deletion is missing from the selection bar");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -1456,6 +1456,7 @@ async function assertRolePermissionSelection(cdp) {
     const action = form.querySelector('[data-pc-point="diagnosis.finding.list"]');
     const matrix = check.closest(".permission-catalog-table");
     if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth <= matrix.clientWidth ||
+        !form.closest("[data-role-workspace]") || form.closest("dialog").matches(":modal") ||
         document.documentElement.scrollWidth > 390) return null;
     check.scrollIntoView({ block: "center", inline: "center" });
     const checkBounds = check.getBoundingClientRect();
@@ -1508,7 +1509,7 @@ async function assertRolePermissionSelection(cdp) {
     const kind = form.querySelector("[data-role-scope-kind] select");
     if (kind.disabled || kind.value !== "") return "mixed-scope confirmation";
     form.querySelector("[data-role-add-grants]").click();
-    if (!form.querySelector(".system-editor-status").textContent.includes("请选择本次添加的范围类型")) return "missing-scope validation";
+    if (!form.querySelector("[data-role-grant-status]").textContent.includes("请选择本次添加的范围类型")) return "missing-scope validation";
     kind.value = "资源范围";
     form.elements.environment.value = "testing";
     form.elements.environment.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1523,19 +1524,30 @@ async function assertRolePermissionSelection(cdp) {
     filter("");
     module("diagnosis");
     form.querySelector('button[value="role-preview"]').click();
-    if (form.querySelector("[data-role-preview]").hidden) return "role preview";
+    if (form.querySelector("[data-role-preview]").hidden || !form.closest("dialog").matches(":modal")) return "role preview";
     form.querySelector("[data-role-back]").click();
-    if (window.roleSaveRequests !== 0 || form.querySelectorAll("[data-role-grant]").length !== 3) return "return to role draft";
+    if (window.roleSaveRequests !== 0 || form.closest("dialog").matches(":modal") ||
+        form.querySelectorAll("[data-role-grant]").length !== 3) return "return to role draft";
     form.querySelector('button[value="role-preview"]').click();
     return "ok";
   })()` });
   if (operation.result?.value !== "ok") {
     throw new Error(`Role permission selection failed: ${operation.result?.value ?? operation.exceptionDetails?.exception?.description}`);
   }
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  const canceled = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector("[data-role-workspace] dialog[open]:not(:modal) [data-role-edit]");
+    if (!form || window.roleSaveRequests !== 0 || form.querySelectorAll("[data-role-grant]").length !== 3) return false;
+    form.querySelector('button[value="role-preview"]').click();
+    return true;
+  })()` });
+  if (!canceled.result?.value) throw new Error("Escape did not close review and retain the role draft");
   await assertText(cdp, text => ["新增接口授权", "查询审计列表", "查询诊断列表", "读取诊断汇总"].every(label => text.includes(label)),
     "Scoped interface grants missing from role preview");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
-  await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计"), "Saving interface grants did not show the audit shortcut");
+  await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计") && text.includes("前往用户管理"),
+    "Saving interface grants did not show the audit or role assignment shortcut");
   const writes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     window.restorePlatformFetch();
     return window.roleSaveRequests;
