@@ -3,6 +3,7 @@ import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
 const route = "#/resources/clusters";
+export const clusterManagementTitle = "Kubernetes 集群管理";
 const nodeValidationFailed = "已接入 · 节点校验失败";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],
@@ -102,7 +103,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   if (id && !editable) return '<p role="alert">当前账号只能查看集群接入状态。</p>';
   if (id?.startsWith("ownership-")) {
     const body = await renderNamespaceOwnership(decodeURIComponent(id.slice(10)), modal);
-    return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回集群接入</a>${body}`;
+    return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}`;
   }
   const response = await fetch(endpoint);
   if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
@@ -132,7 +133,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
         </details>`).join("")}
       </aside>
       <div class="panel catalog-section">
-      <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
+      <div class="cluster-heading"><div><h2 id="cluster-list-title">${clusterManagementTitle}</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
         ${editable ? '<button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>' : ""}
       </div></div>
       <nav class="resource-view-tabs" aria-label="资源视图">
@@ -181,7 +182,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   const item = editing ? items.find((entry) => entry.id === decodeURIComponent(id.slice(rotating ? 7 : 5))) : undefined;
   const mode = item?.mode ?? id;
   if ((editing && (!item || item.deleted)) || (rotating && mode !== "pull") || (mode === "local" && !editing) || (mode !== "pull" && mode !== "push" && mode !== "local")) {
-    return modal ? clusterDialog("集群接入", "<p>实例不存在。</p>") : `<p>实例不存在。</p><a href="${route}">返回集群接入</a>`;
+    return modal ? clusterDialog(clusterManagementTitle, "<p>实例不存在。</p>") : `<p>实例不存在。</p><a href="${route}">返回${clusterManagementTitle}</a>`;
   }
   const catalogs = await Promise.all(["environments", "business-lines"].map(async (kind) => {
     const response = await fetch(`/api/v1/admin/${kind}`);
@@ -234,7 +235,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
       </div>
     </form>`;
   if (modal) return clusterDialog(title, body, false);
-  return `<h2>${title}</h2><a href="${route}">返回集群接入</a>${body}
+  return `<h2>${title}</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}
 
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
     ${item ? renderCollectionRecheck(item) : ""}`;
@@ -452,7 +453,7 @@ export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<
   const editor = target.closest<HTMLButtonElement>("[data-cluster-editor]");
   if (editor) {
     dialog.classList.add("cluster-dialog-wide");
-    dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? "集群接入"), '<p role="status">正在加载…</p>');
+    dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? clusterManagementTitle), '<p role="status">正在加载…</p>');
     dialog.showModal();
     const loading = dialog.firstElementChild;
     try {
@@ -463,7 +464,7 @@ export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<
       }
     } catch {
       if (dialog.open && dialog.firstElementChild === loading) {
-        dialog.innerHTML = clusterDialog("集群接入", '<p role="alert">无法加载集群配置，请重试。</p>');
+        dialog.innerHTML = clusterDialog(clusterManagementTitle, '<p role="alert">无法加载集群配置，请重试。</p>');
       }
     }
     return;

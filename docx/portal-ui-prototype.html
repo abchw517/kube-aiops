@@ -131,11 +131,28 @@ tbody tr:hover { background:#f8faff }
 .feedback { margin-top:6px; color:var(--green) }
 .feedback:empty { margin-top:0 }
 .feedback.error { color:var(--red) }
-.ldap { padding:13px 16px }
-.ldap summary { font-weight:650 }
-.ldap dl,.details-list { display:grid; gap:9px; margin-top:10px }
-.ldap dl div,.details-list div { display:grid; grid-template-columns:minmax(90px,1fr) minmax(0,2fr); gap:8px; overflow-wrap:anywhere }
-.ldap dt,.details-list dt { color:var(--muted) }
+.ldap[open] > summary { border-bottom:1px solid var(--line) }
+.ldap-editor { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); align-items:start; gap:14px }
+.ldap-editor section { display:grid; gap:9px; min-width:0; padding:14px; border:1px solid var(--line); border-radius:7px }
+.ldap-editor h2 { font-size:16px; margin:0 }
+.ldap-editor label { display:grid; gap:5px; min-width:0; font-weight:600 }
+.ldap-editor label :is(input,select) { width:100%; min-width:0 }
+.ldap-editor small { color:var(--muted); overflow-wrap:anywhere }
+.ldap-editor details label { margin-block:7px }
+.ldap-editor .ldap-option { display:flex; align-items:start; gap:7px }
+.ldap-editor .ldap-option input { width:auto }
+.ldap-editor .button { justify-self:start }
+.ldap-editor fieldset { min-width:0; margin:0; border:1px solid var(--line); border-radius:5px }
+.ldap-editor ol { padding:0; margin:0; list-style:none }
+.ldap-editor li { display:flex; justify-content:space-between; gap:8px; padding:4px }
+.ldap-validation { background:#f5f8fd }
+.ldap-save { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px }
+.permission-links { margin-bottom:12px }
+.permission-preview { display:block; width:100%; height:75vh; border:0 }
+@media (max-width: 950px) { .ldap-editor { grid-template-columns:minmax(0,1fr) } }
+.details-list { display:grid; gap:9px; margin-top:10px }
+.details-list div { display:grid; grid-template-columns:minmax(90px,1fr) minmax(0,2fr); gap:8px; overflow-wrap:anywhere }
+.details-list dt { color:var(--muted) }
 dialog { width:min(580px,calc(100% - 24px)); max-height:82dvh; padding:0; border-radius:8px; border:1px solid var(--line); color:var(--ink); background:white }
 dialog::backdrop { background:#18233780 }
 dialog .panel-pad { max-height:65dvh; overflow:auto }
@@ -198,20 +215,23 @@ const modules = [
     ["诊断配置", [["/diagnostics/datasources","数据源管理"],["/diagnostics/policies","诊断策略"]]]
   ] },
   { label:"资源管理", groups:[
-    ["集群资源", [["/resources/clusters","集群接入"]]],
+    ["集群资源", [["/resources/clusters","Kubernetes 集群管理"]]],
     ["平台目录", [["/resources/environments","环境管理"],["/resources/business-lines","业务线管理"]]]
   ] },
   { label:"运维知识库", groups:[
     ["知识工作区", [["/wiki","知识检索"],["/wiki/governance","知识治理"]]]
   ] },
   { label:"系统管理", groups:[
-    ["身份与访问", [["/admin/ldap","认证配置"],["/admin/users","用户管理"],["/admin/access/roles","权限管理"],["/admin/password","修改密码"]]],
+    ["身份与访问", [["/admin/ldap","认证配置"],["/admin/users","用户管理"],["/admin/access","权限管理"],["/admin/password","修改密码"]]],
     ["审计", [["/admin/operations","操作审计"]]]
   ] },
 ];
 const routes = new Map(modules.flatMap(module => module.groups.flatMap(([,items]) =>
   items.map(([path,title]) => [path,{ module,title }])
 )));
+const accessRoute = routes.get("/admin/access");
+routes.set("/admin/access", {...accessRoute, title:"权限配置"});
+routes.set("/admin/access/roles", routes.get("/admin/access"));
 const defaultPath = "/diagnostics";
 const main = document.getElementById("main");
 const layout = document.getElementById("layout");
@@ -309,7 +329,7 @@ function resources() {
       '<button class="scope-option" data-scope="'+environment+'" aria-pressed="false">全部'+environment+'集群</button>'+
       clusters.filter(row=>row[1]===environment).map(row=>'<button class="scope-option" data-scope="'+row[0]+'" aria-pressed="false">'+row[0]+'</button>').join("")+
       '</details>').join("")+'</aside>';
-  return '<div class="split">'+scope+'<section class="panel" data-filter-region><header class="panel-head"><h2>集群资源</h2></header>'+
+  return '<div class="split">'+scope+'<section class="panel" data-filter-region><header class="panel-head"><h2>Kubernetes 集群管理</h2></header>'+
     '<div class="tabs" aria-label="资源视图"><button type="button" data-resource-tab="clusters" aria-pressed="true">集群列表</button><button type="button" data-resource-tab="namespaces" aria-pressed="false">命名空间</button></div>'+
     '<div class="panel-pad">'+search("搜索集群或命名空间")+'</div><div id="resource-table">'+resourceTable("clusters")+'</div></section></div>';
 }
@@ -333,8 +353,29 @@ function authentication() {
     '<input id="duration" type="number" min="5" max="480" step="1" required value="'+sessionMinutes+'" aria-describedby="duration-hint duration-error"><button class="button primary" disabled>保存设置</button></div>'+
     '<p class="field-help" id="duration-hint">请输入 5 至 480 之间的整数，默认 30 分钟。</p><p class="feedback error" id="duration-error" role="alert"></p><p class="feedback" id="duration-message" role="status"></p></form>'+
     '<aside class="panel-pad"><h3>生效范围</h3><p>本地账号与 LDAP 账号共用。新设置从下次登录起生效，已登录会话按原时间到期。</p></aside></div></details>'+
-    '<details class="panel ldap"><summary>LDAP 连接配置 '+badge("已启用","ok")+'</summary><dl><div><dt>目录服务</dt><dd>ldaps://directory.example.test:636</dd></div>'+
-    '<div><dt>搜索范围</dt><dd>OU=Employees,DC=example,DC=test</dd></div><div><dt>连接状态</dt><dd>验证通过</dd></div></dl></details></div>';
+    '<details class="panel ldap"><summary class="session-summary">LDAP 连接配置 '+badge("已启用","ok")+'</summary>'+
+    '<form class="panel-pad" id="ldap-form">'+
+    '<div class="ldap-editor"><section><h2>连接参数</h2>'+
+    '<label>LDAP URL<input name="url" value="ldaps://directory.example.test:636" inputmode="url" spellcheck="false" aria-describedby="proto-ldap-url"></label>'+
+    '<small id="proto-ldap-url">仅填写协议、域名和端口。LDAPS 默认 636，LDAP 默认 389。</small>'+
+    '<label class="ldap-option"><input name="allowPlain" type="checkbox">允许明文 LDAP（仅用于 ldap://）</label>'+
+    '<label>LDAP 搜索 DN<input name="bindDN" value="CN=Directory Reader,OU=Service Accounts,DC=example,DC=test"></label>'+
+    '<label>LDAP 搜索密码<input name="bindPassword" type="password" placeholder="已配置，留空保留"></label>'+
+    '<label>LDAP 基础 DN<input name="baseDN" value="OU=Employees,DC=example,DC=test"></label>'+
+    '<details><summary>用户与组搜索设置</summary><label>LDAP 用户 UID<input name="userUID" value="sAMAccountName"></label>'+
+    '<label>LDAP 附加用户过滤器<input name="userFilter"></label><label>LDAP 用户搜索范围<select name="searchScope"><option>子树</option><option>单层</option><option>基础对象</option></select></label>'+
+    '<label>LDAP 组成员属性<input name="groupAttribute" value="memberOf"></label><label>LDAP 组基础 DN<input name="groupBaseDN"></label>'+
+    '<label>LDAP 组过滤器<input name="groupFilter"></label><label>LDAP 组搜索范围<select name="groupScope"><option>默认（子树）</option><option>子树</option><option>单层</option><option>基础对象</option></select></label></details>'+
+    '<details><summary>LDAPS 证书配置</summary><small>使用私有 CA 时，通过 AUTH_LDAP_CA_FILE 指定 API 的证书文件。</small></details></section>'+
+    '<section class="ldap-validation"><h2>测试待启用配置</h2>'+
+    '<label>LDAP 测试员工账号<input name="testUsername" autocomplete="off" placeholder="例如 alice"></label>'+
+    '<label>LDAP 测试员工密码<input name="testPassword" type="password" autocomplete="off"></label>'+
+    '<button type="submit" class="button" value="test">运行测试</button><fieldset><legend>验证步骤</legend><ol>'+
+    ["目录连接","搜索账号绑定","测试员工查询","测试员工认证"].map(step=>'<li><span>'+step+'</span><span class="badge" data-ldap-step>待验证</span></li>').join("")+
+    '</ol></fieldset><small>验证使用原型示例，不连接目录服务。</small><p class="feedback" data-ldap-result role="status"></p></section></div>'+
+    '<footer class="ldap-save"><button class="button primary" type="submit" value="save" disabled>保存并启用</button>'+
+    '<p class="feedback" data-ldap-save-message role="status">四项验证全部通过后可保存。</p></footer></form></details></div>';
+
 }
 
 // 用相同的工作区骨架展示列表、配置表和详情入口。
@@ -354,19 +395,21 @@ function pageContent(path) {
     '<button class="button" type="button" data-action="ask">AI 知识问答</button></header>'+knowledge.map(([title,meta,description],index)=>
       '<button class="doc-row" type="button" data-row data-action="knowledge" data-index="'+index+'"><strong>'+title+'</strong><span>'+meta+'</span><span>'+description+'</span></button>'
     ).join("")+'<p class="empty" data-empty hidden>没有符合条件的知识文档。</p></section>';
-  if (path==="/admin/access/roles") return '<section class="panel" data-filter-region><header class="panel-head"><h2>访问权限</h2>'+
-    '<button class="button" type="button" data-action="catalog">权限配置</button></header><div class="tabs" aria-label="权限视图">'+
-    '<button type="button" data-access-tab="roles" aria-pressed="true">角色配置</button><button type="button" data-access-tab="groups" aria-pressed="false">用户组</button></div>'+
-    '<div id="access-table">'+accessTable("roles")+'</div></section>';
+  if (path==="/admin/access") return '<div class="tools permission-links"><a class="button" href="#/admin/access/roles">角色列表</a>'+
+    '<a class="button" href="permission-catalog/prototype.html">权限目录</a><a href="permission-catalog/group-admin-prototype.html">独立打开授权原型</a></div>'+
+    '<iframe class="permission-preview" title="角色配置与用户组" src="permission-catalog/group-admin-prototype.html?embed"></iframe>';
+  if (path==="/admin/access/roles") return '<section class="panel"><header class="panel-head"><h2>角色列表</h2>'+
+    '<a class="button" href="#/admin/access">返回角色配置</a></header>'+accessTable()+'</section>';
   if (path==="/admin/password") return panel("本地账号密码",
     '<div class="panel-pad"><p>在正式页面中，使用当前密码验证身份，再设置并确认新密码。</p><p class="field-help">原型使用模拟账号。</p></div>');
   const [headers,rows] = sampleTables[path];
   return '<section class="panel" data-filter-region><header class="panel-head"><h2>记录列表</h2>'+search("搜索列表")+'</header>'+table(headers,rows)+'</section>';
 }
-function accessTable(tab) {
-  return tab==="groups"
-    ? table(["用户组","身份来源","角色","成员"],[["生产运维","LDAP","生产观察员","8"],["知识复核","LDAP","知识复核","4"]])
-    : table(["角色名称","类型","作用范围","关联"],[["系统管理员","预置","全局","1"],["生产观察员","自定义","生产 / payments","8"],["知识复核","自定义","运维知识库","4"]]);
+function accessTable() {
+  return table(["角色名称","类型","作用范围","关联","操作"],[
+    ["系统管理员","预置","全局","1","固定角色"],
+    ["生产观察员","自定义","生产 / payments","8",'<a href="permission-catalog/group-admin-prototype.html">编辑示例角色</a>'],
+  ]);
 }
 
 // 按站点层级同步顶部模块、当前栏目和主工作区。
@@ -378,7 +421,7 @@ function render() {
     '<a href="#'+item.groups[0][1][0][0]+'"'+(item===module?' aria-current="location"':'')+'>'+item.label+'</a>').join("");
   document.getElementById("sidebar").innerHTML = '<h2>'+module.label+'</h2>'+module.groups.map(([group,items]) =>
     '<p class="side-group">'+group+'</p>'+items.map(([href,label]) =>
-      '<a class="side-link" href="#'+href+'"'+(href===path?' aria-current="page"':'')+'>'+label+'</a>').join("")).join("");
+      '<a class="side-link" href="#'+href+'"'+(href===path || href==="/admin/access" && path==="/admin/access/roles"?' aria-current="page"':'')+'>'+label+'</a>').join("")).join("");
   const tools = path==="/diagnostics/events" ? '<div class="tools">'+environmentOptions()+'</div>'
     : path===defaultPath ? '<div class="tools"><a class="button" href="#/diagnostics/events">进入故障事件</a></div>' : "";
   main.innerHTML = '<header class="page-head"><div class="head-text"><h1>'+title+'</h1><nav class="crumb" aria-label="面包屑">'+module.label+
@@ -432,10 +475,6 @@ function showDetail(action,index) {
       title = "AI 知识问答";
       body = '<p><strong>示例问题</strong>　容器反复重启时先看哪些证据？</p><p>先查看 Pod 事件和容器退出码，再检查上一次启动的日志。</p><p class="subtle">引用《Pod 反复重启排查步骤》</p>';
       break;
-    case "catalog":
-      title = "权限配置";
-      body = facts([["诊断控制台","查看故障事件与证据"],["资源管理","查看集群与命名空间"],["运维知识库","检索与复核知识"],["系统管理","配置权限与查看审计"]]);
-      break;
     default: return;
   }
   document.getElementById("detail-title").textContent = title;
@@ -463,7 +502,7 @@ window.addEventListener("hashchange",()=>{
 main.addEventListener("click",event=>{
   const button = event.target.closest("button");
   if (!button) return;
-  const {action,index,scope,resourceTab,accessTab,count,day} = button.dataset;
+  const {action,index,scope,resourceTab,count,day} = button.dataset;
   if (action) return showDetail(action,Number(index));
   if (day) {
     document.getElementById("chart-note").textContent = day+" 共 "+count+" 件事件";
@@ -473,15 +512,11 @@ main.addEventListener("click",event=>{
     button.setAttribute("aria-pressed","true");
     filterResults();
   }
-  if (resourceTab || accessTab) {
+  if (resourceTab) {
     button.parentElement.querySelector("[aria-pressed=true]").setAttribute("aria-pressed","false");
     button.setAttribute("aria-pressed","true");
-    if (resourceTab) {
-      document.getElementById("resource-table").innerHTML = resourceTable(resourceTab);
-      filterResults();
-    } else {
-      document.getElementById("access-table").innerHTML = accessTable(accessTab);
-    }
+    document.getElementById("resource-table").innerHTML = resourceTable(resourceTab);
+    filterResults();
   }
 });
 main.addEventListener("input",event=>{
@@ -494,6 +529,13 @@ main.addEventListener("input",event=>{
       if (query && !group.hidden) group.open = true;
     }
   }
+  const ldap = input.closest("#ldap-form");
+  if (ldap && !["testUsername", "testPassword"].includes(input.name)) {
+    ldap.querySelector('[value="save"]').disabled = true;
+    ldap.querySelectorAll("[data-ldap-step]").forEach(step => { step.textContent = "待验证"; });
+    ldap.querySelector("[data-ldap-result]").textContent = "";
+    ldap.querySelector("[data-ldap-save-message]").textContent = "配置已修改，请重新运行测试。";
+  }
   if (input.id==="duration") {
     input.removeAttribute("aria-invalid");
     document.getElementById("duration-error").textContent = "";
@@ -505,6 +547,42 @@ main.addEventListener("change",event=>{
   if (event.target.matches("[data-environment]")) filterResults();
 });
 main.addEventListener("submit",event=>{
+  if (event.target.id==="ldap-form") {
+    event.preventDefault();
+    const form = event.target;
+    const save = form.querySelector('[value="save"]');
+    const result = form.querySelector("[data-ldap-result]");
+    const feedback = form.querySelector("[data-ldap-save-message]");
+    const fields = form.elements;
+    if (event.submitter?.value === "save") {
+      if (save.disabled) return;
+      save.disabled = true;
+      fields.bindPassword.value = "";
+      feedback.textContent = "已保存并启用示例配置。";
+      return;
+    }
+    save.disabled = true;
+    if (!fields.testUsername.value.trim() || !fields.testPassword.value) {
+      result.textContent = "请输入 LDAP 测试员工账号和密码。";
+      return;
+    }
+    const endpoint = fields.url.value.trim();
+    const failure = !/^ldaps?:\/\/[^\s/]+$/i.test(endpoint) || /^ldap:\/\//i.test(endpoint) && !fields.allowPlain.checked ? 0 :
+      !fields.bindDN.value.trim() ? 1 : !fields.baseDN.value.trim() ? 2 : -1;
+    form.querySelectorAll("[data-ldap-step]").forEach((step, index) => {
+      step.textContent = failure < 0 || index < failure ? "通过" : index === failure ? "失败" : "待验证";
+    });
+    if (failure >= 0) {
+      result.textContent = ["请核对 LDAP URL 和明文连接选项。","请填写搜索 DN。","请填写基础 DN。"][failure];
+      feedback.textContent = "验证未通过，调整配置后重新测试。";
+      return;
+    }
+    fields.testUsername.value = fields.testPassword.value = "";
+    result.textContent = "四项验证已通过。";
+    feedback.textContent = "可以保存并启用。";
+    save.disabled = false;
+    return;
+  }
   if (event.target.id!=="duration-form") return;
   event.preventDefault();
   const input = document.getElementById("duration");
