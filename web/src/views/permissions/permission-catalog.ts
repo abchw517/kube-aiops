@@ -79,16 +79,22 @@ type State = {
   selected: Set<string>;
   configured: InterfaceGrant[];
   original: InterfaceGrant[];
+  onSelectionChange?: () => void;
   active?: string;
 };
 
 const states = new WeakMap<HTMLElement, State>();
 
-export function bindPermissionCatalog(container: HTMLElement, catalog: PermissionCatalog, configured: InterfaceGrant[] = []): void {
+export function bindPermissionCatalog(container: HTMLElement, catalog: PermissionCatalog, options: {
+  configured?: InterfaceGrant[];
+  original?: InterfaceGrant[];
+  onSelectionChange?: () => void;
+} = {}): void {
   const root = container.querySelector<HTMLElement>("[data-pc-root]");
   if (!root) return;
+  const { configured = [], original = configured, onSelectionChange } = options;
   const state: State = {
-    catalog, module: Object.keys(catalog.modules)[0] ?? "", selected: new Set(), configured, original: configured,
+    catalog, module: Object.keys(catalog.modules)[0] ?? "", selected: new Set(), configured, original, onSelectionChange,
     points: new Map(catalog.rows.flatMap(feature => feature.points.map(point => [point.code, { ...point, feature }]))),
   };
   states.set(root, state);
@@ -175,6 +181,7 @@ function drawSelection(root: HTMLElement, state: State): void {
   }
   const clear = root.querySelector<HTMLButtonElement>("[data-pc-clear]");
   if (clear) clear.disabled = state.selected.size === 0;
+  state.onSelectionChange?.();
 }
 
 function draw(root: HTMLElement, state: State): void {
@@ -197,22 +204,26 @@ function draw(root: HTMLElement, state: State): void {
     }).filter(row => row.points.length > 0);
   const visible = features.flatMap(row => row.points);
   if (!visible.some(p => p.code === state.active)) state.active = visible[0]?.code;
-  let group = "";
-  matrix.innerHTML = features.map(row => {
-    const head = group !== row.toolkit ? `<tr class="permission-group"><th colspan="5" scope="colgroup"><div><span>${h(row.toolkit)}</span>
-       ${edit ? `<label class="permission-batch">勾选本集合 <input type="checkbox" data-pc-toolkit-toggle="${h(row.toolkit)}" aria-label="勾选 ${h(row.toolkit)}"></label>` : ""}</div></th></tr>` : "";
-    group = row.toolkit;
-    return `${head}<tr><th scope="row">${h(row.name)}<small>${h(row.desc)}</small></th>${columns.map(([key]) => {
+  const groups = new Map<string, typeof features>();
+  for (const row of features) {
+    const group = groups.get(row.toolkit);
+    if (group) group.push(row);
+    else groups.set(row.toolkit, [row]);
+  }
+  matrix.innerHTML = [...groups].map(([name, rows]) => {
+    const head = `<tr class="permission-group"><th colspan="5"><div><span>${h(name)}</span>
+       ${edit ? `<label class="permission-batch"><input type="checkbox" data-pc-toolkit-toggle="${h(name)}" aria-label="勾选本集合 ${h(name)}"> 勾选本集合</label>` : ""}</div></th></tr>`;
+    return head + rows.map(row => `<tr><th scope="row">${h(row.name)}<small>${h(row.desc)}</small></th>${columns.map(([key]) => {
       const actions = row.points.filter(p => p.action === key);
       return `<td>${actions.map(p => `<div class="permission-action-row"${state.selected.has(p.code) ? ' data-pc-selected-point="true"' : ""}>
          <button type="button" class="permission-point" data-risk="${h(p.risk)}" data-pc-point="${h(p.code)}"
          aria-pressed="${p.code === state.active}"${configuredCodes.has(p.code) ? ' data-pc-configured="true"' : ""}>
          ${h(p.label)}${configuredCodes.has(p.code) ? " · 已配置" : ""}</button>
-         ${edit ? `<input type="checkbox" data-pc-check="${h(p.code)}" data-pc-set="${h(row.toolkit)}"
+         ${edit ? `<label class="permission-action-check"><input type="checkbox" data-pc-check="${h(p.code)}" data-pc-set="${h(row.toolkit)}"
            aria-label="勾选 ${h(p.label)}${p.restricted ? "（仅现有管理身份）" : ""}"${state.selected.has(p.code) ? " checked" : ""}
-           ${p.restricted ? ' disabled title="仅现有管理身份"' : ""}>` : ""}
+           ${p.restricted ? ' disabled title="仅现有管理身份"' : ""}></label>` : ""}
          </div>`).join("") || '<span class="permission-empty" title="当前无此类动作">—</span>'}</td>`;
-    }).join("")}</tr>`;
+    }).join("")}</tr>`).join("");
   }).join("") || '<tr><td colspan="5">暂无匹配权限。</td></tr>';
   count.textContent = `${features.length} 项功能 · ${visible.length} 个接口权限点`;
   if (edit) drawSelection(root, state);
@@ -248,13 +259,13 @@ export function selectedPermissions(form: HTMLFormElement): Point[] {
   });
 }
 
-export function updateCatalogGrants(form: HTMLFormElement, configured: InterfaceGrant[], clearSelection = false): void {
+export function updateCatalogGrants(form: HTMLFormElement, configured: InterfaceGrant[], addedCodes: string[] = []): void {
   const root = form.querySelector<HTMLElement>("[data-pc-root]");
   if (!root) return;
   const state = states.get(root);
   if (state) {
     state.configured = configured;
-    if (clearSelection) state.selected.clear();
+    for (const code of addedCodes) state.selected.delete(code);
     draw(root, state);
   }
 }

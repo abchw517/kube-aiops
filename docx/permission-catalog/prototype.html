@@ -28,7 +28,7 @@ main{min-width:0;max-width:1680px;padding:25px 28px 40px;width:100%;margin:0 aut
 .heading{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:22px}
 h1,h2,h3,p{margin:0}h1{font-size:30px;letter-spacing:-.3px;line-height:1.25;margin-bottom:8px}h2{font-size:17px}h3{font-size:15px}
 .intro{color:var(--muted)}.heading-actions,.inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.btn{background:white;border:1px solid #c9d7e8;border-radius:6px;padding:8px 13px;color:#274361;white-space:nowrap}
+.btn{background:white;text-decoration:none;border:1px solid #c9d7e8;border-radius:6px;padding:8px 13px;color:#274361;white-space:nowrap}
 .btn:hover:not(:disabled){background:#edf4fd;border-color:#9eb8dc}.btn.primary{color:#fff;background:#1b56aa;border-color:#1b56aa}.btn.primary:hover:not(:disabled){background:#154a95}.btn:disabled{opacity:.46;cursor:not-allowed}
 .workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
 .panel,.detail{background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 7px #15295606;min-width:0}
@@ -41,8 +41,6 @@ h1,h2,h3,p{margin:0}h1{font-size:30px;letter-spacing:-.3px;line-height:1.25;marg
 .search{position:relative;min-width:185px;flex:1}.search::before{content:'⌕';position:absolute;left:11px;top:5px;font-size:18px;color:#60768e}
 .search input,select{width:100%;border:1px solid #cfdbea;border-radius:6px;padding:8px 10px;color:#243d58;background:white}
 .search input{padding-left:32px}select{width:auto;max-width:100%}
-.scopebar{background:#edf4ff;padding:11px 17px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-block:1px solid #d9e7fb;color:#244773}
-.scopebar strong{font-size:13px}.scopebar select{font-size:12px;padding:5px 8px}.scopebar span{font-size:12px}
 .table-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;min-width:590px;table-layout:fixed}
 th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #e6edf5;vertical-align:top}
@@ -50,12 +48,10 @@ thead th{background:#f3f6fa;color:#47607e;font-size:12px;font-weight:650;padding
 thead th:first-child,tbody th:not([colspan]){padding-left:17px;width:26%}
 tbody th{font-size:13px}.desc{display:block;font-size:11px;color:#617792;font-weight:450;line-height:1.5;margin-top:3px}
 .group th{padding:7px 17px;background:#f5f8fc;color:#2a486c;font-size:12px}
-.grouphead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.grouphead button{font-size:11px;padding:4px 7px}
 .cell-btn{display:block;max-width:100%;margin-bottom:4px;text-align:left;padding:5px 7px;border:1px solid #dce5f2;background:#f9fbff;color:#315480;border-radius:5px;line-height:1.35;font-size:11px;overflow-wrap:anywhere}
 .cell-btn:last-child{margin-bottom:0}.cell-btn:hover{border-color:#97b4d7;background:#edf4ff}
 .cell-btn[aria-pressed=true]{border-color:#73a1e4;color:#194e9e;background:#edf4ff;font-weight:720}
-.cell-btn.granted{box-shadow:inset 2px 0 #3979ce}.cell-btn.risk{border-color:#eedab9;color:#80500b;background:#fff9ef}.cell-btn.risk[aria-pressed=true]{border-color:#b87822}
+.cell-btn.risk{border-color:#eedab9;color:#80500b;background:#fff9ef}.cell-btn.risk[aria-pressed=true]{border-color:#b87822}
 .dash{color:#7085a0}.empty{padding:35px 18px;text-align:center;color:#526785}
 .panel-footer{padding:12px 17px;color:#5b718c;font-size:12px}
 .detail{position:sticky;top:14px;overflow:hidden}
@@ -65,10 +61,6 @@ tbody th{font-size:13px}.desc{display:block;font-size:11px;color:#617792;font-we
 .tag.risk{background:#fff3df;color:#79500f}.tag.sensitive{background:#eef1fa;color:#495a92}.tag.proposed{background:#f5ebfa;color:#793c87}
 .fields{margin:12px 0 0}.fields>div{padding:11px 0;border-top:1px solid #e6edf5}.fields dt{font-size:11px;color:#596f8d;margin-bottom:4px}.fields dd{margin:0;color:#223c5a;font-size:12px;overflow-wrap:anywhere}
 code{font:11px/1.6 "IBM Plex Mono",Consolas,monospace;overflow-wrap:anywhere}.route{display:flex;align-items:start;gap:5px}.method{font:700 10px/1.55 system-ui;background:#e5efff;color:#1c53a1;padding:2px 5px;border-radius:4px}
-.detail-action{width:100%;margin-top:7px}.message{margin:0 0 12px;padding:9px 13px;border:1px solid #c1dbd3;border-radius:8px;background:#ecf8f3;color:#265c49}
-dialog{border:1px solid var(--border);border-radius:11px;box-shadow:0 18px 70px #1026423b;padding:0;width:min(600px,calc(100% - 26px));color:#243650}dialog::backdrop{background:#12244276}
-.dialog-head,.dialog-foot{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:9px;border-bottom:1px solid var(--border)}.dialog-foot{justify-content:end;border-top:1px solid var(--border);border-bottom:0}
-.dialog-body{padding:16px 18px;overflow:auto;max-height:60vh}.dialog-body p{color:#54708b;margin:0 0 9px}.dialog-body ul{padding:0 0 0 17px}.dialog-body li{padding:4px 0}.dialog-body li small{display:block;color:#58718f}.dialog-body li strong{color:#172e4a}
 @media(max-width:1220px){.layout{grid-template-columns:157px minmax(0,1fr)}main{padding-inline:18px}.workspace{grid-template-columns:minmax(0,1fr) 265px}.tabs{gap:17px}}
 @media(max-width:1060px){.sidebar{display:none}.layout{display:block}.workspace{grid-template-columns:minmax(0,1fr) 255px}}
 @media(max-width:860px){.workspace{grid-template-columns:1fr}.detail{position:static}.heading{align-items:start}.profile span:first-child,.brand small{display:none}}
@@ -90,21 +82,15 @@ dialog{border:1px solid var(--border);border-radius:11px;box-shadow:0 18px 70px 
 <p class="crumb">系统管理<span>/</span>权限配置<span>/</span><b id="crumb">权限目录</b></p>
 <div class="heading">
   <div><h1 id="title">权限目录</h1><p class="intro" id="subtitle">按工具集合查看功能动作和接口授权条件。</p></div>
-  <div class="heading-actions"><button class="btn" id="cancel" hidden>返回目录</button><button class="btn primary" id="mode">编辑示例角色</button></div>
+  <div class="heading-actions"><a class="btn primary" href="group-admin-prototype.html">编辑示例角色</a></div>
 </div>
-<div class="message" role="status" id="message" hidden></div>
 <div class="workspace">
 <section class="panel" aria-label="权限矩阵">
   <div class="tabs" id="tabs" aria-label="权限模块"></div>
   <div class="filters">
     <label class="search"><input type="search" id="q" aria-label="搜索权限目录" placeholder="搜索功能、权限编码或接口"></label>
     <select id="toolkit" aria-label="工具集合"></select>
-    <select id="filter" aria-label="权限筛选"><option value="">全部权限</option><option value="risk">高风险</option><option value="selected">已勾选</option></select>
-  </div>
-  <div class="scopebar" id="scopebar" hidden>
-    <strong>当前授权范围</strong>
-    <select id="scope" aria-label="当前授权范围"></select>
-    <span id="scopeText"></span>
+    <select id="filter" aria-label="权限筛选"><option value="">全部权限</option><option value="risk">高风险</option></select>
   </div>
   <div class="table-wrap" tabindex="0" role="region" aria-label="功能点增删改查矩阵">
     <table>
@@ -121,15 +107,6 @@ dialog{border:1px solid var(--border);border-radius:11px;box-shadow:0 18px 70px 
 </div>
 </main>
 </div>
-<dialog id="preview" aria-labelledby="previewTitle">
-  <div class="dialog-head"><h2 id="previewTitle">预览授权变更</h2><button class="btn" data-close="preview" aria-label="关闭变更预览">关闭</button></div>
-  <div class="dialog-body" id="changes"></div>
-  <div class="dialog-foot"><button class="btn" data-close="preview">返回编辑</button><button class="btn primary" id="save">确认保存</button></div>
-</dialog>
-<dialog id="audit" aria-labelledby="auditTitle">
-  <div class="dialog-head"><h2 id="auditTitle">本次操作审计</h2><button class="btn" data-close="audit">关闭</button></div>
-  <div class="dialog-body" id="auditBody"></div>
-</dialog>
 <script type="application/json" id="catalog">{"version":"v1","modules":{"diagnosis":"诊断控制台","knowledge":"运维知识库","resources":"资源管理","system":"系统管理"},"actions":{"C":"增","D":"删","U":"改","R":"查"},"rows":[{"key":"rca","module":"diagnosis","toolkit":"诊断中心","name":"根因分析","scope":"资源范围","desc":"在授权范围内操作根因分析","points":[{"action":"R","code":"diagnosis.rca.read","label":"读取分析任务与版本","method":"GET","path":"/api/v1/diagnostics/incidents/{id}/rca-runs","risk":"常规","rule":"","status":"现有路由"},{"action":"C","code":"diagnosis.rca.run","label":"启动根因分析","method":"POST","path":"/api/v1/diagnostics/incidents/{id}/rca-runs","risk":"中","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.rca.cancel","label":"取消根因分析","method":"POST","path":"/api/v1/diagnostics/incidents/{id}/rca-runs/{runId}/cancel","risk":"中","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.rca.save","label":"保存分析结论","method":"PATCH","path":"/api/v1/diagnostics/incidents/{id}/rca-runs/{runId}/conclusion","risk":"中","rule":"","status":"现有路由"}]},{"key":"topology","module":"diagnosis","toolkit":"诊断中心","name":"关联拓扑","scope":"资源范围","desc":"在授权范围内操作关联拓扑","points":[{"action":"R","code":"diagnosis.topology.read","label":"查看资源关系","method":"GET","path":"/api/v1/diagnostics/incidents/{id}/topology","risk":"常规","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.topology.write","label":"登记资源关系","method":"POST","path":"/api/v1/diagnostics/incidents/{id}/topology/links","risk":"中","rule":"","status":"现有路由"}]},{"key":"connector","module":"diagnosis","toolkit":"诊断中心","name":"数据源管理","scope":"资源范围","desc":"在授权范围内操作数据源管理","points":[{"action":"R","code":"diagnosis.connector.read","label":"查看数据源与资产","method":"GET","path":"/api/v1/diagnostics/datasources","risk":"常规","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.connector.write","label":"维护数据源配置","method":"PATCH","path":"/api/v1/diagnostics/datasources/{datasourceId}","risk":"中","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.connector.test","label":"验证连接并同步资产","method":"POST","path":"/api/v1/diagnostics/datasources/{datasourceId}/test","risk":"中","rule":"","status":"现有路由"}]},{"key":"policy","module":"diagnosis","toolkit":"诊断中心","name":"诊断策略","scope":"资源范围","desc":"在授权范围内操作诊断策略","points":[{"action":"R","code":"diagnosis.policy.read","label":"查看策略和运行记录","method":"GET","path":"/api/v1/diagnostics/policies","risk":"常规","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.policy.write","label":"维护自动诊断策略","method":"PATCH","path":"/api/v1/diagnostics/policies/{policyId}","risk":"中","rule":"","status":"现有路由"}]},{"key":"incident","module":"diagnosis","toolkit":"故障事件","name":"故障管理","scope":"资源范围","desc":"查看与维护授权范围内的事件、时间线和关联证据","points":[{"action":"R","code":"diagnosis.incident.list","label":"查询故障和汇总","method":"GET","path":"/api/v1/diagnostics/incidents","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"diagnosis.incident.read","label":"查看故障和时间线","method":"GET","path":"/api/v1/diagnostics/incidents/{id}","risk":"常规","rule":"","status":"现有路由"},{"action":"C","code":"diagnosis.incident.create","label":"创建故障","method":"POST","path":"/api/v1/diagnostics/incidents","risk":"中","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.incident.update","label":"更新故障","method":"PATCH","path":"/api/v1/diagnostics/incidents/{id}","risk":"中","rule":"","status":"现有路由"},{"action":"U","code":"diagnosis.incident.correlate","label":"采集证据、归并和拆分","method":"POST","path":"/api/v1/diagnostics/incidents/{id}/collect","risk":"中","rule":"","status":"现有路由"}]},{"key":"finding","module":"diagnosis","toolkit":"历史诊断","name":"诊断结果","scope":"资源范围","desc":"查询 Finding、状态汇总与单条详情","points":[{"action":"R","code":"diagnosis.finding.list","label":"查询诊断列表","method":"GET","path":"/api/v1/findings","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"diagnosis.finding.summary","label":"读取诊断汇总","method":"GET","path":"/api/v1/findings/summary","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"diagnosis.finding.read","label":"读取单条诊断","method":"GET","path":"/api/v1/findings/{id}","risk":"常规","rule":"","status":"现有路由"}]},{"key":"discovery","module":"diagnosis","toolkit":"历史诊断","name":"资源发现","scope":"资源范围","desc":"发现集群、命名空间与资源摘要","points":[{"action":"R","code":"diagnosis.discovery.clusters","label":"查询可见实例","method":"GET","path":"/api/v1/clusters","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"diagnosis.discovery.namespaces","label":"查询可见命名空间","method":"GET","path":"/api/v1/clusters/{cluster}/namespaces","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"diagnosis.discovery.resource","label":"读取资源详情","method":"GET","path":"/api/v1/clusters/{cluster}/resources/{kind}/{namespace}/{name}","risk":"常规","rule":"","status":"现有路由"}]},{"key":"evidence","module":"diagnosis","toolkit":"历史诊断","name":"关联证据","scope":"资源范围","desc":"查看 Kubernetes 事件、指标、日志信号、告警","points":[{"action":"R","code":"diagnosis.evidence.read","label":"读取关联证据","method":"GET","path":"/api/v1/findings/{id}/correlation","risk":"常规","rule":"","status":"现有路由"}]},{"key":"review","module":"diagnosis","toolkit":"AI 诊断复核","name":"AI 复核结论","scope":"资源范围","desc":"发起模型复核、追问和保存结论","points":[{"action":"C","code":"diagnosis.review.run","label":"生成 AI 复核","method":"POST","path":"/api/v1/admin/finding-analysis","risk":"敏感","rule":"action=assess、enhance 或空值","status":"现有路由"},{"action":"C","code":"diagnosis.review.chat","label":"追问与生成总结","method":"POST","path":"/api/v1/admin/finding-analysis","risk":"敏感","rule":"action=chat / finalize / summarize","status":"现有路由"},{"action":"U","code":"diagnosis.review.save","label":"保存复核结论","method":"POST","path":"/api/v1/admin/finding-analysis","risk":"敏感","rule":"action=save，验证当前复核版本","status":"现有路由"},{"action":"R","code":"diagnosis.review.read","label":"读取复核历史","method":"GET","path":"/api/v1/admin/finding-analysis","risk":"常规","rule":"","status":"现有路由"}]},{"key":"related","module":"diagnosis","toolkit":"AI 诊断复核","name":"诊断关联知识","scope":"资源范围","desc":"查询知识、创建案例或关联排障手册","points":[{"action":"C","code":"diagnosis.related.draft","label":"从复核创建案例草稿","method":"POST","path":"/api/v1/wiki/finding","risk":"敏感","rule":"action=draft，另校验知识草稿创建权限","status":"现有路由"},{"action":"C","code":"diagnosis.related.link","label":"关联手册版本","method":"POST","path":"/api/v1/wiki/finding","risk":"敏感","rule":"action=link，另校验目标知识版本","status":"现有路由"},{"action":"R","code":"diagnosis.related.read","label":"查看相关知识","method":"GET","path":"/api/v1/wiki/finding","risk":"常规","rule":"按知识权限过滤候选及关联结果","status":"现有路由"}]},{"key":"document","module":"knowledge","toolkit":"知识查询","name":"知识文档与版本","scope":"知识目标","desc":"检索生效文档和历史版本","points":[{"action":"R","code":"knowledge.document.search","label":"检索知识文档","method":"GET","path":"/api/v1/wiki/knowledge","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.document.read","label":"查看知识文档","method":"GET","path":"/api/v1/wiki/knowledge/{id}","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.document.version","label":"查看指定版本","method":"GET","path":"/api/v1/wiki/knowledge/{id}/revisions/{revision}","risk":"常规","rule":"","status":"现有路由"}]},{"key":"qa","module":"knowledge","toolkit":"知识查询","name":"AI 知识问答","scope":"知识目标","desc":"生成可追溯到文档版本及章节的答复","points":[{"action":"C","code":"knowledge.qa.ask","label":"发起知识问答","method":"POST","path":"/api/v1/wiki/ask","risk":"敏感","rule":"同时验证各引用的读取权限","status":"现有路由"}]},{"key":"feedback","module":"knowledge","toolkit":"知识查询","name":"版本反馈","scope":"知识目标","desc":"维护有用或过时反馈","points":[{"action":"C","code":"knowledge.feedback.create","label":"提交版本反馈","method":"POST","path":"/api/v1/wiki/knowledge/{id}/feedback","risk":"常规","rule":"另校验当前版本可读","status":"现有路由"},{"action":"R","code":"knowledge.feedback.list","label":"读取版本反馈","method":"GET","path":"/api/v1/wiki/knowledge/{id}/feedback","risk":"常规","rule":"","status":"现有路由"}]},{"key":"candidate","module":"knowledge","toolkit":"知识编审","name":"知识草稿","scope":"知识目标","desc":"录入、预览、编辑与放弃候选草稿","points":[{"action":"C","code":"knowledge.candidate.create","label":"新建或修订草稿","method":"POST","path":"/api/v1/wiki/candidates","risk":"常规","rule":"","status":"现有路由"},{"action":"C","code":"knowledge.candidate.import","label":"解析附件预览","method":"POST","path":"/api/v1/wiki/imports/files","risk":"敏感","rule":"附件处理，转写草稿另需新增权限","status":"现有路由"},{"action":"D","code":"knowledge.candidate.discard","label":"放弃草稿","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"常规","rule":"action=discard，保留记录","status":"现有路由"},{"action":"U","code":"knowledge.candidate.save","label":"编辑草稿","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"常规","rule":"action=save","status":"现有路由"},{"action":"R","code":"knowledge.candidate.list","label":"读取候选清单","method":"GET","path":"/api/v1/wiki/candidates","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.candidate.read","label":"读取草稿详情","method":"GET","path":"/api/v1/wiki/candidates/{id}","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.candidate.preview","label":"生成脱敏预览","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"常规","rule":"action=preview，无持久化变更","status":"现有路由"}]},{"key":"workflow","module":"knowledge","toolkit":"知识编审","name":"送审与发布","scope":"知识目标","desc":"提交审核、驳回或发布候选版本","points":[{"action":"U","code":"knowledge.workflow.submit","label":"提交审核","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"常规","rule":"action=submit","status":"现有路由"},{"action":"U","code":"knowledge.workflow.reject","label":"驳回候选","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"敏感","rule":"action=reject","status":"现有路由"},{"action":"U","code":"knowledge.workflow.publish","label":"确认发布","method":"POST","path":"/api/v1/wiki/candidates/{id}","risk":"高风险","rule":"action=publish，生产或扩大范围复核另一位有权管理员","status":"现有路由"}]},{"key":"governance","module":"knowledge","toolkit":"知识编审","name":"知识治理","scope":"知识目标","desc":"查看治理队列、登记复核、撤回生效知识","points":[{"action":"D","code":"knowledge.governance.withdraw","label":"撤回生效知识","method":"POST","path":"/api/v1/wiki/knowledge/{id}/governance","risk":"高风险","rule":"action=withdraw，保留历史","status":"现有路由"},{"action":"U","code":"knowledge.governance.review","label":"登记知识复核","method":"POST","path":"/api/v1/wiki/knowledge/{id}/governance","risk":"敏感","rule":"action=review","status":"现有路由"},{"action":"R","code":"knowledge.governance.list","label":"查看治理队列","method":"GET","path":"/api/v1/wiki/governance","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.governance.read","label":"查看治理详情","method":"GET","path":"/api/v1/wiki/knowledge/{id}/governance","risk":"常规","rule":"","status":"现有路由"}]},{"key":"source","module":"knowledge","toolkit":"远端 Wiki","name":"同步来源","scope":"知识目标","desc":"注册和停用来源，检查连接可用性","points":[{"action":"C","code":"knowledge.source.register","label":"注册来源","method":"PUT","path":"/api/v1/wiki/sources/{id}","risk":"高风险","rule":"注册全新来源，存在时禁止借此能力改写","status":"现有路由","restricted":true},{"action":"D","code":"knowledge.source.disable","label":"停用来源","method":"DELETE","path":"/api/v1/wiki/sources/{id}","risk":"高风险","rule":"保留执行记录和知识版本","status":"现有路由"},{"action":"R","code":"knowledge.source.check","label":"测试来源连接","method":"POST","path":"/api/v1/wiki/sources/{id}/check","risk":"敏感","rule":"只测试连接","status":"现有路由"},{"action":"R","code":"knowledge.source.read","label":"查看来源配置","method":"GET","path":"/api/v1/wiki/sources/{id}","risk":"常规","rule":"返回脱敏配置","status":"新增路由"}]},{"key":"credential","module":"knowledge","toolkit":"远端 Wiki","name":"本人 Wiki 凭据","scope":"仅本人","desc":"维护登录用户与指定来源的绑定","points":[{"action":"C","code":"knowledge.credential.bind","label":"新建本人绑定","method":"PUT","path":"/api/v1/wiki/sources/{id}/credential","risk":"敏感","rule":"服务端确认此前未绑定","status":"现有路由"},{"action":"D","code":"knowledge.credential.unbind","label":"解除本人绑定","method":"DELETE","path":"/api/v1/wiki/sources/{id}/credential","risk":"敏感","rule":"仅本人","status":"现有路由"},{"action":"U","code":"knowledge.credential.rotate","label":"更换本人绑定","method":"PUT","path":"/api/v1/wiki/sources/{id}/credential","risk":"敏感","rule":"服务端确认已有绑定","status":"现有路由"},{"action":"R","code":"knowledge.credential.status","label":"查看本人绑定状态","method":"GET","path":"/api/v1/wiki/sources/{id}/credential","risk":"常规","rule":"返回账号和配置状态","status":"现有路由"}]},{"key":"sync","module":"knowledge","toolkit":"远端 Wiki","name":"同步任务","scope":"知识目标","desc":"触发来源同步、查看执行记录并重试","points":[{"action":"C","code":"knowledge.sync.run","label":"启动同步","method":"POST","path":"/api/v1/wiki/sources/{id}/sync","risk":"敏感","rule":"使用执行人的来源绑定","status":"现有路由"},{"action":"C","code":"knowledge.sync.retry","label":"重试任务或失败页","method":"POST","path":"/api/v1/wiki/sources/{id}/runs/{run}/retry","risk":"敏感","rule":"验证来源范围、运行归属及失败状态","status":"现有路由"},{"action":"R","code":"knowledge.sync.runs","label":"查询执行列表","method":"GET","path":"/api/v1/wiki/sources/{id}/runs","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"knowledge.sync.run-read","label":"查询执行详情","method":"GET","path":"/api/v1/wiki/sources/{id}/runs/{run}","risk":"常规","rule":"","status":"现有路由"}]},{"key":"schedule","module":"knowledge","toolkit":"远端 Wiki","name":"同步计划","scope":"知识目标","desc":"配置、停用与查看定时计划","points":[{"action":"U","code":"knowledge.schedule.save","label":"保存同步计划","method":"PUT","path":"/api/v1/wiki/sources/{id}/schedule","risk":"敏感","rule":"开关及周期，执行时复验配置人权限","status":"现有路由"},{"action":"R","code":"knowledge.schedule.read","label":"查看同步计划","method":"GET","path":"/api/v1/wiki/sources/{id}/schedule","risk":"常规","rule":"","status":"现有路由"}]},{"key":"environment","module":"resources","toolkit":"资源目录","name":"环境目录","scope":"平台全局","desc":"维护环境及引用关系","points":[{"action":"C","code":"resources.environment.create","label":"添加环境","method":"POST","path":"/api/v1/admin/environments","risk":"常规","rule":"","status":"现有路由","restricted":true},{"action":"D","code":"resources.environment.delete","label":"删除环境","method":"DELETE","path":"/api/v1/admin/environments","risk":"高风险","rule":"删除前检查引用","status":"现有路由","restricted":true},{"action":"U","code":"resources.environment.update","label":"修改环境","method":"PUT","path":"/api/v1/admin/environments","risk":"敏感","rule":"","status":"现有路由","restricted":true},{"action":"R","code":"resources.environment.list","label":"查询环境","method":"GET","path":"/api/v1/admin/environments","risk":"常规","rule":"","status":"现有路由"}]},{"key":"business","module":"resources","toolkit":"资源目录","name":"业务线目录","scope":"平台全局","desc":"维护业务线及引用关系","points":[{"action":"C","code":"resources.business.create","label":"添加业务线","method":"POST","path":"/api/v1/admin/business-lines","risk":"常规","rule":"","status":"现有路由","restricted":true},{"action":"D","code":"resources.business.delete","label":"删除业务线","method":"DELETE","path":"/api/v1/admin/business-lines","risk":"高风险","rule":"删除前检查引用","status":"现有路由","restricted":true},{"action":"U","code":"resources.business.update","label":"修改业务线","method":"PUT","path":"/api/v1/admin/business-lines","risk":"敏感","rule":"","status":"现有路由","restricted":true},{"action":"R","code":"resources.business.list","label":"查询业务线","method":"GET","path":"/api/v1/admin/business-lines","risk":"常规","rule":"","status":"现有路由"}]},{"key":"cluster","module":"resources","toolkit":"集群管理","name":"集群接入","scope":"集群实例","desc":"管理本地采集、远端直连与快照上报","points":[{"action":"C","code":"resources.cluster.create","label":"登记新实例","method":"POST","path":"/api/v1/admin/cluster-onboarding","risk":"高风险","rule":"无 action 且 test 不为 true，校验拟登记归属","status":"现有路由","restricted":true},{"action":"D","code":"resources.cluster.disconnect","label":"删除连接","method":"DELETE","path":"/api/v1/admin/cluster-onboarding","risk":"高风险","rule":"按 id 解析现有实例","status":"现有路由","restricted":true},{"action":"U","code":"resources.cluster.update","label":"修改接入配置","method":"PUT","path":"/api/v1/admin/cluster-onboarding","risk":"高风险","rule":"test 不为 true，提交新凭据追加轮换权限","status":"现有路由","restricted":true},{"action":"U","code":"resources.cluster.recheck","label":"重新采集校验","method":"POST","path":"/api/v1/admin/cluster-onboarding","risk":"敏感","rule":"query action=recheck","status":"现有路由","restricted":true},{"action":"U","code":"resources.cluster.reconnect","label":"恢复本地连接","method":"POST","path":"/api/v1/admin/cluster-onboarding","risk":"高风险","rule":"query action=reconnect","status":"现有路由","restricted":true},{"action":"U","code":"resources.cluster.rotate","label":"轮换接入凭据","method":"POST","path":"/api/v1/admin/cluster-onboarding","risk":"高风险","rule":"POST action=rotate-token，或 PUT 更新直连凭据","status":"现有路由","restricted":true},{"action":"R","code":"resources.cluster.list","label":"查看集群接入状态","method":"GET","path":"/api/v1/admin/cluster-onboarding","risk":"常规","rule":"","status":"现有路由"},{"action":"R","code":"resources.cluster.test","label":"测试直连配置","method":"POST","path":"/api/v1/admin/cluster-onboarding","risk":"敏感","rule":"query test=true，POST 和 PUT 均适用","status":"现有路由","restricted":true}]},{"key":"ownership","module":"resources","toolkit":"集群管理","name":"命名空间归属","scope":"集群实例","desc":"查询、增减归属关系","points":[{"action":"U","code":"resources.ownership.replace","label":"维护归属关系","method":"PUT","path":"/api/v1/admin/namespace-business","risk":"高风险","rule":"逐项校验真实实例、命名空间及变更前后业务线","status":"现有路由","restricted":true},{"action":"R","code":"resources.ownership.list","label":"查看归属关系","method":"GET","path":"/api/v1/admin/namespace-business","risk":"常规","rule":"","status":"现有路由"}]},{"key":"account","module":"system","toolkit":"身份与角色","name":"用户账号","scope":"平台全局","desc":"维护账号生命周期与临时密码","points":[{"action":"C","code":"system.account.create","label":"创建账号","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=create，创建管理员受身份约束","status":"现有路由","restricted":true},{"action":"D","code":"system.account.delete","label":"删除受管账号","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=delete","status":"现有路由","restricted":true},{"action":"U","code":"system.account.state","label":"停用或启用账号","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=disable / enable","status":"现有路由","restricted":true},{"action":"U","code":"system.account.reset","label":"重置账号密码","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=reset","status":"现有路由","restricted":true},{"action":"R","code":"system.account.list","label":"查询用户和状态","method":"GET","path":"/api/v1/admin/accounts","risk":"常规","rule":"","status":"现有路由"}]},{"key":"role","module":"system","toolkit":"身份与角色","name":"角色配置","scope":"平台全局","desc":"配置角色权限点与数据范围","points":[{"action":"C","code":"system.role.create","label":"创建角色","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=role-save，且未提交角色 ID","status":"现有路由","restricted":true},{"action":"D","code":"system.role.delete","label":"删除自定义角色","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=role-delete，保留引用保护","status":"现有路由","restricted":true},{"action":"U","code":"system.role.update","label":"修改角色授权","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=role-save，加载已有角色及版本","status":"现有路由","restricted":true},{"action":"R","code":"system.role.list","label":"查询角色定义","method":"GET","path":"/api/v1/admin/access","risk":"常规","rule":"独立控制 roles 投影","status":"现有路由"}]},{"key":"group","module":"system","toolkit":"身份与角色","name":"用户组","scope":"平台全局","desc":"维护用户组基础信息","points":[{"action":"C","code":"system.group.create","label":"创建用户组","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=group-save，且未提交组 ID","status":"现有路由","restricted":true},{"action":"D","code":"system.group.delete","label":"删除用户组","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=group-delete，保留引用保护","status":"现有路由","restricted":true},{"action":"U","code":"system.group.update","label":"编辑用户组信息","method":"POST","path":"/api/v1/admin/access","risk":"敏感","rule":"action=group-save，加载已有组；关联管理员前由超级管理员使用 group-preview 核对影响","status":"现有路由","restricted":true},{"action":"R","code":"system.group.list","label":"查询用户组定义","method":"GET","path":"/api/v1/admin/access","risk":"常规","rule":"独立控制 groups 投影","status":"现有路由"}]},{"key":"binding","module":"system","toolkit":"身份与角色","name":"授权关联","scope":"平台全局","desc":"管理用户直授、用户组成员及组角色","points":[{"action":"C","code":"system.binding.user-role-grant","label":"授予用户直接角色","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=grant","status":"现有路由","restricted":true},{"action":"C","code":"system.binding.user-join","label":"将用户加入用户组","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=join","status":"现有路由","restricted":true},{"action":"C","code":"system.binding.group-role-grant","label":"为用户组新增角色","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=group-roles-add，或按 group-save 差异校验；仅超级管理员可授予组管理员角色","status":"现有路由","restricted":true},{"action":"D","code":"system.binding.user-role-revoke","label":"撤销用户直接角色","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=revoke","status":"现有路由","restricted":true},{"action":"D","code":"system.binding.user-leave","label":"将用户移出用户组","method":"POST","path":"/api/v1/admin/accounts","risk":"高风险","rule":"action=leave","status":"现有路由","restricted":true},{"action":"D","code":"system.binding.group-role-revoke","label":"撤销用户组角色","method":"POST","path":"/api/v1/admin/access","risk":"高风险","rule":"action=group-roles-remove，或按 group-save 差异校验；仅超级管理员可撤销组管理员角色","status":"现有路由","restricted":true},{"action":"R","code":"system.binding.read","label":"查询绑定与生效来源","method":"GET","path":"/api/v1/admin/accounts","risk":"常规","rule":"独立控制授权关系和来源字段的投影","status":"现有路由"}]},{"key":"ldap","module":"system","toolkit":"身份与角色","name":"LDAP 认证配置","scope":"平台全局","desc":"查看、测试并保存已验证的 LDAP 配置","points":[{"action":"U","code":"system.ldap.save","label":"保存 LDAP 配置","method":"PUT","path":"/api/v1/admin/ldap","risk":"高风险","rule":"绑定当前验证结果","status":"现有路由","restricted":true},{"action":"R","code":"system.ldap.read","label":"查看 LDAP 配置","method":"GET","path":"/api/v1/admin/ldap","risk":"敏感","rule":"只返回配置及密码状态","status":"现有路由"},{"action":"R","code":"system.ldap.test","label":"测试 LDAP 配置","method":"POST","path":"/api/v1/admin/ldap-test","risk":"敏感","rule":"独立检查测试权限","status":"现有路由","restricted":true}]},{"key":"catalog","module":"system","toolkit":"身份与角色","name":"权限目录","scope":"平台全局","desc":"浏览服务端的权限注册目录","points":[{"action":"R","code":"system.catalog.read","label":"查看权限目录","method":"GET","path":"/api/v1/admin/permission-catalog","risk":"常规","rule":"返回版本化目录","status":"新增路由"}]},{"key":"audit","module":"system","toolkit":"操作审计","name":"审计记录","scope":"平台全局","desc":"查询操作结果、详情和批次","points":[{"action":"R","code":"system.audit.list","label":"查询审计列表","method":"GET","path":"/api/v1/admin/operations","risk":"敏感","rule":"列表和分页","status":"现有路由"},{"action":"R","code":"system.audit.record","label":"读取审计明细","method":"GET","path":"/api/v1/admin/operations","risk":"敏感","rule":"query record 或 batch","status":"现有路由"}]},{"key":"retention","module":"system","toolkit":"操作审计","name":"审计保留策略","scope":"平台全局","desc":"查看和维护分级保留期限","points":[{"action":"U","code":"system.retention.update","label":"调整审计保留","method":"PUT","path":"/api/v1/admin/operations","risk":"高风险","rule":"保留超级管理员限制","status":"现有路由","restricted":true},{"action":"R","code":"system.retention.read","label":"读取保留设置","method":"GET","path":"/api/v1/admin/operations","risk":"敏感","rule":"独立控制 retention 字段投影","status":"现有路由"}]}]}</script>
 <script>
 const data = JSON.parse(document.getElementById("catalog").textContent);
@@ -139,28 +116,8 @@ const modules = data.modules;
 const categories = Object.keys(data.actions);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const points = new Map(rows.flatMap(row => row.points.map(point => [point.code, { ...point, row }])));
-const scopes = {
-  test: ["测试 · 华东 / 支付", "test-east-01 · 支付业务线 · payments-test"],
-  prod: ["生产 · 华东 / 支付", "prod-east-01 · 支付业务线 · payments"],
-  global: ["平台全局", "用户、角色、LDAP 及审计等平台对象"],
-  self: ["仅本人", "仅当前用户在有权来源上的绑定"]
-};
-const scopesByType = {
-  "资源范围":["test","prod"], "知识目标":["test","prod"],
-  "集群实例":["test","prod"], "平台全局":["global"], "仅本人":["self"]
-};
-const grant = (code, scope) => code + "@" + scope;
-let saved = new Set([grant("diagnosis.finding.read","test"),grant("diagnosis.finding.list","test")]);
-let draft = new Set(saved);
 let moduleKey = "diagnosis";
 let selected = "diagnosis.finding.read";
-let editing = false;
-let auditDiff = [];
-let scopeByModule = {diagnosis:"test",knowledge:"test",resources:"global",system:"global"};
-const currentScope = () => scopeByModule[moduleKey];
-const canGrant = point => !point.restricted && scopesByType[point.row.scope].includes(currentScope());
-const has = code => [...(editing ? draft : saved)].some(key => key.startsWith(code+"@"));
-const equal = () => saved.size === draft.size && [...saved].every(key => draft.has(key));
 
 function renderTabs() {
   byId("tabs").innerHTML = Object.entries(modules).map(([key,name]) => {
@@ -171,9 +128,6 @@ function renderTabs() {
 function renderFilters() {
   const kits = [...new Set(rows.filter(row => row.module === moduleKey).map(row => row.toolkit))];
   byId("toolkit").innerHTML = '<option value="">全部工具集合</option>'+kits.map(kit=>'<option>'+esc(kit)+'</option>').join("");
-  const allowed = [...new Set(rows.filter(row=>row.module===moduleKey).flatMap(row=>scopesByType[row.scope]))];
-  byId("scope").innerHTML = allowed.map(key=>'<option value="'+key+'">'+esc(scopes[key][0])+'</option>').join("");
-  byId("scope").value = currentScope();
 }
 function filteredRows() {
   const query = byId("q").value.trim().toLowerCase();
@@ -182,8 +136,7 @@ function filteredRows() {
       const rowMatch = (row.name+" "+row.toolkit+" "+row.desc).toLowerCase().includes(query);
       const activePoints = row.points.filter(p =>
         (rowMatch || [p.code,p.label,p.method,p.path,p.rule].join(" ").toLowerCase().includes(query)) &&
-        (byId("filter").value !== "risk" || p.risk === "高风险") &&
-        (byId("filter").value !== "selected" || has(p.code)));
+        (byId("filter").value !== "risk" || p.risk === "高风险"));
       return [row, activePoints];
     }).filter(([,activePoints])=>activePoints.length);
 }
@@ -196,8 +149,7 @@ function renderTable() {
   for (const [row, available] of visible) {
     if (toolkit!==row.toolkit) {
       toolkit = row.toolkit;
-      const quick = editing ? '<button class="btn" data-quick="'+esc(toolkit)+'">勾选本集合常规查询</button>' : '';
-      chunks.push('<tr class="group"><th colspan="5"><div class="grouphead"><span>'+esc(toolkit)+'</span>'+quick+'</div></th></tr>');
+      chunks.push('<tr class="group"><th colspan="5">'+esc(toolkit)+'</th></tr>');
     }
     const cells = categories.map(action => {
       const active = available.filter(p=>p.action===action);
@@ -206,153 +158,59 @@ function renderTable() {
         return '<td><span class="dash" title="'+reason+'" aria-label="'+reason+'">—</span></td>';
       }
       return '<td>'+active.map(p=>{
-        const activeGrant = editing && draft.has(grant(p.code,currentScope()));
-        const anyGrant = editing && has(p.code);
-        const flag = activeGrant ? "✓ " : anyGrant ? "· " : "";
-        return '<button class="cell-btn '+(activeGrant?'granted ':'')+(p.risk==='高风险'?'risk':'')+'" data-point="'+p.code+
-          '" aria-pressed="'+(p.code===selected)+'" aria-label="'+esc(p.label+(activeGrant?'，当前范围已勾选':anyGrant?'，其他范围已勾选':''))+'">'+flag+esc(p.label)+'</button>';
+        return '<button class="cell-btn '+(p.risk==='高风险'?'risk':'')+'" data-point="'+esc(p.code)+
+          '" aria-pressed="'+(p.code===selected)+'">'+esc(p.label)+'</button>';
       }).join("")+'</td>';
     }).join("");
     chunks.push('<tr><th scope="row">'+esc(row.name)+'<span class="desc">'+esc(row.desc)+'</span></th>'+cells+'</tr>');
   }
   byId("matrix").innerHTML = chunks.join("") || '<tr><td class="empty" colspan="5">暂无匹配权限。可清除筛选后重试。</td></tr>';
-  byId("matrixFooter").textContent = visible.length+" 项功能 · "+visiblePoints.length+" 个接口权限点"+(editing?" · 角色共勾选 "+draft.size+" 项权限与范围":"");
+  byId("matrixFooter").textContent = visible.length+" 项功能 · "+visiblePoints.length+" 个接口权限点";
 }
-function pointGrants(code) {
-  return [...draft].filter(key=>key.startsWith(code+"@")).map(key=>scopes[key.split("@")[1]][0]);
-}
+
 function renderDetail() {
-  const p = points.get(selected);
-  if (!p) { byId("details").innerHTML='<p class="label">请选择一个权限点查看详情。</p>'; return; }
-  const riskClass = p.risk === "高风险" ? "risk" : p.risk === "敏感" ? "sensitive" : "";
-  const planned = p.status === "新增路由";
-  const checked = draft.has(grant(p.code,currentScope()));
-  const range = pointGrants(p.code);
-  let control = "";
-  if (editing) {
-    const detailText = range.length ? "已勾选 · "+range.join("、") : "尚未勾选";
-    control = '<div><dt>角色授权</dt><dd>'+esc(detailText)+'</dd></div>';
+  const point = points.get(selected);
+  const detail = byId("details");
+  if (!point) {
+    detail.textContent = "请选择一个权限点查看详情。";
+    return;
   }
-  byId("details").innerHTML =
-    '<p class="label">'+esc(p.row.toolkit+' / '+p.row.name)+'</p><h2>'+esc(p.label)+'</h2>'+
-    '<div class="inline"><span class="tag '+riskClass+'">'+p.risk+'</span><span class="tag '+(planned?'proposed':'')+'">'+p.status+'</span></div>'+
-    '<dl class="fields"><div><dt>权限编码</dt><dd><code>'+p.code+'</code></dd></div>'+
-    '<div><dt>方法与路径</dt><dd class="route"><span class="method">'+p.method+'</span><code>'+esc(p.path)+'</code></dd></div>'+
-    '<div><dt>接口分流与约束</dt><dd>'+esc(p.rule||"该方法和路径唯一对应此业务动作，按实际对象授权。")+'</dd></div>'+
-    '<div><dt>适用范围</dt><dd>'+esc(p.row.scope)+'</dd></div>'+control+'</dl>'+
-    (editing ? '<button id="toggle" class="btn detail-action '+(checked?'':'primary')+'" '+(canGrant(p)?'':'disabled')+'>'+
-      (p.restricted?'保留现有管理身份':!canGrant(p)?'切换到适用范围后勾选':checked?'撤销当前范围':'勾选当前范围')+'</button>' : '');
+  const riskClass = point.risk === "高风险" ? "risk" : point.risk === "敏感" ? "sensitive" : "";
+  detail.innerHTML = '<p class="label">'+esc(point.row.toolkit)+' / '+esc(point.row.name)+'</p>'+
+    '<h2>'+esc(point.label)+'</h2><span class="tag '+riskClass+'">'+esc(point.risk)+'</span>'+
+    (point.restricted ? ' <span class="tag">仅现有管理身份</span>' : '')+
+    '<dl class="fields"><div><dt>权限编码</dt><dd><code>'+esc(point.code)+'</code></dd></div>'+
+    '<div><dt>方法与路径</dt><dd class="route"><span class="method">'+esc(point.method)+'</span><code>'+esc(point.path)+'</code></dd></div>'+
+    '<div><dt>分流与约束</dt><dd>'+esc(point.rule || "按实际资源范围校验。")+'</dd></div>'+
+    '<div><dt>适用范围</dt><dd>'+esc(point.row.scope)+'</dd></div></dl>';
 }
+
 function render() {
-  byId("title").textContent = editing ? "编辑角色 · 值班 SRE" : "权限目录";
-  byId("crumb").textContent = editing ? "编辑角色" : "权限目录";
-  byId("subtitle").textContent = editing ? "选择数据范围和接口动作，核对变更后保存。" : "按工具集合查看功能动作和接口授权条件。";
-  byId("scopebar").hidden = !editing;
-  byId("cancel").hidden = !editing;
-  byId("scopeText").textContent = scopes[currentScope()][1];
-  byId("mode").textContent = editing ? "预览变更" : "编辑示例角色";
-  byId("mode").disabled = editing && equal();
   renderTable();
   renderDetail();
 }
-function refreshFocus(selector, fallback) {
-  (document.querySelector(selector) || byId(fallback))?.focus();
-}
-function listDiff(diff) {
-  const entries = diff.map(([id, kind])=>{
-    const [code, scope] = id.split("@");
-    const p=points.get(code);
-    return '<li><strong>'+kind+' · '+esc(p.label)+'</strong> <span class="tag">'+p.risk+'</span><small>'+esc(scopes[scope][1])+' · '+esc(p.code)+'</small></li>';
-  });
-  return '<ul>'+entries.join("")+'</ul>';
-}
-byId("tabs").addEventListener("click",event=>{
+
+byId("tabs").addEventListener("click", event => {
   const button = event.target.closest("[data-module]");
-  if (!button || moduleKey===button.dataset.module) return;
-  moduleKey=button.dataset.module;
-  selected="";
+  if (!button || moduleKey === button.dataset.module) return;
+  moduleKey = button.dataset.module;
+  selected = "";
   renderTabs();
   renderFilters();
   render();
-  refreshFocus('[data-module="'+moduleKey+'"]');
+  byId("tabs").querySelector('[aria-pressed="true"]').focus();
 });
-for (const id of ["q","toolkit","filter"]) byId(id).addEventListener(id==="q"?"input":"change",render);
-byId("scope").addEventListener("change",event=>{
-  scopeByModule[moduleKey] = event.target.value;
-  render();
-});
-byId("matrix").addEventListener("click",event=>{
-  const button=event.target.closest("[data-point], [data-quick]");
+byId("q").addEventListener("input", render);
+byId("toolkit").addEventListener("change", render);
+byId("filter").addEventListener("change", render);
+byId("matrix").addEventListener("click", event => {
+  const button = event.target.closest("[data-point]");
   if (!button) return;
-  if (button.dataset.point) {
-    selected=button.dataset.point;
-    render();
-    if (matchMedia("(max-width:860px)").matches) {
-      byId("detail").focus({preventScroll:true});
-      byId("detail").scrollIntoView({block:"start"});
-    } else {
-      refreshFocus('[data-point="'+selected+'"]');
-    }
-    return;
-  }
-  if (!editing) return;
-  for (const p of points.values()) {
-    if (p.row.module===moduleKey && p.row.toolkit===button.dataset.quick && p.action==="R" && p.risk==="常规" && canGrant(p)) {
-      draft.add(grant(p.code,currentScope()));
-    }
-  }
+  selected = button.dataset.point;
   render();
-  const quick = [...document.querySelectorAll("[data-quick]")].find(item=>item.dataset.quick===button.dataset.quick);
-  quick?.focus();
+  if (matchMedia("(max-width:860px)").matches) byId("detail").focus();
+  else byId("matrix").querySelector('[data-point="'+CSS.escape(selected)+'"]').focus();
 });
-byId("details").addEventListener("click",event=>{
-  const p=points.get(selected);
-  if (event.target.id!=="toggle" || !editing || !p || !canGrant(p)) return;
-  const key=grant(p.code,currentScope());
-  if (draft.has(key)) draft.delete(key);
-  else draft.add(key);
-  render();
-  refreshFocus("#toggle","filter");
-});
-byId("mode").addEventListener("click",()=>{
-  if (!editing) {
-    editing=true;
-    byId("message").hidden=true;
-    draft=new Set(saved);
-    render();
-    byId("scope").focus();
-    return;
-  }
-  const diff=[...[...draft].filter(key=>!saved.has(key)).map(key=>[key,"新增"]),
-              ...[...saved].filter(key=>!draft.has(key)).map(key=>[key,"撤销"])];
-  if (!diff.length) return;
-  const countRisk=diff.filter(([id])=>points.get(id.split("@")[0]).risk==="高风险").length;
-  byId("changes").innerHTML='<p>角色 · 值班 SRE</p><p>影响示例 · 直接授权 2 人 · 关联用户组 1 个 · 去重后 6 人</p>'+
-    (countRisk?'<p><span class="tag risk">'+countRisk+' 个高风险权限与范围变更</span></p>':"")+listDiff(diff);
-  auditDiff=diff;
-  byId("preview").showModal();
-});
-byId("cancel").addEventListener("click",()=>{
-  editing=false;
-  draft=new Set(saved);
-  if (byId("filter").value==="selected") byId("filter").value="";
-  render();
-  byId("mode").focus();
-});
-byId("save").addEventListener("click",()=>{
-  saved=new Set(draft);
-  editing=false;
-  byId("preview").close();
-  byId("message").innerHTML='示例角色已保存。 <button class="btn" id="openAudit">查看本次审计</button>';
-  byId("message").hidden=false;
-  byId("openAudit").addEventListener("click",()=>{
-    byId("auditBody").innerHTML="<p>示例记录 · 管理员 · 修改角色权限 · 值班 SRE</p>"+listDiff(auditDiff);
-    byId("audit").showModal();
-  });
-  render();
-  byId("openAudit").focus();
-});
-for (const button of document.querySelectorAll("[data-close]")) button.addEventListener("click",()=>byId(button.dataset.close).close());
 renderTabs();
 renderFilters();
 render();

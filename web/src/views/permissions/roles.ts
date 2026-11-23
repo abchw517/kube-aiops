@@ -64,6 +64,7 @@ export async function renderRoles(roleID?: string): Promise<string> {
   }
 
   return `<div class="roles-heading"><h2>权限配置</h2><a class="button" href="#/admin/policy/new">添加角色</a></div>
+    <p><a href="#/admin/access/roles">前往角色配置勾选接口权限</a></p>
     ${roles.length ? `<ul class="role-list">${roles.map((role) => `<li>
       <div><h3>${escapeHtml(role.name)}</h3>
         <p>${escapeHtml(role.modules.map(moduleName).join("、"))}</p>
@@ -108,6 +109,7 @@ function roleForm(role: Role | undefined, clusters: Cluster[]): string {
     </select></label>` : "";
 
   return `<div class="roles-heading"><h2>${role ? "编辑角色" : "添加角色"}</h2><a href="#/admin/policy">返回角色列表</a></div>
+    <p><a href="#/admin/access/roles">前往角色配置勾选接口权限</a></p>
     <form class="login-form identity-form role-form" data-role-form data-role-id="${escapeHtml(role?.id ?? "")}" data-revision="${role?.revision ?? ""}">
       <label>角色名称<input name="name" value="${escapeHtml(role?.name ?? "")}" maxlength="128" required placeholder="例如 开发环境观察员"></label>
       <fieldset><legend>权限模块</legend><div class="role-modules">

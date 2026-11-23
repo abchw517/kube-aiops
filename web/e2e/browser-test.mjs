@@ -788,44 +788,7 @@ try {
     })()` });
     await assertText(cdp, text => text.includes("action=publish") && text.includes("/api/v1/wiki/candidates/{id}") && !text.includes("保存草稿"),
       "Catalog search did not isolate the publish action");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
-      "Role configuration did not render");
-    const checkboxBehavior = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-      document.querySelector('[data-system-open="role:"]').click();
-      const form = document.querySelector("dialog[open] form");
-      const find = '[data-pc-check="diagnosis.finding.list"]';
-      const summary = '[data-pc-check="diagnosis.finding.summary"]';
-      form.querySelector(find).click();
-      form.querySelector('[data-pc-point="diagnosis.finding.list"]').click();
-      if (!form.querySelector(find).checked || !form.querySelector("[data-pc-all]").indeterminate) return false;
-      const query = form.querySelector("[data-pc-query]");
-      query.value = "diagnosis.finding.summary";
-      query.dispatchEvent(new Event("input", { bubbles: true }));
-      form.querySelector("[data-pc-all]").click();
-      const matched = form.querySelector(summary).checked && !form.querySelector(find) &&
-        form.querySelector("[data-pc-selected]").textContent.includes("总待添加 2 项");
-      form.querySelector('[data-pc-module="system"]').click();
-      form.querySelector('[data-pc-module="diagnosis"]').click();
-      query.value = "";
-      query.dispatchEvent(new Event("input", { bubbles: true }));
-      const preserved = form.querySelector(find).checked && form.querySelector(summary).checked &&
-        form.querySelector('[data-pc-toolkit-toggle="历史诊断"]').indeterminate;
-      form.querySelector("[data-pc-clear]").click();
-      return matched && preserved && !form.querySelector(find).checked;
-    })()` });
-    if (!checkboxBehavior.result?.value) throw new Error("Permission checkbox batch ignored visibility or lost deferred selections");
-    await cdp.send("Runtime.evaluate", { expression: `(() => {
-      const form = document.querySelector("dialog[open] form");
-      form.elements.name.value = "接口授权检查";
-      form.querySelector('[data-pc-module="system"]').click();
-      form.querySelector('[data-pc-point="system.audit.list"]').click();
-      form.querySelector('[data-pc-check="system.audit.list"]').click();
-      form.querySelector("[data-role-add-grants]").click();
-      form.querySelector('button[value="role-preview"]').click();
-    })()` });
-    await assertText(cdp, text => text.includes("新增接口授权") && text.includes("查询审计列表"), "Scoped interface grant missing from role preview");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
-    await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计"), "Saving interface grants did not show the audit shortcut");
+    await assertRolePermissionSelection(cdp);
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
     await assertText(cdp, text => text.includes("接口授权检查") && !text.includes("角色保存结果"), "Role list did not refresh after confirming the save");
     const configuredScope = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
@@ -838,7 +801,8 @@ try {
       const point = form.querySelector('[data-pc-point="system.audit.list"]');
       const visible = Boolean(point?.hasAttribute("data-pc-configured")) &&
         form.querySelector("[data-pc-details]").textContent.includes("已保存");
-      form.querySelector("[data-role-grant-remove]").click();
+      const audit = [...form.querySelectorAll("[data-role-grant]")].find(row => JSON.parse(row.dataset.roleGrant).code === "system.audit.list");
+      audit.querySelector("[data-role-grant-remove]").click();
       const removed = !form.querySelector('[data-pc-point="system.audit.list"]');
       document.querySelector("dialog[open] footer [data-system-close]").click();
       return visible && removed;
@@ -1063,11 +1027,12 @@ try {
 
     await assertIncidentLifecycle(cdp);
     await assertRemainingDiagnosticPages(cdp);
+    await assertPermissionPrototype(cdp);
   } finally {
     cdp.close();
   }
 
-  console.log("Diagnostic Center V2 browser E2E: PASS");
+  console.log("Portal browser E2E: PASS");
 } finally {
   chrome.kill("SIGTERM");
   if (chrome.exitCode === null) await once(chrome, "exit");
@@ -1453,6 +1418,155 @@ async function assertDiagnosticCenter(cdp) {
 
   await assertPage(cdp, `${origin}/#/diagnostics/events?cluster=restricted`, (text) => text.includes("无访问权限") &&
     !text.includes("CrashLoopBackOff detected"), "Forbidden event scope did not fail closed");
+}
+
+async function assertRolePermissionSelection(cdp) {
+  const readOnly = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const readOnly = !document.querySelector("[data-pc-check]");
+    const fetchPlatform = window.fetch;
+    let failCatalog = true;
+    window.roleSaveRequests = 0;
+    window.restorePlatformFetch = () => { window.fetch = fetchPlatform; };
+    window.fetch = (input, options) => {
+      if (input === "/api/v1/admin/permission-catalog" && failCatalog) {
+        failCatalog = false;
+        return Promise.resolve(new Response(null, { status: 503 }));
+      }
+      if (input === "/api/v1/admin/access" && options?.method === "POST") window.roleSaveRequests++;
+      return fetchPlatform(input, options);
+    };
+    return readOnly;
+  })()` });
+  if (!readOnly.result?.value) throw new Error("Read-only catalog offers grant controls");
+  await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
+    "Role configuration did not render");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    document.querySelector('[data-system-open="role:"]').click();
+    const form = document.querySelector("dialog[open] form");
+    form.elements.name.value = "接口授权检查";
+  })()` });
+  await assertText(cdp, text => text.includes("重试加载接口权限"), "Catalog failure removed the role editor recovery entry");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-role-catalog-retry]").click()` });
+  await assertText(cdp, text => text.includes("批量勾选当前结果") && text.includes("选择接口权限"), "Retry did not restore permission controls");
+
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 760, deviceScaleFactor: 1, mobile: false });
+  const position = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector("dialog[open] form");
+    const check = form.querySelector('[data-pc-check="diagnosis.finding.list"]');
+    const action = form.querySelector('[data-pc-point="diagnosis.finding.list"]');
+    const matrix = check.closest(".permission-catalog-table");
+    if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth <= matrix.clientWidth ||
+        document.documentElement.scrollWidth > 390) return null;
+    check.scrollIntoView({ block: "center", inline: "center" });
+    const checkBounds = check.getBoundingClientRect();
+    const actionBounds = action.getBoundingClientRect();
+    const x = checkBounds.x + checkBounds.width / 2;
+    const y = checkBounds.y + checkBounds.height / 2;
+    return checkBounds.x >= actionBounds.right && document.elementFromPoint(x, y) === check ? { x, y } : null;
+  })()` });
+  if (!position.result?.value) throw new Error("Narrow-screen role checkbox was clipped, displaced or lost on catalog retry");
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await cdp.send("Input.dispatchMouseEvent", { type, ...position.result.value, button: "left", clickCount: 1 });
+  }
+  for (const expected of [false, true]) {
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: " ", code: "Space", windowsVirtualKeyCode: 32 });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: " ", code: "Space", windowsVirtualKeyCode: 32 });
+    const selection = await cdp.send("Runtime.evaluate", { returnByValue: true,
+      expression: `document.querySelector('[data-pc-check="diagnosis.finding.list"]').checked` });
+    if (selection.result?.value !== expected) throw new Error("Focused permission checkbox did not toggle with Space");
+  }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  const operation = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector("dialog[open] form");
+    const find = '[data-pc-check="diagnosis.finding.list"]';
+    const summary = '[data-pc-check="diagnosis.finding.summary"]';
+    const toolkit = '[data-pc-toolkit-toggle="历史诊断"]';
+    const filter = value => {
+      const query = form.querySelector("[data-pc-query]");
+      query.value = value;
+      query.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const module = id => form.querySelector('[data-pc-module="'+id+'"]').click();
+
+    if (document.activeElement !== form.querySelector(find) || !form.querySelector(find).checked) return "native checkbox focus";
+    form.querySelector('[data-pc-point="diagnosis.finding.list"]').click();
+    if (!form.querySelector(find).checked || !form.querySelector("[data-pc-all]").indeterminate) return "independent detail and checkbox";
+    filter("diagnosis.finding.summary");
+    form.querySelector(toolkit).click();
+    if (!form.querySelector(summary).checked || !form.querySelector("[data-pc-all]").checked || form.querySelector(find)) return "filtered toolkit selection";
+    form.querySelector("[data-pc-all]").click();
+    if (form.querySelector(summary).checked || !form.querySelector("[data-pc-selected]").textContent.includes("总待添加 1 项")) return "filtered bulk deselection";
+    filter("no-such-permission");
+    if (!form.querySelector("[data-pc-all]").disabled) return "empty bulk selection";
+    filter("diagnosis.finding.summary");
+    form.querySelector("[data-pc-all]").click();
+    filter("");
+    module("system");
+    if (!form.querySelector('[data-pc-check="system.retention.update"]').disabled) return "restricted action";
+    filter("system.audit.list");
+    form.querySelector("[data-pc-all]").click();
+    const kind = form.querySelector("[data-role-scope-kind] select");
+    if (kind.disabled || kind.value !== "") return "mixed-scope confirmation";
+    form.querySelector("[data-role-add-grants]").click();
+    if (!form.querySelector(".system-editor-status").textContent.includes("请选择本次添加的范围类型")) return "missing-scope validation";
+    kind.value = "资源范围";
+    form.elements.environment.value = "testing";
+    form.elements.environment.dispatchEvent(new Event("change", { bubbles: true }));
+    form.querySelector("[data-role-add-grants]").click();
+    if (form.querySelectorAll("[data-role-grant]").length !== 2 ||
+        !form.querySelector('[data-pc-check="system.audit.list"]').checked) return "selected-scope batch lost hidden or remaining permissions";
+    form.querySelector('button[value="role-preview"]').click();
+    if (form.querySelector("[data-role-preview]").hidden === false ||
+        !form.querySelector(".system-editor-status").textContent.includes("加入授权清单")) return "pending permissions bypassed preview guard";
+    form.querySelector("[data-role-add-grants]").click();
+    if (form.querySelectorAll("[data-role-grant]").length !== 3 || window.roleSaveRequests !== 0) return "draft authorization was saved early";
+    filter("");
+    module("diagnosis");
+    form.querySelector('button[value="role-preview"]').click();
+    if (form.querySelector("[data-role-preview]").hidden) return "role preview";
+    form.querySelector("[data-role-back]").click();
+    if (window.roleSaveRequests !== 0 || form.querySelectorAll("[data-role-grant]").length !== 3) return "return to role draft";
+    form.querySelector('button[value="role-preview"]').click();
+    return "ok";
+  })()` });
+  if (operation.result?.value !== "ok") {
+    throw new Error(`Role permission selection failed: ${operation.result?.value ?? operation.exceptionDetails?.exception?.description}`);
+  }
+  await assertText(cdp, text => ["新增接口授权", "查询审计列表", "查询诊断列表", "读取诊断汇总"].every(label => text.includes(label)),
+    "Scoped interface grants missing from role preview");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] button[value="role-save"]').click()` });
+  await assertText(cdp, text => text.includes("角色保存结果") && text.includes("查看本次审计"), "Saving interface grants did not show the audit shortcut");
+  const writes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    window.restorePlatformFetch();
+    return window.roleSaveRequests;
+  })()` });
+  if (writes.result?.value !== 1) throw new Error("Role confirmation did not send exactly one save request");
+}
+
+async function assertPermissionPrototype(cdp) {
+  const directory = new URL("../../docx/permission-catalog/prototype.html", import.meta.url);
+  await assertPage(cdp, directory.href, text => text.includes("编辑示例角色") && text.includes("权限编码"),
+    "Permission catalog HTML prototype did not initialize");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('a[href="group-admin-prototype.html"]').click()` });
+  await assertText(cdp, text => text.includes("批量勾选当前结果") && text.includes("添加到授权清单"),
+    "Catalog prototype link did not open the actionable role prototype");
+  const result = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    document.querySelector('[data-point="diagnosis.finding.summary"]').click();
+    document.querySelector('[data-module="system"]').click();
+    document.querySelector('[data-point="system.audit.list"]').click();
+    const kind = document.getElementById("grantKind");
+    kind.value = "资源范围";
+    kind.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("addGrants").click();
+    if (!document.querySelector('[data-point="system.audit.list"]').checked ||
+        !document.getElementById("grants").textContent.includes("读取诊断汇总")) return false;
+    document.getElementById("addGrants").click();
+    document.getElementById("saveRole").click();
+    if (!document.getElementById("confirmDialog").open) return false;
+    document.getElementById("confirmSave").click();
+    return !document.getElementById("grants").textContent.includes("待保存");
+  })()` });
+  if (!result.result?.value) throw new Error("HTML role prototype did not preserve pending permissions and confirm both grants");
 }
 
 async function assertPage(cdp, url, predicate, failureMessage) {

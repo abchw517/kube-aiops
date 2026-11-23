@@ -99,6 +99,7 @@ func TestInterfaceGrantSaveValidationAndOptimisticConflict(t *testing.T) {
 	}
 	defer store.Close()
 	a := &Admin{store: store}
+	a.SetScopeResolvers(func(_ context.Context, cluster string) (string, error) { return cluster, nil }, nil)
 	actor := identity.Principal{Subject: superSubject, Provider: AdminProvider}
 	call := func(body string, status int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -126,13 +127,40 @@ func TestInterfaceGrantSaveValidationAndOptimisticConflict(t *testing.T) {
 	}
 	id := result[0].ID
 	prior := state.Roles[id]
+	employee, err := a.registerEmployee(t.Context(), "fixture", identity.Principal{Subject: "ldap:uid=fixture,dc=example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.editPlatform(t.Context(), func(state *platformState, _ *sql.Tx) error {
+		account := state.Accounts[employee.Subject]
+		account.Roles = append(account.Roles, id)
+		state.Accounts[employee.Subject] = account
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	check := func(code string, scope authorization.Scope, expected bool) {
+		t.Helper()
+		allowed, err := a.AuthorizeOperation(t.Context(), employee, code, "", scope, false)
+		if err != nil || allowed != expected {
+			t.Fatalf("authorize %s in %+v: %v, %v; want %v", code, scope, allowed, err, expected)
+		}
+	}
+	testScope := authorization.NamespaceScope("testing", "pay")
+	check(catalog.ReviewSave, testScope, false)
+	check("system.audit.list", authorization.GlobalScope(), true)
 	update := platformChange{ID: id, Action: "role-save", Name: prior.Name, PreviousRole: &prior,
-		Grants: &[]interfaceGrant{{Code: "system.audit.record"}}}
+		Grants: &[]interfaceGrant{{Code: "system.audit.record"}, {Code: catalog.ReviewSave,
+			Scope: accessScope{Environment: "testing", Cluster: "testing", Namespace: "pay"}}}}
 	body, _ := json.Marshal(update)
 	call(string(body), 200)
 	call(string(body), 409)
 	state, err = a.platform(t.Context())
-	if err != nil || len(state.Roles[id].Grants) != 1 || state.Roles[id].Grants[0].Code != "system.audit.record" {
+	if err != nil || len(state.Roles[id].Grants) != 2 {
 		t.Fatalf("incorrectly applied grant update: %v %v", state.Roles[id], err)
 	}
+	check(catalog.ReviewSave, testScope, true)
+	check(catalog.ReviewSave, authorization.NamespaceScope("production", "pay"), false)
+	check("system.audit.record", authorization.GlobalScope(), true)
+	check("system.audit.list", authorization.GlobalScope(), false)
 }
