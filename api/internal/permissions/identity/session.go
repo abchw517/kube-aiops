@@ -37,14 +37,14 @@ type browserSession struct {
 }
 
 type Sessions struct {
-	origin          string
-	providers       map[string]PasswordVerifier
-	mu              sync.Mutex
-	active          map[[32]byte]browserSession
-	limits          map[string]*loginLimit
+	origin                 string
+	providers              map[string]PasswordVerifier
+	mu                     sync.Mutex
+	active                 map[[32]byte]browserSession
+	limits                 map[string]*loginLimit
 	SessionLifetimeMinutes func(context.Context) (int, error)
 	ValidateSession        func(context.Context, Principal) error
-	RecordLogin             func(context.Context, string, string, int)
+	RecordLogin            func(context.Context, string, string, int)
 }
 
 type loginLimit struct {
