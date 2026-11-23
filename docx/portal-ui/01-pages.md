@@ -15,7 +15,7 @@
 | 资源管理 | `#/resources`、集群接入 `#/resources/clusters` | 左侧按环境与集群显示范围，右侧切换集群和命名空间。保留详情、归属、采集状态和操作。 |
 | 资源管理 | `#/resources/environments`、`#/resources/business-lines` | 列表及新增、编辑、删除沿用现有流程。 |
 | 运维知识库 | `#/wiki`、知识详情、`#/wiki/governance`、草稿与版本 | 检索位于文档列表上方。详情显示章节、范围和关联诊断。问答与治理入口随能力显示。 |
-| 系统管理 | `#/admin/ldap`、`#/admin/users`、「权限管理」`#/admin/access/roles`、「权限配置」`#/admin/access/catalog`、`#/admin/operations`、`#/admin/password` | 认证使用独立折叠卡片。用户、角色、组、审计与改密沿用既有流程。 |
+| 系统管理 | `#/admin/ldap`、`#/admin/users`、「权限管理」`#/admin/access`、「角色列表」`#/admin/access/roles`、「权限目录」`#/admin/access/catalog`、`#/admin/operations`、`#/admin/password` | 权限管理默认打开角色草稿，进入后即可勾选。认证使用独立折叠卡片。 |
 
 登录会话标题栏始终展示已生效分钟数。展开后显示生效范围，普通管理员只读。LDAP 折叠区保留现有配置、验证和启用表单。两个卡片初次打开页面时均收起。
 

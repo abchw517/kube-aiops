@@ -44,9 +44,9 @@ export function catalogSource(catalog: PermissionCatalog | null): string {
 }
 
 export function renderPermissionCatalog(edit = false): string {
-  return `<section class="permission-catalog" aria-label="${edit ? "接口权限勾选" : "权限配置"}" data-pc-root data-pc-edit="${edit}">
+  return `<section class="permission-catalog" aria-label="${edit ? "接口权限勾选" : "权限目录"}" data-pc-root data-pc-edit="${edit}">
     ${edit ? "" : `<div class="permission-catalog-heading"><span class="permission-catalog-mark" aria-hidden="true">K</span>
-      <div><h2>权限配置</h2><p>从工具集合查看功能动作和接口授权条件。</p></div></div>`}
+      <div><h2>权限目录</h2><p>从工具集合查看功能动作和接口授权条件。</p></div></div>`}
     <div class="permission-catalog-workspace">
       <div class="permission-catalog-main">
         <nav class="permission-catalog-tabs" aria-label="权限模块"></nav>
@@ -54,7 +54,7 @@ export function renderPermissionCatalog(edit = false): string {
           <input type="search" data-pc-query aria-label="搜索权限" placeholder="搜索功能、权限编码或接口">
           <select data-pc-toolkit aria-label="工具集合"></select>
           <select data-pc-filter aria-label="权限筛选"><option value="">全部权限</option><option value="risk">高风险</option>
-          ${edit ? '<option value="selected">待加入清单</option><option value="configured">已配置权限</option>' : ""}</select>
+          ${edit ? '<option value="selected">待添加</option><option value="configured">已加入清单</option>' : ""}</select>
         </div>
         ${edit ? `<div class="permission-selection-toolbar">
           <label class="permission-batch"><input type="checkbox" data-pc-all> 批量勾选当前结果</label>

@@ -87,15 +87,15 @@ function adminWorkspace(path: string, state: PortalShellState): Workspace {
   const password = path === "#/admin/password";
   const accounts = path.startsWith("#/admin/users");
   const auth = path === "#/admin/ldap" || path === "#/admin";
-  const title = catalog ? "权限配置" : access ? "权限管理" : audit ? "操作审计" : password ? "修改密码" :
+  const title = catalog ? "权限目录" : access ? "权限配置" : audit ? "操作审计" : password ? "修改密码" :
     accounts ? "用户管理" : auth ? "认证配置" : "系统管理";
   return { module: "admin", title, groups: [
     { label: "身份与访问", links: [
       ...(state.identityAdmin ? [
         { href: "#/admin/ldap", label: "认证配置", active: auth },
         { href: "#/admin/users", label: "用户管理", active: accounts },
-        { href: "#/admin/access/roles", label: "权限管理", active: access || catalog },
-      ] : state.permissionCatalog ? [{ href: "#/admin/access/catalog", label: "权限配置", active: catalog }] : []),
+        { href: "#/admin/access", label: "权限管理", active: access || catalog },
+      ] : state.permissionCatalog ? [{ href: "#/admin/access/catalog", label: "权限目录", active: catalog }] : []),
       ...(state.canChangePassword ? [{ href: "#/admin/password", label: "修改密码", active: password }] : []),
     ] },
     { label: "审计", links: state.auditRead ? [{ href: "#/admin/operations", label: "操作审计", active: audit }] : [] },

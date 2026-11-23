@@ -287,6 +287,7 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     loadPermissionCatalog().catch(() => null),
   ]);
   const groups = tab === "groups";
+  const defaultEditor = !tab;
   const points = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, { ...point, feature: row }] as const)));
   const membersOf = (group: Group) => users.filter(user => user.groups?.includes(group.id));
   const canEditGroup = (group: Group) => superAdmin || !isAdministratorGroup(group);
@@ -351,14 +352,15 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
-  return `<div class="platform-heading"><div><h2>权限管理</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
-      `<a class="button secondary" href="#/admin/access/catalog">权限配置</a>${editButton("＋ 新建角色", "role:")}`}</div></div>
-    <section class="system-card"><nav class="identity-nav" aria-label="权限管理">
-      <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色配置</a>
+  return `<div class="platform-heading"><p>通过用户组继承角色，按接口动作和数据范围配置授权。</p><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
+      `<a class="button secondary" href="#/admin/access/catalog">权限目录</a>
+      ${defaultEditor ? '<a class="button secondary" href="#/admin/access/roles">角色列表</a>' : ""}${editButton("＋ 新建角色", "role:")}`}</div></div>
+    <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
+      <a href="#/admin/access"${groups ? "" : ' aria-current="page"'}>角色配置</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
     </nav><div class="catalog-table-wrap" data-access-list role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
       <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
-      ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div><div data-role-workspace></div></section>
+      ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div><div data-role-workspace${defaultEditor ? " data-role-default" : ""}></div></section>
     ${groups ? editableGroup(undefined, access.roles, [], superAdmin) + access.groups.map(group =>
       editableGroup(group, access.roles, membersOf(group), superAdmin) + groupMembers(group) + (canEditGroup(group) ? remove(group, "group") : "")).join("") : roleEditor()}
     ${catalogSource(catalog)}
@@ -453,6 +455,10 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
         if (dialog.open) return;
         dialog.removeEventListener("close", afterClose);
         if (!dialog.isConnected || window.location.hash !== hash) return;
+        if (action === "role-save" && hash === "#/admin/access") {
+          window.location.hash = "#/admin/access/roles";
+          return;
+        }
         if (form.dataset.id && hash.startsWith("#/admin/users")) {
           const detail = `#/admin/users/${encodeURIComponent(form.dataset.id)}`;
           if (detail !== hash) {
@@ -549,7 +555,12 @@ async function previewGroup(form: HTMLFormElement, data: FormData): Promise<void
   }
 }
 
-function openPlatformEditor(panel: HTMLElement, key: string, opener: HTMLButtonElement): void {
+export function bindDefaultRoleWorkspace(root: HTMLElement): void {
+  const panel = root.querySelector<HTMLElement>(".identity-panel:has([data-role-default])");
+  if (panel) openPlatformEditor(panel, "role:");
+}
+
+function openPlatformEditor(panel: HTMLElement, key: string, opener?: HTMLButtonElement): void {
   const dialog = panel.querySelector<HTMLDialogElement>("[data-system-dialog]");
   if (!dialog || dialog.open) return;
   const template = [...panel.querySelectorAll<HTMLTemplateElement>("[data-system-editor]")]
@@ -610,9 +621,9 @@ function openPlatformEditor(panel: HTMLElement, key: string, opener: HTMLButtonE
           dialog.removeEventListener("close", restoreWorkspace);
           panel.append(dialog);
           list.hidden = false;
-          opener.focus({ preventScroll: true });
+          (opener ?? panel.querySelector<HTMLButtonElement>('[data-system-open="role:"]'))?.focus({ preventScroll: true });
         });
-        roleForm.querySelector<HTMLInputElement>('[name="name"]')?.focus();
+        if (opener) roleForm.querySelector<HTMLInputElement>('[name="name"]')?.focus();
       } else dialog.showModal();
     } else {
       dialog.showModal();

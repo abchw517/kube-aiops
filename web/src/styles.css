@@ -459,6 +459,7 @@ tbody tr:hover { background: #f5f8fd; }
 .permission-catalog-filters { display: flex; gap: .5rem; flex-wrap: wrap; padding: .7rem .8rem; }
 .permission-catalog-filters input, .permission-catalog-filters select { border: 1px solid var(--pc-border); border-radius: .35rem; background: #fff; padding: .43rem .6rem; color: var(--pc-navy); }
 .permission-catalog-filters input { min-width: 10rem; flex: 1; }
+.system-management .permission-catalog-filters select { width: auto; max-width: 100%; }
 .permission-catalog-table .catalog-table { min-width: 520px; table-layout: fixed; }
 .permission-catalog-table th:first-child:not([colspan]) { width: 26%; }
 .permission-catalog-table td, .permission-catalog-table th { padding: .55rem .55rem; vertical-align: top; }

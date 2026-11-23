@@ -808,9 +808,13 @@ try {
         !document.querySelector('dialog[open] button[value="group-save"]');
     })()` });
     if (!lockedGroup.result?.value) throw new Error("Ordinary administrator could edit or assign an administrator group");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-system-close]").click()' });
     await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
-    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
-      (text) => ["权限配置", "诊断控制台", "运维知识库", "资源管理", "系统管理", "接口权限详情"].every(label => text.includes(label)),
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'.portal-sidebar a[href="#/admin/access"]\').click()' });
+    await assertText(cdp, text => ["角色配置", "用户组", "批量勾选当前结果", "授权清单", "保存角色"].every(label => text.includes(label)),
+      "Permission management entry did not display the editable matrix from the prototype");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'main a[href="#/admin/access/catalog"]\').click()' });
+    await assertText(cdp, text => ["返回权限配置", "从工具集合查看功能动作和接口授权条件。", "接口权限详情"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-pc-module="knowledge"]').click();
@@ -847,8 +851,8 @@ try {
       tab: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent,
       catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
     })` });
-    if (permissionNames.result?.value?.title !== "权限管理" || permissionNames.result?.value?.tab !== "权限管理" ||
-        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match the new names");
+    if (permissionNames.result?.value?.title !== "权限配置" || permissionNames.result?.value?.tab !== "权限管理" ||
+        permissionNames.result?.value?.catalog !== "权限目录") throw new Error("Permission workspace labels do not match their purpose");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1500,11 +1504,12 @@ async function assertRolePermissionSelection(cdp) {
     return readOnly;
   })()` });
   if (!readOnly.result?.value) throw new Error("Read-only catalog offers grant controls");
-  await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles", text => text.includes("新建角色"),
-    "Role configuration did not render");
+  await cdp.send("Runtime.evaluate", { expression: `[...document.querySelectorAll(".portal-sidebar a")]
+    .find(link => link.textContent.trim() === "权限管理").click()` });
+  await assertText(cdp, text => ["新建角色", "角色配置", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
+    "Permission management navigation did not directly open the editable role workspace");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
-    document.querySelector('[data-system-open="role:"]').click();
-    const form = document.querySelector("dialog[open] form");
+    const form = document.querySelector("dialog[open] [data-role-edit]");
     form.elements.name.value = "接口授权检查";
   })()` });
   await assertText(cdp, text => text.includes("重试加载接口权限"), "Catalog failure removed the role editor recovery entry");

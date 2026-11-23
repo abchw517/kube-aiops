@@ -1,6 +1,6 @@
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
-import { filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
+import { bindDefaultRoleWorkspace, filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, handleResourceWorkspaceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
@@ -207,19 +207,20 @@ export class PortalApp {
         return;
       }
       if (!this.mustChangePassword && hash === "#/admin/access/catalog") {
-        this.renderShell(loadingState("正在加载权限配置。"));
+        this.renderShell(loadingState("正在加载权限目录。"));
         try {
           const catalog = await loadPermissionCatalog();
           if (generation !== this.renderGeneration) return;
           const body = await renderIdentityAdmin("access", {
             initial: false, administrator: this.identityAdmin, superAdmin: this.superAdministrator,
-            canChangePassword: this.canChangePassword, auditContent: renderPermissionCatalog(),
+            canChangePassword: this.canChangePassword, auditContent: `${this.identityAdmin ?
+              '<a class="button secondary" href="#/admin/access">返回权限配置</a>' : ""}${renderPermissionCatalog()}`,
           });
           if (generation !== this.renderGeneration) return;
           this.renderShell(body);
           bindPermissionCatalog(this.root, catalog);
         } catch {
-          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限配置。请核对访问权限后重试。"));
+          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限目录。请核对访问权限后重试。"));
         }
         return;
       }
@@ -238,7 +239,10 @@ export class PortalApp {
             superAdmin: this.superAdministrator,
             canChangePassword: this.canChangePassword,
           });
-          if (generation === this.renderGeneration) this.renderShell(body);
+          if (generation === this.renderGeneration) {
+            this.renderShell(body);
+            bindDefaultRoleWorkspace(this.root);
+          }
         } catch (error) {
           if (generation !== this.renderGeneration) return;
           if (error instanceof Response && error.status === 401) this.renderAuthenticationExpired();
