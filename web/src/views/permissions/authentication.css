@@ -37,8 +37,8 @@
 .auth-ldap-section small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
 .auth-ldap-field { display: grid; min-width: 0; gap: 5px; font-weight: 650; }
 .auth-ldap-field :is(input, select) { width: 100%; min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid #aebed0; border-radius: 5px; color: var(--ink); background: white; font: inherit; font-weight: 400; }
-.auth-ldap-plain { display: flex; align-items: start; gap: 7px; }
-.auth-ldap-plain input { flex: none; margin-top: 3px; accent-color: var(--blue); }
+.auth-ldap-plain { display: flex; align-items: center; gap: 8px; }
+.auth-ldap-plain input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--blue); }
 .auth-ldap-advanced { min-width: 0; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
 .auth-ldap-advanced summary { cursor: pointer; font-weight: 650; }
 .auth-ldap-advanced p { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }

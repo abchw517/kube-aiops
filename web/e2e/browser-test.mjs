@@ -438,6 +438,21 @@ try {
       throw new Error("Cluster navigation, page title and list heading must all say Kubernetes 集群管理");
     }
     await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
+    const environmentScopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const rows = [...document.querySelectorAll("[data-cluster-row]")];
+      const environments = [...document.querySelectorAll('summary[data-cluster-scope="environment"]')];
+      return environments.length >= 2 && environments.every(scope => {
+        const group = scope.parentElement;
+        const matches = rows.filter(row => row.dataset.environment === scope.dataset.scopeValue);
+        group.open = false;
+        scope.click();
+        return scope.getAttribute("aria-current") === "true" && group.open &&
+          [...group.querySelectorAll("button")].every(button => button.dataset.clusterScope === "cluster") &&
+          rows.every(row => row.hidden === !matches.includes(row)) &&
+          document.querySelector("[data-cluster-count]").textContent === "共 " + matches.length + " 个集群";
+      });
+    })()` });
+    if (!environmentScopes.result?.value) throw new Error("Environment headings did not directly scope the cluster list");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-cluster-scope="cluster"][data-scope-value="dev-k8s"]').click();
       document.querySelector('[data-resource-tab="namespaces"]').click();
@@ -1153,6 +1168,13 @@ async function assertLDAPEditorLayout(cdp, width, stacked) {
         const label = field.closest("label").getBoundingClientRect();
         return input.top > label.top + 8 && input.width >= label.width - 1 && input.height >= 36;
       }),
+      plainAligned: (() => {
+        const field = form.elements.allowPlainLDAP;
+        const checkbox = field.getBoundingClientRect();
+        const text = field.nextElementSibling.getBoundingClientRect();
+        return checkbox.right < text.left &&
+          Math.abs(checkbox.top + checkbox.height / 2 - text.top - text.height / 2) <= 1;
+      })(),
       clipped: document.documentElement.scrollWidth > innerWidth,
       advanced: form.querySelector(".auth-ldap-advanced")?.open,
       steps: validation.querySelectorAll("[data-ldap-step]").length,
@@ -1160,7 +1182,7 @@ async function assertLDAPEditorLayout(cdp, width, stacked) {
     };
   })()` });
   const layout = result.result?.value;
-  if (!layout || layout.stacked !== stacked || !layout.usable || layout.clipped || layout.advanced ||
+  if (!layout || layout.stacked !== stacked || !layout.usable || !layout.plainAligned || layout.clipped || layout.advanced ||
       layout.steps !== 4 || !layout.saveLocked) {
     throw new Error(`LDAP editor layout at ${width}px: ${JSON.stringify(layout)}`);
   }
@@ -1673,6 +1695,18 @@ async function assertPortalFollowupPrototypes(cdp) {
     document.querySelector("[data-filter-region] h2")?.textContent,
   ]` });
   if (!labels.result?.value?.every(label => label === "Kubernetes 集群管理")) throw new Error("Global cluster prototype labels are inconsistent");
+  const scopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const counts = {研发: 1, 测试: 1, 预发布: 1, 生产: 2};
+    return Object.entries(counts).every(([name, count]) => {
+      const scope = document.querySelector('summary[data-scope="' + name + '"]');
+      if (!scope) return false;
+      scope.click();
+      const rows = [...document.querySelectorAll("#resource-table [data-row]:not([hidden])")];
+      return rows.length === count && rows.every(row => row.cells[1].textContent === name) &&
+        scope.parentElement.textContent.includes("全部" + name + "集群") === false;
+    });
+  })()` });
+  if (!scopes.result?.value) throw new Error("Global prototype did not filter all environments from their headings");
 
   await assertPage(cdp, `${portalPrototype.href}#/admin/access`,
     text => text.includes("权限配置") && text.includes("角色列表") && text.includes("权限目录"), "Global prototype lost the permission workspace");
@@ -1699,7 +1733,14 @@ async function assertPortalFollowupPrototypes(cdp) {
     form.elements.url.value = "ldap://directory.example.test:389";
     form.elements.url.dispatchEvent(new Event("input", { bubbles: true }));
     if (!save.disabled) return false;
-    form.elements.allowPlain.click();
+    const checkbox = form.elements.allowPlain;
+    const copy = checkbox.nextElementSibling;
+    const box = checkbox.getBoundingClientRect();
+    const text = copy.getBoundingClientRect();
+    if (box.height !== 14 || box.right >= text.left ||
+      Math.abs(box.top + box.height / 2 - text.top - text.height / 2) > 1) return false;
+    copy.click();
+    if (!checkbox.checked) return false;
     form.elements.testUsername.value = "alice";
     form.elements.testPassword.value = "fixture-password";
     test.click();

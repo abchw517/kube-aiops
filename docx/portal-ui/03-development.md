@@ -13,12 +13,12 @@
 | `web/src/components/portal-shell.ts`、`portal-shell.css` | 顶栏、侧栏、面包屑、工作区及响应式规则。 |
 | `web/src/app.ts` | 提供路由和权限能力，处理移动导航、焦点、退出及刷新。 |
 | `web/src/domain/diagnostic-routes.ts`、`web/src/views/diagnosis/` | 保留 URL 与筛选，生成趋势和指标，联动事件详情。 |
-| `web/src/views/resources/`、`web/src/views/clusters/` | 由 `clusterManagementTitle` 提供集群导航、标题和返回入口文案。路由及管理操作沿用现有实现。 |
+| `web/src/views/resources/`、`web/src/views/clusters/` | 由 `clusterManagementTitle` 提供集群导航、标题和返回入口文案。环境标题通过 `summary` 选择环境范围，并展开该环境的集群。集群和命名空间列表共用当前范围。 |
 | `web/src/views/wiki/`、`web/src/views/permissions/` | 沿用业务请求和表单，适配共享外框。 |
 
 `platform-admin.ts` 在 `#/admin/access` 初始化可勾选的角色草稿。`permission-catalog.ts` 共用服务端权限目录数据并按当前可编辑状态渲染控件。
 
-`identity-admin.ts` 与 `authentication.css` 负责 LDAP 表单分组、响应式布局、四步状态和保存门禁。测试和启用分别使用现有 `ldap-test` 与 `ldap` 接口。
+`identity-admin.ts` 与 `authentication.css` 负责 LDAP 表单分组、响应式布局、四步状态和保存门禁。明文连接使用同一个 `label` 包裹复选框和文本，布局采用 Flex 垂直居中。测试和启用分别使用现有 `ldap-test` 与 `ldap` 接口。
 
 菜单按应用现有能力显示，读写由服务端校验。URL 参数沿用已有规则。业务模块维护自身表单、请求和派生状态。若为图表或视图新增接口查询，同步契约并验证其聚合与授权范围。演示和测试可使用夹具，部署构建从现有接口读取真实数据。
 

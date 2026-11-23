@@ -74,7 +74,7 @@ async function renderLDAP(): Promise<string> {
           aria-describedby="ldap-url-hint" value="${escapeHtml(data.url ?? "")}">
       </label>
       <small id="ldap-url-hint">填写服务器地址，不含路径或凭据。<code>ldaps://</code> 默认使用 636，域名须匹配证书。<code>ldap://</code> 默认使用 389。</small>
-      <label class="auth-ldap-plain"><input type="checkbox" name="allowPlainLDAP"${data.allowPlainLDAP === true ? " checked" : ""} aria-describedby="ldap-plain-hint"> 允许明文 LDAP（仅用于 ldap://）</label>
+      <label class="auth-ldap-plain"><input type="checkbox" name="allowPlainLDAP"${data.allowPlainLDAP === true ? " checked" : ""} aria-describedby="ldap-plain-hint"><span>允许明文 LDAP（仅用于 ldap://）</span></label>
       <small id="ldap-plain-hint">明文连接不会加密搜索账号和员工凭据。</small>
       <label class="auth-ldap-field">LDAP 搜索 DN<input name="bindDN" value="${escapeHtml(data.bindDN ?? "")}" spellcheck="false"></label>
       <label class="auth-ldap-field">LDAP 搜索密码<input name="bindPassword" type="password" autocomplete="new-password" placeholder="${data.passwordConfigured === true ? "已配置，留空保留" : "输入搜索账号密码"}" aria-describedby="ldap-bind-hint"></label>

@@ -125,11 +125,10 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
       <aside class="panel resource-scope" aria-labelledby="resource-scope-title">
         <h2 id="resource-scope-title">资源范围</h2>
         <input type="search" data-scope-search aria-label="搜索范围" placeholder="搜索环境或集群">
-        <button type="button" data-cluster-scope="all" aria-pressed="true">全部集群</button>
+        <button type="button" data-cluster-scope="all" aria-current="true">全部集群</button>
         ${[...environmentGroups].map(([environment, group]) => `<details open data-resource-environment>
-          <summary>${escapeHtml(environment)}</summary>
-          <button type="button" data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}" aria-pressed="false">全部${escapeHtml(environment)}集群</button>
-          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}" aria-pressed="false">${clusterLabel(item)}</button>`).join("")}
+          <summary data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}">${escapeHtml(environment)}</summary>
+          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}">${clusterLabel(item)}</button>`).join("")}
         </details>`).join("")}
       </aside>
       <div class="panel catalog-section">
@@ -380,12 +379,22 @@ export function filterClusterRows(event: Event): void {
 /** 在切换资源范围或视图时同步列表结果。 */
 export function handleResourceWorkspaceClick(event: Event): void {
   if (!(event.target instanceof Element)) return;
-  const button = event.target.closest<HTMLButtonElement>("[data-cluster-scope], [data-resource-tab]");
-  const workspace = button?.closest<HTMLElement>("[data-resource-workspace]");
-  if (!button || !workspace) return;
-  const selection = button.hasAttribute("data-cluster-scope") ? "data-cluster-scope" : "data-resource-tab";
-  workspace.querySelector(`[${selection}][aria-pressed=true]`)?.setAttribute("aria-pressed", "false");
-  button.setAttribute("aria-pressed", "true");
+  const control = event.target.closest<HTMLElement>("[data-cluster-scope], [data-resource-tab]");
+  const workspace = control?.closest<HTMLElement>("[data-resource-workspace]");
+  if (!control || !workspace) return;
+  if (control.hasAttribute("data-cluster-scope")) {
+    const previous = workspace.querySelector("[data-cluster-scope][aria-current=true]");
+    const environment = control.closest<HTMLDetailsElement>("[data-resource-environment]");
+    if (control.matches("summary") && previous !== control && environment) {
+      event.preventDefault();
+      environment.open = true;
+    }
+    previous?.removeAttribute("aria-current");
+    control.setAttribute("aria-current", "true");
+  } else {
+    workspace.querySelector("[data-resource-tab][aria-pressed=true]")?.setAttribute("aria-pressed", "false");
+    control.setAttribute("aria-pressed", "true");
+  }
   filterResourceRows(workspace);
 }
 
@@ -393,7 +402,7 @@ export function handleResourceWorkspaceClick(event: Event): void {
 function filterResourceRows(section: HTMLElement): void {
   const search = section.querySelector<HTMLInputElement>('[data-cluster-filter="query"]')?.value.trim().toLowerCase() ?? "";
   const status = section.querySelector<HTMLSelectElement>('[data-cluster-filter="status"]');
-  const scopes = section.querySelector<HTMLButtonElement>("[data-cluster-scope][aria-pressed=true]")?.dataset;
+  const scopes = section.querySelector<HTMLElement>("[data-cluster-scope][aria-current=true]")?.dataset;
   const namespaces = Boolean(section.querySelector('[data-resource-tab="namespaces"][aria-pressed=true]'));
   const rowSelector = namespaces ? "[data-namespace-row]" : "[data-cluster-row]";
   for (const table of section.querySelectorAll<HTMLElement>("[data-resource-table]")) {
