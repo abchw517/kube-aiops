@@ -10,7 +10,7 @@ const longRegistryURL = `https://registry.example.com/v2/library/${"registry-pat
 const reviewHistory = [];
 let observationRequests = 0;
 let knowledgeCandidate;
-let interfaceRoleSaved = false;
+let savedInterfaceGrants;
 let administratorGroupSaved = false;
 
 const findings = [
@@ -381,9 +381,11 @@ createServer(async (request, response) => {
       if (change.action === "group-save" && change.id === "ops" && change.roleIds?.[0] === "guest-readonly") {
         return json(response, 200, [{ id: "ops" }]);
       }
-      if (change.action === "role-save" && change.name === "接口授权检查" &&
-          change.grants?.length === 1 && change.grants[0].code === "system.audit.list" && !change.grants[0].scope.environment) {
-        interfaceRoleSaved = true;
+      if (change.action === "role-save" && change.name === "接口授权检查" && change.grants?.length === 3 &&
+          change.grants.some(({ code, scope }) => code === "system.audit.list" && !scope.environment && !scope.cluster && !scope.business && !scope.namespace) &&
+          ["diagnosis.finding.list", "diagnosis.finding.summary"].every(expected =>
+            change.grants.some(({ code, scope }) => code === expected && scope.environment === "testing" && !scope.cluster && !scope.business && !scope.namespace))) {
+        savedInterfaceGrants = change.grants;
         response.setHeader("X-Operation-Audit-Ref", "ABCDEFGHIJKLMNOPQRSTUVWXY2");
         return json(response, 200, [{ id: "interface-audit" }]);
       }
@@ -400,7 +402,7 @@ createServer(async (request, response) => {
       { id: "guest-readonly", name: "访客只读", fixed: true, scopes: [{ environment: "development" }] },
       { id: "diagnosis-reader", name: "诊断观察员", scopes: [{ environment: "development" }] },
       { id: "namespace-auditor", name: "命名空间审计员", scopes: [{ environment: "testing" }] },
-      ...(interfaceRoleSaved ? [{ id: "interface-audit", name: "接口授权检查", scopes: [], grants: [{ code: "system.audit.list", scope: {} }] }] : []),
+      ...(savedInterfaceGrants ? [{ id: "interface-audit", name: "接口授权检查", scopes: [], grants: savedInterfaceGrants }] : []),
       { id: "system-admin", name: "系统管理员", fixed: true, scopes: [] },
     ] });
   }

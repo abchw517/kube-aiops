@@ -387,6 +387,7 @@ function editRole(id,resume=false){
   return;
  }
  modal(r?"编辑角色":"新建角色",'<label class="field">角色名称<input name="name" maxlength="80" required value="'+esc(roleDraftName)+'"></label>'+
+  '<p><a href="../permission-catalog/group-admin-prototype.html">打开接口权限点勾选原型</a></p>'+
   '<h3>已配置权限</h3><div id="scope-list"></div>'+
   '<fieldset class="quick-fieldset stack"><legend>添加权限范围</legend><div class="gridform">'+
   '<label class="field">操作<select id="scope-action">'+choices([[diagnosticAction,diagnosticAction]],roleRange?.action)+'</select></label>'+

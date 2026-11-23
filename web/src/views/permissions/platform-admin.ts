@@ -300,14 +300,20 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
           data-role-original="${h(JSON.stringify(role ?? null))}">
         <div class="system-editor-body" data-role-draft>
           <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
-          ${catalog ? '<div data-role-catalog-host></div>' : '<p>接口权限目录暂不可用。</p>'}
+          <section aria-label="选择接口权限">
+            <h3>选择接口权限</h3>
+            <div data-role-catalog-host></div>
+          </section>
+          <label data-role-scope-kind hidden>本次添加的范围类型
+            <select aria-label="本次添加的范围类型" disabled></select>
+          </label>
           ${scopeInputs(clusters.items, businesses)}
-          <div class="system-actions">${catalog ? '<button type="button" class="button" data-role-add-grants>添加到授权清单</button>' : ""}
+          <div class="system-actions"><button type="button" class="button" data-role-add-grants disabled>添加到授权清单</button>
           <button type="button" class="button secondary" data-scope-add>添加历史诊断范围</button>
           <button type="button" class="button secondary" data-scope-add="preview">添加历史诊断范围并预览</button></div>
           <h3>授权清单</h3>
           <div data-scope-list>${(role?.scopes ?? []).map(scopeRow).join("")}</div>
-          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, points.get(grant.code), true)).join("")}</div>
+          <div data-role-grants>${(role?.grants ?? []).map(grant => grantRow(grant, points.get(grant.code), true, Boolean(catalog))).join("")}</div>
           <p class="system-scope-empty">尚未添加权限范围。</p>
         </div>
         <div class="system-editor-body" data-role-preview hidden>
@@ -407,7 +413,7 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, id: form.dataset.id, ids, values, scopes,
         previousRole: action === "role-save" ? originalRole(form) : undefined,
-        grants: action === "role-save" && form.querySelector("[data-role-catalog-host]") ? grants : undefined,
+        grants: action === "role-save" && form.querySelector("[data-pc-root]") ? grants : undefined,
         roleIds: groupEditor ? data.getAll("roles") : undefined,
         groupPreview: groupEditor ? form.dataset.groupPreviewVersion : undefined,
         name: data.get("name") ?? "", description: data.get("description") ?? "", kind: data.get("kind") ?? "", password: data.get("password") ?? "" }),
@@ -575,13 +581,11 @@ function openPlatformEditor(panel: HTMLElement, key: string): void {
     const assignment = dialog.querySelector<HTMLFormElement>("form:has([data-assignment-kind])");
     if (assignment) updateAssignmentOptions(assignment);
     dialog.oncancel = (event) => { if (dialog.hasAttribute("aria-busy")) event.preventDefault(); };
-    const host = dialog.querySelector<HTMLElement>("[data-role-catalog-host]");
+    const roleForm = dialog.querySelector<HTMLFormElement>("[data-role-edit]");
     const source = panel.querySelector<HTMLElement>("[data-pc-source]")?.dataset.catalog;
-    if (host && source) {
-      const catalog = JSON.parse(source) as PermissionCatalog;
-      host.innerHTML = renderPermissionCatalog(true);
-      const roleForm = host.closest("form");
-      bindPermissionCatalog(host, catalog, roleForm ? savedGrants(roleForm) : []);
+    if (roleForm) {
+      if (source) mountRoleCatalog(roleForm, JSON.parse(source) as PermissionCatalog);
+      else showRoleCatalogRetry(roleForm);
     }
     dialog.showModal();
     if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
@@ -621,6 +625,7 @@ export function handlePlatformClick(event: MouseEvent): void {
     if (target.closest("[data-role-back]")) showRolePreview(form, false);
     if (target.closest("[data-group-back]")) showGroupPreview(form, false);
     if (target.closest("[data-role-add-grants]")) addInterfaceGrants(form);
+    if (target.closest("[data-role-catalog-retry]")) void retryRoleCatalog(form);
     const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
     if (retry) void refreshScope(retry);
   }
@@ -737,34 +742,83 @@ function savedScopes(form: HTMLFormElement): Scope[] {
     .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
 }
 
-function grantRow(grant: InterfaceGrant, point?: { label: string; risk: string; feature: { scope: string } }, saved = false): string {
+function grantRow(grant: InterfaceGrant, point?: { label: string; risk: string; feature: { scope: string } }, saved = false, editable = true): string {
   return `<div class="system-scope-row" data-role-grant="${h(JSON.stringify(grant))}">
     <span><strong>${h(point?.label ?? grant.code)}</strong> <span class="system-badge">${saved ? "已保存" : "待保存"}</span>
     ${point?.risk === "高风险" ? ' <span class="system-badge" data-risk="高风险">高风险</span>' : ""}
     <br>${scopeText(grant.scope) || h(point?.feature.scope ?? "平台全局或本人范围")}</span>
-    <button type="button" class="button secondary" data-role-grant-remove>移除</button></div>`;
+    <button type="button" class="button secondary" data-role-grant-remove${editable ? "" : " disabled"}>移除</button></div>`;
 }
 
 function savedGrants(form: HTMLFormElement): InterfaceGrant[] {
   return [...form.querySelectorAll<HTMLElement>("[data-role-grant]")].map(row => JSON.parse(row.dataset.roleGrant ?? "{}") as InterfaceGrant);
 }
 
+function mountRoleCatalog(form: HTMLFormElement, catalog: PermissionCatalog): void {
+  const host = form.querySelector<HTMLElement>("[data-role-catalog-host]");
+  const list = form.querySelector("[data-role-grants]");
+  if (!host || !list) return;
+  const grants = savedGrants(form);
+  host.innerHTML = renderPermissionCatalog(true);
+  const original = originalRole(form)?.grants ?? [];
+  bindPermissionCatalog(host, catalog, { configured: grants, original, onSelectionChange: () => updateRoleScopeKinds(form) });
+  const saved = new Set(original.map(grantKey));
+  list.innerHTML = grants.map(grant => grantRow(grant, describePermission(form, grant.code), saved.has(grantKey(grant)))).join("");
+}
+
+function showRoleCatalogRetry(form: HTMLFormElement): void {
+  const host = form.querySelector("[data-role-catalog-host]");
+  if (host) host.innerHTML = `<div class="system-notice">
+    <p role="status">接口权限目录暂不可用。可以重试加载并继续勾选。</p>
+    <button type="button" class="button secondary" data-role-catalog-retry>重试加载接口权限</button></div>`;
+}
+
+async function retryRoleCatalog(form: HTMLFormElement): Promise<void> {
+  const button = form.querySelector<HTMLButtonElement>("[data-role-catalog-retry]");
+  const feedback = form.querySelector("[data-role-catalog-host] [role=status]");
+  if (!button || button.disabled || !feedback) return;
+  button.disabled = true;
+  feedback.textContent = "正在加载接口权限目录。";
+  try {
+    const catalog = await loadPermissionCatalog();
+    if (form.isConnected) {
+      mountRoleCatalog(form, catalog);
+      form.querySelector<HTMLElement>("[data-pc-query]")?.focus();
+    }
+  } catch {
+    feedback.textContent = "接口权限目录加载失败，请重试。";
+    button.disabled = false;
+  }
+}
+
+function updateRoleScopeKinds(form: HTMLFormElement): void {
+  const field = form.querySelector<HTMLElement>("[data-role-scope-kind]");
+  const select = field?.querySelector("select");
+  const add = form.querySelector<HTMLButtonElement>("[data-role-add-grants]");
+  if (!field || !select || !add) return;
+  const points = selectedPermissions(form);
+  const kinds = [...new Set(points.map(point => point.feature.scope))];
+  const previous = select.value;
+  field.hidden = select.disabled = kinds.length < 2;
+  select.innerHTML = `<option value="">请选择</option>${options(kinds.map(id => ({ id, name: id })), previous)}`;
+  add.disabled = !points.length;
+}
+
 function addInterfaceGrants(form: HTMLFormElement): void {
   const status = platformStatus(form);
   const list = form.querySelector("[data-role-grants]");
   if (!status || !list) return;
-  const points = selectedPermissions(form);
-  if (!points.length) {
-    status.textContent = "请先勾选要授予的接口动作。";
+  const selected = selectedPermissions(form);
+  if (!selected.length) return;
+  const scopeKinds = new Set(selected.map(point => point.feature.scope));
+  const selector = form.querySelector<HTMLSelectElement>("[data-role-scope-kind] select");
+  const kind = scopeKinds.size === 1 ? selected[0]?.feature.scope : selector?.value;
+  if (!kind || !scopeKinds.has(kind)) {
+    status.textContent = "请选择本次添加的范围类型。";
+    selector?.focus();
     return;
   }
-  const scopeKinds = new Set(points.map(point => point.feature.scope));
-  if (scopeKinds.size !== 1) {
-    status.textContent = "请按适用范围分次添加所选动作。";
-    return;
-  }
-  const kind = points[0]?.feature.scope;
-  if (!kind) return;
+  const points = selected.filter(point => point.feature.scope === kind);
   const data = new FormData(form);
   const environment = String(data.get("environment") ?? "");
   const cluster = String(data.get("cluster") ?? "");
@@ -799,9 +853,13 @@ function addInterfaceGrants(form: HTMLFormElement): void {
     return previous.has(grantKey(grant)) ? [] : [grantRow(grant, point, original.has(grantKey(grant)))];
   }));
   list.insertAdjacentHTML("beforeend", additions.join(""));
-  updateCatalogGrants(form, savedGrants(form), true);
-  for (const box of form.querySelectorAll<HTMLInputElement>('[data-scope] input[type="checkbox"]')) box.checked = false;
-  status.textContent = additions.length ? `已添加 ${additions.length} 项接口授权，保存角色后生效。` : "所选接口授权已在清单中。";
+  updateCatalogGrants(form, savedGrants(form), points.map(point => point.code));
+  if (kind !== "平台全局" && kind !== "仅本人" && kind !== "集群实例") {
+    for (const box of form.querySelectorAll<HTMLInputElement>('[data-scope] input[type="checkbox"]')) box.checked = false;
+  }
+  const result = additions.length ? `已添加 ${additions.length} 项接口授权，保存角色后生效。` : "所选接口授权已在清单中。";
+  const remaining = selected.length - points.length;
+  status.textContent = remaining ? `${result}还有 ${remaining} 项待添加。` : result;
 }
 
 function addScopes(form: HTMLFormElement): boolean {

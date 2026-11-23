@@ -39,15 +39,16 @@ dialog{border:1px solid var(--line);border-radius:11px;padding:0;width:min(600px
 <section class="panel">
 <nav class="tabset" aria-label="权限配置"><button type="button" id="rolesTab" aria-pressed="true">角色配置</button><button type="button" id="groupsTab" aria-pressed="false">用户组</button></nav>
 <div id="roles">
-<div class="section-header"><div><h2>编辑角色 · 值班 SRE</h2><p class="summary">勾选权限点后，将其添加到授权清单。</p></div><button class="btn primary" id="saveRole">保存角色</button></div>
+<div class="section-header"><div><h2>编辑角色 · 值班 SRE</h2><p class="summary">选择接口权限</p></div><button class="btn primary" id="saveRole">保存角色</button></div>
 <div class="workspace"><div class="matrix"><nav class="modtabs" id="moduleTabs" aria-label="权限模块"></nav>
 <div class="filters"><input type="search" id="query" placeholder="搜索功能、权限编码或接口" aria-label="搜索权限点"><select id="kit" aria-label="工具集合"></select><select id="filter" aria-label="权限状态"><option value="">全部权限</option><option value="risk">高风险</option><option value="selected">待添加</option><option value="configured">已加入清单</option></select></div>
 <div class="toolbar"><label class="batch"><input id="allVisible" type="checkbox">批量勾选当前结果</label><span class="summary" id="selectionStatus" role="status"></span><button type="button" class="btn" id="clearPicks">清空待添加</button></div>
 <div class="table-scroll" role="region" aria-label="增删改查权限矩阵" tabindex="0"><table class="permissions"><thead><tr><th scope="col">功能点</th><th scope="col">增 · 新增</th><th scope="col">删 · 撤销</th><th scope="col">改 · 变更</th><th scope="col">查 · 查询</th></tr></thead><tbody id="matrix"></tbody></table></div></div>
 <aside class="details" tabindex="-1" id="detail" aria-label="接口权限详情"><h3>接口权限详情</h3><div id="detailBody"></div></aside></div>
-<div class="ledger"><div class="ledger-body"><h3>授权清单</h3><div class="ledger-scope">
+<div class="ledger"><div class="ledger-body"><div class="ledger-scope">
+<label id="grantKindLabel" hidden>本次添加的范围类型 <select id="grantKind" aria-label="本次添加的范围类型" disabled></select></label>
 <label for="grantScope">数据范围</label><select id="grantScope" aria-label="数据范围"></select><button class="btn primary" id="addGrants">添加到授权清单</button></div>
-<p class="status" role="status" id="roleStatus"></p><ul class="grants" id="grants"></ul></div></div></div>
+<p class="status" role="status" id="roleStatus"></p><h3>授权清单</h3><ul class="grants" id="grants"></ul></div></div></div>
 <div id="groups" hidden><div class="section-header"><div><h2>用户组</h2><p class="summary">查看组角色和管理员继承来源。</p></div><button class="btn primary" id="newGroup">＋ 新建用户组</button></div>
 <div class="group-content"><div class="table-scroll"><table class="groups"><thead><tr><th scope="col">用户组</th><th scope="col">关联角色</th><th scope="col">成员</th><th scope="col">操作</th></tr></thead><tbody id="groupRows"></tbody></table></div></div></div>
 </section>
@@ -98,7 +99,26 @@ const editable = code => !points.get(code)?.restricted;
 const actorSuper = () => $("actor").value === "super";
 const roleGroupLabel = role => html(roleNames[role] || role);
 const roleKey = (code,scope) => code+"@"+scope;
-$("grantScope").innerHTML = Object.entries(sampleScopes).map(([key, entry]) => '<option value="'+key+'">'+html(entry[1])+'</option>').join("");
+const scopeKind = code => points.get(code).feature.scope;
+const selectedKinds = () => [...new Set([...picked].map(scopeKind))];
+const sampleKind = kind => kind === "知识目标" ? "资源范围" : kind;
+
+function renderScopeOptions() {
+  const kinds = selectedKinds();
+  const kind = $("grantKind");
+  const previousKind = kind.value;
+  kind.innerHTML = '<option value="">请选择</option>'+kinds.map(value=>'<option>'+html(value)+'</option>').join("");
+  if (kinds.includes(previousKind)) kind.value = previousKind;
+  $("grantKindLabel").hidden = kind.disabled = kinds.length < 2;
+  const type = kinds.length === 1 ? kinds[0] : kind.value;
+  const scope = $("grantScope");
+  const previousScope = scope.value;
+  const matching = Object.entries(sampleScopes).filter(([, entry])=>entry[0] === sampleKind(type));
+  scope.innerHTML = matching.length ? matching.map(([key, entry])=>'<option value="'+key+'">'+html(entry[1])+'</option>').join("") : '<option value="">请选择权限点和范围类型</option>';
+  if (matching.some(([key])=>key===previousScope)) scope.value = previousScope;
+  scope.disabled = !matching.length;
+}
+$("grantKind").onchange = renderScopeOptions;
 
 function notify(message) { $("notice").textContent = message; $("notice").hidden = false; }
 function switchTab(groupTab) {
@@ -155,6 +175,7 @@ function renderMatrix() {
   $("selectionStatus").textContent="当前结果 "+enabled.filter(code=>picked.has(code)).length+" / "+enabled.length+" 项 · 总待添加 "+picked.size+" 项";
   $("clearPicks").disabled=!picked.size;
   $("addGrants").disabled=!picked.size;
+  renderScopeOptions();
   renderDetails();
 }
 function renderDetails() {
@@ -216,19 +237,24 @@ function renderGrants() {
     '</small></span><button type="button" class="btn" data-remove="'+html(key)+'">移除</button></li>').join("")||'<li>授权清单为空。</li>';
 }
 $("addGrants").onclick=()=>{
-  const scope=$("grantScope").value, type=sampleScopes[scope][0];
-  if ([...picked].some(code=>{
-    const required=points.get(code).feature.scope;
-    return (required==="知识目标"?"资源范围":required)!==type;
-  })) {
-    $("roleStatus").textContent="所选动作与此数据范围不匹配。请调整范围，或按适用范围分次添加。";
+  const kinds=selectedKinds();
+  const type=kinds.length===1?kinds[0]:$("grantKind").value;
+  const scope=$("grantScope").value;
+  if (!type || !scope) {
+    $("roleStatus").textContent="请选择本次添加的范围类型。";
+    $("grantKind").focus();
     return;
   }
   const before=draft.size;
-  for (const code of picked) draft.set(roleKey(code,scope),{code,scope});
+  for (const code of picked) {
+    if (scopeKind(code)!==type) continue;
+    draft.set(roleKey(code,scope),{code,scope});
+    picked.delete(code);
+  }
   const added=draft.size-before;
-  picked.clear();renderMatrix();renderGrants();
-  $("roleStatus").textContent=added?"已加入 "+added+" 项，保存角色后生效。":"这些授权已在清单中。";
+  renderMatrix();renderGrants();
+  const result=added?"已加入 "+added+" 项，保存角色后生效。":"这些授权已在清单中。";
+  $("roleStatus").textContent=result+(picked.size?"还有 "+picked.size+" 项待添加。":"");
 };
 $("grants").onclick=event=>{
   const remove=event.target.closest("[data-remove]");
