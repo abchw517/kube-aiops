@@ -25,14 +25,7 @@ type IdentityAdminView = {
 
 /** 根据当前会话能力展示认证和账号管理功能。 */
 export async function renderIdentityAdmin(resource: string, view: IdentityAdminView): Promise<string> {
-  const { initial, roleID, administrator, superAdmin, canChangePassword, auditContent } = view;
-  const navigation = initial || !administrator || resource === "ldap" ? "" : `<nav class="identity-nav" aria-label="系统管理">
-    <a href="#/admin/ldap"${resource === "ldap" ? ' aria-current="page"' : ""}>认证配置</a>
-    <a href="#/admin/users"${resource === "users" ? ' aria-current="page"' : ""}>用户管理</a>
-    <a href="#/admin/access"${resource === "access" || resource === "policy" ? ' aria-current="page"' : ""}>权限配置</a>
-    <a href="#/admin/operations"${resource === "operations" ? ' aria-current="page"' : ""}>操作审计</a>
-    ${canChangePassword ? `<a href="#/admin/password"${resource === "password" ? ' aria-current="page"' : ""}>修改密码</a>` : ""}
-  </nav>`;
+  const { initial, roleID, superAdmin, auditContent } = view;
   let content: string;
   try {
     content = auditContent ?? (["users", "access"].includes(resource) ? await renderPlatform(resource, roleID, superAdmin)
@@ -42,7 +35,7 @@ export async function renderIdentityAdmin(resource: string, view: IdentityAdminV
     content = "<h2>无法加载配置</h2><p>请刷新后重试。</p>";
   }
   if (resource === "ldap") return `<div class="auth-config">${content}</div>`;
-  return `<section class="panel identity-panel system-management">${navigation}${content}
+  return `<section class="panel identity-panel system-management">${content}
     <dialog class="system-dialog" data-system-dialog aria-labelledby="system-dialog-title"></dialog></section>`;
 }
 

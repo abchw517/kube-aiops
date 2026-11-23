@@ -112,18 +112,41 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   if (!id) {
     const rows = items.map((item) => ({ item, status: collectionStatus(item) }));
     const states = [...new Set(rows.map(({ status }) => status))];
-    return `<div class="catalog-section">
+    const environmentGroups = new Map<string, Entry[]>();
+    for (const item of items) {
+      const environment = String(item.environment || "未设置环境");
+      const group = environmentGroups.get(environment) ?? [];
+      group.push(item);
+      environmentGroups.set(environment, group);
+    }
+    const clusterLabel = (item: Entry) => escapeHtml(item.group || item.name);
+    return `<div class="resource-workspace" data-resource-workspace>
+      <aside class="panel resource-scope" aria-labelledby="resource-scope-title">
+        <h2 id="resource-scope-title">资源范围</h2>
+        <input type="search" data-scope-search aria-label="搜索范围" placeholder="搜索环境或集群">
+        <button type="button" data-cluster-scope="all" aria-pressed="true">全部集群</button>
+        ${[...environmentGroups].map(([environment, group]) => `<details open data-resource-environment>
+          <summary>${escapeHtml(environment)}</summary>
+          <button type="button" data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}" aria-pressed="false">全部${escapeHtml(environment)}集群</button>
+          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}" aria-pressed="false">${clusterLabel(item)}</button>`).join("")}
+        </details>`).join("")}
+      </aside>
+      <div class="panel catalog-section">
       <div class="cluster-heading"><div><h2 id="cluster-list-title">集群接入</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
         ${editable ? '<button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>' : ""}
       </div></div>
+      <nav class="resource-view-tabs" aria-label="资源视图">
+        <button type="button" data-resource-tab="clusters" aria-pressed="true">集群列表</button>
+        <button type="button" data-resource-tab="namespaces" aria-pressed="false">命名空间</button>
+      </nav>
       <div class="cluster-filters">
-        <label>搜索集群<input type="search" name="query" autocomplete="off" data-cluster-filter="query" placeholder="名称、ID、环境或业务线…"></label>
+        <label>搜索资源<input type="search" name="query" autocomplete="off" data-cluster-filter="query" placeholder="搜索集群或命名空间"></label>
         <label>采集状态<select data-cluster-filter="status"><option value="">全部状态</option>
           ${states.map((state) => `<option>${escapeHtml(state)}</option>`).join("")}</select></label>
       </div>
-      <div class="catalog-table-wrap" role="region" aria-labelledby="cluster-list-title" tabindex="0"><table class="catalog-table cluster-table">
+      <div class="catalog-table-wrap" data-resource-table="clusters" role="region" aria-labelledby="cluster-list-title" tabindex="0"><table class="catalog-table cluster-table">
         <thead><tr><th scope="col">集群</th><th scope="col">环境 / 业务线</th><th scope="col">集群类型</th><th scope="col">采集状态</th><th scope="col">操作</th></tr></thead>
-        <tbody>${rows.map(({ item, status }) => `<tr data-cluster-row data-status="${escapeHtml(status)}">
+        <tbody>${rows.map(({ item, status }) => `<tr data-cluster-row data-cluster="${escapeHtml(item.id)}" data-environment="${escapeHtml(item.environment || "未设置环境")}" data-status="${escapeHtml(status)}">
           <td><strong>${escapeHtml(item.group || item.name)}</strong> <code>${escapeHtml(item.id)}</code>
             <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "外部直连" : "采集上报"}</div></td>
           <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
@@ -142,9 +165,16 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
           </div></td></tr>`).join("")}
           <tr data-cluster-empty${items.length ? " hidden" : ""}><td colspan="5" class="catalog-empty">暂无符合条件的集群。</td></tr></tbody>
       </table></div>
-      <div class="catalog-bottom"><span data-cluster-count>共 ${items.length} 个集群</span></div>
+      <div class="catalog-table-wrap" data-resource-table="namespaces" hidden role="region" aria-label="命名空间列表" tabindex="0"><table class="catalog-table">
+        <thead><tr><th scope="col">命名空间</th><th scope="col">集群</th><th scope="col">环境</th></tr></thead>
+        <tbody>${items.flatMap((item) => (item.deleted || item.collection?.namespaceError ? [] : item.collection?.namespaces ?? [])
+          .map(({ name }) => `<tr data-namespace-row data-cluster="${escapeHtml(item.id)}" data-environment="${escapeHtml(item.environment || "未设置环境")}">
+            <td>${escapeHtml(name)}</td><td>${clusterLabel(item)}</td><td>${escapeHtml(item.environment || "未设置环境")}</td></tr>`)).join("")}
+          <tr data-namespace-empty hidden><td colspan="3" class="catalog-empty">暂无符合条件的命名空间。</td></tr></tbody>
+      </table></div>
+      <div class="catalog-bottom"><span data-cluster-count aria-live="polite">共 ${items.length} 个集群</span></div>
       <dialog class="catalog-dialog" data-cluster-dialog aria-labelledby="cluster-dialog-title"></dialog>
-    </div>`;
+    </div></div>`;
   }
   const rotating = id.startsWith("rotate-");
   const editing = rotating || id.startsWith("edit-");
@@ -331,20 +361,56 @@ function maintenanceButton(item: Entry, action: string, label: string): string {
 
 export function filterClusterRows(event: Event): void {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || !target.matches("[data-cluster-filter]")) return;
-  const section = target.closest(".catalog-section");
-  if (!section) return;
+  if (!(target instanceof HTMLElement) || !target.matches("[data-cluster-filter], [data-scope-search]")) return;
+  const workspace = target.closest<HTMLElement>("[data-resource-workspace]");
+  if (!workspace) return;
+  if (target instanceof HTMLInputElement && target.hasAttribute("data-scope-search")) {
+    const query = target.value.trim().toLowerCase();
+    for (const group of workspace.querySelectorAll<HTMLDetailsElement>("[data-resource-environment]")) {
+      const match = Boolean(group.textContent?.toLowerCase().includes(query));
+      group.hidden = !match;
+      if (query && match) group.open = true;
+    }
+    return;
+  }
+  filterResourceRows(workspace);
+}
+
+/** 在切换资源范围或视图时同步列表结果。 */
+export function handleResourceWorkspaceClick(event: Event): void {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest<HTMLButtonElement>("[data-cluster-scope], [data-resource-tab]");
+  const workspace = button?.closest<HTMLElement>("[data-resource-workspace]");
+  if (!button || !workspace) return;
+  const selection = button.hasAttribute("data-cluster-scope") ? "data-cluster-scope" : "data-resource-tab";
+  workspace.querySelector(`[${selection}][aria-pressed=true]`)?.setAttribute("aria-pressed", "false");
+  button.setAttribute("aria-pressed", "true");
+  filterResourceRows(workspace);
+}
+
+/** 两种列表共用范围与关键词，采集状态仅作用于集群。 */
+function filterResourceRows(section: HTMLElement): void {
   const search = section.querySelector<HTMLInputElement>('[data-cluster-filter="query"]')?.value.trim().toLowerCase() ?? "";
-  const state = section.querySelector<HTMLSelectElement>('[data-cluster-filter="status"]')?.value ?? "";
+  const status = section.querySelector<HTMLSelectElement>('[data-cluster-filter="status"]');
+  const scopes = section.querySelector<HTMLButtonElement>("[data-cluster-scope][aria-pressed=true]")?.dataset;
+  const namespaces = Boolean(section.querySelector('[data-resource-tab="namespaces"][aria-pressed=true]'));
+  const rowSelector = namespaces ? "[data-namespace-row]" : "[data-cluster-row]";
+  for (const table of section.querySelectorAll<HTMLElement>("[data-resource-table]")) {
+    table.hidden = table.dataset.resourceTable !== (namespaces ? "namespaces" : "clusters");
+  }
+  if (status) status.disabled = namespaces;
   let visible = 0;
-  for (const row of section.querySelectorAll<HTMLTableRowElement>("[data-cluster-row]")) {
-    row.hidden = Boolean((state && state !== row.dataset.status) || !row.textContent?.toLowerCase().includes(search));
+  for (const row of section.querySelectorAll<HTMLTableRowElement>(rowSelector)) {
+    const matchesScope = scopes?.clusterScope === "environment" ? scopes.scopeValue === row.dataset.environment :
+      scopes?.clusterScope === "cluster" ? scopes.scopeValue === row.dataset.cluster : true;
+    row.hidden = !matchesScope || Boolean(!namespaces && status?.value && status.value !== row.dataset.status) ||
+      !row.textContent?.toLowerCase().includes(search);
     if (!row.hidden) visible++;
   }
-  const empty = section.querySelector<HTMLTableRowElement>("[data-cluster-empty]");
+  const empty = section.querySelector<HTMLTableRowElement>(namespaces ? "[data-namespace-empty]" : "[data-cluster-empty]");
   if (empty) empty.hidden = visible > 0;
   const count = section.querySelector("[data-cluster-count]");
-  if (count) count.textContent = `共 ${visible} 个集群`;
+  if (count) count.textContent = `共 ${visible} 个${namespaces ? "命名空间" : "集群"}`;
 }
 
 const maintenance: Record<string, { title: string; description: string }> = {

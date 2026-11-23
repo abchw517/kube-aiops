@@ -351,9 +351,9 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
-  return `<div class="platform-heading"><div><h2>权限配置</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
-      `<a class="button secondary" href="#/admin/access/catalog">权限目录</a>${editButton("＋ 新建角色", "role:")}`}</div></div>
-    <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
+  return `<div class="platform-heading"><div><h2>权限管理</h2><p>用角色定义数据范围，通过用户组批量授予 LDAP 员工。</p></div><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
+      `<a class="button secondary" href="#/admin/access/catalog">权限配置</a>${editButton("＋ 新建角色", "role:")}`}</div></div>
+    <section class="system-card"><nav class="identity-nav" aria-label="权限管理">
       <a href="#/admin/access/roles"${groups ? "" : ' aria-current="page"'}>角色配置</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
     </nav><div class="catalog-table-wrap" data-access-list role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">

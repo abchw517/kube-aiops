@@ -573,8 +573,11 @@ async function incidents(request, response, url) {
   const path = url.pathname.slice("/api/v1/diagnostics".length);
   const method = request.method;
   if (path === "/overview") {
-    return json(response, 200, { counts: { total: incidentFixture ? 1 : 0, active: incidentFixture ? 1 : 0 },
-      trend: { "2026-11-20": incidentFixture ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
+    const severity = url.searchParams.get("severity");
+    const matches = incidentFixture && (!severity || severity === incidentFixture.severity);
+    return json(response, 200, { counts: { total: matches ? 1 : 0, active: matches ? 1 : 0,
+      investigating: matches && incidentFixture.status === "investigating" ? 1 : 0, recovered: 0 },
+      trend: { "2026-11-20": matches ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
   }
   if (path === "/incidents" && method === "GET") {
     return json(response, 200, { items: incidentFixture ? [incidentFixture] : [], pagination: {}, coverage: "complete" });

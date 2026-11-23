@@ -165,7 +165,7 @@ function table(headers,rows,empty="暂无符合条件的记录",scrollHeading=""
  return '<div class="scroll'+scroll+'"'+region+'><table class="table"><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join("")+'</tr></thead><tbody>'+(rows.join("")||'<tr><td colspan="'+headers.length+'">'+empty+'</td></tr>')+'</tbody></table></div>';
 }
 function navigate(page){state.page=page;location.hash=page;render()}
-const navs=[["ldap","认证配置","◇"],["users","用户管理","◎"],["permissions","权限配置","⊞"],["audit","操作审计","≡"],["password","修改密码","⊙"],["diagnosis","历史诊断","▤"]];
+const navs=[["ldap","认证配置","◇"],["users","用户管理","◎"],["permissions","权限管理","⊞"],["audit","操作审计","≡"],["password","修改密码","⊙"],["diagnosis","历史诊断","▤"]];
 function render(){
  const employee=ldapActor();
  $("#area-title").textContent=admin()?"系统管理":"我的工作台";
@@ -257,7 +257,7 @@ function ldapPage(){
 function permissionsPage(){
  const roles=state.permissionTab==="roles";
  const attrs=k=>' role="tab" aria-selected="'+(state.permissionTab===k)+'" data-action="permission-tab" data-value="'+k+'"';
- return header("权限配置","用角色定义数据范围，通过用户组批量授予 LDAP 员工。",(roles?btn("权限目录","permission-catalog"):"")+btn(roles?"＋ 新建角色":"＋ 新建用户组",roles?"edit-role":"edit-group","","primary"))+
+ return header("权限管理","用角色定义数据范围，通过用户组批量授予 LDAP 员工。",(roles?btn("权限配置","permission-catalog"):"")+btn(roles?"＋ 新建角色":"＋ 新建用户组",roles?"edit-role":"edit-group","","primary"))+
  '<div class="panel"><div class="tabs" role="tablist"><button'+attrs("roles")+'>角色配置</button><button'+attrs("groups")+'>用户组</button></div>'+
  (roles?table(["角色","范围","引用","操作"],state.roles.map(r=>{const refs=roleRefs(r.id);return '<tr><td><strong>'+esc(r.name)+'</strong> '+(r.fixed?tags("预置"):"")+'</td><td>'+esc(r.id===systemAdminRole?"全局管理":r.scopes.length+" 项权限")+'</td><td>'+refs.length+' 处</td><td class="row">'+btn(r.fixed?"查看":"编辑","edit-role",r.id)+(r.fixed?tags("禁止删除"):btn("删除","delete-role",r.id,"danger"))+'</td></tr>'})):
  table(["用户组","关联角色","成员","操作"],state.groups.map(g=>'<tr><td><strong>'+esc(g.name)+'</strong><br><small>'+esc(g.desc)+'</small></td><td>'+g.roles.map(id=>link(role(id)?.name,"edit-role",id)).join(" ")+'</td><td>'+state.users.filter(u=>u.groups.includes(g.id)).length+' 人</td><td class="row">'+btn("编辑","edit-group",g.id)+btn("删除","delete-group",g.id,"danger")+'</td></tr>')))+'</div>';
@@ -465,7 +465,7 @@ function previewRole(){
  $("#dialog [data-action=back-role]").focus();
 }
 function permissionCatalog(){
- modal("权限目录",'<dl class="account-bindings">'+
+ modal("权限配置",'<dl class="account-bindings">'+
   '<div class="account-binding"><dt>诊断控制台</dt><dd>历史诊断查看可按环境和资源范围授予。</dd></div>'+
   '<div class="account-binding"><dt>运维知识库</dt><dd>Wiki 阅读试点 '+tags("默认关闭")+
   ' · 正式开放须评审。文档可见范围与角色授权同时校验。</dd></div>'+

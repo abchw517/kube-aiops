@@ -1,18 +1,18 @@
 /* 控制台共用色板、基础控件和状态。 */
 :root {
-  --nav: #102642;
-  --ink: #192943;
-  --muted: #53647c;
+  --nav: #202430;
+  --ink: #202b3a;
+  --muted: #58677c;
   --surface: #fff;
-  --bg: #f1f4fa;
-  --line: #dce4f0;
+  --bg: #eef2f8;
+  --line: #dce4ee;
   --control-line: #889ab3;
-  --blue: #1b56aa;
-  --blue-hover: #144487;
-  --accent-soft: #edf4ff;
+  --blue: #0069d1;
+  --blue-hover: #005ab3;
+  --accent-soft: #e4f1ff;
   --teal: #176861;
   --red: #a9273d;
-  --panel-radius: 9px;
+  --panel-radius: 7px;
   --topbar-height: 60px;
   font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   font-synthesis: none;
@@ -420,8 +420,6 @@ tbody tr:hover { background: #f5f8fd; }
 .system-permission ul { color: var(--muted); padding-inline-start: 18px; }
 
 .resource-management { padding: 0; }
-.resource-management .identity-nav { margin: 0; padding-inline: clamp(14px, 2vw, 23px); gap: 6px 18px; }
-.resource-management .identity-nav a { padding: 13px 0; }
 .resource-management .catalog-section { padding: clamp(14px, 2vw, 23px); }
 .system-management .catalog-table :is(th, td) { padding: 11px; vertical-align: middle; }
 .system-management .catalog-table th { letter-spacing: normal; }

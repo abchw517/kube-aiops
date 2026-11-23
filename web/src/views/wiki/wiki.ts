@@ -58,7 +58,7 @@ export async function renderWiki(hash: string, admin: boolean, access?: WikiAcce
     else next.set("page", String(page));
     return escapeHtml(next.toString());
   };
-  return `<div class="wiki-workspace"><section class="panel wiki-card" aria-labelledby="wiki-list-title">
+  return `<div class="wiki-workspace"><section class="panel wiki-card wiki-list-card" aria-labelledby="wiki-list-title">
     <div class="wiki-toolbar"><h2 id="wiki-list-title">知识文档 <small>${data.total} 篇</small></h2>
       <div class="system-actions">${allowed?.ask !== false ? '<button type="button" class="button secondary" data-open-wiki-ask>AI 知识问答</button>' : ""}
       ${admin || access?.draft ? '<a class="button" href="#/wiki/draft/new">新建知识</a>' : ""}
@@ -70,10 +70,17 @@ export async function renderWiki(hash: string, admin: boolean, access?: WikiAcce
       <button type="submit" class="button">搜索</button>
       <a class="button secondary" href="#/wiki">重置</a>
     </form>
-    ${data.items.length ? `<div class="table-wrap" role="region" aria-labelledby="wiki-list-title" tabindex="0"><table><thead><tr><th scope="col">标题</th><th scope="col">环境</th><th scope="col">业务线</th><th scope="col">类型</th><th scope="col">更新时间</th></tr></thead><tbody>
-    ${data.items.map((doc) => `<tr><td><a href="${knowledgeLink(doc.knowledgeId ?? "")}">${escapeHtml(doc.title)}</a><p>${escapeHtml(doc.metadata?.applicability ?? "历史条目")}</p>${doc.matchReason ? `<small>${escapeHtml(doc.matchReason)}</small>` : ""}</td>
-      <td>${escapeHtml(doc.environment)}</td><td>${escapeHtml(doc.business)}</td><td>${escapeHtml(doc.documentType)}</td><td>${formatTimestamp(doc.createdAt)}</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="wiki-empty"><strong>${query.size ? "暂无符合筛选条件的文档" : "知识库暂无文档"}</strong><p>${query.size ? "可重置筛选查看全部文档。" : "已发布的知识会显示在此处。"}</p></div>`}
+    ${data.items.length ? `<ul class="wiki-document-list">
+      ${data.items.map((doc) => `<li>
+        <a class="wiki-document-row" href="${knowledgeLink(doc.knowledgeId ?? "")}">
+          <strong>${escapeHtml(doc.title)}</strong>
+          <span class="wiki-document-meta">${[doc.environment, doc.business, doc.documentType].filter(Boolean).map(escapeHtml).join(" · ")}
+            <span class="wiki-document-time">${formatTimestamp(doc.createdAt)}</span></span>
+          ${doc.metadata?.applicability ? `<span>${escapeHtml(doc.metadata.applicability)}</span>` : ""}
+          ${doc.matchReason ? `<small>${escapeHtml(doc.matchReason)}</small>` : ""}
+        </a>
+      </li>`).join("")}
+    </ul>` : `<div class="wiki-empty"><strong>${query.size ? "暂无符合筛选条件的文档" : "知识库暂无文档"}</strong><p>${query.size ? "可重置筛选查看全部文档。" : "已发布的知识会显示在此处。"}</p></div>`}
     ${data.page > 1 || data.page * data.pageSize < data.total ? `<nav class="pagination" aria-label="文档分页">
       ${data.page > 1 ? `<a class="button secondary" href="#/wiki?${pageLink(data.page - 1)}">上一页</a>` : ""}
       ${data.page * data.pageSize < data.total ? `<a class="button secondary" href="#/wiki?${pageLink(data.page + 1)}">下一页</a>` : ""}
