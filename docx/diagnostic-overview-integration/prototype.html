@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kube-aiops · 诊断总览与数据源管理原型</title>
+<style>
+:root{--bg:#edf2f8;--paper:#fff;--ink:#172941;--muted:#465e7a;--line:#d5e0ee;--blue:#0069ce;--active:#e3effd;--night:#172637;--critical:#ae2643;--warning:#985c00;--info:#126765}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}h1,h2,h3,p{margin:0}h1{font-size:26px}h2{font-size:18px}h3{font-size:14px}small,.subtle{color:var(--muted)}button,input,select{font:inherit}a,.plain{color:var(--blue)}a{text-decoration:none}a:hover{text-decoration:underline}button,summary{cursor:pointer}a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.top{background:var(--night);color:white;display:flex;align-items:center;gap:30px;padding:0 20px;min-height:60px}.brand{display:flex;align-items:center;gap:10px;font-weight:750;font-size:16px;white-space:nowrap}.mark{border:1px solid #59a4dc;background:#07538d;display:grid;place-items:center;width:28px;height:28px;border-radius:6px}.top nav{display:flex}.top a{color:#fff;padding:19px 16px;border-bottom:2px solid transparent}.top a[aria-current]{background:#303b4b;border-color:#64b5ff}.layout{display:grid;grid-template-columns:208px minmax(0,1fr);min-height:calc(100vh - 60px)}aside{background:#fff;border-right:1px solid var(--line);padding-top:17px}aside h2{padding:0 18px;margin-bottom:16px}aside p{color:var(--muted);font-size:12px;padding:9px 18px 4px}aside a{display:block;padding:9px 16px;border-left:3px solid transparent;color:var(--ink)}aside a::before{display:inline-block;content:"";width:6px;height:6px;border:1px solid currentColor;border-radius:1px;margin-right:9px;vertical-align:2px}aside a[aria-current]{color:#005bb7;background:var(--active);border-left-color:var(--blue);font-weight:700}aside a[aria-current]::before{background:currentColor}
+main{min-width:0;padding:18px 20px 34px;max-width:1840px;width:100%;margin-inline:auto}.crumb{font-size:12px;color:var(--muted);margin-bottom:3px}.title{margin-bottom:14px}.stack{display:grid;gap:14px}.panel{background:var(--paper);border:1px solid var(--line);border-radius:7px;min-width:0}.pad{padding:16px 18px}.toolbar,.section-head,.filterline{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}.section-head{margin-bottom:12px}.section-head p{font-size:12px;margin-top:2px}.filterline{justify-content:flex-start}.filterline label{display:flex;align-items:center;gap:8px}.btn,select,input{border:1px solid #a5b9d3;border-radius:5px;background:#fff;color:var(--ink);min-height:35px;padding:6px 10px}.btn{display:inline-flex;align-items:center;font-weight:650;white-space:nowrap}.btn:hover{background:#eef5ff;text-decoration:none}.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.primary:hover{background:#0058b0}.plain{border:0;background:none;padding:3px;text-align:start;font-weight:650}.plain:hover{text-decoration:underline}.button-row{display:flex;gap:8px;flex-wrap:wrap}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff}.metric{border:0;border-top:3px solid var(--tone,var(--blue));padding:9px 13px;background:#fff;text-align:left;color:var(--ink);font:inherit}.metric+ .metric{border-left:1px solid var(--line)}.metric strong{display:block;font-size:25px;color:var(--tone,var(--blue))}.metric[aria-current=true],a.metric:hover{background:#eef5ff}.critical{--tone:var(--critical)}.warning{--tone:var(--warning)}.info{--tone:var(--info)}.split{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(185px,1fr);gap:12px;align-items:start}.chart{display:grid;grid-template-columns:repeat(7,1fr);align-items:end;gap:10px;height:105px;border-bottom:1px solid var(--line);padding:0 8px}.bar{background:#408be0;display:block;width:min(30px,80%);border-radius:3px 3px 0 0;margin:auto}.bar-stack{display:flex;flex-direction:column;justify-content:flex-end;gap:1px}.bar-stack .bar{margin:0 auto;border-radius:2px}.bar.finding{background:#147e78}.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--muted)}.legend span::before{content:"";display:inline-block;width:9px;height:9px;margin-right:5px;border-radius:2px;background:#408be0}.legend span+span::before{background:#147e78}.bar-label{display:block;text-align:center;font-size:11px;color:var(--muted);padding:3px 0}.breakdown{display:grid;gap:5px}.breakdown+.breakdown{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}.breakdown a,.breakdown div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0}.breakdown a{overflow-wrap:anywhere}.badge{display:inline-block;white-space:nowrap;padding:2px 7px;border-radius:4px;background:#ebf2fa;color:#344e6a;font-size:12px;font-weight:650}.badge.warning{background:#fff2d6;color:var(--warning)}.badge.critical{background:#fbe8ed;color:var(--critical)}.badge.info{background:#e5f3f2;color:var(--info)}.scroll{overflow:auto;border:1px solid var(--line);border-radius:6px}table{border-collapse:collapse;width:100%;min-width:590px;text-align:left}th,td{padding:9px 10px;vertical-align:top;border-bottom:1px solid var(--line)}th{color:#365371;background:#f1f5fb;font-size:12px;white-space:nowrap}tbody tr:last-child td{border-bottom:0}.empty{text-align:center;color:var(--muted);padding:28px 10px}.fail{padding:14px;background:#fff5ee;border:1px solid #e9d2c1;border-radius:5px}.filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:9px}.filters label,.form-grid label{display:grid;gap:4px;color:var(--muted);font-weight:600}.filters select,input,select{min-width:0}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}details>summary{font-weight:650}details[open]>summary{margin-bottom:9px}.item-detail{border-top:1px solid var(--line);padding-top:8px;margin-top:11px}.ds-meta{display:flex;flex-wrap:wrap;gap:9px 18px;color:var(--muted);margin:8px 0 12px}.status{color:var(--info)}.form-action{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.result-path{margin:8px 0 13px}.mobile-menu{display:none}[hidden]{display:none!important}
+@media(max-width:1020px){.split{grid-template-columns:1fr}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.top{padding:0 10px;gap:8px;min-height:52px}.brand{font-size:14px}.top a{padding:14px 7px;white-space:nowrap;font-size:12px}.layout{display:block}.mobile-menu{display:block;margin:10px 12px 0}aside{margin:8px 12px 0;padding-top:9px;border:1px solid var(--line);border-radius:6px}aside:not(.expanded){display:none}aside h2{display:none}main{padding:14px 12px}.pad{padding:12px}.form-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:410px){.metrics{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.filterline label{width:100%}.filterline select{flex:1}.top{gap:5px}}
+</style>
+</head>
+<body>
+<header class="top"><span class="brand"><span class="mark">K</span> kube-aiops</span><nav id="top-nav" aria-label="模块"></nav></header>
+<button type="button" class="mobile-menu btn" data-action="menu" aria-controls="sidebar" aria-expanded="false">栏目</button>
+<div class="layout"><aside id="sidebar" aria-label="栏目"></aside><main id="main"></main></div>
+<script>
+"use strict";
+const main=document.querySelector("main"), sidebar=document.querySelector("aside"), topbar=document.querySelector("#top-nav");
+const routes={overview:"/diagnostics",events:"/diagnostics/events",findings:"/findings",policies:"/diagnostics/policies",clusters:"/resources/clusters",env:"/resources/environments",business:"/resources/business-lines",sources:"/resources/datasources"};
+const titles={overview:"诊断总览",events:"故障事件",findings:"原有诊断结果",policies:"诊断策略",clusters:"Kubernetes 集群管理",env:"环境管理",business:"业务线管理",sources:"数据源管理"};
+const clusters=[
+ {id:"dev-k8s",name:"研发 Kubernetes 集群",env:"研发",business:"数据服务"},
+ {id:"test-k8s",name:"测试 Kubernetes 集群",env:"测试",business:"运维平台"},
+ {id:"prod-east",name:"东区生产集群",env:"生产",business:"交易平台"}
+];
+const findings=[
+ {id:"f01",severity:"warning",title:"StorageClass k8sgpt-non-existent-storageclass 未找到",kind:"PersistentVolumeClaim",name:"pvc-pending-demo",cluster:"test-k8s",namespace:"k8sgpt-demo",time:"11/16 18:07:21"},
+ {id:"f02",severity:"warning",title:"Deployment 期望 1 个副本，当前 0 个可用",kind:"Deployment",name:"crashloop-demo",cluster:"test-k8s",namespace:"k8sgpt-demo",time:"11/16 18:01:35"},
+ {id:"f03",severity:"warning",title:"Pod 镜像拉取失败，处于 ImagePullBackOff",kind:"Pod",name:"crashloop-demo-d8d87c886-wj9vs",cluster:"test-k8s",namespace:"k8sgpt-demo",time:"11/16 18:01:35"},
+ {id:"f04",severity:"critical",title:"支付网关健康副本不足",kind:"Deployment",name:"payments-gateway",cluster:"prod-east",namespace:"payments",time:"11/16 17:52:10"},
+ {id:"f05",severity:"info",title:"工作负载未设置资源请求",kind:"Deployment",name:"telemetry-worker",cluster:"dev-k8s",namespace:"observability",time:"11/16 17:40:18"},
+ {id:"f06",severity:"warning",title:"订单服务 Pod 探针异常",kind:"Pod",name:"orders-worker",cluster:"prod-east",namespace:"orders",time:"11/16 17:32:04"}
+];
+const incidents=[
+ {id:"i01",title:"支付网关副本不足",cluster:"prod-east",severity:"P1",status:"处理中",source:"Alertmanager",day:6,time:"18:12:00",findingId:"f04"},
+ {id:"i02",title:"测试环境节点磁盘压力",cluster:"test-k8s",severity:"P2",status:"待确认",source:"Kubernetes 事件",day:6,time:"18:04:00"},
+ {id:"i03",title:"订单入口 5xx 增长",cluster:"prod-east",severity:"P2",status:"已恢复",source:"Prometheus",day:5},
+ {id:"i04",title:"研发日志采集延迟",cluster:"dev-k8s",severity:"P3",status:"已恢复",source:"VictoriaLogs",day:4},
+ {id:"i05",title:"主机可用内存过低",cluster:"",severity:"P2",status:"待确认",source:"Zabbix",day:5}
+];
+const types={"zabbix":"Zabbix","aliyun-ecs":"阿里云 ECS","tencent-cvm":"腾讯云 CVM"};
+const sources=[
+ {id:"zabbix-test",name:"测试环境主机监控",kind:"zabbix",cluster:"test-k8s",namespace:"monitoring",assets:"host-014,host-021",address:"https://zabbix.example.test/api_jsonrpc.php",enabled:true,status:"待验证"},
+ {id:"ecs-prod",name:"生产 ECS 资产",kind:"aliyun-ecs",cluster:"prod-east",namespace:"infra",assets:"i-demo01",address:"cn-hangzhou",enabled:true,status:"可用"}
+];
+const severityLabel={critical:"严重",warning:"警告",info:"信息"};
+const esc=(s="")=>String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+const link=(path,query)=>"#"+path+(query.size?"?"+query.toString():"");
+const current=()=>{const [path="/diagnostics",query=""]=location.hash.slice(1).split("?");return {path:path||routes.overview,q:new URLSearchParams(query)}};
+function variant(path,q,changes){
+ const next=new URLSearchParams(q);
+ for(const [key,value] of Object.entries(changes)){if(value)next.set(key,value);else next.delete(key);}
+ return link(path,next);
+}
+function navLink(key,selected){return '<a href="#'+routes[key]+'"'+(key===selected?' aria-current="page"':'')+'>'+titles[key]+'</a>';}
+function sidebarGroup(label,keys,selected){return '<p>'+label+'</p>'+keys.map(key=>navLink(key,selected)).join("");}
+function option(value,label,selected){return '<option value="'+esc(value)+'"'+(value===selected?' selected':'')+'>'+esc(label)+'</option>';}
+function selector(name,label,options,selected){
+ return '<label>'+label+'<select data-filter="'+name+'">'+options.map(([value,text])=>option(value,text,selected)).join("")+'</select></label>';
+}
+function clusterSelector(name,selected){return selector(name,"集群实例",[["","全部可见实例"],...clusters.map(x=>[x.id,x.env+" / "+x.id])],selected||"");}
+function table(head,rows,empty){
+ if(!rows.length)return '<p class="empty">'+esc(empty)+'</p>';
+ return '<div class="scroll" tabindex="0" role="region" aria-label="'+esc(head.join("、"))+'"><table><thead><tr>'+head.map(x=>"<th>"+x+"</th>").join("")+'</tr></thead><tbody>'+
+ rows.map(row=>"<tr>"+row.map(cell=>"<td>"+cell+"</td>").join("")+"</tr>").join("")+"</tbody></table></div>";
+}
+function pill(label,tone=""){return '<span class="badge '+tone+'">'+esc(label)+'</span>';}
+function countsBy(rows,key){const m=new Map();for(const row of rows)m.set(row[key],(m.get(row[key])||0)+1);return [...m].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));}
+function matchingFindings(p){return findings.filter(x=>["cluster","severity","kind","namespace"].every(k=>!p.has(k)||p.get(k)===x[k])&&
+ (!p.has("environment")||clusters.find(c=>c.id===x.cluster)?.env===p.get("environment"))&&
+ (!p.has("business")||clusters.find(c=>c.id===x.cluster)?.business===p.get("business"))&&(!p.has("group")||p.get("group")===x.cluster));}
+function findingTable(rows,back){
+ return table(["严重级别","问题","资源","集群实例","命名空间","发现时间"],rows.map(x=>[
+  pill(severityLabel[x.severity],x.severity),
+  '<a href="'+esc(link(routes.findings+"/"+x.id,new URLSearchParams({cluster:x.cluster,back})))+'">'+esc(x.title)+'</a>',
+  esc(x.kind+"/"+x.name),esc(x.cluster),esc(x.namespace),esc(x.time)
+ ]),"当前范围暂无诊断结果");
+}
+function findingSection(q){
+ const rows=matchingFindings(q);
+ const metric=[["","总数",rows.length],...Object.entries(severityLabel).map(([k,v])=>[k,v,rows.filter(x=>x.severity===k).length])];
+ const metrics='<div class="metrics" aria-label="诊断结果统计">'+metric.map(([k,label,num])=>
+ '<a class="metric '+k+'" '+((q.get("severity")||"")===k?'aria-current="true"':'')+' href="'+esc(variant(routes.findings,q,{severity:q.get("severity")===k?"":k}))+'"><span>'+label+'</span><strong>'+num+'</strong></a>').join("")+'</div>';
+ const breakdown=(key,heading)=>'<div class="breakdown"><h3>'+heading+'</h3>'+
+ (countsBy(rows,key).map(([name,num])=>'<a href="'+esc(variant(routes.findings,q,{[key]:q.get(key)===name?"":name}))+'"><span>'+esc(name)+'</span><strong>'+num+'</strong></a>').join("")||'<small>暂无分布</small>')+'</div>';
+ return '<section class="panel pad stack" aria-label="原有诊断结果"><h2>共 '+rows.length+' 条诊断结果</h2>'+metrics+
+ '<div class="split"><section><h3>诊断结果列表</h3>'+findingTable(rows,link(routes.findings,q))+
+ '</section><section class="panel pad">'+breakdown("kind","按资源类型")+breakdown("namespace","按命名空间")+'</section></div></section>';
+}
+function incidentSection(q){
+ const rows=incidents.filter(x=>(!q.get("clusterId")||x.cluster===q.get("clusterId"))&&(!q.get("status")||x.status===q.get("status"))&&(!q.get("severity")||x.severity===q.get("severity")));
+ const metrics=[["活跃故障",rows.filter(x=>x.status!=="已恢复").length],["待确认",rows.filter(x=>x.status==="待确认").length],["处理中",rows.filter(x=>x.status==="处理中").length],["已恢复",rows.filter(x=>x.status==="已恢复").length]];
+ return '<section class="panel pad stack" aria-label="故障事件列表"><div class="filterline">'+
+ selector("status","故障状态",[["","全部状态"],...["待确认","处理中","已恢复"].map(x=>[x,x])],q.get("status")||"")+
+ '</div><div class="metrics">'+metrics.map(([label,n],i)=>'<div class="metric '+["","critical","warning","info"][i]+'"><span>'+label+'</span><strong>'+n+'</strong></div>').join("")+
+ '</div>'+table(["故障标题","级别","状态","信号来源","集群实例"],rows.map(x=>[
+  '<a href="'+esc(link(routes.events+"/"+x.id,new URLSearchParams({back:link(routes.events,q)})))+'">'+esc(x.title)+'</a>',
+  pill(x.severity,x.severity==="P1"?"critical":"warning"),esc(x.status),esc(x.source),esc(x.cluster||"—")
+ ]),"当前范围暂无故障")+'</section>';
+}
+const incidentLevels={P1:"critical",P2:"warning",P3:"info"};
+const findingKey=(cluster,id)=>JSON.stringify([cluster,id]);
+function overviewRecords(q){
+ const scope=q.get("clusterId"), demo=q.get("demo");
+ const inScope=x=>!scope||x.cluster===scope;
+ const incidentRows=demo==="incident-error"?[]:incidents.filter(inScope);
+ const linked=new Set(incidentRows.filter(x=>x.findingId).map(x=>findingKey(x.cluster,x.findingId)));
+ const incidentRecords=incidentRows.map(x=>({...x,type:"incident",level:incidentLevels[x.severity],
+  observed:"11/"+String(10+x.day)+" "+(x.time||"12:00:00")}));
+ const findingRecords=(demo==="finding-error"?[]:findings.filter(inScope))
+  .filter(x=>!linked.has(findingKey(x.cluster,x.id)))
+  .map(x=>({...x,type:"finding",level:x.severity,source:"K8sGPT",observed:x.time}));
+ return [...incidentRecords,...findingRecords].filter(x=>!q.has("severity")||x.level===q.get("severity"))
+  .sort((a,b)=>b.observed.localeCompare(a.observed)||a.type.localeCompare(b.type)||a.id.localeCompare(b.id));
+}
+function overviewTrend(rows){
+ const days=Array.from({length:7},(_,i)=>{
+  const date="11/"+(10+i),daily=rows.filter(x=>x.observed.startsWith(date+" "));
+  return {date,incident:daily.filter(x=>x.type==="incident").length,finding:daily.filter(x=>x.type==="finding").length};
+ });
+ const maximum=Math.max(1,...days.map(x=>x.incident+x.finding)),height=n=>Math.round(n/maximum*75);
+ return '<section class="panel pad"><h3>近 7 天诊断趋势</h3><div class="chart" aria-label="按首次发现时间统计诊断记录">'+days.map(day=>{
+  const label=day.date+" 共 "+(day.incident+day.finding)+" 条，故障 "+day.incident+" 条，K8sGPT "+day.finding+" 条";
+  return '<div role="img" class="chart-day" data-count="'+(day.incident+day.finding)+'" data-findings="'+day.finding+'" aria-label="'+label+'" title="'+label+'">'+
+  '<div class="bar-stack"><span class="bar finding" style="height:'+height(day.finding)+'px"></span><span class="bar" style="height:'+height(day.incident)+'px"></span></div>'+
+  '<span class="bar-label">'+day.date+'</span></div>';
+ }).join("")+'</div><div class="legend"><span>故障事件</span><span>K8sGPT</span></div><small>按当前可见记录的首次发现时间统计</small></section>';
+}
+function overviewPage(q){
+ const rows=overviewRecords(q), scope=q.get("clusterId"), selected=q.get("severity")||"";
+ const levels=Object.entries(severityLabel).map(([level,label])=>[level,label,rows.filter(x=>x.level===level).length]);
+ const failure=q.get("demo"), warning=failure==="finding-error"?"K8sGPT 数据暂不可用，当前总览仅含故障事件。":
+  failure==="incident-error"?"故障数据暂不可用，当前总览仅含 K8sGPT，关联去重未完成。":"";
+ const incidentQuery=new URLSearchParams(), findingQuery=new URLSearchParams();
+ if(scope){incidentQuery.set("clusterId",scope);findingQuery.set("cluster",scope);}
+ if(selected){incidentQuery.set("severity",Object.keys(incidentLevels).find(k=>incidentLevels[k]===selected));findingQuery.set("severity",selected);}
+ const metrics=[["","诊断记录总数",rows.length],...levels].map(([key,label,n])=>
+  '<a class="metric '+key+'" '+(key===selected?'aria-current="true"':'')+' href="'+esc(variant(routes.overview,q,{severity:key===selected?"":key}))+'"><span>'+label+'</span><strong>'+n+'</strong></a>').join("");
+ const recent=rows.slice(0,5).map(x=>{
+  const params=new URLSearchParams({back:link(routes.overview,q)});
+  if(x.type==="finding")params.set("cluster",x.cluster);
+  const href=link((x.type==="finding"?routes.findings:routes.events)+"/"+x.id,params);
+  return ['<a href="'+esc(href)+'">'+esc(x.title)+'</a>',pill(severityLabel[x.level],x.level),esc(x.status||"—"),esc(x.source),esc(x.cluster||"—"),esc(x.observed)];
+ });
+ return '<section class="panel pad filterline" aria-label="总览筛选">'+clusterSelector("clusterId",scope)+
+  selector("severity","诊断级别",[["","全部级别"],...Object.entries(severityLabel)],selected)+'</section>'+
+  (warning?'<p class="fail" role="status">'+warning+' <a class="btn" href="'+esc(variant(routes.overview,q,{demo:""}))+'">重试</a></p>':"")+
+  '<section class="panel pad stack" aria-label="诊断概况"><h2>诊断概况</h2><div class="metrics" aria-label="诊断指标">'+metrics+'</div>'+
+  '<div class="split">'+overviewTrend(rows)+'<section class="panel pad breakdown"><h3>诊断级别分布</h3>'+levels.map(([level,label,n])=>
+   '<div><span>'+pill(label,level)+'</span><strong>'+n+'</strong></div>').join("")+'</section></div>'+
+  '<section class="stack" aria-label="最近诊断"><header class="toolbar"><h3>最近诊断</h3><div class="button-row">'+
+  '<a class="btn" href="'+esc(link(routes.events,incidentQuery))+'">查看故障事件</a><a class="btn" href="'+esc(link(routes.findings,findingQuery))+'">查看原有诊断结果</a></div></header>'+
+  table(["问题","级别","处置状态","来源","集群实例","首次发现"],recent,"当前范围暂无诊断记录")+'</section></section>';
+}
+function findingFilters(q){
+ return '<section class="panel pad"><h3>集群范围与结果筛选</h3><div class="filters">'+
+ selector("environment","环境",[["","全部环境"],...clusters.map(x=>[x.env,x.env])],q.get("environment")||"")+
+ selector("business","业务",[["","全部业务"],...clusters.map(x=>[x.business,x.business])],q.get("business")||"")+
+ selector("group","集群名称",[["","全部集群名称"],...clusters.map(x=>[x.id,x.name])],q.get("group")||"")+
+ clusterSelector("cluster",q.get("cluster"))+
+ selector("namespace","命名空间",[["","全部"],...countsBy(findings,"namespace").map(([x])=>[x,x])],q.get("namespace")||"")+
+ selector("severity","严重级别",[["","全部"],...Object.entries(severityLabel)],q.get("severity")||"")+
+ selector("kind","资源类型",[["","全部"],...countsBy(findings,"kind").map(([x])=>[x,x])],q.get("kind")||"")+
+ '<div class="button-row" style="align-items:end"><a class="btn" href="#/findings">清除筛选</a></div></div></section>';
+}
+function detail(path,q,isFinding){
+ const id=path.split("/").at(-1),item=(isFinding?findings:incidents).find(x=>x.id===id&&(!isFinding||q.get("cluster")===x.cluster));
+ const fallback="#"+(isFinding?routes.findings:routes.events);
+ const back=q.get("back")||fallback;
+ const validBack=/^#\/(?:diagnostics(?:\/events)?|findings)(?:\?|$)/.test(back)?back:fallback;
+ return '<a class="btn result-path" href="'+esc(validBack)+'">'+(validBack.startsWith("#/diagnostics")&&!validBack.startsWith("#/diagnostics/events")?"返回诊断总览":"返回列表")+'</a>'+
+  (item?'<section class="panel pad stack"><h2>'+esc(item.title)+'</h2><div class="button-row">'+
+  (isFinding?pill(severityLabel[item.severity],item.severity):pill(item.severity)+pill(item.status))+
+  '</div><p>集群实例　'+esc(item.cluster||"—")+'</p>'+
+  (isFinding?'<p>命名空间　'+esc(item.namespace)+'</p><p>资源　'+esc(item.kind+"/"+item.name)+'</p><p>发现时间　'+esc(item.time)+'</p>':'<p>信号来源　'+esc(item.source)+'</p>')+
+  '</section>':'<div class="panel empty">记录不存在或当前范围不可见。</div>');
+}
+function field(name,label,value="",attrs=""){return '<label>'+label+'<input name="'+name+'" value="'+esc(value)+'" '+attrs+'></label>';}
+function sourceForm(x){
+ const item=x||{id:"",kind:"zabbix",enabled:true,cluster:"test-k8s"};
+ return '<form data-source-form="'+esc(item.id)+'"><div class="form-grid">'+
+ field("name","名称",item.name,'required maxlength="60"')+
+ (x?'<p>类型<br>'+types[item.kind]+'</p>':'<label>类型<select name="kind">'+Object.entries(types).map(([k,v])=>option(k,v,item.kind)).join("")+'</select></label>')+
+ '<label data-endpoint'+(item.kind==="zabbix"?"":" hidden")+'>Zabbix API 地址<input name="endpoint" type="url" value="'+esc(item.kind==="zabbix"?item.address:"")+'" placeholder="https://zabbix.example.test/api_jsonrpc.php"></label>'+
+ '<label data-region'+(item.kind==="zabbix"?" hidden":"")+'>云地域<input name="region" value="'+esc(item.kind!=="zabbix"?item.address:"")+'" placeholder="cn-hangzhou"></label>'+
+ field("assets","资产原生 ID（逗号分隔）",item.assets,'required')+
+ field("credential","凭据文件引用","",x?'placeholder="留空保留"':'required placeholder="示例引用"')+
+ field("ingress","推送凭据文件引用","",'placeholder="可选"')+
+ (x?'<p>集群实例与命名空间<br>'+esc(x.cluster+" / "+x.namespace)+'</p>':
+ '<label>集群实例<select name="cluster">'+clusters.map(c=>option(c.id,c.id,item.cluster)).join("")+'</select></label>'+field("namespace","命名空间","","required"))+
+ '</div><div class="form-action"><label><input type="checkbox" name="enabled"'+(item.enabled?" checked":"")+'> 启用数据源</label>'+
+ '<button class="btn primary">保存数据源</button><span class="status" role="status"></span></div></form>';
+}
+let message="";
+function datasourcePage(q){
+ const visible=q.get("demo")==="empty"?[]:sources;
+ return '<details class="panel pad"><summary>新增数据源</summary>'+sourceForm()+'</details>'+
+ (message?'<p class="status" role="status">'+esc(message)+'</p>':"")+
+ (visible.length?visible.map(x=>'<article class="panel pad"><header class="toolbar"><h2>'+esc(x.name)+'</h2>'+pill(x.enabled?x.status:"已停用",x.status==="可用"&&x.enabled?"info":"")+
+ '</header><div class="ds-meta"><span>'+types[x.kind]+'</span><span>'+esc(x.cluster+" / "+x.namespace)+'</span><span>ID '+esc(x.id)+'</span><span>上次同步 '+esc(x.synced||"—")+'</span></div>'+
+ (x.enabled?'<button class="btn" data-action="test" data-id="'+esc(x.id)+'">测试并同步</button>':"")+
+ '<details class="item-detail"><summary>可见资产</summary>'+table(["资产原生 ID","集群实例","命名空间"],x.assets.split(",").map(a=>[esc(a.trim()),esc(x.cluster),esc(x.namespace)]),"暂无资产")+
+ '</details><details class="item-detail"><summary>编辑配置与启停</summary>'+sourceForm(x)+'</details></article>').join(""):'<section class="panel empty"><h2>暂无数据源</h2><p>当前范围内没有已配置的诊断数据源。</p></section>');
+}
+function render(){
+ const {path,q}=current();
+ if(path==="/diagnostics/datasources"||path==="/resources"){
+  location.replace(link(path==="/resources"?routes.clusters:routes.sources,q));
+  return;
+ }
+ const findingDetail=path.startsWith(routes.findings+"/"),incidentDetail=path.startsWith(routes.events+"/");
+ const key=Object.keys(routes).find(k=>routes[k]===path)||(findingDetail?"findings":incidentDetail?"events":"overview");
+ const resource=path.startsWith("/resources"),group=resource?"资源管理":"诊断控制台";
+ const title=findingDetail?"诊断详情":incidentDetail?"故障详情":titles[key];
+ topbar.innerHTML='<a href="#/diagnostics"'+(!resource?' aria-current="page"':'')+'>诊断控制台</a><a href="#/resources"'+(resource?' aria-current="page"':'')+'>资源管理</a>';
+ sidebar.innerHTML='<h2>'+group+'</h2>'+(resource?sidebarGroup("集群资源",["clusters"],key)+sidebarGroup("平台目录",["env","business","sources"],key):
+ sidebarGroup("诊断工作区",["overview","events","findings"],key)+sidebarGroup("诊断配置",["policies"],key));
+ let body;
+ if(findingDetail||incidentDetail)body=detail(path,q,findingDetail);
+ else if(key==="overview")body=overviewPage(q);
+ else if(key==="events")body='<section class="panel pad filterline">'+clusterSelector("clusterId",q.get("clusterId"))+'</section>'+incidentSection(q);
+ else if(key==="findings")body=findingFilters(q)+findingSection(q);
+ else if(key==="sources")body=datasourcePage(q);
+ else if(key==="clusters")body='<section class="panel pad">'+table(["集群实例","集群名称","环境","业务"],clusters.map(c=>[c.id,c.name,c.env,c.business]),"暂无集群")+'</section>';
+ else if(key==="env"||key==="business"){
+  const name=key==="env"?"环境":"业务线", prop=key==="env"?"env":"business";
+  body='<section class="panel pad">'+table([name,"集群实例"],clusters.map(c=>[c[prop],c.id]),"暂无记录")+'</section>';
+ }else body='<section class="panel pad">'+table(["策略名称","状态"],[["高错误率","已启用"],["工作负载异常","已启用"]],"暂无策略")+'</section>';
+ main.innerHTML='<header class="title"><p class="crumb">'+group+' › '+title+'</p><h1>'+title+'</h1></header><div class="stack">'+body+'</div>';
+}
+document.addEventListener("change",e=>{
+ const input=e.target,filter=input.dataset.filter;
+ if(filter){const {path,q}=current();location.hash=variant(path,q,{[filter]:input.value}).slice(1);return;}
+ if(input.name==="kind"&&input.form?.matches("[data-source-form]")){
+  const cloud=input.value!=="zabbix";
+  input.form.querySelector("[data-endpoint]").hidden=cloud;
+  input.form.querySelector("[data-region]").hidden=!cloud;
+ }
+});
+document.addEventListener("click",e=>{
+ const button=e.target.closest("[data-action]");if(!button)return;
+ if(button.dataset.action==="menu"){
+  button.setAttribute("aria-expanded",String(sidebar.classList.toggle("expanded")));return;
+ }
+ const row=sources.find(x=>x.id===button.dataset.id);
+ if(row&&button.dataset.action==="test"){
+  row.status="可用";row.synced=new Date().toLocaleTimeString("zh-CN");message="测试成功，示例资产已同步。";render();
+ }
+});
+document.addEventListener("submit",e=>{
+ const form=e.target;if(!form.matches("[data-source-form]"))return;
+ e.preventDefault();
+ const d=new FormData(form), existing=sources.find(x=>x.id===form.dataset.sourceForm);
+ const kind=existing?.kind||d.get("kind"), address=d.get(kind==="zabbix"?"endpoint":"region").trim();
+ if(!address){form.querySelector("[role=status]").textContent=kind==="zabbix"?"请填写 Zabbix API 地址。":"请填写云地域。";return;}
+ const assetIds=d.get("assets").split(",").map(s=>s.trim()).filter(Boolean);
+ if(!assetIds.length){form.querySelector("[role=status]").textContent="请填写至少一个资产 ID。";return;}
+ const values={name:d.get("name").trim(),kind,assets:assetIds.join(","),address,enabled:d.has("enabled")};
+ if(existing)Object.assign(existing,values);
+ else sources.push({id:"demo-"+Date.now(),...values,cluster:d.get("cluster"),namespace:d.get("namespace").trim(),status:"待验证"});
+ message="已保存示例数据源。";
+ const {path,q}=current();
+ if(q.get("demo")==="empty")location.hash=variant(path,q,{demo:""}).slice(1);
+ else render();
+});
+window.addEventListener("hashchange",()=>{
+ sidebar.classList.remove("expanded");document.querySelector(".mobile-menu").setAttribute("aria-expanded","false");render();
+});
+render();
+</script>
+</body>
+</html>

@@ -63,7 +63,7 @@ export function handleResourceCatalogClick(event: MouseEvent): void {
 export async function renderResourceManagement(hash: string, access: ResourceAccess, editable = true): Promise<string> {
   const path = hash.split("?", 1)[0] ?? "";
   const selected = resolveResourceTab(path, access);
-  if (!selected) return '<p role="alert">无权访问此资源管理页面。</p>';
+  if (!selected || selected === "datasources") return '<p role="alert">无权访问此资源管理页面。</p>';
   const id = path.split("/")[3];
   let content: string;
   if (selected === "clusters") {

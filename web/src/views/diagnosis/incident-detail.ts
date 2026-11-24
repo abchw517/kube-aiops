@@ -1,3 +1,4 @@
+import { overviewLevel } from "../../domain/unified-diagnostics.ts";
 import { apiClient } from "../../api/client.ts";
 import type { Incident, IncidentDetail, IncidentEvidence, IncidentSeverity, IncidentStatus, IncidentTimelineEntry } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
@@ -36,8 +37,12 @@ export async function loadIncidentDetail(id: string, hash: string): Promise<{ ht
     actions.evidence ? apiClient.listIncidentEvidence({ id, continue: params.get("evidenceFrom") || undefined }).catch((error: unknown) => error) : undefined,
     actions.evidence && evidenceID ? apiClient.getIncidentEvidence({ id, evidenceId: evidenceID }).catch(() => undefined) : undefined,
   ]);
-  const returns = incidentQuery(incidentFilters(`#?${params.get("return") ?? ""}`));
   const fromOverview = params.get("from") === "overview";
+  const returnParams = new URLSearchParams(params.get("return") ?? "");
+  const severity = overviewLevel(returnParams.get("severity"));
+  const returns = fromOverview
+    ? new URLSearchParams([...returnParams].filter(([key]) => key === "clusterId").concat(severity ? [["severity", severity]] : [])).toString()
+    : incidentQuery(incidentFilters(`#?${returnParams}`));
   const back = `${fromOverview ? "#/diagnostics" : incidentEvents}?${returns}`;
   const finding = incident.findingId ?
     `<a href="#/findings/${encodeURIComponent(incident.findingId)}?cluster=${encodeURIComponent(incident.scope.clusterId)}">查看来源 Finding</a>` : "";
@@ -51,7 +56,7 @@ export async function loadIncidentDetail(id: string, hash: string): Promise<{ ht
     detail,
     html: `
     <section class="panel incident-header" data-testid="incident-detail">
-      <a href="${escapeHtml(back)}">← 返回${fromOverview ? "总览" : "故障事件"}</a>
+      <a href="${escapeHtml(back)}">← 返回${fromOverview ? "诊断总览" : "故障事件"}</a>
       <h2>${escapeHtml(incident.title)}</h2>
       <p>${escapeHtml(incident.displayKey)} · ${escapeHtml(incident.severity)} · ${escapeHtml(incidentStatusLabels[incident.status])} · 版本 ${incident.version}</p>
       <dl class="incident-info">

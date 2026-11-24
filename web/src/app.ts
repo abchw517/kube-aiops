@@ -1,8 +1,9 @@
+import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
+import { bindUnifiedOverview, loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
 import { bindDefaultRoleWorkspace, filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { handleResourceCatalogClick, renderResourceManagement } from "./views/resources/resource-management.ts";
-import type { ResourceAccess } from "./domain/resource-routes.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, handleResourceWorkspaceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
@@ -47,7 +48,7 @@ import { bindIncidentWorkspace, incidentError, loadIncidentWorkspace } from "./v
 import { incidentEvents, incidentPrefix } from "./views/diagnosis/incident-filters.ts";
 import { bindRcaPage, loadRcaPage } from "./views/diagnosis/incident-rca.ts";
 import { bindTopologyPage, loadTopologyPage } from "./views/diagnosis/incident-topology.ts";
-import { bindDatasourcesPage, bindPoliciesPage, datasourcesPath, loadDatasourcesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
+import { bindDatasourcesPage, bindPoliciesPage, loadDatasourcesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
 import { bindIncidentDetail, loadIncidentDetail } from "./views/diagnosis/incident-detail.ts";
 import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
 import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
@@ -72,7 +73,8 @@ export class PortalApp {
   private reviewAccess = false;
   private incidentsAvailable = false;
   private incidentCreate = false;
-  private diagnosticSettings = { datasources: false, datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
+  private overviewRequest?: AbortController;
+  private diagnosticSettings = { datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
   private mustChangePassword = false;
   private canChangePassword = false;
   private superAdministrator = false;
@@ -143,9 +145,10 @@ export class PortalApp {
     const generation = ++this.renderGeneration;
     this.findingAI = false;
     this.reviewAccess = false;
+    this.overviewRequest?.abort();
     this.incidentsAvailable = false;
     this.incidentCreate = false;
-    this.diagnosticSettings = { datasources: false, datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
+    this.diagnosticSettings = { datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
     if (!demoMode) {
       const isAuthenticationRoute = window.location.hash === "#/admin/ldap";
       try {
@@ -172,12 +175,13 @@ export class PortalApp {
           clusters: status.manageClusters === true || this.identityAdmin,
           environments: status.manageEnvironments === true,
           "business-lines": status.manageBusinessLines === true,
+          datasources: status.diagnosticDatasources === true,
         };
         this.findingAI = status.findingAI === true;
         this.incidentsAvailable = status.incidents === true;
         this.incidentCreate = status.incidentCreate === true;
         this.diagnosticSettings = {
-          datasources: status.diagnosticDatasources === true, datasourceWrite: status.diagnosticDatasourceWrite === true,
+          datasourceWrite: status.diagnosticDatasourceWrite === true,
           datasourceTest: status.diagnosticDatasourceTest === true, policies: status.diagnosticPolicies === true,
           policyWrite: status.diagnosticPolicyWrite === true,
         };
@@ -206,7 +210,24 @@ export class PortalApp {
         await this.renderOperationAudit(audit, generation);
         return;
       }
-      if (!this.mustChangePassword && /^#\/resources(?:\/|$)/.test(hash)) {
+      const path = hash.split("?", 1)[0] ?? "";
+      if (!this.mustChangePassword && path === legacyDatasourcesPath) {
+        window.location.replace(datasourcesPath + hash.slice(legacyDatasourcesPath.length));
+        return;
+      }
+      if (!this.mustChangePassword && /^#\/resources(?:[/?]|$)/.test(hash)) {
+        if (path === datasourcesPath && !this.resourceAccess.datasources) {
+          this.renderShell(authorizationDeniedState());
+          return;
+        }
+        if (resolveResourceTab(hash, this.resourceAccess) === "datasources") {
+          if (path !== datasourcesPath) {
+            window.location.replace(datasourcesPath + hash.slice(path.length));
+            return;
+          }
+          await this.renderDiagnosticSettings(hash, generation, true);
+          return;
+        }
         this.renderShell(loadingState("正在加载资源管理。"));
         try {
           const body = await renderResourceManagement(hash, this.resourceAccess, this.identityAdmin);
@@ -281,17 +302,33 @@ export class PortalApp {
     }
     const currentHash = window.location.hash;
     const diagnosticPath = currentHash.split("?", 1)[0] ?? "";
-    if (diagnosticPath === datasourcesPath || diagnosticPath === policiesPath) {
-      await this.renderDiagnosticSettings(currentHash, generation, diagnosticPath === datasourcesPath);
+    if (diagnosticPath === policiesPath) {
+      await this.renderDiagnosticSettings(currentHash, generation, false);
       return;
     }
     if (diagnosticPath.startsWith(incidentPrefix)) {
       await this.renderIncidentPage(currentHash, generation, diagnosticPath.slice(incidentPrefix.length));
       return;
     }
+    if (diagnosticPath === diagnosticListPaths.overview) {
+      this.renderShell(loadingState("正在加载诊断总览。"));
+      const request = new AbortController();
+      this.overviewRequest = request;
+      try {
+        const body = await loadUnifiedOverview(currentHash, this.incidentsAvailable,
+          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]));
+        if (generation === this.renderGeneration) {
+          this.renderShell(body);
+          bindUnifiedOverview(this.root);
+        }
+      } catch (error) {
+        if (generation === this.renderGeneration) this.renderRequestError(error);
+      }
+      return;
+    }
     const createFromFinding = diagnosticPath === incidentEvents && this.incidentCreate &&
       new URLSearchParams(currentHash.split("?")[1]).get("create") === "1";
-    if ((this.incidentsAvailable || createFromFinding) && (diagnosticPath === "#/diagnostics" || diagnosticPath === incidentEvents)) {
+    if ((this.incidentsAvailable || createFromFinding) && diagnosticPath === incidentEvents) {
       await this.renderIncidentPage(currentHash, generation);
       return;
     }
@@ -474,7 +511,7 @@ export class PortalApp {
       const hash = window.location.hash;
       const params = new URLSearchParams(hash.split("?")[1]);
       const view = diagnosticListView(hash);
-      const returnView = view === "events" && params.get("from") === "overview" ? "overview" : view;
+      const returnView = params.get("from") === "overview" ? "overview" : view;
       this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
@@ -547,7 +584,6 @@ export class PortalApp {
       canChangePassword: this.canChangePassword,
       showLogout: this.showLogout,
       signedOut,
-      diagnosticDatasources: this.diagnosticSettings.datasources,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });

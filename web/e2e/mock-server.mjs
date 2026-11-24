@@ -604,7 +604,7 @@ async function incidents(request, response, url) {
     incidentFixture = {
       id: "fixture-p1", displayKey: "INC-2026-00001", title: body.title, description: body.description,
       scope: { environmentId: "development", ...body.scope }, status: "pending", severity: body.severity, version: 1,
-      source: "manual", resourceId: "fixture-resource", resource: { kind: "Pod", name: "api-0" },
+      source: "manual", findingId: "finding-critical", resourceId: "fixture-resource", resource: { kind: "Pod", name: "api-0" },
       firstSeen: "2026-11-20T00:00:00Z", lastSeen: "2026-11-20T00:00:00Z",
     };
     return json(response, 201, incidentFixture);

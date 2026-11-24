@@ -1,5 +1,5 @@
 import { diagnosticListPaths, diagnosticListView } from "./diagnostic-routes.ts";
-import { resourcePages, resolveResourceTab, type ResourceAccess } from "./resource-routes.ts";
+import { datasourcesPath, resourcePages, resolveResourceTab, type ResourceAccess } from "./resource-routes.ts";
 
 export interface PortalNavigationState {
   hash: string;
@@ -12,7 +12,6 @@ export interface PortalNavigationState {
   mustChangePassword: boolean;
   canChangePassword: boolean;
   signedOut: boolean;
-  diagnosticDatasources?: boolean;
   diagnosticPolicies?: boolean;
 }
 
@@ -33,19 +32,17 @@ function diagnosticWorkspace(path: string, state: PortalNavigationState): Worksp
   const view = diagnosticListView(path);
   const eventDetail = /^#\/diagnostics\/(?:events|incidents)\/[^/]+/.test(path);
   const findingDetail = path.startsWith("#/findings/");
-  const datasource = path === "#/diagnostics/datasources";
   const policy = path === "#/diagnostics/policies";
-  const title = datasource ? "数据源管理" : policy ? "诊断策略" :
+  const title = policy ? "诊断策略" :
     eventDetail ? path.endsWith("/topology") ? "关联拓扑" : path.endsWith("/rca") ? "AI 根因分析" : "故障详情" :
     findingDetail ? "诊断详情" : view === "overview" ? "诊断总览" : view === "events" ? "故障事件" : "原有诊断结果";
   return { module: "diagnostics", title, groups: [
     { label: "诊断工作区", links: [
       { href: diagnosticListPaths.overview, label: "诊断总览", active: view === "overview" },
       { href: diagnosticListPaths.events, label: "故障事件", active: view === "events" },
-      { href: diagnosticListPaths.findings, label: "原有诊断结果", active: view === "findings" && !datasource && !policy },
+      { href: diagnosticListPaths.findings, label: "原有诊断结果", active: view === "findings" && !policy },
     ] },
     { label: "诊断配置", links: [
-      ...(state.diagnosticDatasources ? [{ href: "#/diagnostics/datasources", label: "数据源管理", active: datasource }] : []),
       ...(state.diagnosticPolicies ? [{ href: "#/diagnostics/policies", label: "诊断策略", active: policy }] : []),
     ] },
   ] };
@@ -58,7 +55,7 @@ function resourceWorkspace(path: string, access: ResourceAccess): Workspace {
     href: `#/resources/${key}`, label, active: key === selected,
   }));
   return { module: "resources", title: path.startsWith("#/resources/clusters/") ? "命名空间归属" :
-    links.find((link) => link.active)?.label ?? "资源管理", groups: [
+    links.find((link) => link.active)?.label ?? (path === datasourcesPath ? "数据源管理" : "资源管理"), groups: [
     { label: "集群资源", links: links.filter((link) => link.href === "#/resources/clusters") },
     { label: "平台目录", links: links.filter((link) => link.href !== "#/resources/clusters") },
   ] };
