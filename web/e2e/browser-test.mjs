@@ -1427,18 +1427,31 @@ async function assertIncidentLifecycle(cdp) {
     button.click();
   })()` });
   await assertText(cdp, (text) => text.includes("Unhealthy"), "Evidence detail did not load on demand");
+  await cdp.send("Runtime.evaluate", { expression: `
+    window.originalOverviewClock = Date.now;
+    Date.now = () => Date.parse("2026-11-28T12:00:00Z");
+  ` });
   await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics", (text) =>
-    ["诊断级别分布", "近 7 天诊断趋势", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
-  "Unified overview did not show both sources");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-trend-point]").click()' });
-  await assertText(cdp, text => text.includes("（UTC）共") && text.includes("K8sGPT"), "Trend point could not show its counts");
+    ["严重度分布", "近 7 天无新增", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
+  "Unified overview did not show historical records and a compact empty trend");
+  const firstScreen = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const record = document.querySelector(".unified-recent tbody tr").getBoundingClientRect();
+    return document.querySelector(".overview-plot") === null && record.bottom < innerHeight &&
+      record.top < document.querySelector(".overview-analytics").getBoundingClientRect().top;
+  })()` });
+  if (!firstScreen.result?.value) throw new Error("The empty trend displaced the recorded diagnostics");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-trend-empty a").click()' });
+  await assertText(cdp, text => text.includes("窗口内 1 条") && text.includes("订单服务故障"), "Wider trend did not expose the historical record");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-overview-point*="2026-11-20"]').click()` });
+  await assertText(cdp, text => text.includes("2026-11-20（UTC）共 1 条，故障 1 条"), "Trend point could not show its counts");
   await assertIncidentDashboard(cdp);
+  await cdp.send("Runtime.evaluate", { expression: "Date.now = window.originalOverviewClock; delete window.originalOverviewClock" });
 }
 
 // 验收统一筛选、跨来源下钻和窄屏键盘操作。
 async function assertIncidentDashboard(cdp) {
   const overview = "http://127.0.0.1:4173/#/diagnostics";
-  await assertPage(cdp, `${overview}?clusterId=local&severity=critical`, text => text.includes("订单服务故障") &&
+  await assertPage(cdp, `${overview}?clusterId=local&severity=critical&trendDays=14`, text => text.includes("订单服务故障") &&
     !text.includes("测试集群容量建议"), "Unified instance and severity scope did not apply");
   const summary = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => ({
     total: document.querySelector('[aria-label="诊断指标"] .metric-total strong').textContent,
@@ -1448,34 +1461,61 @@ async function assertIncidentDashboard(cdp) {
       !summary.result.value.links[0].includes("/incidents/")) throw new Error("Linked Finding was counted twice");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
   await assertText(cdp, text => text.includes("返回诊断总览"), "Incident detail did not preserve its overview origin");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical"]').click()` });
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical&trendDays=14"]').click()` });
   await assertText(cdp, text => text.includes("最近诊断") && text.includes("订单服务故障"), "Overview did not restore scope");
-  await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info`, text => text.includes("测试集群容量建议"),
+  await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info&trendDays=30`, text => text.includes("测试集群容量建议"),
     "Unified overview did not display the remote Finding");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
   await assertText(cdp, text => text.includes("返回诊断总览") && text.includes("测试环境容器资源建议"),
     "Finding detail did not preserve its cluster instance and overview origin");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
   await assertText(cdp, text => text.includes("测试集群容量建议") && text.includes("最近诊断"), "Finding back link lost the filters");
+  const findingReturn = await cdp.send("Runtime.evaluate", { expression: "location.hash", returnByValue: true });
+  if (!findingReturn.result?.value?.includes("trendDays=30")) throw new Error("Finding back link lost its trend window");
   await assertPage(cdp, `${overview}?clusterId=local&severity=info`,
     text => text.includes("当前范围暂无诊断记录"), "Empty unified overview did not report zero results");
-  await assertPage(cdp, overview, text => text.includes("全部可见实例") && text.includes("订单服务故障"),
-    "Unified overview failed to reload");
-  for (const width of [1440, 390, 320]) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    window.originalOverviewFetch = window.fetch;
+    window.fetch = (input, options) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+      if (url.pathname === "/api/v1/diagnostics/incidents" ||
+        (window.failBothOverviewSources && url.pathname === "/api/v1/findings")) {
+        return Promise.resolve(new Response("{}", { status: 503 }));
+      }
+      return window.originalOverviewFetch(input, options);
+    };
+  })()` });
+  await assertPage(cdp, `${overview}?clusterId=test-k8s`, text => text.includes("仅统计已获取记录") &&
+    text.includes("数据覆盖不完整") && text.includes("测试集群容量建议"),
+  "Partial coverage was presented as an empty trend");
+  await cdp.send("Runtime.evaluate", { expression: "window.failBothOverviewSources = true" });
+  await assertPage(cdp, `${overview}?clusterId=test-k8s&trendDays=14`,
+    text => text.includes("最近诊断与图表暂不可用"), "Both unavailable sources were presented as zero");
+  const unavailableTotal = await cdp.send("Runtime.evaluate", { expression: `
+    document.querySelector(".metric-total strong").textContent`, returnByValue: true });
+  if (unavailableTotal.result?.value !== "—") throw new Error("Failure had a definitive count");
+  await cdp.send("Runtime.evaluate", { expression: "window.fetch = window.originalOverviewFetch; delete window.failBothOverviewSources; delete window.originalOverviewFetch" });
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-notice button").click()' });
+  await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("图表暂不可用"), "Retry did not restore the requested range");
+  await assertPage(cdp, `${overview}?trendDays=30`, text => text.includes("全部可见实例") && text.includes("订单服务故障") &&
+    text.includes("窗口内 1 条"), "Unified overview failed to reload");
+  for (const width of [1920, 1440, 390, 320]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 958, deviceScaleFactor: 1, mobile: false });
     const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-      const table = document.querySelector(".incident-table");
+      const table = document.querySelector(".unified-recent");
+      const cards = document.querySelector(".overview-record-cards");
       return {
         scopeVisible: document.querySelector("[data-unified-filters]").getBoundingClientRect().height > 0,
         pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        viewportWidth: document.documentElement.clientWidth,
-        contentWidth: document.documentElement.scrollWidth,
-        tableScrolls: table.scrollWidth > table.clientWidth,
-        titleWidth: table.querySelector("td").getBoundingClientRect().width,
+        tableVisible: getComputedStyle(table).display !== "none",
+        cardsVisible: getComputedStyle(cards).display !== "none",
+        firstRowBottom: table.querySelector("tr").getBoundingClientRect().bottom,
       };
     })()` });
     const layout = state.result?.value;
-    if (!layout?.scopeVisible || layout.pageOverflow || layout.titleWidth < 160 || (width < 680 && !layout.tableScrolls)) {
+    const desktop = width > 850;
+    if (!layout?.scopeVisible || layout.pageOverflow || layout.tableVisible !== desktop ||
+        layout.cardsVisible === desktop || (desktop && layout.firstRowBottom >= 958)) {
       throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
     }
   }
@@ -1572,7 +1612,7 @@ async function assertDiagnosticCenter(cdp) {
   })()` });
   await assertText(cdp, (text) => text.includes("查看故障事件") && text.includes("测试集群容量建议") &&
     !text.includes("CrashLoopBackOff detected"), "Overview did not preserve the selected scope");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-overview .diagnostic-toolbar a").click()' });
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-actions a").click()' });
   await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
     "Overview-to-events link lost the environment filter");
 

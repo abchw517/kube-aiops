@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Finding, Incident } from "../src/api/generated.ts";
-import { aggregateDiagnostics, overviewLevel } from "../src/domain/unified-diagnostics.ts";
+import { aggregateDiagnostics, overviewDays, overviewLevel, overviewSearch } from "../src/domain/unified-diagnostics.ts";
 
 const now = Date.parse("2026-11-24T13:00:00Z");
 const scope = { clusterId: "test", environmentId: "testing", namespace: "default" };
@@ -39,4 +39,20 @@ test("visible merge targets keep the representative and UTC trend counts only da
   assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 0 });
   assert.equal(result.recent.some(({ id }) => id === "child" || id === "linked"), false);
   assert.equal(aggregateDiagnostics([events[0]], [], undefined, now).total, 1);
+});
+
+
+test("widening the trend window does not alter diagnostic counts or the recent queue", () => {
+  const rows = ["a", "b", "c"].map((id) => finding(id, { createdAt: "2026-11-16T10:01:35Z" }));
+  const week = aggregateDiagnostics([], rows, undefined, now);
+  const fortnight = aggregateDiagnostics([], rows, undefined, now, 14);
+  const month = aggregateDiagnostics([], rows, undefined, now, 30);
+  assert.deepEqual(week.counts, fortnight.counts);
+  assert.deepEqual(week.recent, month.recent);
+  assert.equal(week.daily.some((day) => day.finding > 0), false);
+  assert.equal(fortnight.daily.find((day) => day.date === "2026-11-16")?.finding, 3);
+  assert.equal(month.daily.length, 30);
+  assert.equal(overviewDays("21"), 7);
+  assert.equal(overviewSearch(new URLSearchParams("cluster=dev&severity=P2&trendDays=14&continue=ignored")).toString(),
+    "clusterId=dev&severity=warning&trendDays=14");
 });

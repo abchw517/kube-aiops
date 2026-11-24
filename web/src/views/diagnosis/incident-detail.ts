@@ -1,4 +1,4 @@
-import { overviewLevel } from "../../domain/unified-diagnostics.ts";
+import { overviewSearch } from "../../domain/unified-diagnostics.ts";
 import { apiClient } from "../../api/client.ts";
 import type { Incident, IncidentDetail, IncidentEvidence, IncidentSeverity, IncidentStatus, IncidentTimelineEntry } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
@@ -39,9 +39,8 @@ export async function loadIncidentDetail(id: string, hash: string): Promise<{ ht
   ]);
   const fromOverview = params.get("from") === "overview";
   const returnParams = new URLSearchParams(params.get("return") ?? "");
-  const severity = overviewLevel(returnParams.get("severity"));
   const returns = fromOverview
-    ? new URLSearchParams([...returnParams].filter(([key]) => key === "clusterId").concat(severity ? [["severity", severity]] : [])).toString()
+    ? overviewSearch(returnParams).toString()
     : incidentQuery(incidentFilters(`#?${returnParams}`));
   const back = `${fromOverview ? "#/diagnostics" : incidentEvents}?${returns}`;
   const finding = incident.findingId ?

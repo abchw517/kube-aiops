@@ -8,6 +8,24 @@ export function overviewLevel(value: string | null): Severity | undefined {
   return value === "critical" || value === "warning" || value === "info" ? value : undefined;
 }
 
+export const overviewWindows = [7, 14, 30] as const;
+export type OverviewDays = typeof overviewWindows[number];
+
+export function overviewDays(value: string | null): OverviewDays {
+  return overviewWindows.find((days) => String(days) === value) ?? 7;
+}
+
+export function overviewSearch(query: URLSearchParams): URLSearchParams {
+  const result = new URLSearchParams();
+  const cluster = query.get("clusterId")?.trim() || query.get("cluster")?.trim();
+  const severity = overviewLevel(query.get("severity"));
+  const days = overviewDays(query.get("trendDays"));
+  if (cluster && cluster !== "*") result.set("clusterId", cluster);
+  if (severity) result.set("severity", severity);
+  if (days !== 7) result.set("trendDays", String(days));
+  return result;
+}
+
 type DiagnosticRecord = {
   id: string;
   cluster: string;
@@ -44,7 +62,7 @@ function timestamp(value: string | undefined): number | undefined {
   return Number.isFinite(time) ? time : undefined;
 }
 
-export function aggregateDiagnostics(incidents: Incident[], findings: Finding[], severity?: Severity, now = Date.now()) {
+export function aggregateDiagnostics(incidents: Incident[], findings: Finding[], severity?: Severity, now = Date.now(), days: OverviewDays = 7) {
   const incidentByID = new Map(incidents.map((item) => [item.id, item]));
   const linked = new Set(incidents.flatMap(({ scope, findingId }) =>
     findingId ? [findingKey(scope.clusterId, findingId)] : []));
@@ -63,7 +81,7 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
 
   const end = Math.floor(now / dayMs) * dayMs;
   const daily = new Map<string, Day>();
-  for (let offset = 6; offset >= 0; offset--) {
+  for (let offset = days - 1; offset >= 0; offset--) {
     const date = new Date(end - offset * dayMs).toISOString().slice(0, 10);
     daily.set(date, { date, incident: 0, finding: 0 });
   }
