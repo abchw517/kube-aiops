@@ -316,6 +316,12 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
               <select aria-label="本次添加的范围类型" disabled></select>
             </label>
             ${scopeInputs(clusters.items, businesses)}
+            <fieldset data-host-scope hidden>
+              <legend>Zabbix 主机范围</legend>
+              <label>环境<select name="hostEnvironment">${options(Object.entries(environments).map(([id, name]) => ({ id, name })))}</select></label>
+              <label>业务线<select name="hostBusiness"><option value="">请选择</option>${options(businesses)}</select></label>
+              <button type="button" class="button secondary" data-host-add-grants>添加 Zabbix 主机授权</button>
+            </fieldset>
             <div class="system-actions"><button type="button" class="button" data-role-add-grants disabled>添加到授权清单</button>
             <button type="button" class="button secondary" data-scope-add>添加历史诊断范围</button>
             <button type="button" class="button secondary" data-scope-add="preview">添加历史诊断范围并预览</button></div>
@@ -727,7 +733,8 @@ export function handlePlatformClick(event: MouseEvent): void {
     if (scopeButton && addScopes(form) && scopeButton.dataset.scopeAdd === "preview") previewRole(form);
     if (target.closest("[data-role-back]")) showRolePreview(form, false);
     if (target.closest("[data-group-back]")) showGroupPreview(form, false);
-    if (target.closest("[data-role-add-grants]")) addInterfaceGrants(form);
+    const addGrant = target.closest<HTMLButtonElement>("[data-role-add-grants], [data-host-add-grants]");
+    if (addGrant) addInterfaceGrants(form, addGrant.hasAttribute("data-host-add-grants"));
     if (target.closest("[data-role-catalog-retry]")) void retryRoleCatalog(form);
     const retry = target.closest<HTMLElement>("[data-scope-retry]")?.closest<HTMLElement>("[data-scope]");
     if (retry) void refreshScope(retry);
@@ -903,6 +910,8 @@ function updateRoleScopeKinds(form: HTMLFormElement): void {
   const add = form.querySelector<HTMLButtonElement>("[data-role-add-grants]");
   if (!field || !select || !add) return;
   const points = selectedPermissions(form);
+  const host = form.querySelector<HTMLElement>("[data-host-scope]");
+  if (host) host.hidden = !points.some(point => hostDatasourcePoint(point.code));
   const kinds = [...new Set(points.map(point => point.feature.scope))];
   const previous = select.value;
   field.hidden = select.disabled = kinds.length < 2;
@@ -910,7 +919,11 @@ function updateRoleScopeKinds(form: HTMLFormElement): void {
   add.disabled = !points.length;
 }
 
-function addInterfaceGrants(form: HTMLFormElement): void {
+function hostDatasourcePoint(code: string): boolean {
+  return ["diagnosis.connector.read", "diagnosis.connector.write", "diagnosis.connector.test"].includes(code);
+}
+
+function addInterfaceGrants(form: HTMLFormElement, hostScope = false): void {
   const status = form.querySelector("[data-role-grant-status]");
   const list = form.querySelector("[data-role-grants]");
   if (!status || !list) return;
@@ -918,20 +931,28 @@ function addInterfaceGrants(form: HTMLFormElement): void {
   if (!selected.length) return;
   const scopeKinds = new Set(selected.map(point => point.feature.scope));
   const selector = form.querySelector<HTMLSelectElement>("[data-role-scope-kind] select");
-  const kind = scopeKinds.size === 1 ? selected[0]?.feature.scope : selector?.value;
-  if (!kind || !scopeKinds.has(kind)) {
+  const kind = hostScope ? "主机业务" : scopeKinds.size === 1 ? selected[0]?.feature.scope : selector?.value;
+  if (!kind || (!hostScope && !scopeKinds.has(kind))) {
     status.textContent = "请选择本次添加的范围类型。";
     selector?.focus();
     return;
   }
-  const points = selected.filter(point => point.feature.scope === kind);
+  const points = selected.filter(point => hostScope ? hostDatasourcePoint(point.code) : point.feature.scope === kind);
   const data = new FormData(form);
   const environment = String(data.get("environment") ?? "");
   const cluster = String(data.get("cluster") ?? "");
   const business = String(data.get("business") ?? "");
   const namespaces = data.getAll("namespace").map(String);
   let scopes: Scope[];
-  if (kind === "平台全局" || kind === "仅本人") {
+  if (hostScope) {
+    const environment = String(data.get("hostEnvironment") ?? "");
+    const business = String(data.get("hostBusiness") ?? "");
+    if (!environment || !business || !points.length) {
+      status.textContent = "请选择数据源权限、环境和业务线。";
+      return;
+    }
+    scopes = [{ environment, business }];
+  } else if (kind === "平台全局" || kind === "仅本人") {
     scopes = [{ environment: "" }];
   } else if (kind === "集群实例") {
     if (!cluster) {

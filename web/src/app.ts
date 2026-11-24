@@ -1,4 +1,5 @@
 import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
+import { bindZabbixSources } from "./views/diagnosis/zabbix-sources.ts";
 import { bindUnifiedOverview, loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
@@ -316,7 +317,7 @@ export class PortalApp {
       this.overviewRequest = request;
       try {
         const body = await loadUnifiedOverview(currentHash, this.incidentsAvailable,
-          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]));
+          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources);
         if (generation === this.renderGeneration) {
           this.renderShell(body);
           bindUnifiedOverview(this.root);
@@ -401,6 +402,7 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(page.html);
         bindDatasourcesPage(this.root, page.items, refresh, this.incidentCreate);
+        bindZabbixSources(this.root, page.zabbix, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);
         if (generation !== this.renderGeneration) return;

@@ -1584,7 +1584,7 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-topology-node="asset:host-fixture"]').click()` });
   await assertText(cdp, (text) => text.includes("部署记录核对") && text.includes("已确认"), "Topology node details did not show link provenance");
 
-  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("新增数据源") && text.includes("暂无数据源"), "Datasource page did not load");
+  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("接入 Zabbix") && text.includes("暂无资产数据源"), "Datasource page did not load");
   const sourceRoute = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
     location.hash === "#/resources/datasources?continue=fixture" &&
     document.querySelector(".portal-sidebar [aria-current=page]").textContent === "数据源管理"
@@ -1593,6 +1593,8 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-datasource-form]");
     form.closest("details").open = true;
+    form.elements.kind.value = "zabbix";
+    form.elements.kind.dispatchEvent(new Event("change", { bubbles: true }));
     form.elements.name.value = "监控数据源 fixture";
     form.elements.endpoint.value = "https://zabbix.example/api_jsonrpc.php";
     form.elements.assetIds.value = "10010";
@@ -1606,6 +1608,29 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, (text) => text.includes("已读取配置资产"), "Datasource health did not update");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });
   await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
+
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-zabbix-action="add"]').click()` });
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    form.elements.endpoint.value = "https://zabbix.example";
+    form.elements.secret.value = "fixture-zabbix-token";
+    form.querySelector('[data-zabbix-action="test"]').click();
+  })()` });
+  await assertText(cdp, text => text.includes("连接成功") && text.includes("Windows 应用主机"), "Zabbix connection test did not show groups");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    form.elements.environmentId.value = "production";
+    form.elements.environmentId.dispatchEvent(new Event("change", { bubbles: true }));
+    form.elements.businessId.value = "ops";
+    form.elements.businessId.dispatchEvent(new Event("change", { bubbles: true }));
+    form.querySelector('[name="groupId"]').click();
+  })()` });
+  await assertText(cdp, text => text.includes("1 台主机") && text.includes("Windows 内存使用率高"), "Zabbix problem preview was not shown");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-zabbix-save]").click()` });
+  await assertText(cdp, text => text.includes("Zabbix · 生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
+  await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
+    "Zabbix problems did not load into the unified overview");
 
   await assertPage(cdp, `${origin}/#/diagnostics/policies`, (text) => text.includes("新增诊断策略") && text.includes("暂无诊断策略"), "Policy page did not load");
   await cdp.send("Runtime.evaluate", { expression: `(() => {

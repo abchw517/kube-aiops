@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Finding, Incident } from "../src/api/generated.ts";
+import type { Finding, Incident, ZabbixProblem } from "../src/api/generated.ts";
 import { aggregateDiagnostics, overviewDays, overviewLevel, overviewSearch } from "../src/domain/unified-diagnostics.ts";
 
 const now = Date.parse("2026-11-24T13:00:00Z");
@@ -35,8 +35,8 @@ test("visible merge targets keep the representative and UTC trend counts only da
   assert.equal(result.total, 6);
   assert.equal(result.recent.length, 5);
   assert.equal(result.undated, 1);
-  assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1 });
-  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 0 });
+  assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1, zabbix: 0 });
+  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 0, zabbix: 0 });
   assert.equal(result.recent.some(({ id }) => id === "child" || id === "linked"), false);
   assert.equal(aggregateDiagnostics([events[0]], [], undefined, now).total, 1);
 });
@@ -55,4 +55,24 @@ test("widening the trend window does not alter diagnostic counts or the recent q
   assert.equal(overviewDays("21"), 7);
   assert.equal(overviewSearch(new URLSearchParams("cluster=dev&severity=P2&trendDays=14&continue=ignored")).toString(),
     "clusterId=dev&severity=warning&trendDays=14");
+});
+
+test("Zabbix rows share totals and daily buckets with the other sources", () => {
+  const problem: ZabbixProblem = {
+    id: "zbx-event-3", eventId: "3", title: "Windows 内存告警", severity: "critical",
+    rawSeverity: 4, scope: { environmentId: "production", businessId: "ops" },
+    hosts: [{ hostid: "7", name: "Win-01" }], acknowledged: false, recovered: false,
+    startedAt: "2026-11-24T10:23:00Z", sourceId: "source-01",
+  };
+  const result = aggregateDiagnostics([incident("one")], [finding("two")], undefined, now, 14, [problem]);
+  assert.equal(result.total, 3);
+  assert.equal(result.counts.critical, 2);
+  assert.equal(result.daily.length, 14);
+  assert.equal(result.daily.at(-1)?.zabbix, 1);
+  assert.equal(result.recent[0]?.problem?.hosts[0]?.name, "Win-01");
+});
+
+test("legacy trend windows and Zabbix filters survive metric clicks and detail round trips", () => {
+  assert.equal(overviewSearch(new URLSearchParams("source=zabbix&environmentId=production&businessId=ops&recent=true&days=30")).toString(),
+    "environmentId=production&businessId=ops&source=zabbix&recent=true&trendDays=30");
 });

@@ -88,3 +88,6 @@
   .overview-metric strong { font-size: 24px; }
   .overview-analytics { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
+
+.overview-trend-bars .zabbix-legend, .overview-trend-legend .zabbix-legend::before { background: #8953bb; }
+.overview-table-wrap summary, .overview-record-cards summary { color: var(--blue); cursor: pointer; overflow-wrap: anywhere; }

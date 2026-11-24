@@ -1629,6 +1629,224 @@ paths:
           required: true
           schema:
             type: string
+  /api/v1/diagnostics/zabbix/scopes:
+    get:
+      tags:
+      - Incidents
+      operationId: listZabbixScopes
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixScopes'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/diagnostics/zabbix/sources:
+    get:
+      tags:
+      - Incidents
+      operationId: listZabbixSources
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixSources'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags:
+      - Incidents
+      operationId: createZabbixSource
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixSource'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZabbixSelection'
+  /api/v1/diagnostics/zabbix/sources/{sourceId}:
+    patch:
+      tags:
+      - Incidents
+      operationId: updateZabbixSource
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixSource'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: sourceId
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: If-Match
+        in: header
+        schema:
+          type: string
+        required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZabbixChange'
+  /api/v1/diagnostics/zabbix/sources/{sourceId}/sync:
+    post:
+      tags:
+      - Incidents
+      operationId: syncZabbixSource
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixQueued'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: sourceId
+        in: path
+        schema:
+          type: string
+        required: true
+  /api/v1/diagnostics/zabbix/test:
+    post:
+      tags:
+      - Incidents
+      operationId: testZabbixConnection
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixTestResult'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZabbixTestInput'
+  /api/v1/diagnostics/zabbix/preview:
+    post:
+      tags:
+      - Incidents
+      operationId: previewZabbixProblems
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixPreview'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZabbixSelection'
+  /api/v1/diagnostics/zabbix/problems:
+    get:
+      tags:
+      - Incidents
+      operationId: listZabbixProblems
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZabbixProblems'
+          description: Successful request.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: environmentId
+        in: query
+        schema:
+          type: string
+      - name: businessId
+        in: query
+        schema:
+          type: string
+      - name: recent
+        in: query
+        schema:
+          type: boolean
+      - name: metadataOnly
+        in: query
+        schema:
+          type: boolean
+
 components:
   securitySchemes:
     DiagnosticIngress:
@@ -1777,6 +1995,321 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    ZabbixScope:
+      type: object
+      required:
+      - environmentId
+      - businessId
+      properties:
+        environmentId:
+          type: string
+        businessId:
+          type: string
+    ZabbixOption:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ZabbixScopeChoice:
+      type: object
+      required:
+      - id
+      - name
+      - businesses
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        businesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixOption'
+    ZabbixScopes:
+      type: object
+      required:
+      - environments
+      properties:
+        environments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixScopeChoice'
+    ZabbixGroup:
+      type: object
+      required:
+      - groupid
+      - name
+      properties:
+        groupid:
+          type: string
+        name:
+          type: string
+    ZabbixHost:
+      type: object
+      required:
+      - hostid
+      - name
+      properties:
+        clusterId:
+          type: string
+        hostid:
+          type: string
+        name:
+          type: string
+    ZabbixTag:
+      type: object
+      required:
+      - tag
+      - value
+      properties:
+        tag:
+          type: string
+        value:
+          type: string
+    ZabbixCredential:
+      type: object
+      required:
+      - method
+      - secret
+      properties:
+        method:
+          type: string
+          enum:
+          - token
+          - password
+        username:
+          type: string
+        secret:
+          type: string
+          writeOnly: true
+    ZabbixSource:
+      type: object
+      required:
+      - id
+      - endpoint
+      - scope
+      - groups
+      - authMethod
+      - upstreamVersion
+      - enabled
+      - version
+      - health
+      properties:
+        environmentName:
+          type: string
+        businessName:
+          type: string
+        id:
+          type: string
+        endpoint:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ZabbixScope'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixGroup'
+        authMethod:
+          type: string
+        upstreamVersion:
+          type: string
+        enabled:
+          type: boolean
+        version:
+          type: integer
+        health:
+          type: string
+        checkedAt:
+          type: string
+          format: date-time
+        syncedAt:
+          type: string
+          format: date-time
+        hostCount:
+          type: integer
+        problemCount:
+          type: integer
+    ZabbixSources:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixSource'
+    ZabbixTestInput:
+      type: object
+      required: []
+      properties:
+        endpoint:
+          type: string
+        credential:
+          $ref: '#/components/schemas/ZabbixCredential'
+        sourceId:
+          type: string
+    ZabbixTestResult:
+      type: object
+      required:
+      - version
+      - endpoint
+      - groups
+      - draft
+      properties:
+        version:
+          type: string
+        endpoint:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixGroup'
+        draft:
+          type: string
+    ZabbixSelection:
+      type: object
+      required:
+      - scope
+      - groupIds
+      properties:
+        draft:
+          type: string
+        sourceId:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ZabbixScope'
+        groupIds:
+          type: array
+          items:
+            type: string
+    ZabbixChange:
+      type: object
+      required: []
+      properties:
+        draft:
+          type: string
+        groupIds:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+    ZabbixQueued:
+      type: object
+      required:
+      - queued
+      properties:
+        queued:
+          type: boolean
+    ZabbixProblem:
+      type: object
+      required:
+      - id
+      - eventId
+      - title
+      - severity
+      - rawSeverity
+      - scope
+      - hosts
+      - acknowledged
+      - recovered
+      - startedAt
+      - sourceId
+      properties:
+        originalURL:
+          type: string
+        id:
+          type: string
+        eventId:
+          type: string
+        title:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        rawSeverity:
+          type: integer
+        scope:
+          $ref: '#/components/schemas/ZabbixScope'
+        hosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixHost'
+        acknowledged:
+          type: boolean
+        recovered:
+          type: boolean
+        startedAt:
+          type: string
+          format: date-time
+        recoveredAt:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixTag'
+        sourceId:
+          type: string
+    ZabbixHealth:
+      type: object
+      required:
+      - id
+      - scope
+      - health
+      - hasSnapshot
+      properties:
+        environmentName:
+          type: string
+        businessName:
+          type: string
+        id:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ZabbixScope'
+        health:
+          type: string
+        syncedAt:
+          type: string
+          format: date-time
+        hasSnapshot:
+          type: boolean
+    ZabbixPreview:
+      type: object
+      required:
+      - hostCount
+      - problemCount
+      - problems
+      properties:
+        hostCount:
+          type: integer
+        problemCount:
+          type: integer
+        problems:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixProblem'
+    ZabbixProblems:
+      type: object
+      required:
+      - items
+      - sources
+      - truncated
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixProblem'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZabbixHealth'
+        truncated:
+          type: boolean
     RCAInput:
       type: object
       required: []

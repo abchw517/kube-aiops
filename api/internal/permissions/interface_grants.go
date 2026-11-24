@@ -72,6 +72,18 @@ func (a *Admin) validateInterfaceGrants(ctx context.Context, grants []interfaceG
 			return errors.New("权限点不存在或需要固定管理身份")
 		}
 		scope := grant.Scope
+		if hostDatasourceCode(grant.Code) && scope.Cluster == "" && scope.Namespace == "" && scope.Business != "" {
+			var valid bool
+			err := a.store.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM resource_catalog WHERE kind='environments' AND id=?)
+				AND EXISTS(SELECT 1 FROM resource_catalog WHERE kind='business-lines' AND id=?)`, scope.Environment, scope.Business).Scan(&valid)
+			if err != nil {
+				return err
+			}
+			if !valid {
+				return errors.New("请选择主机数据源所属的环境与业务")
+			}
+			continue
+		}
 		switch point.Scope {
 		case "平台全局", "仅本人":
 			if scope != (accessScope{}) {
@@ -208,6 +220,9 @@ func (a *Admin) platformOperation(ctx context.Context, actor identity.Principal,
 		return false, err
 	}
 	for _, grant := range scopes {
+		if hostDatasourceCode(point.Code) && grant.Cluster == "" && grant.Namespace == "" && grant.Business != "" {
+			continue
+		}
 		if grant.Environment != env || grant.Cluster != "" && grant.Cluster != scope.Cluster ||
 			grant.Namespace != "" && grant.Namespace != scope.Namespace && !(scope.Namespace == "" && (collection || point.Code == "diagnosis.discovery.clusters")) {
 			continue
@@ -252,4 +267,38 @@ func auditGrantDiff(before, after []interfaceGrant) string {
 	}
 	data, _ := json.Marshal(diff)
 	return string(data)
+}
+
+func hostDatasourceCode(code string) bool {
+	return code == "diagnosis.connector.read" || code == "diagnosis.connector.write" || code == "diagnosis.connector.test"
+}
+
+// AuthorizeHostDatasource applies only environment/business grants without Kubernetes scope.
+func (a *Admin) AuthorizeHostDatasource(ctx context.Context, p identity.Principal, code, environment, business string) (bool, error) {
+	if !hostDatasourceCode(code) || MustChangePassword(p) {
+		return false, nil
+	}
+	if IsAdministrator(p) {
+		return true, nil
+	}
+	if !UsesInterfaceRoles(p) {
+		return false, nil
+	}
+	state, err := a.platform(ctx)
+	if err != nil {
+		return false, err
+	}
+	account := state.Accounts[p.Subject]
+	if account.ID == "" || account.Disabled || account.DirectoryDisabled || account.MustChange || account.Generation != p.SessionVersion {
+		return false, nil
+	}
+	required := accessScope{Environment: environment, Business: business}
+	for id := range state.roleSources(account) {
+		for _, grant := range state.role(id).Grants {
+			if grant.Code == code && grant.Scope == required {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

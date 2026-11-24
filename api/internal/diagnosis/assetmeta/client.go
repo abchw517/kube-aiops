@@ -3,6 +3,7 @@ package assetmeta
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -210,6 +211,10 @@ func (c *Client) request(req *http.Request, target any) error {
 	if err != nil {
 		if req.Context().Err() != nil {
 			return req.Context().Err()
+		}
+		var tlsErr *tls.CertificateVerificationError
+		if errors.As(err, &tlsErr) {
+			return ErrZabbixTLS
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {

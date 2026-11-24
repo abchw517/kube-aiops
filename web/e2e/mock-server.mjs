@@ -65,6 +65,7 @@ let incidentMode = false;
 let incidentFixture;
 let rcaFixture;
 let datasourceFixture;
+let zabbixSourceFixture;
 let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
@@ -670,6 +671,45 @@ async function incidents(request, response, url) {
     return json(response, 200, { root: rootID, nodes: [mine, asset], coverage: "partial", truncated: false,
       edges: [{ source: rootID, target: asset.id, relation: "runs_on", confidence: "confirmed",
         reason: "部署记录核对", actor: "local:admin", recordedAt: incidentFixture.firstSeen }] });
+  }
+  if (path.startsWith("/zabbix/")) {
+    const groups = [{ groupid: "200", name: "Windows 应用主机" }];
+    const scope = { environmentId: "production", businessId: "ops" };
+    const problem = {
+      id: "zabbix-fixture-problem", eventId: "511", title: "Windows 内存使用率高", severity: "critical",
+      rawSeverity: 4, scope, hosts: [{hostid: "4", name: "WIN-01"}], acknowledged: true, recovered: false,
+      startedAt: new Date().toISOString(), sourceId: "zabbix-fixture",
+      originalURL: "https://zabbix.example/tr_events.php?eventid=511&triggerid=40",
+    };
+    if (path === "/zabbix/scopes" && method === "GET") {
+      return json(response, 200, { environments: [{ id: "production", name: "生产", businesses: [{ id: "ops", name: "运维" }] }] });
+    }
+    if (path === "/zabbix/test" && method === "POST") {
+      const input = await readIncidentBody(request);
+      if (input.credential?.secret !== "fixture-zabbix-token") {
+        return json(response, 422, { error: { message: "Zabbix 认证失败。" } });
+      }
+      return json(response, 200, { endpoint: "https://zabbix.example/api_jsonrpc.php", version: "6.0.36", groups, draft: "e2e-draft" });
+    }
+    if (path === "/zabbix/preview" && method === "POST") {
+      const input = await readIncidentBody(request);
+      if (input.draft !== "e2e-draft" || input.groupIds?.[0] !== "200") return json(response, 400, {});
+      return json(response, 200, { hostCount: 1, problemCount: 1, problems: [problem] });
+    }
+    if (path === "/zabbix/sources") {
+      if (method === "GET") return json(response, 200, { items: zabbixSourceFixture ? [zabbixSourceFixture] : [] });
+      const input = await readIncidentBody(request);
+      if (input.draft !== "e2e-draft" || input.scope?.businessId !== "ops") return json(response, 400, {});
+      zabbixSourceFixture = { id: "zabbix-fixture", endpoint: "https://zabbix.example/api_jsonrpc.php", scope, groups,
+        authMethod: "token", upstreamVersion: "6.0.36", enabled: true, version: 1, health: "available",
+        environmentName: "生产", businessName: "运维", hostCount: 1, problemCount: 1, syncedAt: new Date().toISOString() };
+      return json(response, 201, zabbixSourceFixture);
+    }
+    if (path === "/zabbix/problems" && method === "GET") {
+      return json(response, 200, { items: zabbixSourceFixture && url.searchParams.get("metadataOnly") !== "true" ? [problem] : [],
+        sources: zabbixSourceFixture ? [{ id: "zabbix-fixture", scope, health: "available", hasSnapshot: true,
+          environmentName: "生产", businessName: "运维" }] : [], truncated: false });
+    }
   }
   if (path === "/datasources") {
     if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
