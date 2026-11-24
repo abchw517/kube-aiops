@@ -1709,6 +1709,7 @@ async function assertRemainingDiagnosticPages(cdp) {
   })()` });
   if (!nameRequired.result?.value) throw new Error("Zabbix datasource name did not gate saving");
   await assertText(cdp, text => text.includes("生产运维 Zabbix") && text.includes("生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  await assertPage(cdp, "about:blank", text => text === "", "Could not unload the datasource page");
   await assertPage(cdp, `${origin}/#/resources/datasources`,
     text => text.includes("生产运维 Zabbix") && text.includes("同步正常"), "Zabbix source name did not survive reloading");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
