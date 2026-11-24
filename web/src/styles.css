@@ -1,10 +1,10 @@
 /* 控制台共用色板、基础控件和状态。 */
 :root {
-  --nav: #202430;
+  --nav: #17283c;
   --ink: #202b3a;
   --muted: #58677c;
   --surface: #fff;
-  --bg: #eef2f8;
+  --bg: #f0f4f8;
   --line: #dce4ee;
   --control-line: #889ab3;
   --blue: #0069d1;
@@ -23,7 +23,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: var(--bg); }
+body { margin: 0; background: var(--bg); }
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :where(h1, h2, h3) { text-wrap: balance; }

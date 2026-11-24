@@ -1,7 +1,8 @@
 import { apiClient } from "../../api/client.ts";
 import type { IncidentEvidence, RCAConclusion, RCATask } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
-import { incidentError, incidentPrefix } from "./incident-list.ts";
+import { incidentPrefix } from "./incident-filters.ts";
+import { incidentError } from "./incident-list.ts";
 
 const states: Record<RCATask["state"], string> = {
   queued: "排队中", running: "分析中", succeeded: "已完成", failed: "失败", timed_out: "超时", canceled: "已取消",

@@ -1,7 +1,8 @@
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
 import { bindDefaultRoleWorkspace, filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
-import { handleResourceCatalogClick, renderResourceManagement, type ResourceAccess } from "./views/resources/resource-management.ts";
+import { handleResourceCatalogClick, renderResourceManagement } from "./views/resources/resource-management.ts";
+import type { ResourceAccess } from "./domain/resource-routes.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
 import { filterClusterRows, handleClusterMaintenanceClick, handleResourceWorkspaceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
@@ -42,7 +43,8 @@ import {
   renderCorrelationSection,
 } from "./views/diagnosis/correlation.ts";
 import { bindFindingKnowledge, findingKnowledgePanel } from "./views/diagnosis/finding-knowledge.ts";
-import { bindIncidentWorkspace, incidentError, incidentEvents, incidentPrefix, loadIncidentWorkspace } from "./views/diagnosis/incident-list.ts";
+import { bindIncidentWorkspace, incidentError, loadIncidentWorkspace } from "./views/diagnosis/incident-list.ts";
+import { incidentEvents, incidentPrefix } from "./views/diagnosis/incident-filters.ts";
 import { bindRcaPage, loadRcaPage } from "./views/diagnosis/incident-rca.ts";
 import { bindTopologyPage, loadTopologyPage } from "./views/diagnosis/incident-topology.ts";
 import { bindDatasourcesPage, bindPoliciesPage, datasourcesPath, loadDatasourcesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
@@ -88,6 +90,14 @@ export class PortalApp {
       void handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
+    });
+    this.root.addEventListener("keydown", (event) => {
+      const target = event.target;
+      const button = this.root.querySelector<HTMLButtonElement>('.portal-menu-toggle[aria-expanded="true"]');
+      if (event.key !== "Escape" || !button || !(target instanceof HTMLElement) ||
+        !target.closest(".portal-sidebar, .portal-menu-toggle")) return;
+      event.preventDefault();
+      this.setPortalMenu(button, false);
     });
     bindPortalForms(this.root, {
       refresh: () => void this.route(),
@@ -537,7 +547,6 @@ export class PortalApp {
       canChangePassword: this.canChangePassword,
       showLogout: this.showLogout,
       signedOut,
-      incidentsAvailable: this.incidentsAvailable,
       diagnosticDatasources: this.diagnosticSettings.datasources,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
@@ -570,8 +579,8 @@ export class PortalApp {
     }
     if (action === "logout") void this.logout(target.closest<HTMLButtonElement>("button"));
     if (action === "toggle-portal-menu") {
-      const opened = this.root.querySelector(".portal-layout")?.classList.toggle("menu-open");
-      target.closest("button")?.setAttribute("aria-expanded", String(Boolean(opened)));
+      const button = target.closest<HTMLButtonElement>("button");
+      if (button) this.setPortalMenu(button, button.getAttribute("aria-expanded") !== "true");
     }
     if (action === "retry") void this.route();
     if (action === "retry-correlation") {
@@ -582,6 +591,19 @@ export class PortalApp {
     if (action === "clear-filters") {
       const { cluster, environment, business, group } = parseFindingFilters(window.location.hash);
       this.navigateFindingFilters({ cluster, environment, business, group });
+    }
+  }
+
+  /** 同步移动栏目状态，并在菜单和触发按钮之间转移键盘焦点。 */
+  private setPortalMenu(button: HTMLButtonElement, isOpen: boolean): void {
+    this.root.querySelector(".portal-layout")?.classList.toggle("menu-open", isOpen);
+    button.setAttribute("aria-expanded", String(isOpen));
+    if (isOpen) {
+      const sidebar = this.root.querySelector(".portal-sidebar");
+      (sidebar?.querySelector<HTMLAnchorElement>('a[aria-current="page"]') ??
+        sidebar?.querySelector<HTMLAnchorElement>("a"))?.focus();
+    } else {
+      button.focus();
     }
   }
 

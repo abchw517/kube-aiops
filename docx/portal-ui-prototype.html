@@ -7,7 +7,7 @@
 <style>
 :root {
   color-scheme: light;
-  --top:#202430; --page:#eef2f8; --paper:#fff; --ink:#202b3a; --muted:#58677c;
+  --top:#17283c; --page:#f0f4f8; --paper:#fff; --ink:#202b3a; --muted:#58677c;
   --line:#dce4ee; --blue:#0069d1; --blue-soft:#e4f1ff; --green:#176c55;
   --amber:#8a510d; --red:#af3546; --side:208px; --head:60px;
   font:14px/1.55 "Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
@@ -45,10 +45,10 @@ button,select,summary { cursor:pointer }
 .side-link::before { content:""; width:6px; height:6px; border:1px solid currentColor; border-radius:2px; opacity:.8 }
 .side-link[aria-current]::before { background:currentColor }
 .main { min-width:0; padding:18px 20px 30px }
-.page-head { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px }
-.head-text { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
-h1 { font-size:20px; line-height:1.35 }
-.crumb { display:flex; align-items:center; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:12px; padding-inline-start:12px; border-left:1px solid #c2cddd }
+.page-head { display:flex; justify-content:space-between; align-items:end; gap:14px; flex-wrap:wrap; margin-bottom:18px }
+.head-text { display:grid; gap:4px }
+h1 { font-size:26px; line-height:1.25 }
+.crumb { display:flex; align-items:center; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:12px }
 .crumb span[aria-current] { color:var(--ink) }
 .tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 .button,input,select { min-height:34px; padding:5px 10px; color:var(--ink); background:#fff; border:1px solid #b8c6d7; border-radius:5px }
@@ -63,8 +63,22 @@ input[type=search] { width:min(100%,270px) }
 .panel-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--line) }
 .panel-head h2,.panel-head h3 { font-size:15px }
 .subtle { color:var(--muted); font-size:12px }
+.scope-bar { padding:12px 16px; border-inline-start:3px solid var(--blue) }
+.scope-bar summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-height:28px }
+.scope-bar summary::-webkit-details-marker { display:none }
+.scope-bar summary > span:first-child { min-width:0 }
+.scope-bar summary strong { font-size:15px }
+.scope-edit { color:var(--blue); font-weight:650 }
+.scope-edit::after { content:" ▾" }
+.scope-bar[open] .scope-edit::after { content:" ▴" }
+.scope-current { display:block; margin-top:4px; color:var(--muted); overflow-wrap:anywhere }
+.incident-filter { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr)); gap:10px; padding-top:12px; margin-top:12px; border-top:1px solid var(--line) }
+.incident-filter label { display:grid; gap:4px; min-width:0 }
+.incident-filter :is(input,select) { width:100%; min-width:0 }
+.incident-filter .tools { grid-column:1/-1 }
 .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px }
 .metric { padding:14px 16px; border-top:3px solid var(--accent,var(--blue)) }
+.metric dt a { color:inherit; text-decoration:underline; text-underline-offset:3px }
 .metric dt { color:var(--muted); font-size:13px }
 .metric dd { margin-top:5px; color:var(--accent,var(--blue)); font-size:29px; line-height:1.16; font-weight:650; font-variant-numeric:tabular-nums }
 .metric dd span { color:var(--muted); font-weight:400; font-size:12px; margin-inline-start:4px }
@@ -73,13 +87,13 @@ input[type=search] { width:min(100%,270px) }
 .plot-body { display:grid; grid-template-columns:22px minmax(0,1fr); gap:8px }
 .axis { display:flex; flex-direction:column; justify-content:space-between; height:140px; color:var(--muted); font-size:11px; text-align:right }
 .bars { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:end; gap:8px; height:140px; padding:0 6px; border-bottom:1px solid #adbbce; background:repeating-linear-gradient(to top,transparent 0,transparent 34px,#e3eaf3 34px,#e3eaf3 35px) }
-.bar { width:min(34px,100%); height:var(--bar); justify-self:center; border:0; border-radius:3px 3px 0 0; background:#63a8e8 }
+.bar { width:min(34px,100%); height:max(3px,var(--bar)); justify-self:center; border:0; border-radius:3px 3px 0 0; background:#63a8e8 }
 .bar:first-child,.bar:last-child { background:#1676cb }
 .bar:hover,.bar:focus-visible { background:#075797 }
 .days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; margin:5px 6px 0 36px; text-align:center; color:var(--muted); font-size:11px }
 .chart-note { margin:9px 0 0 30px; color:var(--muted); font-size:12px }
 .severity-plot { display:grid; grid-template-columns:112px minmax(0,1fr); gap:15px; align-items:center; min-height:190px; padding:16px }
-.donut { display:grid; place-items:center; width:100%; aspect-ratio:1; border-radius:50%; background:conic-gradient(#d46470 0 25%,#d89a52 25% 58%,#55a2e6 58%) }
+.donut { display:grid; place-items:center; width:100%; aspect-ratio:1; border-radius:50%; background:var(--severity-ring,var(--line)) }
 .donut-inner { display:grid; place-content:center; text-align:center; width:70%; aspect-ratio:1; border-radius:50%; background:white }
 .donut-inner strong { font-size:22px; line-height:1.1 }
 .legend { display:grid; gap:7px; margin:0; padding:0; list-style:none; color:var(--muted); font-size:12px }
@@ -89,6 +103,10 @@ input[type=search] { width:min(100%,270px) }
 table { border-collapse:collapse; width:100%; min-width:470px; font-size:13px }
 th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #e9eef5; vertical-align:middle }
 th { background:#f4f6fa; color:#485b73; font-size:12px; font-weight:650; white-space:nowrap }
+.incident-results table { min-width:650px }
+.incident-results th:first-child { min-width:160px }
+.incident-results th:nth-child(2) { min-width:64px }
+.incident-results th:nth-child(3) { min-width:100px }
 tbody tr:last-child td { border-bottom:0 }
 tbody tr:hover { background:#f8faff }
 .text-action { padding:0; border:0; background:none; color:var(--blue); text-align:left }
@@ -179,9 +197,9 @@ dialog .panel-pad { max-height:65dvh; overflow:auto }
   .layout.menu-open .sidebar { display:block }
   .sidebar h2 { margin-bottom:8px }
   .main { padding:12px 10px 22px }
-  .page-head,.head-text { align-items:flex-start; gap:7px }
-  .head-text { flex-direction:column }
-  .crumb { padding-inline-start:0; border:0 }
+  .page-head { align-items:flex-start; gap:7px }
+  h1 { font-size:22px }
+  .scope-bar { padding:10px 12px }
   .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
   .split,.session-body { grid-template-columns:minmax(0,1fr) }
   .session-body aside { border-left:0; border-top:1px solid var(--line) }
@@ -246,6 +264,15 @@ const incidents = [
   ["网关副本不足","生产","prod-west","gateway","高","处理中","12:44"],
   ["镜像拉取失败","研发","dev-east","sandbox","低","已恢复","11:16"],
 ];
+const incidentDays = [6,5,4,6,2];
+const incidentFields = [
+  ["environmentId","环境",[["production","生产"],["staging","预发布"],["development","研发"],["testing","测试"]]],
+  ["clusterId","集群实例",[["prod-east","prod-east"],["prod-west","prod-west"],["stage-east","stage-east"],["dev-east","dev-east"],["test-east","test-east"]]],
+  ["namespace","命名空间"],["businessId","业务 ID"],
+  ["platform","平台",[["kubernetes","Kubernetes / ACK / TKE"],["zabbix","Zabbix 主机"]]],
+  ["status","状态",[["pending","待确认"],["investigating","处理中"],["recovered","已恢复"],["closed","已关闭"]]],
+  ["severity","严重程度",[["P1","P1 高风险"],["P2","P2 中风险"],["P3","P3 低风险"]]],["q","关键词"],
+];
 const clusters = [
   ["prod-east","生产","东区生产集群","已接入","12","14:26"],
   ["prod-west","生产","西区生产集群","已接入","8","14:25"],
@@ -270,7 +297,7 @@ const sampleTables = {
 
 // 仅从已登记的演示路由读取页面，默认进入诊断总览。
 function currentPath() {
-  const requested = location.hash.slice(1);
+  const requested = location.hash.slice(1).split("?")[0];
   return routes.has(requested) ? requested : defaultPath;
 }
 
@@ -288,38 +315,81 @@ function panel(title,body) {
   return '<section class="panel"><header class="panel-head"><h2>'+title+'</h2></header>'+body+'</section>';
 }
 function search(label) { return '<input type="search" data-search aria-label="'+label+'" placeholder="'+label+'">'; }
-function environmentOptions() {
-  return '<label class="tools">环境<select data-environment><option value="">所有环境</option><option>生产</option><option>预发布</option><option>研发</option></select></label>';
+// 使用与正式页面相同的 URL 字段，样例数据供原型筛选和统计。
+function incidentQuery() {
+  const raw = new URLSearchParams(location.hash.split("?")[1]);
+  return new URLSearchParams(incidentFields.flatMap(([key]) => raw.get(key)?.trim() ? [[key,raw.get(key).trim()]] : []));
+}
+function escapeText(value) {
+  return value.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[character]);
+}
+function incidentLink(path,query) {
+  return "#"+path+(query.size ? "?"+escapeText(query.toString()) : "");
+}
+function incidentScope(path,query) {
+  const scope = incidentFields.filter(([key])=>query.has(key)).map(([key,label,choices])=>
+    label+" "+escapeText(choices?.find(([id])=>id===query.get(key))?.[1] ?? query.get(key)));
+  return '<details class="panel scope-bar"><summary><span><strong>查询范围</strong><span class="scope-current">'+
+    (scope.join(" · ") || "全部可见范围")+'</span></span><span class="scope-edit">故障筛选</span></summary>'+
+    '<form class="incident-filter" id="incident-filter" aria-label="故障筛选">'+incidentFields.map(([key,label,choices])=>
+      '<label>'+label+(choices ? '<select name="'+key+'"><option value="">全部</option>'+choices.map(([id,text])=>
+        '<option value="'+id+'"'+(query.get(key)===id?" selected":"")+'>'+text+'</option>').join("")+'</select>' :
+        '<input name="'+key+'" value="'+escapeText(query.get(key) ?? "")+'">')+'</label>').join("")+
+    '<div class="tools"><button class="button primary" type="submit">应用筛选</button><a href="#'+path+'">清除筛选</a></div></form></details>';
+}
+function matchingIncidents(query) {
+  return incidents.map((row,index)=>({row,index})).filter(({row:[name,environment,cluster,namespace,level,status]})=>{
+    const values = {environmentId:incidentFields[0][2].find(([,label])=>label===environment)?.[0], clusterId:cluster, namespace,
+      businessId:namespace, platform:"kubernetes", status:incidentFields[5][2].find(([,label])=>label===status)?.[0],
+      severity:{高:"P1",中:"P2",低:"P3"}[level]};
+    return [...query].every(([key,value])=>key==="q" ? name.toLowerCase().includes(value.toLowerCase()) : values[key]===value);
+  });
 }
 
-// 渲染表格与筛选容器，事件详情共用同一套模拟记录。
-function incidentRows() {
-  return incidents.map(([name,environment,cluster,namespace,level,status,time],index) => [
+// 事件详情与总览、完整列表共用模拟记录。
+function eventTable(items) {
+  const rows = items.map(({row:[name,environment,cluster,namespace,level,status,time],index}) => [
     linkButton(name,"incident",index),environment,cluster,namespace,
-    badge(level,level==="高"?"danger":level==="中"?"warn":""),
+    badge({高:"P1",中:"P2",低:"P3"}[level],level==="高"?"danger":level==="中"?"warn":""),
     badge(status,status==="已恢复"?"ok":status==="待确认"?"warn":""),time,
   ]);
-}
-function eventTable() {
-  return table(["事件","环境","集群","命名空间","级别","状态","最近发生"],incidentRows());
+  return rows.length ? table(["故障","环境","集群","命名空间","级别","状态","最近发生"],rows) :
+    '<p class="empty">当前范围内暂无故障。</p>';
 }
 
 // 诊断总览的图表及指标采用可交互的展示样例。
-function overview() {
-  const metrics = [["故障事件","24","件",""],["处理中","6","件","--accent:#8a510d"],["已恢复","18","件","--accent:#176c55"],["高风险","6","件","--accent:#af3546"]];
+function overview(query) {
+  const items = matchingIncidents(query);
+  const count = (column,value) => items.filter(({row})=>row[column]===value).length;
+  const metrics = [
+    ["待确认",count(5,"待确认"),"--accent:#8a510d","status","pending"],
+    ["处理中",count(5,"处理中"),"","status","investigating"],
+    ["高风险（P1）",count(4,"高"),"--accent:#af3546","severity","P1"],
+    ["已恢复",count(5,"已恢复"),"--accent:#176c55","status","recovered"],
+  ];
+  const list = incidentLink("/diagnostics/events",query);
   const days = ["11/17","11/18","11/19","11/20","11/21","11/22","11/23"];
-  const counts = [3,6,2,3,4,1,5];
+  const counts = days.map((_,day)=>items.filter(({index})=>incidentDays[index]===day).length);
   const bars = counts.map((count,index) =>
-    '<button class="bar" type="button" style="--bar:'+(count/8*100)+'%" aria-label="'+days[index]+'，'+count+' 件事件" data-count="'+count+'" data-day="'+days[index]+'"></button>').join("");
-  return '<div class="stack"><dl class="metrics">'+metrics.map(([label,value,unit,accent]) =>
-    '<div class="panel metric" style="'+accent+'"><dt>'+label+'</dt><dd>'+value+'<span>'+unit+'</span></dd></div>').join("")+
-    '</dl><div class="plots">'+panel("近 7 天事件趋势",
-      '<figure class="trend"><div class="plot-body"><div class="axis" aria-hidden="true"><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span></div><div class="bars">'+bars+
+    '<button class="bar" type="button" style="--bar:'+(count/4*100)+'%" aria-label="'+days[index]+'（UTC）共 '+count+' 件事件" data-count="'+count+'" data-day="'+days[index]+'"></button>').join("");
+  const severity = ["高","中","低"].map(level=>count(4,level));
+  const percentages = [severity[0],severity[0]+severity[1]].map(value=>value/(items.length || 1)*100);
+  const ring = items.length ? ' style="--severity-ring:conic-gradient(#d46470 0 '+percentages[0]+'%,#d89a52 '+percentages[0]+'% '+percentages[1]+'%,#55a2e6 '+percentages[1]+'%)"' : "";
+  return '<div class="stack">'+incidentScope(defaultPath,query)+'<dl class="metrics" aria-label="故障汇总">'+metrics.map(([label,value,accent,key,filter]) => {
+    const target = new URLSearchParams(query);
+    target.set(key,filter);
+    const link = !query.has(key) || query.get(key)===filter;
+    const title = link ? '<a href="'+incidentLink("/diagnostics/events",target)+'">'+label+'</a>' : label;
+    return '<div class="panel metric" style="'+accent+'"><dt>'+title+'</dt><dd>'+value+'<span>件</span></dd></div>';
+  }).join("")+'</dl><section class="panel incident-results"><header class="panel-head"><h2>最近故障事件</h2><a href="'+list+'" aria-label="查看全部故障事件">查看全部</a></header>'+
+    eventTable(items.slice(0,5))+'</section><div class="plots">'+panel("近 7 天事件趋势",
+      '<figure class="trend"><div class="plot-body"><div class="axis" aria-hidden="true"><span>4</span><span>3</span><span>2</span><span>1</span><span>0</span></div><div class="bars">'+bars+
       '</div></div><div class="days" aria-hidden="true">'+days.map(day=>'<span>'+day+'</span>').join("")+
-      '</div><figcaption class="chart-note" id="chart-note" role="status">近 7 天共 24 件事件</figcaption></figure>')+
-    panel("事件级别分布",'<div class="severity-plot"><div class="donut" aria-hidden="true"><div class="donut-inner"><strong>24</strong><span class="subtle">事件</span></div></div>'+
-      '<ul class="legend"><li><span class="dot" style="--accent:#d46470"></span>高风险 6 件</li><li><span class="dot" style="--accent:#d89a52"></span>中风险 8 件</li><li><span class="dot" style="--accent:#55a2e6"></span>低风险 10 件</li></ul></div>')+
-    '</div><section class="panel" data-filter-region><header class="panel-head"><h2>最近故障事件</h2><a href="#/diagnostics/events">查看全部</a></header>'+eventTable()+'</section></div>';
+      '</div><figcaption class="chart-note" id="chart-note" role="status">近 7 天新发 '+items.length+' 件事件 · UTC</figcaption></figure>')+
+    panel("事件级别分布",'<div class="severity-plot"><div class="donut"'+ring+' aria-hidden="true"><div class="donut-inner"><strong>'+items.length+'</strong><span class="subtle">事件</span></div></div>'+
+      '<ul class="legend">'+["P1 高风险","P2 中风险","P3 低风险"].map((label,index)=>
+        '<li><span class="dot" style="--accent:'+["#d46470","#d89a52","#55a2e6"][index]+'"></span>'+label+' '+severity[index]+' 件</li>').join("")+'</ul></div>')+
+    '</div></div>';
 }
 
 // 在集群工作区集中展示环境范围和可切换的集群、命名空间列表。
@@ -382,23 +452,28 @@ function authentication() {
 
 // 用相同的工作区骨架展示列表、配置表和详情入口。
 function pageContent(path) {
-  if (path===defaultPath) return overview();
+  if (path===defaultPath) return overview(incidentQuery());
+  if (path==="/diagnostics/events") {
+    const query = incidentQuery();
+    const items = matchingIncidents(query);
+    return '<div class="stack">'+incidentScope(path,query)+'<section class="panel incident-results"><header class="panel-head"><h2>故障列表</h2><span>共 '+items.length+
+      ' 条故障</span></header>'+eventTable(items)+'</section></div>';
+  }
   if (path==="/resources/clusters") return resources();
   if (path==="/admin/ldap") return authentication();
-  if (path==="/diagnostics/events" || path==="/findings") {
-    const findings = path==="/findings";
-    const content = findings ? table(["资源","命名空间","集群","发现"],[
+  if (path==="/findings") {
+    const content = table(["资源","命名空间","集群","发现"],[
       ["deployment/payment-api","payments","prod-east","可用副本数量不足"],
       ["pod/order-worker","orders","prod-east","容器反复重启"],
-    ]) : eventTable();
-    return '<section class="panel" data-filter-region><header class="panel-head"><h2>'+ (findings?"诊断结果列表":"事件列表")+'</h2>'+search(findings?"搜索资源或命名空间":"搜索事件或集群")+'</header>'+content+'</section>';
+    ]);
+    return '<section class="panel" data-filter-region><header class="panel-head"><h2>诊断结果列表</h2>'+search("搜索资源或命名空间")+'</header>'+content+'</section>';
   }
   if (path==="/wiki") return '<section class="panel" data-filter-region><header class="panel-head"><h2>知识文档</h2>'+search("搜索知识标题或关键词")+
     '<button class="button" type="button" data-action="ask">AI 知识问答</button></header>'+knowledge.map(([title,meta,description],index)=>
       '<button class="doc-row" type="button" data-row data-action="knowledge" data-index="'+index+'"><strong>'+title+'</strong><span>'+meta+'</span><span>'+description+'</span></button>'
     ).join("")+'<p class="empty" data-empty hidden>没有符合条件的知识文档。</p></section>';
   if (path==="/admin/access") return '<div class="tools permission-links"><a class="button" href="#/admin/access/roles">角色列表</a>'+
-    '<a class="button" href="permission-catalog/prototype.html">权限目录</a><a href="permission-catalog/group-admin-prototype.html">独立打开授权原型</a></div>'+
+    '<a class="button" href="permission-catalog/prototype.html">权限配置</a><a href="permission-catalog/group-admin-prototype.html">独立打开授权原型</a></div>'+
     '<iframe class="permission-preview" title="角色配置与用户组" src="permission-catalog/group-admin-prototype.html?embed"></iframe>';
   if (path==="/admin/access/roles") return '<section class="panel"><header class="panel-head"><h2>角色列表</h2>'+
     '<a class="button" href="#/admin/access">返回角色配置</a></header>'+accessTable()+'</section>';
@@ -424,10 +499,8 @@ function render() {
   document.getElementById("sidebar").innerHTML = '<h2>'+module.label+'</h2>'+module.groups.map(([group,items]) =>
     '<p class="side-group">'+group+'</p>'+items.map(([href,label]) =>
       '<a class="side-link" href="#'+href+'"'+(href===path || href==="/admin/access" && path==="/admin/access/roles"?' aria-current="page"':'')+'>'+label+'</a>').join("")).join("");
-  const tools = path==="/diagnostics/events" ? '<div class="tools">'+environmentOptions()+'</div>'
-    : path===defaultPath ? '<div class="tools"><a class="button" href="#/diagnostics/events">进入故障事件</a></div>' : "";
-  main.innerHTML = '<header class="page-head"><div class="head-text"><h1>'+title+'</h1><nav class="crumb" aria-label="面包屑">'+module.label+
-    '<span aria-hidden="true">›</span><span aria-current="page">'+title+'</span></nav></div>'+tools+'</header>'+pageContent(path);
+  main.innerHTML = '<header class="page-head"><div class="head-text"><nav class="crumb" aria-label="面包屑">'+module.label+
+    '<span aria-hidden="true">›</span><span aria-current="page">'+title+'</span></nav><h1>'+title+'</h1></div></header>'+pageContent(path);
   layout.classList.remove("menu-open");
   menu.setAttribute("aria-expanded","false");
 }
@@ -441,12 +514,10 @@ function filterResults() {
   const scope = selectedScope?.dataset.scope ?? "";
   const namespaceView = main.querySelector('[data-resource-tab="namespaces"][aria-pressed=true]');
   const scopeColumn = Number(Boolean(namespaceView)) + Number(selectedScope?.matches("summary") ?? false);
-  const environment = main.querySelector("[data-environment]")?.value ?? "";
   let visible = 0;
   for (const row of region.querySelectorAll("[data-row]")) {
     const matchesScope = !scope || row.cells[scopeColumn]?.textContent===scope;
-    const matchesEnvironment = !environment || row.cells[1].textContent===environment;
-    row.hidden = !matchesScope || !matchesEnvironment || !row.textContent.toLowerCase().includes(query);
+    row.hidden = !matchesScope || !row.textContent.toLowerCase().includes(query);
     if (!row.hidden) visible++;
   }
   region.querySelector("[data-empty]").hidden = visible>0;
@@ -493,6 +564,13 @@ function facts(entries) {
 menu.addEventListener("click",() => {
   const opened = layout.classList.toggle("menu-open");
   menu.setAttribute("aria-expanded",String(opened));
+  if (opened) (document.querySelector('#sidebar [aria-current="page"]') ?? document.querySelector("#sidebar a"))?.focus();
+});
+layout.addEventListener("keydown",event=>{
+  if (event.key!=="Escape" || !layout.classList.contains("menu-open") || !event.target.closest("#sidebar")) return;
+  layout.classList.remove("menu-open");
+  menu.setAttribute("aria-expanded","false");
+  menu.focus();
 });
 document.querySelector(".skip").addEventListener("click",event=>{
   event.preventDefault();
@@ -510,7 +588,7 @@ main.addEventListener("click",event=>{
   const {action,index,scope,resourceTab,count,day} = button.dataset;
   if (action) return showDetail(action,Number(index));
   if (day) {
-    document.getElementById("chart-note").textContent = day+" 共 "+count+" 件事件";
+    document.getElementById("chart-note").textContent = day+"（UTC）共 "+count+" 件事件";
   }
   if (scope!==undefined) {
     const previous = main.querySelector("[data-scope][aria-current=true]");
@@ -553,10 +631,15 @@ main.addEventListener("input",event=>{
     input.form.querySelector("button").disabled = input.valueAsNumber===sessionMinutes;
   }
 });
-main.addEventListener("change",event=>{
-  if (event.target.matches("[data-environment]")) filterResults();
-});
 main.addEventListener("submit",event=>{
+  if (event.target.id==="incident-filter") {
+    event.preventDefault();
+    const query = new URLSearchParams([...new FormData(event.target)].flatMap(([key,value])=>value.trim() ? [[key,value.trim()]] : []));
+    const href = incidentLink(currentPath(),query).replaceAll("&amp;","&");
+    if (location.hash===href) event.target.closest("details").open = false;
+    else location.hash = href;
+    return;
+  }
   if (event.target.id==="ldap-form") {
     event.preventDefault();
     const form = event.target;

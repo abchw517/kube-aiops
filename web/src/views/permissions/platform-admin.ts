@@ -353,7 +353,7 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
   return `<div class="platform-heading"><p>通过用户组继承角色，按接口动作和数据范围配置授权。</p><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
-      `<a class="button secondary" href="#/admin/access/catalog">权限目录</a>
+      `<a class="button secondary" href="#/admin/access/catalog">权限配置</a>
       ${defaultEditor ? '<a class="button secondary" href="#/admin/access/roles">角色列表</a>' : ""}${editButton("＋ 新建角色", "role:")}`}</div></div>
     <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
       <a href="#/admin/access"${groups ? "" : ' aria-current="page"'}>角色配置</a>

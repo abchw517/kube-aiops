@@ -185,7 +185,7 @@
   align-items: end;
   gap: 12px;
 }
-.incident-filters, .incident-create, .incident-header, .incident-evidence, .incident-timeline, .incident-trend {
+.incident-create, .incident-header, .incident-evidence, .incident-timeline, .incident-trend {
   padding: clamp(14px, 2vw, 22px);
   margin-block: 0 16px;
 }
@@ -200,7 +200,10 @@
 }
 .incident-form-grid textarea { min-height: 80px; resize: vertical; }
 .incident-form-wide { grid-column: 1 / -1; }
-.incident-table table { min-width: 610px; }
+.incident-table table { min-width: 650px; }
+.incident-table th:first-child { min-width: 160px; }
+.incident-table th:nth-child(2) { min-width: 64px; }
+.incident-table th:nth-child(3) { min-width: 100px; }
 .incident-table small { display: block; margin: 4px 0; color: var(--muted); }
 .incident-trend dl, .incident-info {
   display: flex;
@@ -245,6 +248,18 @@
 
 /* 总览以指标、图表和近期事件构成统一工作区。 */
 .incident-overview { display: grid; gap: 16px; }
+.incident-scope { min-width: 0; padding: 12px 16px; border-inline-start: 3px solid var(--blue); }
+.incident-scope summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-height: 28px; cursor: pointer; }
+.incident-scope summary::-webkit-details-marker { display: none; }
+.incident-scope summary > span:first-child { min-width: 0; }
+.incident-scope summary strong { font-size: 15px; }
+.incident-scope-current { display: block; margin-top: 4px; color: var(--muted); overflow-wrap: anywhere; }
+.incident-scope-edit { color: var(--blue); font-weight: 650; }
+.incident-scope-edit::after { content: " ▾"; }
+.incident-scope[open] .incident-scope-edit::after { content: " ▴"; }
+.incident-scope .incident-filters { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.incident-filter-actions { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.incident-overview > .diagnostic-toolbar, .incident-overview > .summary-grid, .incident-overview > .pagination { margin-block: 0; }
 .incident-overview-metrics, .incident-overview-plots { display: grid; gap: 16px; margin: 0; }
 .incident-overview-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .incident-overview-plots { grid-template-columns: minmax(0, 2fr) minmax(210px, 1fr); }
@@ -255,6 +270,7 @@
 .incident-plot-info { --plot-color: #2470af; }
 .incident-overview-metric { padding: 14px 16px; border-top: 3px solid var(--plot-color); }
 .incident-overview-metric dt { color: var(--muted); }
+.incident-overview-metric dt a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .incident-overview-metric dd { margin: 5px 0 0; color: var(--plot-color); font-size: 29px; line-height: 1.16; font-weight: 650; font-variant-numeric: tabular-nums; }
 .incident-overview-metric dd span, .incident-overview-heading > span { color: var(--muted); font-size: 12px; font-weight: 400; margin-inline-start: 4px; }
 .incident-overview-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
@@ -280,7 +296,6 @@
 .incident-plot-key.incident-plot-info { background: #55a2e6; }
 .incident-overview-more { padding: 12px 16px; }
 .incident-overview-more summary { font-weight: 650; cursor: pointer; }
-.incident-overview-more form { margin-top: 12px; }
 .incident-overview-more dl { display: flex; gap: 16px; flex-wrap: wrap; }
 .incident-overview-more dd { margin: 0; }
 .incident-overview-empty { padding: 25px 16px; margin: 0; color: var(--muted); text-align: center; }
@@ -292,6 +307,7 @@
 .incident-status-closed { color: var(--muted); background: #eef2f8; }
 @media (max-width: 910px) { .incident-overview-plots { grid-template-columns: minmax(0, 1fr); } .incident-severity-layout { min-height: 0; } }
 @media (max-width: 680px) {
+  .incident-scope { padding: 10px 12px; }
   .incident-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .incident-trend-chart { padding-inline: 10px; }
   .incident-trend-plot { gap: 4px; grid-template-columns: 20px minmax(0, 1fr); }

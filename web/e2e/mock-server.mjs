@@ -569,18 +569,32 @@ function summarize(items) {
   return summary;
 }
 
+// 为总览与列表提供依据同一范围筛选的故障夹具。
+function matchingIncidentFixture(query) {
+  if (!incidentFixture) return undefined;
+  const { scope, status, severity, title } = incidentFixture;
+  const fields = { clusterId: scope.clusterId, environmentId: scope.environmentId, namespace: scope.namespace,
+    businessId: scope.businessId, status, severity, platform: "kubernetes" };
+  const keyword = query.get("q");
+  if (keyword && !title.includes(keyword)) return undefined;
+  return Object.entries(fields).some(([key, value]) => query.has(key) && query.get(key) !== value) ? undefined : incidentFixture;
+}
+
 async function incidents(request, response, url) {
   const path = url.pathname.slice("/api/v1/diagnostics".length);
   const method = request.method;
   if (path === "/overview") {
-    const severity = url.searchParams.get("severity");
-    const matches = incidentFixture && (!severity || severity === incidentFixture.severity);
+    if (url.searchParams.get("q") === "订单" && url.searchParams.get("severity") === "P1") {
+      return json(response, 503, { error: { message: "fixture severity unavailable" } });
+    }
+    const matches = matchingIncidentFixture(url.searchParams);
     return json(response, 200, { counts: { total: matches ? 1 : 0, active: matches ? 1 : 0,
-      investigating: matches && incidentFixture.status === "investigating" ? 1 : 0, recovered: 0 },
+      pending: matches?.status === "pending" ? 1 : 0, investigating: matches?.status === "investigating" ? 1 : 0, recovered: 0 },
       trend: { "2026-11-20": matches ? 1 : 0 }, byPlatform: {}, coverage: "complete" });
   }
   if (path === "/incidents" && method === "GET") {
-    return json(response, 200, { items: incidentFixture ? [incidentFixture] : [], pagination: {}, coverage: "complete" });
+    const item = matchingIncidentFixture(url.searchParams);
+    return json(response, 200, { items: item ? [item] : [], pagination: {}, coverage: "complete" });
   }
   if (path === "/incidents" && method === "POST") {
     const body = await readIncidentBody(request);

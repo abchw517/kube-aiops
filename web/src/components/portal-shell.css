@@ -77,11 +77,11 @@
 .portal-sidebar [aria-current]::before { background: currentColor; }
 .portal-sidebar a:focus-visible { outline-offset: -3px; }
 .page-shell { width: 100%; min-width: 0; padding: 18px 20px 30px; }
-.page-intro { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.page-intro h1 { margin: 0; font-size: 20px; line-height: 1.35; }
-.page-intro nav { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding-inline-start: 12px; border-inline-start: 1px solid #c2cddd; color: var(--muted); font-size: 12px; }
+.page-intro { display: grid; gap: 4px; margin-bottom: 18px; }
+.page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.page-intro h1 { margin: 0; font-size: 26px; line-height: 1.25; }
+.page-intro nav { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
 .page-intro nav [aria-current] { color: var(--ink); }
-.page-primary-action { min-height: 34px; margin-inline-start: auto; }
 .demo-notice { margin: 0; padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--blue); font-size: 12px; }
 .portal-signed-out .page-shell { max-width: 480px; margin-inline: auto; padding-top: clamp(28px, 9vh, 88px); }
 .portal-signed-out .state-card { display: block; padding: clamp(20px, 5vw, 32px); text-align: left; }
@@ -117,7 +117,5 @@
   .portal-layout.menu-open .portal-sidebar { display: block; }
   .portal-sidebar h2 { margin-bottom: 8px; }
   .page-shell { padding: 12px 10px 22px; }
-  .page-intro { flex-direction: column; align-items: flex-start; gap: 7px; }
-  .page-intro nav { padding-inline-start: 0; border: 0; }
-  .page-primary-action { margin-inline-start: 0; }
+  .page-intro h1 { font-size: 22px; }
 }
