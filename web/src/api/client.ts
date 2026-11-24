@@ -12,3 +12,11 @@ export const apiClient = new KubeAIOpsApiClient({
   baseUrl: resolveApiBaseUrl(),
   fetch: globalThis.fetch.bind(globalThis),
 });
+
+/** Bind requests for an overview navigation to its shared deadline. */
+export function createOverviewClient(signal: AbortSignal): KubeAIOpsApiClient {
+  return new KubeAIOpsApiClient({
+    baseUrl: resolveApiBaseUrl(),
+    fetch: (input, init) => globalThis.fetch(input, { ...init, signal }),
+  });
+}

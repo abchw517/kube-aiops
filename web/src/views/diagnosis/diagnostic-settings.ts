@@ -1,10 +1,10 @@
 import { apiClient } from "../../api/client.ts";
 import type { CreateIncidentScope, DatasourceConfig, DatasourceInput, DiagnosticDatasource, DiagnosticPolicy, PolicyInput } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
+import { datasourcesPath } from "../../domain/resource-routes.ts";
 import { incidentError } from "./incident-list.ts";
 import { incidentSubview, submit } from "./incident-rca.ts";
 
-export const datasourcesPath = "#/diagnostics/datasources";
 export const policiesPath = "#/diagnostics/policies";
 
 const providers: Record<DatasourceConfig["kind"], string> = { zabbix: "Zabbix", "aliyun-ecs": "阿里云 ECS", "tencent-cvm": "腾讯云 CVM" };

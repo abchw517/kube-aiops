@@ -313,3 +313,22 @@
   .incident-trend-plot { gap: 4px; grid-template-columns: 20px minmax(0, 1fr); }
   .incident-trend-bar span { font-size: 10px; }
 }
+
+.unified-overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.unified-overview-scope { margin-bottom: 14px; }
+.unified-overview .metric-card { color: var(--ink); }
+.unified-overview .metric-card[aria-current=true] { background: var(--accent-soft); }
+.unified-trend { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; margin-top: 8px; }
+.unified-trend-day { display: grid; grid-template-rows: 88px auto; gap: 5px; border: 0; padding: 4px 0; background: transparent; color: var(--ink); font-size: 11px; cursor: pointer; }
+.unified-trend-bars { display: flex; flex-direction: column-reverse; justify-content: flex-start; align-items: center; border-bottom: 1px solid var(--line); }
+.unified-trend-bars span { width: min(65%, 26px); background: #2273c8; }
+.unified-trend-bars span:nth-child(2) { background: #167c74; }
+.unified-trend-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.unified-trend-legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; background: #2273c8; margin-right: 5px; }
+.unified-trend-legend span:nth-child(2)::before { background: #167c74; }
+.unified-recent { max-width: 100%; overflow-x: auto; }
+.unified-recent table { min-width: 660px; }
+.unified-recent td:first-child { min-width: 170px; }
+.unified-recent td { overflow-wrap: anywhere; }
+.unified-recent table { table-layout: fixed; }
+.unified-recent th:first-child { width: 34%; }

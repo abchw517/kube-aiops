@@ -1428,60 +1428,45 @@ async function assertIncidentLifecycle(cdp) {
   })()` });
   await assertText(cdp, (text) => text.includes("Unhealthy"), "Evidence detail did not load on demand");
   await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics", (text) =>
-    ["事件级别分布", "近 7 天事件趋势", "最近故障事件", "订单服务故障"].every((label) => text.includes(label)),
-  "Incident overview did not show real fixture metrics and recent incidents");
+    ["诊断级别分布", "近 7 天诊断趋势", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
+  "Unified overview did not show both sources");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-trend-point]").click()' });
-  await assertText(cdp, (text) => text.includes("2026-11-20（UTC）共 1 件事件"),
-    "Selecting a date did not reveal its observed count");
+  await assertText(cdp, text => text.includes("（UTC）共") && text.includes("K8sGPT"), "Trend point could not show its counts");
   await assertIncidentDashboard(cdp);
 }
 
-// 验收筛选、指标下钻和窄屏键盘操作。
+// 验收统一筛选、跨来源下钻和窄屏键盘操作。
 async function assertIncidentDashboard(cdp) {
   const overview = "http://127.0.0.1:4173/#/diagnostics";
-  await cdp.send("Runtime.evaluate", { expression: `(() => {
-    document.querySelector(".incident-scope summary").click();
-    const form = document.querySelector("[data-incident-filters]");
-    form.elements.environmentId.value = "development";
-    form.elements.namespace.value = "default";
-    form.requestSubmit();
-  })()` });
-  await assertText(cdp, text => text.includes("环境 研发 · 命名空间 default") &&
-    text.includes("订单服务故障"), "Collapsed overview lost the applied incident scope");
-  const order = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-    const scope = document.querySelector(".incident-scope");
-    return !scope.open && scope.getBoundingClientRect().bottom <
-      document.querySelector(".incident-overview-metrics").getBoundingClientRect().top &&
-      document.querySelector(".incident-table").getBoundingClientRect().bottom <
-      document.querySelector(".incident-overview-plots").getBoundingClientRect().top;
-  })()` });
-  if (!order.result?.value) throw new Error("Incident overview does not put scope and queue before the charts");
-  await cdp.send("Runtime.evaluate", { expression: `
-    Array.from(document.querySelectorAll(".incident-overview-metric a"))
-      .find(link => link.textContent === "高风险（P1）").click()
-  ` });
-  await assertText(cdp, text => text.includes("故障列表") && text.includes("严重程度 P1 高风险") &&
-    text.includes("命名空间 default") && text.includes("订单服务故障"), "P1 shortcut lost its severity or starting scope");
-  await cdp.send("Runtime.evaluate", { expression: "history.back()" });
-  await assertText(cdp, text => text.includes("最近故障事件") && text.includes("命名空间 default"),
-    "Browser back did not restore the overview scope");
-  await assertPage(cdp, `${overview}?status=investigating&q=${encodeURIComponent("订单")}`,
-    text => text.includes("暂不可用") && text.includes("订单服务故障"), "Unavailable P1 count hid the incident queue");
-  const links = await cdp.send("Runtime.evaluate", { returnByValue: true,
-    expression: `[...document.querySelectorAll(".incident-overview-metric a")].map(link => link.textContent)` });
-  if (links.result?.value?.join(",") !== "处理中") throw new Error("Conflicting or unavailable counts remained navigable");
-  await assertPage(cdp, `${overview}?q=${encodeURIComponent("无匹配故障")}`,
-    text => text.includes("当前范围内暂无故障") && text.includes("关键词 无匹配故障") && !text.includes("暂不可用"),
-    "Empty scope did not distinguish zero from unavailable counts");
-
-  await assertPage(cdp, overview, text => text.includes("全部可见范围") && text.includes("订单服务故障"),
-    "Incident overview failed to reload");
+  await assertPage(cdp, `${overview}?clusterId=local&severity=critical`, text => text.includes("订单服务故障") &&
+    !text.includes("测试集群容量建议"), "Unified instance and severity scope did not apply");
+  const summary = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => ({
+    total: document.querySelector('[aria-label="诊断指标"] .metric-total strong').textContent,
+    links: [...document.querySelectorAll('.unified-recent td a')].map(a => a.getAttribute("href")),
+  }))()` });
+  if (summary.result?.value?.total !== "1" || summary.result.value.links.length !== 1 ||
+      !summary.result.value.links[0].includes("/incidents/")) throw new Error("Linked Finding was counted twice");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
+  await assertText(cdp, text => text.includes("返回诊断总览"), "Incident detail did not preserve its overview origin");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical"]').click()` });
+  await assertText(cdp, text => text.includes("最近诊断") && text.includes("订单服务故障"), "Overview did not restore scope");
+  await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info`, text => text.includes("测试集群容量建议"),
+    "Unified overview did not display the remote Finding");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
+  await assertText(cdp, text => text.includes("返回诊断总览") && text.includes("测试环境容器资源建议"),
+    "Finding detail did not preserve its cluster instance and overview origin");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
+  await assertText(cdp, text => text.includes("测试集群容量建议") && text.includes("最近诊断"), "Finding back link lost the filters");
+  await assertPage(cdp, `${overview}?clusterId=local&severity=info`,
+    text => text.includes("当前范围暂无诊断记录"), "Empty unified overview did not report zero results");
+  await assertPage(cdp, overview, text => text.includes("全部可见实例") && text.includes("订单服务故障"),
+    "Unified overview failed to reload");
   for (const width of [1440, 390, 320]) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
     const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const table = document.querySelector(".incident-table");
       return {
-        scopeVisible: document.querySelector(".incident-scope-current").getBoundingClientRect().height > 0,
+        scopeVisible: document.querySelector("[data-unified-filters]").getBoundingClientRect().height > 0,
         pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         viewportWidth: document.documentElement.clientWidth,
         contentWidth: document.documentElement.scrollWidth,
@@ -1535,7 +1520,12 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-topology-node="asset:host-fixture"]').click()` });
   await assertText(cdp, (text) => text.includes("部署记录核对") && text.includes("已确认"), "Topology node details did not show link provenance");
 
-  await assertPage(cdp, `${origin}/#/diagnostics/datasources`, (text) => text.includes("新增数据源") && text.includes("暂无数据源"), "Datasource page did not load");
+  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("新增数据源") && text.includes("暂无数据源"), "Datasource page did not load");
+  const sourceRoute = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
+    location.hash === "#/resources/datasources?continue=fixture" &&
+    document.querySelector(".portal-sidebar [aria-current=page]").textContent === "数据源管理"
+  ` });
+  if (!sourceRoute.result?.value) throw new Error("Datasource alias lost its cursor or resource navigation");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-datasource-form]");
     form.closest("details").open = true;
@@ -1572,20 +1562,17 @@ async function assertDiagnosticCenter(cdp) {
   const origin = "http://127.0.0.1:4173";
   await assertPage(cdp, `${origin}/#/findings`, (text) => text.includes("共 3 条诊断结果"), "Legacy list is missing");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.portal-sidebar a[href="#/diagnostics"]').click()` });
-  await assertText(cdp, (text) => text.includes("最近诊断结果") && text.includes("查看故障事件") &&
+  await assertText(cdp, (text) => text.includes("最近诊断") && text.includes("查看故障事件") &&
     text.includes("CrashLoopBackOff detected") && text.includes("测试集群容量建议"),
   "Diagnostic overview did not show the authorized recent Findings");
-
-  await cdp.send("Runtime.evaluate", { expression: `
-    (() => {
-      const select = document.querySelector('select[name="environment"]');
-      select.value = "测试";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    })()
-  ` });
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-unified-filters]");
+    form.elements.clusterId.value = "test-k8s";
+    form.requestSubmit();
+  })()` });
   await assertText(cdp, (text) => text.includes("查看故障事件") && text.includes("测试集群容量建议") &&
     !text.includes("CrashLoopBackOff detected"), "Overview did not preserve the selected scope");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".diagnostic-toolbar a").click()' });
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-overview .diagnostic-toolbar a").click()' });
   await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
     "Overview-to-events link lost the environment filter");
 
