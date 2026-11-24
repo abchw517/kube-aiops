@@ -2,7 +2,7 @@ import { escapeHtml as h } from "../../components/html.ts";
 
 import { auditLocation, auditRecordReference } from "./audit-data.ts";
 import { roleReferences, scopeDifference, type Scope } from "./platform-scopes.ts";
-import { bindPermissionCatalog, catalogSource, describePermission, grantKey, loadPermissionCatalog,
+import { bindPermissionCatalog, catalogSource, describePermission, grantKey, loadPermissionCatalog, permissionDescriptors,
   renderPermissionCatalog, selectedPermissions, updateCatalogGrants, type InterfaceGrant, type PermissionCatalog } from "./permission-catalog.ts";
 type Role = { id: string; name: string; fixed?: boolean; scopes: Scope[] | null; grants?: InterfaceGrant[] };
 type Group = { id: string; name: string; description?: string; roles: string[] | null };
@@ -56,7 +56,7 @@ function canManageAccount(user: Account, superAdmin: boolean): boolean {
   return user.kind !== "super" && (superAdmin || !hasAdministratorRole(user));
 }
 
-function effectivePermissions(user: Account): string {
+function effectivePermissions(user: Account, points = permissionDescriptors(null)): string {
   if (user.disabled || user.directoryDisabled || user.mustChangePassword) {
     return '<p class="system-notice">账号当前无法访问诊断数据。启用并完成所需的改密后，按关联角色生效。</p>';
   }
@@ -66,11 +66,11 @@ function effectivePermissions(user: Account): string {
       ${sources.map(source => `<li>${h(source)} → 系统管理员</li>`).join("")}</ul></div>`;
   }
   if (!user.effective?.length && !user.effectiveGrants?.length) return "<p>暂无生效权限。</p>";
-  const display = (label: string, scope: Scope, sources: string[]) => `<div class="system-permission">
+  const display = (label: string, scope: Scope, sources: string[], location?: string) => `<div class="system-permission">
     <div class="system-card-heading"><strong>${h(label)}</strong><span class="system-badge">${sources.length} 条来源</span></div>
-    <p>${scopeText(scope) || "该动作适用范围"}</p><ul>${sources.map(source => `<li>${h(source)}</li>`).join("")}</ul></div>`;
+    <p>${location ? `${h(location)} · ` : ""}${scopeText(scope) || "该动作适用范围"}</p><ul>${sources.map(source => `<li>${h(source)}</li>`).join("")}</ul></div>`;
   return `<div class="system-permissions">${(user.effective ?? []).map(scope => display("历史诊断查看", scope, scope.sources)).join("")}
-    ${(user.effectiveGrants ?? []).map(item => display(item.code, item.scope, item.sources)).join("")}</div>`;
+    ${(user.effectiveGrants ?? []).map(item => display(points.get(item.code)?.label ?? item.code, item.scope, item.sources, points.get(item.code)?.feature.location)).join("")}</div>`;
 }
 
 function accountAvatar(user: Account): string {
@@ -146,7 +146,7 @@ function accountBinding(label: string, ids: string[] | null, items: Entry[], emp
     `<span class="account-binding-empty">${empty}</span>`}</dd></div>`;
 }
 
-function accountDetail(user: Account, access: Access, superAdmin: boolean): string {
+function accountDetail(user: Account, access: Access, superAdmin: boolean, points: ReturnType<typeof permissionDescriptors>): string {
   const allowed = canManageAccount(user, superAdmin);
   const canAssign = allowed && user.kind === "ldap";
   const bindingAction = user.kind !== "ldap" ? "<small>本地账号通过预置角色获得权限。</small>" :
@@ -170,7 +170,7 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
     ` : ""}
     <nav class="identity-nav" aria-label="用户详情"><button type="button" data-system-tab="effective" aria-pressed="true">生效权限</button>
       <button type="button" data-system-tab="bindings" aria-pressed="false">关联关系</button></nav>
-    <div data-system-pane="effective"><h4>生效权限及来源</h4>${effectivePermissions(user)}</div>
+    <div data-system-pane="effective"><h4>生效权限及来源</h4>${effectivePermissions(user, points)}</div>
     <div data-system-pane="bindings" hidden>
       <dl class="account-bindings">
         ${accountBinding("用户组", user.groups, access.groups, "未加入用户组")}
@@ -183,7 +183,8 @@ function accountDetail(user: Account, access: Access, superAdmin: boolean): stri
 }
 
 async function renderAccounts(id: string | undefined, superAdmin: boolean): Promise<string> {
-  const [users, access] = await Promise.all([admin<Account[]>("accounts"), admin<Access>("access")]);
+  const [users, access, catalog] = await Promise.all([admin<Account[]>("accounts"), admin<Access>("access"), loadPermissionCatalog().catch(() => null)]);
+  const points = permissionDescriptors(catalog);
   const user = id ? users.find((item) => item.id === decodeURIComponent(id)) : users[0];
   const create = (kind: string, title: string) => editor(kind, title, operationForm("accounts", "",
     `<input type="hidden" name="kind" value="${kind}"><label>账号<input name="name" required maxlength="128" autocomplete="off"></label>
@@ -215,9 +216,9 @@ async function renderAccounts(id: string | undefined, superAdmin: boolean): Prom
         <td>${h(kinds[item.kind])}</td><td>${accountStatus(item)}</td>
         <td>${item.lastLoginAt ? h(new Date(item.lastLoginAt * 1000).toLocaleString("zh-CN")) : "—"}</td></tr>`).join("")}
       <tr data-platform-empty${users.length ? " hidden" : ""}><td colspan="5">暂无符合条件的账号。</td></tr></tbody></table></div><div class="catalog-bottom" data-platform-count>共 ${users.length} 个账号</div></section>
-      <div data-account-detail-slot>${user ? accountDetail(user, access, superAdmin) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}</div>
+      <div data-account-detail-slot>${user ? accountDetail(user, access, superAdmin, points) : `<section class="system-card system-detail"><p>${id ? "账号不存在。" : "请选择一个账号。"}</p></section>`}</div>
     </div>
-    ${users.filter((item) => item !== user).map((item) => `<template data-account-detail="${h(item.id)}">${accountDetail(item, access, superAdmin)}</template>`).join("")}
+    ${users.filter((item) => item !== user).map((item) => `<template data-account-detail="${h(item.id)}">${accountDetail(item, access, superAdmin, points)}</template>`).join("")}
     ${assignmentEditor(access, superAdmin)}
     ${editor("delete-account", "删除用户", operationForm("accounts", "",
       '<p>确定删除<strong data-delete-name></strong>？</p><p class="system-notice" data-delete-impact></p>', "确认删除", "delete"))}
@@ -288,12 +289,12 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
   ]);
   const groups = tab === "groups";
   const defaultEditor = !tab;
-  const points = new Map(catalog?.rows.flatMap(row => row.points.map(point => [point.code, { ...point, feature: row }] as const)));
+  const points = permissionDescriptors(catalog);
   const membersOf = (group: Group) => users.filter(user => user.groups?.includes(group.id));
   const canEditGroup = (group: Group) => superAdmin || !isAdministratorGroup(group);
   const groupMembers = (group: Group) => editor(`group-members:${group.id}`, "成员生效权限", `<div class="system-editor-body">
     <h3>${h(group.name)}</h3>${membersOf(group).map(user => `<div class="system-permission">
-      <a href="#/admin/users/${encodeURIComponent(user.id)}">${h(user.username)}</a>${effectivePermissions(user)}</div>`).join("") || "<p>暂无成员。</p>"}</div>`);
+      <a href="#/admin/users/${encodeURIComponent(user.id)}">${h(user.username)}</a>${effectivePermissions(user, points)}</div>`).join("") || "<p>暂无成员。</p>"}</div>`);
   const roleEditor = (role?: Role) => {
     const refs = roleReferences(role?.id, users, access.groups);
     return editor(`role:${role?.id ?? ""}`, role ? `编辑角色 · ${role.name}` : "新建角色",
@@ -303,9 +304,9 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
         <div class="system-editor-body" data-role-draft>
           <div class="role-workspace-actions">
             <label>角色名称<input name="name" required maxlength="128" value="${h(role?.name)}"></label>
-            ${submit("保存角色", "role-preview")}
+            ${submit("预览并保存", "role-preview")}
           </div>
-          <section aria-label="选择接口权限">
+          <section class="role-operation-panel" aria-label="选择接口权限">
             <h3>选择接口权限</h3>
             <div data-role-catalog-host></div>
           </section>
@@ -352,15 +353,27 @@ async function renderAccess(tab: string | undefined, superAdmin: boolean): Promi
     <td>${users.filter((user) => user.roles?.includes(role.id)).length + access.groups.filter((group) => group.roles?.includes(role.id)).length} 处</td>
     <td><div class="system-actions">${editButton(role.fixed ? "查看" : "编辑", `role:${role.id}`, true)}
     ${role.fixed ? '<span class="system-badge">禁止删除</span>' : editButton("删除", `remove:${role.id}`, true)}</div></td></tr>`);
-  return `<div class="platform-heading"><p>通过用户组继承角色，按接口动作和数据范围配置授权。</p><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") :
-      `<a class="button secondary" href="#/admin/access/catalog">权限配置</a>
-      ${defaultEditor ? '<a class="button secondary" href="#/admin/access/roles">角色列表</a>' : ""}${editButton("＋ 新建角色", "role:")}`}</div></div>
-    <section class="system-card"><nav class="identity-nav" aria-label="权限配置">
-      <a href="#/admin/access"${groups ? "" : ' aria-current="page"'}>角色配置</a>
+  const firstRole = access.roles.find(role => !role.fixed) ?? access.roles[0];
+  const chooser = `<aside class="role-picker" data-access-list aria-label="角色列表">
+    <div class="role-picker-heading"><h2>角色</h2>${editButton("＋ 新建角色", "role:")}</div>
+    <label>搜索角色<input type="search" data-role-search placeholder="输入角色名称"></label>
+    <ul>${access.roles.map(role => `<li data-role-item>
+      <button type="button" class="role-picker-item" data-system-open="role:${h(role.id)}">${h(role.name)}
+        <small>${role.fixed ? "预置角色" : `${(role.scopes?.length ?? 0) + (role.grants?.length ?? 0)} 项已保存授权`}</small></button>
+       ${role.fixed ? "" : `<button class="role-remove-link" type="button" aria-label="删除角色 ${h(role.name)}" data-system-open="remove:${h(role.id)}">删除</button>`}</li>`).join("")}</ul>
+    <p data-role-search-empty hidden>没有匹配的角色。</p></aside>`;
+  const list = `<div class="catalog-table-wrap" data-access-list role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
+    <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
+    ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div>`;
+  return `<nav class="identity-nav access-workspace-tabs" aria-label="权限管理">
+      <a href="#/admin/access"${groups ? "" : ' aria-current="page"'}>角色</a>
       <a href="#/admin/access/groups"${groups ? ' aria-current="page"' : ""}>用户组</a>
-    </nav><div class="catalog-table-wrap" data-access-list role="region" aria-label="${groups ? "用户组列表" : "角色列表"}" tabindex="0"><table class="catalog-table">
-      <thead><tr>${headers.map((title) => `<th scope="col">${title}</th>`).join("")}</tr></thead><tbody>
-      ${rows.join("") || '<tr><td colspan="4">暂无用户组。</td></tr>'}</tbody></table></div><div data-role-workspace${defaultEditor ? " data-role-default" : ""}></div></section>
+      <a href="#/admin/access/catalog">权限目录</a>
+    </nav>
+    ${defaultEditor ? `<section class="role-access-workspace" data-role-picker>${chooser}
+      <div data-role-workspace data-role-default="role:${h(firstRole?.id)}"></div></section>` : `<section class="system-card">
+      <div class="platform-heading"><div class="system-actions">${groups ? editButton("＋ 新建用户组", "group:") : editButton("＋ 新建角色", "role:")}</div></div>
+      ${list}<div data-role-workspace></div></section>`}
     ${groups ? editableGroup(undefined, access.roles, [], superAdmin) + access.groups.map(group =>
       editableGroup(group, access.roles, membersOf(group), superAdmin) + groupMembers(group) + (canEditGroup(group) ? remove(group, "group") : "")).join("") : roleEditor()}
     ${catalogSource(catalog)}
@@ -436,6 +449,7 @@ export async function submitPlatform(form: HTMLFormElement, action: string, relo
       return;
     }
     if (dialog && (["join", "leave", "grant", "revoke", "role-save", "group-save"].includes(action) || action.startsWith("group-roles"))) {
+      if (action === "role-save") dialog.dataset.savedRole = "true";
       const auditReference = auditRecordReference(response.headers.get("X-Operation-Audit-Ref"));
       const title = dialog.querySelector("#system-dialog-title");
       if (title) title.textContent = action === "role-save" ? "角色保存结果" : action === "group-save" ? "用户组保存结果" : "授权操作结果";
@@ -557,8 +571,23 @@ async function previewGroup(form: HTMLFormElement, data: FormData): Promise<void
 
 export function bindDefaultRoleWorkspace(root: HTMLElement): void {
   const panel = root.querySelector<HTMLElement>(".identity-panel:has([data-role-default])");
-  if (panel) openPlatformEditor(panel, "role:");
+  const key = panel?.querySelector<HTMLElement>("[data-role-default]")?.dataset.roleDefault;
+  if (!panel) return;
+  openPlatformEditor(panel, key ?? "role:");
+  panel.querySelector<HTMLInputElement>("[data-role-search]")?.addEventListener("input", (event) => {
+    const query = (event.currentTarget as HTMLInputElement).value.trim().toLowerCase();
+    let visible = false;
+    for (const row of panel.querySelectorAll<HTMLElement>("[data-role-item]")) {
+      row.hidden = !row.querySelector(".role-picker-item")?.textContent?.toLowerCase().includes(query);
+      if (!row.hidden) visible = true;
+    }
+    const empty = panel.querySelector<HTMLElement>("[data-role-search-empty]");
+    if (empty) empty.hidden = visible;
+  });
 }
+
+const roleDrafts = new WeakMap<HTMLElement, Map<string, DocumentFragment>>();
+const nextRoleOpen = new WeakMap<HTMLElement, { key: string; opener: HTMLButtonElement }>();
 
 function openPlatformEditor(panel: HTMLElement, key: string, opener?: HTMLButtonElement): void {
   const dialog = panel.querySelector<HTMLDialogElement>("[data-system-dialog]");
@@ -567,7 +596,11 @@ function openPlatformEditor(panel: HTMLElement, key: string, opener?: HTMLButton
     .find((item) => item.dataset.systemEditor === key);
   if (template) {
     dialog.classList.toggle("system-role-dialog", key.startsWith("role:"));
-    dialog.replaceChildren(template.content.cloneNode(true));
+    delete dialog.dataset.savedRole;
+    const picker = panel.querySelector("[data-role-picker]");
+    const cached = roleDrafts.get(panel)?.get(key);
+    roleDrafts.get(panel)?.delete(key);
+    dialog.replaceChildren(cached ?? template.content.cloneNode(true));
     if (key === "batch") {
       const form = dialog.querySelector("form");
       const selected = [...panel.querySelectorAll<HTMLInputElement>('[data-platform-row]:not([hidden]) input[name="ids"]:checked:not(:disabled)')];
@@ -607,29 +640,48 @@ function openPlatformEditor(panel: HTMLElement, key: string, opener?: HTMLButton
         showRolePreview(roleForm, false);
       }
     };
-    if (roleForm) {
+    if (roleForm && !cached) {
       if (source) mountRoleCatalog(roleForm, JSON.parse(source) as PermissionCatalog);
       else showRoleCatalogRetry(roleForm);
+    }
+    if (roleForm || (picker && key.startsWith("role:"))) {
       const workspace = panel.querySelector<HTMLElement>("[data-role-workspace]");
       const list = panel.querySelector<HTMLElement>("[data-access-list]");
       if (workspace && list) {
         workspace.append(dialog);
-        list.hidden = true;
+        list.hidden = !picker;
+        for (const button of picker?.querySelectorAll<HTMLElement>(".role-picker-item") ?? []) {
+          if (button.dataset.systemOpen === key) button.setAttribute("aria-current", "true");
+          else button.removeAttribute("aria-current");
+        }
         dialog.show();
         dialog.addEventListener("close", function restoreWorkspace() {
           if (dialog.open) return;
           dialog.removeEventListener("close", restoreWorkspace);
+          const next = nextRoleOpen.get(panel);
+          nextRoleOpen.delete(panel);
+          if (next && roleForm?.isConnected) {
+            const drafts = roleDrafts.get(panel) ?? new Map<string, DocumentFragment>();
+            roleDrafts.set(panel, drafts);
+            const fragment = document.createDocumentFragment();
+            fragment.append(...dialog.childNodes);
+            drafts.set(key, fragment);
+          }
           panel.append(dialog);
           list.hidden = false;
+          if (next) {
+            openPlatformEditor(panel, next.key, next.opener);
+            return;
+          }
           (opener ?? panel.querySelector<HTMLButtonElement>('[data-system-open="role:"]'))?.focus({ preventScroll: true });
         });
-        if (opener) roleForm.querySelector<HTMLInputElement>('[name="name"]')?.focus();
+        if (opener) roleForm?.querySelector<HTMLInputElement>('[name="name"]')?.focus();
       } else dialog.showModal();
     } else {
       dialog.showModal();
     }
     if (key === "delete-account") dialog.querySelector<HTMLButtonElement>("footer [data-system-close]")?.focus();
-    for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
+    if (!cached) for (const scope of dialog.querySelectorAll<HTMLElement>("[data-scope]")) void refreshScope(scope);
   }
 }
 
@@ -639,8 +691,15 @@ export function handlePlatformClick(event: MouseEvent): void {
   const panel = target.closest<HTMLElement>(".identity-panel");
   const dialog = panel?.querySelector<HTMLDialogElement>("[data-system-dialog]");
   const opener = target.closest<HTMLButtonElement>("[data-system-open]");
-  if (opener && panel && dialog && !dialog.open) {
-    openPlatformEditor(panel, opener.dataset.systemOpen ?? "", opener);
+  if (opener && panel && dialog) {
+    const key = opener.dataset.systemOpen ?? "";
+    if (!dialog.open) openPlatformEditor(panel, key, opener);
+    else if (opener.closest("[data-role-picker]") && dialog.closest("[data-role-workspace]") &&
+        !dialog.matches(":modal, [aria-busy]") && opener.getAttribute("aria-current") !== "true" &&
+        dialog.dataset.savedRole !== "true") {
+      nextRoleOpen.set(panel, { key, opener });
+      dialog.close();
+    }
     return;
   }
   if (target.closest("[data-system-close]") && dialog?.open && !dialog.hasAttribute("aria-busy")) {
@@ -786,11 +845,11 @@ function savedScopes(form: HTMLFormElement): Scope[] {
     .map((row) => JSON.parse(row.dataset.savedScope ?? "{}") as Scope);
 }
 
-function grantRow(grant: InterfaceGrant, point?: { label: string; risk: string; feature: { scope: string } }, saved = false, editable = true): string {
+function grantRow(grant: InterfaceGrant, point?: { label: string; risk: string; feature: { scope: string; location?: string } }, saved = false, editable = true): string {
   return `<div class="system-scope-row" data-role-grant="${h(JSON.stringify(grant))}">
     <span><strong>${h(point?.label ?? grant.code)}</strong> <span class="system-badge">${saved ? "已保存" : "待保存"}</span>
-    ${point?.risk === "高风险" ? ' <span class="system-badge" data-risk="高风险">高风险</span>' : ""}
-    <br>${scopeText(grant.scope) || h(point?.feature.scope ?? "平台全局或本人范围")}</span>
+    ${point && ["高风险", "敏感"].includes(point.risk) ? ` <span class="system-badge" data-risk="${h(point.risk)}">${h(point.risk)}</span>` : ""}
+    <br>${point?.feature.location ? `<small>${h(point.feature.location)}</small><br>` : ""}${scopeText(grant.scope) || h(point?.feature.scope ?? "平台全局或本人范围")}</span>
     <button type="button" class="button secondary" data-role-grant-remove${editable ? "" : " disabled"}>移除</button></div>`;
 }
 
@@ -805,7 +864,8 @@ function mountRoleCatalog(form: HTMLFormElement, catalog: PermissionCatalog): vo
   const grants = savedGrants(form);
   host.innerHTML = renderPermissionCatalog(true);
   const original = originalRole(form)?.grants ?? [];
-  bindPermissionCatalog(host, catalog, { configured: grants, original, onSelectionChange: () => updateRoleScopeKinds(form) });
+  const initialQuery = new URLSearchParams(window.location.hash.split("?")[1]).get("permission") ?? undefined;
+  bindPermissionCatalog(host, catalog, { configured: grants, original, initialQuery, onSelectionChange: () => updateRoleScopeKinds(form) });
   const saved = new Set(original.map(grantKey));
   list.innerHTML = grants.map(grant => grantRow(grant, describePermission(form, grant.code), saved.has(grantKey(grant)))).join("");
 }
@@ -986,8 +1046,8 @@ function previewRole(form: HTMLFormElement): void {
   const next = new Set(grants.map(grantKey));
   const grantSection = (title: string, items: InterfaceGrant[]) => items.length ? `<h4>${title} · ${items.length} 项</h4><ul>${items.map(item => {
     const point = describePermission(form, item.code);
-    return `<li>${h(point?.label ?? item.code)} · ${scopeText(item.scope) || h(point?.feature.scope ?? "该动作适用范围")}
-      ${point?.risk === "高风险" ? ' <span class="system-badge">高风险</span>' : ""}</li>`;
+    return `<li>${h(point?.label ?? item.code)}${point?.feature.location ? ` · ${h(point.feature.location)}` : ""} · ${scopeText(item.scope) || h(point?.feature.scope ?? "该动作适用范围")}
+      ${point && ["高风险", "敏感"].includes(point.risk) ? ` <span class="system-badge">${h(point.risk)}</span>` : ""}</li>`;
   }).join("")}</ul>` : "";
   diff.innerHTML = `<p>角色名称 ${h(name)}${original && original.name !== name ? `（原名称 ${h(original.name)}）` : ""}</p>${
     section("新增权限", added)}${section("移除权限", removed)}

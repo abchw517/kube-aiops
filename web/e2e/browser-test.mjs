@@ -838,19 +838,42 @@ try {
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-system-close]").click()' });
     await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'.portal-sidebar a[href="#/admin/access"]\').click()' });
-    await assertText(cdp, text => ["角色配置", "用户组", "批量勾选当前结果", "授权清单", "保存角色"].every(label => text.includes(label)),
-      "Permission management entry did not display the editable matrix from the prototype");
+    await assertText(cdp, text => ["角色", "用户组", "批量勾选当前结果", "授权清单", "预览并保存"].every(label => text.includes(label)),
+      "Permission management entry did not display the role workspace");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      const field = form.querySelector("[data-pc-query]");
+      field.value = "数据源管理";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    })()` });
+    const sourcePlacement = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const point = document.querySelector('[data-pc-check="diagnosis.connector.read"]');
+      if (!point?.closest(".permission-list-group").textContent.includes("资源管理 › 平台目录")) return false;
+      document.querySelector("[data-pc-read]").click();
+      return point.isConnected === false && document.querySelectorAll("[data-pc-check]:checked").length === 1;
+    })()` });
+    if (!sourcePlacement.result?.value) throw new Error("Datasource permissions were misplaced or read-only batch picked a write action");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-role-picker] [data-system-open="role:namespace-auditor"]').click()` });
+    await assertText(cdp, text => text.includes("编辑角色 · 命名空间审计员"), "Role picker did not change the active editor");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-role-picker] [data-system-open="role:diagnosis-reader"]').click()` });
+    await assertText(cdp, text => text.includes("编辑角色 · 诊断观察员") && text.includes("总待添加 1 项"), "Role picker lost the edited draft");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'main a[href="#/admin/access/catalog"]\').click()' });
-    await assertText(cdp, text => ["返回权限配置", "从工具集合查看功能动作和接口授权条件。", "接口权限详情"].every(label => text.includes(label)),
+    await assertText(cdp, text => ["按业务页面查看权限", "点击详情查看接口与授权条件", "权限目录"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-pc-module="knowledge"]').click();
       const query = document.querySelector("[data-pc-query]");
       query.value = "knowledge.workflow.publish";
       query.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector('[data-pc-point="knowledge.workflow.publish"]').click();
     })()` });
     await assertText(cdp, text => text.includes("action=publish") && text.includes("/api/v1/wiki/candidates/{id}") && !text.includes("保存草稿"),
       "Catalog search did not isolate the publish action");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-pc-details] a[href*="permission="]').click()` });
+    await assertText(cdp, text => text.includes("授权清单") && text.includes("1 个接口权限点"),
+      "Catalog did not carry the permission search into the role workspace");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
+      text => text.includes("按业务页面查看权限"), "Could not return to the read-only permission catalog");
     await assertRolePermissionSelection(cdp);
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
     await assertText(cdp, text => text.includes("接口授权检查") && !text.includes("角色保存结果"), "Role list did not refresh after confirming the save");
@@ -862,6 +885,7 @@ try {
       filter.value = "configured";
       filter.dispatchEvent(new Event("change", { bubbles: true }));
       const point = form.querySelector('[data-pc-point="system.audit.list"]');
+      point?.click();
       const visible = Boolean(point?.hasAttribute("data-pc-configured")) &&
         form.querySelector("[data-pc-details]").textContent.includes("已保存");
       const audit = [...form.querySelectorAll("[data-role-grant]")].find(row => JSON.parse(row.dataset.roleGrant).code === "system.audit.list");
@@ -872,14 +896,14 @@ try {
     })()` });
     if (!configuredScope.result?.value) throw new Error("Role editor did not show or refresh configured interface scopes");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
-      (text) => text.includes("权限管理") && text.includes("权限配置") && text.includes("新建角色") && text.includes("访客只读"), "Renamed role workspace did not render");
+      (text) => text.includes("权限管理") && text.includes("权限目录") && text.includes("新建角色") && text.includes("访客只读"), "Renamed role workspace did not render");
     const permissionNames = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
       title: document.querySelector("main h1")?.textContent,
       tab: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent,
       catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
     })` });
-    if (permissionNames.result?.value?.title !== "权限配置" || permissionNames.result?.value?.tab !== "权限管理" ||
-        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match their purpose");
+    if (permissionNames.result?.value?.title !== "权限管理" || permissionNames.result?.value?.tab !== "权限管理" ||
+        permissionNames.result?.value?.catalog !== "权限目录") throw new Error("Permission workspace labels do not match their purpose");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1679,12 +1703,14 @@ async function assertRolePermissionSelection(cdp) {
   if (!readOnly.result?.value) throw new Error("Read-only catalog offers grant controls");
   await cdp.send("Runtime.evaluate", { expression: `[...document.querySelectorAll(".portal-sidebar a")]
     .find(link => link.textContent.trim() === "权限管理").click()` });
-  await assertText(cdp, text => ["新建角色", "角色配置", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
+  await assertText(cdp, text => ["角色", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
     "Permission management navigation did not directly open the editable role workspace");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
-    const form = document.querySelector("dialog[open] [data-role-edit]");
-    form.elements.name.value = "接口授权检查";
+    document.querySelector('[data-role-picker] [data-system-open="role:"]').click();
   })()` });
+  await assertText(cdp, text => text.includes("新建角色") && text.includes("重试加载接口权限"),
+    "New role did not open inside the workspace");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("dialog[open] [data-role-edit]").elements.name.value = "接口授权检查"` });
   await assertText(cdp, text => text.includes("重试加载接口权限"), "Catalog failure removed the role editor recovery entry");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-role-catalog-retry]").click()` });
   await assertText(cdp, text => text.includes("批量勾选当前结果") && text.includes("选择接口权限"), "Retry did not restore permission controls");
@@ -1695,7 +1721,7 @@ async function assertRolePermissionSelection(cdp) {
     const check = form.querySelector('[data-pc-check="diagnosis.finding.list"]');
     const action = form.querySelector('[data-pc-point="diagnosis.finding.list"]');
     const matrix = check.closest(".permission-catalog-table");
-    if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth <= matrix.clientWidth ||
+    if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth > matrix.clientWidth ||
         !form.closest("[data-role-workspace]") || form.closest("dialog").matches(":modal") ||
         document.documentElement.scrollWidth > 390) return null;
     check.scrollIntoView({ block: "center", inline: "center" });
@@ -1703,7 +1729,7 @@ async function assertRolePermissionSelection(cdp) {
     const actionBounds = action.getBoundingClientRect();
     const x = checkBounds.x + checkBounds.width / 2;
     const y = checkBounds.y + checkBounds.height / 2;
-    return checkBounds.x >= actionBounds.right && document.elementFromPoint(x, y) === check ? { x, y } : null;
+    return checkBounds.right <= actionBounds.right && document.elementFromPoint(x, y) === check ? { x, y } : null;
   })()` });
   if (!position.result?.value) throw new Error("Narrow-screen role checkbox was clipped, displaced or lost on catalog retry");
   for (const type of ["mousePressed", "mouseReleased"]) {
@@ -1721,7 +1747,7 @@ async function assertRolePermissionSelection(cdp) {
     const form = document.querySelector("dialog[open] form");
     const find = '[data-pc-check="diagnosis.finding.list"]';
     const summary = '[data-pc-check="diagnosis.finding.summary"]';
-    const toolkit = '[data-pc-toolkit-toggle="历史诊断"]';
+    const toolkit = '[data-pc-toolkit-toggle="诊断控制台 › 诊断工作区"]';
     const filter = value => {
       const query = form.querySelector("[data-pc-query]");
       query.value = value;
