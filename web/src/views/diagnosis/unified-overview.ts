@@ -167,7 +167,7 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   if (tryZabbix && !zabbix) coverage.push("Zabbix：暂不可用");
   if (zabbix?.truncated) coverage.push("Zabbix：结果超过总览范围");
   if (source === "zabbix" && !canReadZabbix) coverage.push("Zabbix：当前权限无法读取");
-  if (source === "zabbix" && zabbix && !zabbixSources.length) coverage.push("当前范围尚未接入 Zabbix 问题数据源");
+  if (source === "zabbix" && zabbix && !zabbixSources.length) coverage.push("当前范围尚未接入 Zabbix 数据源");
   for (const item of zabbixSources) {
     if (item.health === "available") continue;
     const at = item.syncedAt && item.hasSnapshot ? ` · 上次成功同步 ${item.syncedAt}` : "";

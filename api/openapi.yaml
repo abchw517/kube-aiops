@@ -2100,6 +2100,10 @@ components:
         - version
         - health
       properties:
+        name:
+          type: string
+          maxLength: 120
+          description: 创建时设置的数据源显示名称，旧数据源可以为空。
         environmentName:
           type: string
         businessName:
@@ -2177,6 +2181,10 @@ components:
         - scope
         - groupIds
       properties:
+        name:
+          type: string
+          maxLength: 120
+          description: 创建数据源时填写的显示名称，预览请求可以省略。
         draft:
           type: string
         sourceId:

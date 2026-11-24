@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/assetmeta"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/correlation"
@@ -63,7 +64,7 @@ func configureIncidents(ctx context.Context, store *identitystore.Store, admin *
 		return admin.AuthorizeBusinessOperation(ctx, p, code, legacy, resourceScope, false, scope.BusinessID)
 	}
 	automation := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_POLICY_ENVIRONMENTS"), func(r rune) bool { return r == ',' || r == ' ' })
-	zabbix := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_ZABBIX_ENDPOINTS"), func(r rune) bool { return r == ',' || r == ' ' })
+	zabbix := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_ZABBIX_ENDPOINTS"), func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
 	assets := assetmeta.New(os.Getenv("DIAGNOSTIC_CREDENTIALS_DIR"), zabbix)
 	return &incident.Server{
 		Zabbix:              configureZabbix(store, admin, assets, o, allowedEnvironment),

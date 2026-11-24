@@ -73,7 +73,20 @@ func TestZabbixOnboardingSnapshotAndAuthorization(t *testing.T) {
 	if code := f.request("POST", "/zabbix/preview", "admin", requestJSON(t, selection), "", "").Code; code != 200 {
 		t.Fatalf("preview: %d", code)
 	}
+	for _, invalid := range []string{"", "   ", "运维\x00监控", strings.Repeat("环", 121)} {
+		selection.Name = &invalid
+		res := f.request("POST", "/zabbix/sources", "admin", requestJSON(t, selection), "", "")
+		if res.Code != 400 || !strings.Contains(res.Body.String(), "ZABBIX_INVALID_NAME") {
+			t.Fatalf("invalid name was accepted: %d", res.Code)
+		}
+	}
+	name := "  生产运维 · Zabbix  "
+	selection.Name = &name
 	created := decoded[ZabbixSource](t, f.request("POST", "/zabbix/sources", "admin", requestJSON(t, selection), "", ""), 201)
+	sources := decoded[struct{ Items []ZabbixSource }](t, f.request("GET", "/zabbix/sources", "admin", "", "", ""), 200)
+	if created.Name != strings.TrimSpace(name) || len(sources.Items) != 1 || sources.Items[0].Name != created.Name {
+		t.Fatalf("name not preserved in datasource list: %+v", sources.Items)
+	}
 	if created.Health != "pending" || created.ProblemCount != nil || created.SyncedAt != nil {
 		t.Fatalf("preview was published: %+v", created)
 	}
@@ -153,7 +166,50 @@ func TestZabbixOnboardingSnapshotAndAuthorization(t *testing.T) {
 		t.Fatalf("unexpected stale config update: %d", badPatch.Code)
 	}
 	paused := decoded[ZabbixSource](t, f.request(http.MethodPatch, path, "admin", `{"enabled":false}`, "", `"1"`), 200)
-	if paused.Health != "paused" {
+	if paused.Health != "paused" || paused.Name != created.Name {
 		t.Fatalf("unexpected pause state: %+v", paused)
+	}
+}
+
+func TestZabbixEndpointErrorsDistinguishAddressAndDeploymentPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{assetmeta.ErrConfiguration, 400, "ZABBIX_ENDPOINT"},
+		{assetmeta.ErrZabbixEndpointNotAllowed, 403, "ZABBIX_ENDPOINT_NOT_ALLOWED"},
+		{assetmeta.ErrZabbixEndpointsUnconfigured, 503, "ZABBIX_ENDPOINTS_UNCONFIGURED"},
+	} {
+		var got httpError
+		if err := zabbixFailure(tc.err); !errors.As(err, &got) || got.status != tc.status || got.code != tc.code {
+			t.Fatalf("mapping for %v: %+v", tc.err, err)
+		}
+	}
+}
+
+func TestZabbixSourceNameMigrationPreservesOldRows(t *testing.T) {
+	f := newFixture(t)
+	ctx := t.Context()
+	legacySchema := strings.Replace(zabbixSchema, "name TEXT NOT NULL DEFAULT '',\n\t", "", 1)
+	if _, err := f.db.ExecContext(ctx, "DROP TABLE diagnostic_zabbix_source"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.ExecContext(ctx, legacySchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO diagnostic_zabbix_source
+		(id,endpoint,environment,business,groups_json,auth_method,upstream_version,credential,enabled,version)
+		VALUES('old','https://zabbix.example/api_jsonrpc.php','production','ops','[]','token','6.0',X'01',1,3)`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := Open(ctx, f.db.DB, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, err := zabbixByID(ctx, f.db.DB, "old")
+	if err != nil || old.Name != "" || old.Scope.Environment != "production" || old.Scope.Business != "ops" || !old.Enabled || old.Version != 3 {
+		t.Fatalf("existing source changed after migration: %+v, %v", old.ZabbixSource, err)
 	}
 }

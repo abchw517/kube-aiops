@@ -16,6 +16,7 @@ import (
 const zabbixSchema = `
 CREATE TABLE IF NOT EXISTS diagnostic_zabbix_source (
 	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL DEFAULT '',
 	endpoint TEXT NOT NULL, environment TEXT NOT NULL, business TEXT NOT NULL,
 	groups_json TEXT NOT NULL, auth_method TEXT NOT NULL, upstream_version TEXT NOT NULL,
 	credential BLOB NOT NULL, enabled INTEGER NOT NULL, version INTEGER NOT NULL,
@@ -26,8 +27,20 @@ CREATE TABLE IF NOT EXISTS diagnostic_zabbix_source (
 CREATE INDEX IF NOT EXISTS diagnostic_zabbix_queue ON diagnostic_zabbix_source(enabled,due_at);
 `
 
-const zabbixColumns = `id,endpoint,environment,business,groups_json,auth_method,upstream_version,credential,enabled,version,health,snapshot,checked_at,synced_at,lease_until`
+const zabbixColumns = `id,name,endpoint,environment,business,groups_json,auth_method,upstream_version,credential,enabled,version,health,snapshot,checked_at,synced_at,lease_until`
 const zabbixInterval = time.Minute
+
+func migrateZabbixSourceName(ctx context.Context, tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_table_info('diagnostic_zabbix_source') WHERE name='name')").Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, "ALTER TABLE diagnostic_zabbix_source ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+	return err
+}
 
 type ZabbixScope struct {
 	Environment string `json:"environmentId"`
@@ -48,6 +61,7 @@ type ZabbixSource struct {
 	EnvironmentName string                  `json:"environmentName,omitempty"`
 	BusinessName    string                  `json:"businessName,omitempty"`
 	ID              string                  `json:"id"`
+	Name            string                  `json:"name,omitempty"`
 	Endpoint        string                  `json:"endpoint"`
 	Scope           ZabbixScope             `json:"scope"`
 	Groups          []assetmeta.ZabbixGroup `json:"groups"`
@@ -73,7 +87,7 @@ func scanZabbix(row rowScanner) (zabbixSourceRecord, error) {
 	var d zabbixSourceRecord
 	var groups, snapshot string
 	var checked, synced sql.NullInt64
-	err := row.Scan(&d.ID, &d.Endpoint, &d.Scope.Environment, &d.Scope.Business, &groups, &d.AuthMethod, &d.UpstreamVersion, &d.credential,
+	err := row.Scan(&d.ID, &d.Name, &d.Endpoint, &d.Scope.Environment, &d.Scope.Business, &groups, &d.AuthMethod, &d.UpstreamVersion, &d.credential,
 		&d.Enabled, &d.Version, &d.Health, &snapshot, &checked, &synced, &d.lease)
 	if errors.Is(err, sql.ErrNoRows) {
 		return d, ErrNotFound
@@ -123,9 +137,9 @@ func (s *Store) saveZabbix(ctx context.Context, d zabbixSourceRecord, actor stri
 	defer tx.Rollback()
 	if create {
 		res, execErr := tx.ExecContext(ctx, `INSERT INTO diagnostic_zabbix_source
-		(id,endpoint,environment,business,groups_json,auth_method,upstream_version,credential,enabled,version)
-		VALUES(?,?,?,?,?,?,?,?,?,1) ON CONFLICT(endpoint,environment,business) DO NOTHING`,
-			d.ID, d.Endpoint, d.Scope.Environment, d.Scope.Business, string(groups), d.AuthMethod, d.UpstreamVersion, d.credential, d.Enabled)
+		(id,name,endpoint,environment,business,groups_json,auth_method,upstream_version,credential,enabled,version)
+		VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(endpoint,environment,business) DO NOTHING`,
+			d.ID, d.Name, d.Endpoint, d.Scope.Environment, d.Scope.Business, string(groups), d.AuthMethod, d.UpstreamVersion, d.credential, d.Enabled)
 		if err = affected(res, execErr, ErrConflict); err != nil {
 			return ZabbixSource{}, err
 		}

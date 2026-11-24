@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/assetmeta"
@@ -120,8 +122,12 @@ func zabbixFailure(err error) error {
 		code = stage.Stage
 	}
 	switch {
+	case errors.Is(err, assetmeta.ErrZabbixEndpointsUnconfigured):
+		return httpError{503, "ZABBIX_ENDPOINTS_UNCONFIGURED", "平台尚未配置 Zabbix 允许地址。请在 API 容器的 DIAGNOSTIC_ZABBIX_ENDPOINTS 中配置此 Zabbix 的 API 地址。"}
+	case errors.Is(err, assetmeta.ErrZabbixEndpointNotAllowed):
+		return httpError{403, "ZABBIX_ENDPOINT_NOT_ALLOWED", "此 Zabbix 地址未在平台允许列表中。请核对提交的地址，或将对应的 API 地址加入 DIAGNOSTIC_ZABBIX_ENDPOINTS。"}
 	case errors.Is(err, assetmeta.ErrConfiguration):
-		return httpError{400, "ZABBIX_ENDPOINT", "Zabbix 地址格式有误或未获平台允许。"}
+		return httpError{400, "ZABBIX_ENDPOINT", "请输入有效的 HTTPS Zabbix 站点根地址或完整的 api_jsonrpc.php 地址。"}
 	case errors.Is(err, assetmeta.ErrZabbixVersion):
 		return httpError{400, "ZABBIX_VERSION", "此接入流程支持 Zabbix 6.0、6.2 与 6.4。"}
 	case errors.Is(err, assetmeta.ErrZabbixScope):
@@ -324,6 +330,7 @@ func (s *Server) testZabbix(w http.ResponseWriter, r *http.Request, p identity.P
 }
 
 type zabbixSelection struct {
+	Name     *string     `json:"name,omitempty"`
 	Draft    string      `json:"draft,omitempty"`
 	SourceID string      `json:"sourceId,omitempty"`
 	Scope    ZabbixScope `json:"scope"`
@@ -444,10 +451,18 @@ func (s *Server) createZabbix(w http.ResponseWriter, r *http.Request, p identity
 	if !adminhttp.Decode(w, r, &input) || input.SourceID != "" || !validZabbixGroups(input.GroupIDs) {
 		return zabbixBadInput
 	}
+	var name string
+	if input.Name != nil {
+		name = strings.TrimSpace(*input.Name)
+		if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsFunc(name, unicode.IsControl) {
+			return httpError{400, "ZABBIX_INVALID_NAME", "数据源名称应为 1 至 120 个字符，且不能包含控制字符。"}
+		}
+	}
 	d, credential, err := s.zabbixSelection(ctx, p, input)
 	if err != nil {
 		return err
 	}
+	d.Name = name
 	if err = s.validateZabbixSelection(ctx, p, d, credential, input.GroupIDs); err != nil {
 		return err
 	}

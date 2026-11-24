@@ -108,3 +108,30 @@ func TestZabbixRejectsUnexpectedEndpointBeforeSendingCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestZabbixEndpointPolicyNormalizesConfiguredAndSubmittedAddresses(t *testing.T) {
+	for _, configured := range []string{"https://monitor.example", "https://monitor.example/api_jsonrpc.php/"} {
+		client := New("", []string{configured, "https://other.example/zabbix/"})
+		for input, expected := range map[string]string{
+			"https://monitor.example/":                "https://monitor.example/api_jsonrpc.php",
+			"https://monitor.example/api_jsonrpc.php": "https://monitor.example/api_jsonrpc.php",
+			"https://other.example/zabbix":            "https://other.example/zabbix/api_jsonrpc.php",
+		} {
+			if got, err := client.ZabbixEndpoint(input); err != nil || got != expected {
+				t.Fatalf("policy value %q, requested address %q: got %q, %v", configured, input, got, err)
+			}
+		}
+		for _, input := range []string{"https://monitor.example/another", "https://monitor.example:8443", "https://unexpected.example"} {
+			if _, err := client.ZabbixEndpoint(input); !errors.Is(err, ErrZabbixEndpointNotAllowed) {
+				t.Fatalf("expected an allow-list rejection for %q, got %v", input, err)
+			}
+		}
+	}
+	client := New("", nil)
+	if _, err := client.ZabbixEndpoint("https://monitor.example"); !errors.Is(err, ErrZabbixEndpointsUnconfigured) {
+		t.Fatalf("expected an unconfigured policy error, got %v", err)
+	}
+	if _, err := client.ZabbixEndpoint("http://monitor.example"); err != ErrConfiguration {
+		t.Fatalf("invalid URL must be reported before the policy check, got %v", err)
+	}
+}
