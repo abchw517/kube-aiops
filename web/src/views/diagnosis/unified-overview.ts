@@ -2,8 +2,9 @@ import { createOverviewClient } from "../../api/client.ts";
 import { ApiError, type Cluster, type Finding, type Incident, type Severity, type ZabbixHealth, type ZabbixProblems } from "../../api/generated.ts";
 import { escapeHtml } from "../../components/html.ts";
 import { diagnosticListPaths } from "../../domain/diagnostic-routes.ts";
-import { aggregateDiagnostics, diagnosticLevels, incidentLevel, overviewDays, overviewLevel, overviewSearch, overviewWindows } from "../../domain/unified-diagnostics.ts";
+import { aggregateDiagnostics, diagnosticLevels, incidentLevel, overviewDays, overviewLevel, overviewSearch, type OverviewDays } from "../../domain/unified-diagnostics.ts";
 import { incidentHref, incidentStatusLabels } from "./incident-filters.ts";
+import { bindOverviewTrend, renderOverviewTrend, type Trend } from "./unified-trend.ts";
 import { zabbixHealth } from "./zabbix-sources.ts";
 
 const maxPages = 20;
@@ -92,10 +93,11 @@ function renderScope(clusters: Cluster[], query: URLSearchParams, severity: Seve
       <label>诊断级别<select name="severity">${choices([["", "全部级别"], ...levels], severity ?? "")}</select></label>
       ${hasZabbix ? `<label>Zabbix 状态<select name="recent">${choices([["", "当前记录"], ["true", "含最近恢复"]], query.get("recent") ?? "")}</select></label>` : ""}
       <input type="hidden" name="trendDays" value="${overviewDays(query.get("trendDays"))}">
-      <button class="button" type="submit">应用筛选</button>
-      <a class="overview-text-link" href="${clearScope(query)}">清除筛选</a>
+      <div class="overview-filter-actions"><button class="button" type="submit">应用筛选</button>
+      <a class="overview-text-link" href="${clearScope(query)}">清除筛选</a></div>
     </form>
-    <p class="overview-current-scope">当前范围 <strong>${escapeHtml(scopeLabel)} · ${severity ? diagnosticLevels[severity] : "全部级别"}</strong> <span>${sourceLabel(query.get("source"), hasZabbix)}</span></p>
+    <p class="overview-current-scope">当前范围 <strong>${escapeHtml(scopeLabel)} · ${severity ? diagnosticLevels[severity] : "全部级别"}</strong> <span>${sourceLabel(query.get("source"), hasZabbix)}</span>
+      <button type="button" class="overview-jump" data-overview-jump>跳到最近诊断 ↓</button></p>
   </section>`;
 }
 
@@ -186,62 +188,60 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   });
   const notice = coverage.length ? `<div class="overview-notice" role="status"><span>${escapeHtml(coverage.join("；"))}。${hasData && incomplete ? "仅统计已获取记录。" : ""}</span>
     ${incomplete ? '<button type="button" class="button secondary" data-action="retry">重试</button>' : ""}</div>` : "";
-  const data = aggregateDiagnostics(incident.items, findingRows, severity, Date.now(), days, problems);
-  return `<section class="unified-overview" aria-label="诊断概况">
-    ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(hasData ? data : undefined, query, severity)}
-    ${hasData ? renderRecent(data.recent, query, canReadIncidents, incomplete) +
-      `<div class="overview-analytics">${renderTrend(data, query, incomplete, tryZabbix && (zabbixSources.length > 0 || source === "zabbix"))}${renderDistribution(data, incomplete)}</div>`
-      : '<section class="panel overview-panel overview-empty"><strong>最近诊断与图表暂不可用</strong></section>'}
+  const now = Date.now();
+  const data = aggregateDiagnostics(incident.items, findingRows, severity, now, 30, problems);
+  const trend: Trend = { data, now, incomplete, available: hasData, sources: [] };
+  if (incident.coverage === "complete" || incident.coverage === "partial") trend.sources.push("incident");
+  if (finding.coverage === "complete" || finding.coverage === "partial") trend.sources.push("finding");
+  if (problems.length || zabbixSources.some(item => item.hasSnapshot)) trend.sources.push("zabbix");
+  const counts = hasData ? data : undefined;
+  const renderWindow = (days: OverviewDays) => renderOverviewTrend(trend, days,
+    window => overviewHref(query, { trendDays: String(window) }));
+  const html = `<section class="unified-overview" aria-label="诊断概况">
+    ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(counts, query, severity)}
+    <div class="panel overview-analytics">
+      <section class="overview-trend" data-overview-trend aria-labelledby="overview-trend-title">${renderWindow(days)}</section>
+      ${renderDistribution(counts, query, severity, incomplete)}
+    </div>
+    ${renderRecent(data.recent, query, canReadIncidents, incomplete, hasData)}
   </section>`;
+  return { html, bind: (root: HTMLElement) => bindUnifiedOverview(root, trend, query, renderWindow) };
+}
+
+function severityHref(query: URLSearchParams, level: Severity | "", severity: Severity | undefined): string {
+  return overviewHref(query, { severity: severity === level ? "" : level });
 }
 
 function renderMetrics(data: Overview | undefined, query: URLSearchParams, severity: Severity | undefined) {
-  const metrics: [string, string, number | undefined][] = [["", "诊断记录总数", data?.total],
-    ...levels.map(([level, label]): [string, string, number | undefined] => [level, label, data?.counts[level]])];
-  return `<div class="overview-metrics" aria-label="诊断指标">${metrics.map(([level, label, count]) =>
-    `<a class="panel overview-metric metric-${level || "total"}" href="${overviewHref(query, { severity: level })}"
-      ${(severity ?? "") === level ? 'aria-current="true"' : ""}><span>${label}</span><strong>${count ?? "—"}</strong></a>`).join("")}</div>`;
+  const metrics: [Severity | "", string, number | undefined][] = [["", "诊断记录总数", data?.total],
+    ...levels.map(([level, label]): [Severity, string, number | undefined] => [level, label, data?.counts[level]])];
+  return `<div class="overview-metrics" aria-label="诊断指标">${metrics.map(([level, label, count]) => {
+    const classes = `panel overview-metric metric-${level || "total"}`;
+    return data ? `<a class="${classes}" href="${severityHref(query, level, severity)}"
+      ${(severity ?? "") === level ? 'aria-current="true"' : ""}><span>${label}</span><strong>${count}</strong></a>` :
+      `<div class="${classes}"><span>${label}</span><strong>—</strong></div>`;
+  }).join("")}</div>`;
 }
 
-function renderTrend(data: Overview, query: URLSearchParams, incomplete: boolean, showZabbix: boolean) {
-  const days = data.daily.length;
-  const total = data.daily.reduce((sum, { incident, finding, zabbix }) => sum + incident + finding + zabbix, 0);
-  const max = Math.max(1, ...data.daily.map((day) => day.incident + day.finding + day.zabbix));
-  const toggle = `<nav class="overview-segment" aria-label="趋势时间窗">${overviewWindows.map((windowDays) =>
-    `<a href="${overviewHref(query, { trendDays: String(windowDays) })}"${windowDays === days ? ' aria-current="true"' : ""}>${windowDays} 天</a>`).join("")}</nav>`;
-  const hint = incomplete ? "当前窗口未取得诊断记录。" : data.undated ? "已取得的带有效时间记录未落在当前时间窗。" :
-    data.total ? "当前范围内有记录，本时间窗内没有首次发现的记录。" : "当前筛选范围没有匹配的诊断记录。";
-  const emptyTitle = incomplete ? "数据覆盖不完整" : data.undated ? "未取得当前窗口的带时间记录" : `近 ${days} 天无新增`;
-  return `<section class="panel overview-panel" aria-label="诊断趋势">
-    <header class="overview-heading"><div><h2>诊断趋势</h2><p>${data.daily[0]?.date} 至 ${data.daily.at(-1)?.date}（UTC）</p></div>${toggle}</header>
-    ${total ? `<div class="overview-plot" style="--overview-days:${days}">${data.daily.map(({ date, incident, finding, zabbix }, index) => {
-      const label = `${date}（UTC）共 ${incident + finding + zabbix} 条，故障 ${incident} 条，K8sGPT ${finding} 条${showZabbix ? `，Zabbix ${zabbix} 条` : ""}`;
-      const showDate = index === 0 || (index !== days - 2 && index % Math.ceil(days / 5) === 0) || index === days - 1;
-      return `<button class="overview-trend-day" type="button" data-overview-point="${label}" aria-pressed="false" aria-label="${label}" title="${label}">
-        <span class="overview-trend-bars" aria-hidden="true"><span style="height:${incident / max * 100}%"></span><span style="height:${finding / max * 100}%"></span>${showZabbix ? `<span class="zabbix-legend" style="height:${zabbix / max * 100}%"></span>` : ""}</span>
-        <span class="overview-day-label" aria-hidden="true">${showDate ? date.slice(5) : ""}</span></button>`;
-    }).join("")}</div>
-    <p class="overview-trend-legend"><span>故障事件</span><span>K8sGPT</span>${showZabbix ? '<span class="zabbix-legend">Zabbix</span>' : ""}</p>
-    <p data-overview-note class="overview-chart-note" role="status">${incomplete ? "已获取" : "窗口内"} ${total} 条</p>`
-    : `<div class="overview-trend-empty"><strong>${emptyTitle}</strong><p>${hint}</p>
-      ${days === 7 && data.total ? `<a href="${overviewHref(query, { trendDays: "14" })}">查看近 14 天</a>` : ""}</div>`}
-    ${data.undated ? `<p class="overview-chart-note">${data.undated} 条记录缺少有效时间，未计入趋势。</p>` : ""}
-  </section>`;
-}
-
-function renderDistribution(data: Overview, incomplete: boolean) {
-  return `<section class="panel overview-panel"><header class="overview-heading"><div><h2>严重度分布</h2>
-    <p>${incomplete ? "已获取记录" : "当前范围"} · ${data.total} 条</p></div></header>
+function renderDistribution(data: Overview | undefined, query: URLSearchParams, severity: Severity | undefined, incomplete: boolean) {
+  const clearLevel = severity ? `<a href="${severityHref(query, severity, severity)}">查看全部级别</a>` : "";
+  return `<section class="overview-distribution-panel" aria-labelledby="overview-distribution-title">
+    <header class="overview-heading"><div><h2 id="overview-distribution-title">严重度分布</h2>
+    <p>${data ? `${incomplete ? "已获取记录" : "当前筛选范围"} · ${data.total} 条` : "暂不可用"}</p></div></header>
     <ul class="overview-distribution">${levels.map(([level, label]) => {
-      const count = data.counts[level];
-      return `<li class="overview-${level}"><span>${label}</span>
-        <div class="overview-progress" aria-hidden="true"><span style="width:${data.total ? count / data.total * 100 : 0}%"></span></div>
-        <strong>${count}</strong></li>`;
+      const count = data?.counts[level];
+      const percent = data?.total ? (count ?? 0) / data.total * 100 : 0;
+      const row = `<span class="overview-distribution-row"><span>${label}</span>
+        <span><strong>${count ?? "—"}</strong><small>${data?.total ? `${percent.toFixed(1)}%` : "—"}</small></span></span>
+        <span class="overview-progress" aria-hidden="true"><span style="width:${percent}%"></span></span>`;
+      return `<li class="overview-${level}">${data ? `<a href="${severityHref(query, level, severity)}"
+        ${severity === level ? 'aria-current="true"' : ""}>${row}</a>` : row}</li>`;
     }).join("")}</ul>
+    ${data ? `<p class="overview-distribution-foot"><span>点击级别筛选总览</span>${clearLevel}</p>` : ""}
   </section>`;
 }
 
-function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean) {
+function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean) {
   const eventQuery = new URLSearchParams(query);
   for (const key of ["trendDays", "source", "recent"]) eventQuery.delete(key);
   const findingsQuery = new URLSearchParams();
@@ -261,7 +261,7 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
     const target = row.source === "incident" ? incidentHref(row.id, query.toString(), true) :
       href(`${diagnosticListPaths.findings}/${encodeURIComponent(row.id)}`, params);
     return {
-      link: `<a href="${escapeHtml(target)}">${escapeHtml(row.title)}</a>`,
+      link: `<a data-overview-return href="${escapeHtml(target)}">${escapeHtml(row.title)}</a>`,
       level,
       status: row.status ? escapeHtml(incidentStatusLabels[row.status]) : "—",
       source: escapeHtml(row.source === "incident" ? `故障事件 · ${row.origin}` : row.origin),
@@ -269,8 +269,8 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
       at,
     };
   });
-  return `<section class="panel overview-records" aria-label="最近诊断"><header class="overview-heading overview-record-heading">
-    <div><h2>最近诊断</h2><p>按首次发现时间倒序，最多 5 条 · UTC+8</p></div><div class="overview-actions">
+  return `<section class="panel overview-records" aria-labelledby="overview-recent-title"><header class="overview-heading overview-record-heading">
+    <div><h2 id="overview-recent-title" tabindex="-1">最近诊断</h2><p>按首次发现时间倒序，最多 5 条 · UTC+8</p></div><div class="overview-actions">
     <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.events, canReadIncidents ? eventQuery : findingsQuery))}">查看故障事件</a>
     <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.findings, findingsQuery))}">查看原有诊断结果</a></div></header>
     ${items.length ? `<div class="overview-table-wrap unified-recent" tabindex="0" role="region" aria-label="最近诊断记录"><table>
@@ -279,7 +279,7 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
     </table></div><ul class="overview-record-cards" aria-label="最近诊断记录">${items.map((item) => `<li>${item.link}<div class="overview-card-details">
       ${item.level}<span>${item.source}</span><span>${item.instance}</span>${item.status === "—" ? "" : `<span>${item.status}</span>`}<span>${item.at}</span>
       </div></li>`).join("")}</ul>`
-    : `<div class="overview-empty"><strong>${incomplete ? "当前范围尚未取得诊断记录" : "当前范围暂无诊断记录"}</strong><a href="${clearScope(query)}">清除筛选</a></div>`}
+    : `<div class="overview-empty"><strong>${!available ? "最近诊断暂不可用" : incomplete ? "当前范围尚未取得诊断记录" : "当前范围暂无诊断记录"}</strong>${available ? `<a href="${clearScope(query)}">清除筛选</a>` : ""}</div>`}
   </section>`;
 }
 
@@ -303,23 +303,63 @@ function renderZabbixProblem(problem: NonNullable<Overview["recent"][number]["pr
   };
 }
 
-export function bindUnifiedOverview(root: HTMLElement): void {
-  root.querySelector<HTMLFormElement>("[data-unified-filters]")?.addEventListener("submit", (event) => {
+function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchParams,
+  renderWindow: (days: OverviewDays) => string): void {
+  const form = root.querySelector<HTMLFormElement>("[data-unified-filters]");
+  const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
+  const overview = root.querySelector<HTMLElement>(".unified-overview");
+  if (!form || !chart || !overview) return;
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    const query = new URLSearchParams();
+    const next = new URLSearchParams();
     for (const [key, value] of new FormData(form)) {
-      if (typeof value === "string" && value) query.set(key, value);
+      if (typeof value === "string" && value) next.set(key, value);
     }
-    window.location.hash = href(diagnosticListPaths.overview, overviewSearch(query));
+    window.location.hash = href(diagnosticListPaths.overview, overviewSearch(next));
   });
-  const note = root.querySelector<HTMLElement>("[data-overview-note]");
-  if (!note) return;
-  for (const point of root.querySelectorAll<HTMLButtonElement>("[data-overview-point]")) {
-    point.addEventListener("click", () => {
-      root.querySelector('[data-overview-point][aria-pressed="true"]')?.setAttribute("aria-pressed", "false");
-      point.setAttribute("aria-pressed", "true");
-      note.textContent = point.dataset.overviewPoint ?? "";
-    });
+  root.querySelector("[data-overview-jump]")?.addEventListener("click", () => {
+    const heading = root.querySelector<HTMLElement>("#overview-recent-title");
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: "start" });
+  });
+  bindOverviewTrend(chart, trend, overviewDays(query.get("trendDays")));
+  chart.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element) || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest<HTMLAnchorElement>("[data-overview-window]");
+    if (!link) return;
+    event.preventDefault();
+    const days = overviewDays(link.dataset.overviewWindow ?? null);
+    if (days === overviewDays(query.get("trendDays"))) return;
+    setTrendWindow(query, days);
+    history.pushState(history.state, "", href(diagnosticListPaths.overview, overviewSearch(query)));
+    updateWindowLinks(overview, days);
+    chart.innerHTML = renderWindow(days);
+    bindOverviewTrend(chart, trend, days);
+    chart.querySelector<HTMLElement>(`[data-overview-window="${days}"]`)?.focus({ preventScroll: true });
+  });
+}
+
+function setTrendWindow(query: URLSearchParams, days: OverviewDays): void {
+  if (days === 7) query.delete("trendDays");
+  else query.set("trendDays", String(days));
+}
+
+function updateWindowLinks(root: HTMLElement, days: OverviewDays): void {
+  const field = root.querySelector<HTMLInputElement>('[name="trendDays"]');
+  if (field) field.value = String(days);
+  for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
+    const [path, rawQuery] = (link.getAttribute("href") ?? "").split("?", 2);
+    if (!path) continue;
+    const query = new URLSearchParams(rawQuery);
+    if (path === diagnosticListPaths.overview) {
+      setTrendWindow(query, days);
+    } else if (link.hasAttribute("data-overview-return")) {
+      const returnQuery = new URLSearchParams(query.get("return") ?? "");
+      setTrendWindow(returnQuery, days);
+      query.set("return", overviewSearch(returnQuery).toString());
+    } else {
+      continue;
+    }
+    link.setAttribute("href", href(path, query));
   }
 }

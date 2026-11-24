@@ -27,20 +27,32 @@ test("unified diagnostics deduplicates an explicit reference only within its clu
   assert.equal(overviewLevel("P1"), "critical");
 });
 
-test("visible merge targets keep the representative and UTC trend counts only dated records in the window", () => {
+test("visible merge targets keep the representative and the trend counts only dated records in the UTC+8 window", () => {
   const events = [incident("child", { findingId: "linked", mergedInto: "target" }), incident("target")];
-  const result = aggregateDiagnostics(events, [finding("linked"), finding("old", { createdAt: "2026-11-17T23:59:59Z" }),
-    finding("undated", { createdAt: "" }), finding("today"), finding("last", { createdAt: "2026-11-18T00:00:00Z" }),
-    finding("outside")], undefined, now);
+  const result = aggregateDiagnostics(events, [finding("linked"), finding("old", { createdAt: "2026-11-17T15:59:59Z" }),
+    finding("undated", { createdAt: "" }), finding("today"), finding("last", { createdAt: "2026-11-17T16:00:00Z" }),
+    finding("outside", { createdAt: "2026-11-30T00:00:00Z" })], undefined, now);
   assert.equal(result.total, 6);
   assert.equal(result.recent.length, 5);
   assert.equal(result.undated, 1);
   assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1, zabbix: 0 });
-  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 0, zabbix: 0 });
+  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 1, zabbix: 0 });
   assert.equal(result.recent.some(({ id }) => id === "child" || id === "linked"), false);
   assert.equal(aggregateDiagnostics([events[0]], [], undefined, now).total, 1);
 });
 
+test("UTC+8 trend opens the next day at 16:00 UTC and excludes timestamps after the snapshot", () => {
+  const cutoff = Date.parse("2026-11-23T16:00:00Z");
+  const records = [finding("before", { createdAt: "2026-11-23T15:59:59Z" }),
+    finding("at", { createdAt: "2026-11-23T16:00:00Z" }),
+    finding("future", { createdAt: "2026-11-23T16:00:01Z" })];
+  const result = aggregateDiagnostics([], records, undefined, cutoff);
+  assert.equal(result.total, 3);
+  assert.deepEqual(result.daily.slice(-2), [
+    { date: "2026-11-23", incident: 0, finding: 1, zabbix: 0 },
+    { date: "2026-11-24", incident: 0, finding: 1, zabbix: 0 },
+  ]);
+});
 
 test("widening the trend window does not alter diagnostic counts or the recent queue", () => {
   const rows = ["a", "b", "c"].map((id) => finding(id, { createdAt: "2026-11-16T10:01:35Z" }));
