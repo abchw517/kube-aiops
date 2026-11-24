@@ -16,11 +16,13 @@ import (
 const zabbixLimit = 500
 
 var (
-	ErrZabbixTLS            = errors.New("Zabbix TLS certificate invalid")
-	ErrZabbixAuthentication = fmt.Errorf("Zabbix authentication rejected: %w", ErrAuthorization)
-	ErrZabbixVersion        = errors.New("unsupported Zabbix version")
-	ErrZabbixScope          = errors.New("Zabbix groups or hosts unavailable")
-	ErrZabbixLimit          = errors.New("Zabbix result exceeds collection limit")
+	ErrZabbixEndpointNotAllowed    = fmt.Errorf("Zabbix endpoint not allowed: %w", ErrConfiguration)
+	ErrZabbixEndpointsUnconfigured = fmt.Errorf("no Zabbix endpoints configured: %w", ErrConfiguration)
+	ErrZabbixTLS                   = errors.New("Zabbix TLS certificate invalid")
+	ErrZabbixAuthentication        = fmt.Errorf("Zabbix authentication rejected: %w", ErrAuthorization)
+	ErrZabbixVersion               = errors.New("unsupported Zabbix version")
+	ErrZabbixScope                 = errors.New("Zabbix groups or hosts unavailable")
+	ErrZabbixLimit                 = errors.New("Zabbix result exceeds collection limit")
 )
 
 type ZabbixCredential struct {
@@ -74,23 +76,42 @@ type ZabbixSnapshot struct {
 	Problems          []ZabbixProblem `json:"problems"`
 }
 
-func (c *Client) ZabbixEndpoint(value string) (string, error) {
+func normalizeZabbixEndpoint(value string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || u == nil || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.User != nil ||
-		u.Fragment != "" || u.Scheme != "https" || u.Hostname() == "" {
+		u.Fragment != "" || u.Opaque != "" || u.Scheme != "https" || u.Hostname() == "" {
 		return "", ErrConfiguration
 	}
+	if port := u.Port(); port != "" {
+		value, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || value == 0 {
+			return "", ErrConfiguration
+		}
+	}
 	root := strings.TrimRight(u.Path, "/")
+	if (root != "" && path.Clean(root) != root) || strings.ContainsAny(root, " \t\r\n\\") {
+		return "", ErrConfiguration
+	}
 	if !strings.HasSuffix(root, "/api_jsonrpc.php") {
-		if strings.Contains(path.Base(root), ".") {
+		if root != "" && strings.Contains(path.Base(root), ".") {
 			return "", ErrConfiguration
 		}
 		root += "/api_jsonrpc.php"
 	}
 	u.Path = root
-	endpoint := u.String()
+	return u.String(), nil
+}
+
+func (c *Client) ZabbixEndpoint(value string) (string, error) {
+	endpoint, err := normalizeZabbixEndpoint(value)
+	if err != nil {
+		return "", err
+	}
+	if len(c.hosts) == 0 {
+		return "", ErrZabbixEndpointsUnconfigured
+	}
 	if !c.hosts[endpoint] {
-		return "", ErrConfiguration
+		return "", ErrZabbixEndpointNotAllowed
 	}
 	return endpoint, nil
 }

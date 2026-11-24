@@ -1610,6 +1610,44 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
 
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-zabbix-action="add"]').click()` });
+  for (const width of [1100, 390]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
+    const layout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const dialog = document.querySelector(".zabbix-dialog");
+      const grid = dialog.querySelector(".zabbix-setup-grid");
+      const [left, right] = grid.children;
+      const panel = dialog.getBoundingClientRect();
+      const footer = dialog.querySelector("footer").getBoundingClientRect();
+      return dialog.querySelector('[name="method"]:checked').value === "token" &&
+        !!dialog.querySelector(".zabbix-scope-wait") && dialog.querySelector("[data-zabbix-save]").disabled &&
+        panel.left >= 0 && panel.right <= innerWidth && footer.bottom <= innerHeight &&
+        (innerWidth > 760 ? left.offsetTop === right.offsetTop : left.offsetTop < right.offsetTop);
+    })()` });
+    if (!layout.result?.value) throw new Error(`Zabbix onboarding dialog layout is incorrect at ${width} px`);
+  }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  const authCards = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    const password = form.querySelector('[name="method"][value="password"]');
+    const token = form.querySelector('[name="method"][value="token"]');
+    const account = form.querySelector("[data-zabbix-account]");
+    form.elements.secret.value = "previous-token";
+    password.click();
+    const passwordSelected = password.checked && !account.hidden && !form.elements.secret.value &&
+      form.elements.secret.placeholder.includes("密码");
+    token.click();
+    return passwordSelected && token.checked && account.hidden && form.elements.secret.placeholder.includes("Token");
+  })()` });
+  if (!authCards.result?.value) throw new Error("Zabbix authentication cards do not switch credentials");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    form.elements.endpoint.value = "https://blocked.example";
+    form.elements.secret.value = "fixture-zabbix-token";
+    form.querySelector('[data-zabbix-action="test"]').click();
+  })()` });
+  await assertText(cdp, text => text.includes("地址未在平台允许列表中") && text.includes("先测试连接"),
+    "Zabbix policy rejection did not explain the issue");
+
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-zabbix-form]");
     form.elements.endpoint.value = "https://zabbix.example";

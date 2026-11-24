@@ -29,7 +29,7 @@ sequenceDiagram
 | 设计面 | 实施规则 |
 | --- | --- |
 | Zabbix 版本 | 自动识别 6.0、6.2、6.4。API Token 和账号会话均走 JSON-RPC `auth`。账号使用 `user.login`，每轮读取后注销临时会话。 |
-| 地址 | 接受站点根路径或 API 地址，补齐 `/api_jsonrpc.php`。后端使用现有 `DIAGNOSTIC_ZABBIX_ENDPOINTS` 的 HTTPS 精确白名单，验证 TLS，拒绝重定向。 |
+| 地址 | 接受站点根路径或 API 地址，补齐 `/api_jsonrpc.php`。后端将 `DIAGNOSTIC_ZABBIX_ENDPOINTS` 的配置项按同一规则规范化后精确匹配，验证 TLS，拒绝重定向。 |
 | 凭据 | 连接测试只保留与当前登录身份绑定的短期验证引用，默认 5 分钟。同一用户对同一目标的后续测试会取代旧引用。正式凭据使用 AES-GCM 加密，密文绑定源 ID 与 API 地址。密钥文件与 SQLite 同目录并独立管理，复用现有持久化目录。 |
 | 范围 | 一个数据源归属一个环境和一个业务。以主机组 ID 发现当前监控主机，按主机 ID 去重。授权检查采用环境和业务的精确组合。 |
 | 主机与集群 | 普通主机直接显示在环境／业务下。需要关联集群时，在 Zabbix 主机上设置 `kube-aiops.cluster-id` 标签，值为平台集群实例 ID。后端检查该实例属于同一环境和业务。无匹配或存在多个有效绑定时按独立主机展示。 |
@@ -51,7 +51,17 @@ sequenceDiagram
 
 ### 发布和运维
 
-- API 进程既有配置 `DIAGNOSTIC_ZABBIX_ENDPOINTS` 需要包含接入目标的完整 HTTPS API 地址。UI 中填写短地址时，规范化结果必须与白名单一致。
+已有部署可以在发布清单的 `api` 容器中追加以下环境变量。优先在现有列表追加地址，保留其他数据源。
+
+```yaml
+- name: DIAGNOSTIC_ZABBIX_ENDPOINTS
+  value: "https://zabbix.example.com/api_jsonrpc.php,https://monitor.example.com/zabbix/api_jsonrpc.php"
+```
+
+应用发布清单后检查 `kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s`。确认连接后，在 Portal 继续选择采集范围。
+
+- 在 API 容器配置 `DIAGNOSTIC_ZABBIX_ENDPOINTS`。允许填 HTTPS 站点根地址或完整 API 地址。多个地址用逗号分隔，匹配仍限定到各自的主机、端口和路径。使用发布清单或 Helm values 持久化配置，由 API Pod 在启动时读取。
+- 地址格式无效时返回 `ZABBIX_ENDPOINT`。平台未配置允许地址时返回 `ZABBIX_ENDPOINTS_UNCONFIGURED`。地址未获准时返回 `ZABBIX_ENDPOINT_NOT_ALLOWED`。三种情形都发生在请求 Zabbix 之前。
 - 使用 Zabbix 专用只读账号。需要 `host.get`、`hostgroup.get`、`problem.get`、`event.get` 的访问权限。账号密码模式同时使用 `user.login`、`user.logout`。Token 的可见范围取决于其所属账号。
 - 将 SQLite 和同目录的 `.zabbix-credentials.key` 文件一并纳入备份和恢复。文件名使用 SQLite 文件路径加该后缀。每个使用独立 SQLite 的部署维护自己的加密密钥。
 - 通过数据源管理配置暂停、恢复、手动同步和先验证后轮换凭据。旧 Zabbix 资产数据源与云资产接入使用既有 API 与数据表。

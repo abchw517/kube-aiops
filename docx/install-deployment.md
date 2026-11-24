@@ -498,6 +498,17 @@ spec:
 
 只使用 token 或私有 CA 时，创建对应文件并设置相应的 `*_BEARER_TOKEN_FILE` 或 `*_CA_FILE`。使用系统信任的证书且无需 token 时，只需填写 HTTPS 地址。变更 Secret 后重启 API Pod 以加载证书。
 
+### 配置 Zabbix 接入地址
+
+在发布清单的 API 容器设置 `DIAGNOSTIC_ZABBIX_ENDPOINTS`，并把值替换为该环境允许的 HTTPS API 地址。可追加多个逗号分隔的地址。凭据在 Portal 的「资源管理 → 数据源管理 → 接入 Zabbix」中配置。
+
+```yaml
+- name: DIAGNOSTIC_ZABBIX_ENDPOINTS
+  value: "https://zabbix.example.com/api_jsonrpc.php"
+```
+
+API Pod 启动时读取该配置。已有部署补充地址后重新发布 API Pod。Web 页面可填写 `https://zabbix.example.com`，平台会补齐 `/api_jsonrpc.php`。 [Zabbix 接入与故障处理](zabbix-diagnostics-onboarding.md#发布和运维)
+
 ### 应用并验证数据源
 
 首次部署返回第 4 节应用两套工作负载。已有部署使用包含当前镜像、身份和数据源配置的发布清单更新 API。

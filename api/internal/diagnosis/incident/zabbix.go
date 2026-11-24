@@ -120,8 +120,12 @@ func zabbixFailure(err error) error {
 		code = stage.Stage
 	}
 	switch {
+	case errors.Is(err, assetmeta.ErrZabbixEndpointsUnconfigured):
+		return httpError{503, "ZABBIX_ENDPOINTS_UNCONFIGURED", "平台尚未配置 Zabbix 允许地址。请在 API 容器的 DIAGNOSTIC_ZABBIX_ENDPOINTS 中配置此 Zabbix 的 API 地址。"}
+	case errors.Is(err, assetmeta.ErrZabbixEndpointNotAllowed):
+		return httpError{403, "ZABBIX_ENDPOINT_NOT_ALLOWED", "此 Zabbix 地址未在平台允许列表中。请核对提交的地址，或将对应的 API 地址加入 DIAGNOSTIC_ZABBIX_ENDPOINTS。"}
 	case errors.Is(err, assetmeta.ErrConfiguration):
-		return httpError{400, "ZABBIX_ENDPOINT", "Zabbix 地址格式有误或未获平台允许。"}
+		return httpError{400, "ZABBIX_ENDPOINT", "请输入有效的 HTTPS Zabbix 站点根地址或完整的 api_jsonrpc.php 地址。"}
 	case errors.Is(err, assetmeta.ErrZabbixVersion):
 		return httpError{400, "ZABBIX_VERSION", "此接入流程支持 Zabbix 6.0、6.2 与 6.4。"}
 	case errors.Is(err, assetmeta.ErrZabbixScope):

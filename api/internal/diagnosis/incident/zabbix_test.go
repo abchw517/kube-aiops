@@ -157,3 +157,20 @@ func TestZabbixOnboardingSnapshotAndAuthorization(t *testing.T) {
 		t.Fatalf("unexpected pause state: %+v", paused)
 	}
 }
+
+func TestZabbixEndpointErrorsDistinguishAddressAndDeploymentPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{assetmeta.ErrConfiguration, 400, "ZABBIX_ENDPOINT"},
+		{assetmeta.ErrZabbixEndpointNotAllowed, 403, "ZABBIX_ENDPOINT_NOT_ALLOWED"},
+		{assetmeta.ErrZabbixEndpointsUnconfigured, 503, "ZABBIX_ENDPOINTS_UNCONFIGURED"},
+	} {
+		var got httpError
+		if err := zabbixFailure(tc.err); !errors.As(err, &got) || got.status != tc.status || got.code != tc.code {
+			t.Fatalf("mapping for %v: %+v", tc.err, err)
+		}
+	}
+}

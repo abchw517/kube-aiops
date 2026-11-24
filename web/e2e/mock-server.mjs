@@ -686,6 +686,9 @@ async function incidents(request, response, url) {
     }
     if (path === "/zabbix/test" && method === "POST") {
       const input = await readIncidentBody(request);
+      if (input.endpoint === "https://blocked.example") {
+        return json(response, 403, { error: { code: "ZABBIX_ENDPOINT_NOT_ALLOWED", message: "此 Zabbix 地址未在平台允许列表中。" } });
+      }
       if (input.credential?.secret !== "fixture-zabbix-token") {
         return json(response, 422, { error: { message: "Zabbix 认证失败。" } });
       }

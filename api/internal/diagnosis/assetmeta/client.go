@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -67,8 +66,8 @@ type Client struct {
 func New(directory string, endpoints []string) *Client {
 	allow := map[string]bool{}
 	for _, v := range endpoints {
-		if validEndpoint(v) {
-			allow[v] = true
+		if endpoint, err := normalizeZabbixEndpoint(v); err == nil {
+			allow[endpoint] = true
 		}
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -85,12 +84,6 @@ var regionPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 
 func ValidReference(value string) bool { return identifier.MatchString(value) }
 
-func validEndpoint(value string) bool {
-	u, err := url.Parse(value)
-	return err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" &&
-		u.Fragment == "" && strings.HasSuffix(u.Path, "/api_jsonrpc.php")
-}
-
 func (c *Client) Validate(config Config) error {
 	if len(config.AssetIDs) == 0 || len(config.AssetIDs) > 50 {
 		return ErrConfiguration
@@ -104,8 +97,11 @@ func (c *Client) Validate(config Config) error {
 	}
 	switch config.Kind {
 	case Zabbix:
-		if !c.hosts[config.Endpoint] || config.Region != "" {
+		if config.Region != "" {
 			return ErrConfiguration
+		}
+		if _, err := c.ZabbixEndpoint(config.Endpoint); err != nil {
+			return err
 		}
 	case Aliyun, Tencent:
 		if !regionPattern.MatchString(config.Region) || config.Endpoint != "" {
@@ -242,9 +238,13 @@ func jsonRequest(ctx context.Context, endpoint string, data []byte) (*http.Reque
 }
 
 func (c *Client) zabbix(ctx context.Context, cfg Config, keys Credentials) ([]Asset, error) {
+	endpoint, err := c.ZabbixEndpoint(cfg.Endpoint)
+	if err != nil {
+		return nil, err
+	}
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "host.get", "id": 1,
 		"params": map[string]any{"hostids": cfg.AssetIDs, "output": []string{"hostid", "name", "status"}, "limit": 50}})
-	req, err := jsonRequest(ctx, cfg.Endpoint, body)
+	req, err := jsonRequest(ctx, endpoint, body)
 	if err != nil {
 		return nil, ErrConfiguration
 	}
