@@ -1632,7 +1632,7 @@ paths:
   /api/v1/diagnostics/zabbix/scopes:
     get:
       tags:
-      - Incidents
+        - Incidents
       operationId: listZabbixScopes
       responses:
         '200':
@@ -1652,7 +1652,7 @@ paths:
   /api/v1/diagnostics/zabbix/sources:
     get:
       tags:
-      - Incidents
+        - Incidents
       operationId: listZabbixSources
       responses:
         '200':
@@ -1671,7 +1671,7 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
     post:
       tags:
-      - Incidents
+        - Incidents
       operationId: createZabbixSource
       responses:
         '201':
@@ -1697,7 +1697,7 @@ paths:
   /api/v1/diagnostics/zabbix/sources/{sourceId}:
     patch:
       tags:
-      - Incidents
+        - Incidents
       operationId: updateZabbixSource
       responses:
         '200':
@@ -1715,16 +1715,16 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
       parameters:
-      - name: sourceId
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: If-Match
-        in: header
-        schema:
-          type: string
-        required: true
+        - name: sourceId
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: If-Match
+          in: header
+          schema:
+            type: string
+          required: true
       requestBody:
         required: true
         content:
@@ -1734,7 +1734,7 @@ paths:
   /api/v1/diagnostics/zabbix/sources/{sourceId}/sync:
     post:
       tags:
-      - Incidents
+        - Incidents
       operationId: syncZabbixSource
       responses:
         '202':
@@ -1752,15 +1752,15 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
       parameters:
-      - name: sourceId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: sourceId
+          in: path
+          schema:
+            type: string
+          required: true
   /api/v1/diagnostics/zabbix/test:
     post:
       tags:
-      - Incidents
+        - Incidents
       operationId: testZabbixConnection
       responses:
         '200':
@@ -1786,7 +1786,7 @@ paths:
   /api/v1/diagnostics/zabbix/preview:
     post:
       tags:
-      - Incidents
+        - Incidents
       operationId: previewZabbixProblems
       responses:
         '200':
@@ -1812,7 +1812,7 @@ paths:
   /api/v1/diagnostics/zabbix/problems:
     get:
       tags:
-      - Incidents
+        - Incidents
       operationId: listZabbixProblems
       responses:
         '200':
@@ -1830,22 +1830,22 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
       parameters:
-      - name: environmentId
-        in: query
-        schema:
-          type: string
-      - name: businessId
-        in: query
-        schema:
-          type: string
-      - name: recent
-        in: query
-        schema:
-          type: boolean
-      - name: metadataOnly
-        in: query
-        schema:
-          type: boolean
+        - name: environmentId
+          in: query
+          schema:
+            type: string
+        - name: businessId
+          in: query
+          schema:
+            type: string
+        - name: recent
+          in: query
+          schema:
+            type: boolean
+        - name: metadataOnly
+          in: query
+          schema:
+            type: boolean
 
 components:
   securitySchemes:
@@ -1998,8 +1998,8 @@ components:
     ZabbixScope:
       type: object
       required:
-      - environmentId
-      - businessId
+        - environmentId
+        - businessId
       properties:
         environmentId:
           type: string
@@ -2008,8 +2008,8 @@ components:
     ZabbixOption:
       type: object
       required:
-      - id
-      - name
+        - id
+        - name
       properties:
         id:
           type: string
@@ -2018,9 +2018,9 @@ components:
     ZabbixScopeChoice:
       type: object
       required:
-      - id
-      - name
-      - businesses
+        - id
+        - name
+        - businesses
       properties:
         id:
           type: string
@@ -2033,7 +2033,7 @@ components:
     ZabbixScopes:
       type: object
       required:
-      - environments
+        - environments
       properties:
         environments:
           type: array
@@ -2042,8 +2042,8 @@ components:
     ZabbixGroup:
       type: object
       required:
-      - groupid
-      - name
+        - groupid
+        - name
       properties:
         groupid:
           type: string
@@ -2052,8 +2052,8 @@ components:
     ZabbixHost:
       type: object
       required:
-      - hostid
-      - name
+        - hostid
+        - name
       properties:
         clusterId:
           type: string
@@ -2064,8 +2064,8 @@ components:
     ZabbixTag:
       type: object
       required:
-      - tag
-      - value
+        - tag
+        - value
       properties:
         tag:
           type: string
@@ -2074,14 +2074,14 @@ components:
     ZabbixCredential:
       type: object
       required:
-      - method
-      - secret
+        - method
+        - secret
       properties:
         method:
           type: string
           enum:
-          - token
-          - password
+            - token
+            - password
         username:
           type: string
         secret:
@@ -2090,15 +2090,15 @@ components:
     ZabbixSource:
       type: object
       required:
-      - id
-      - endpoint
-      - scope
-      - groups
-      - authMethod
-      - upstreamVersion
-      - enabled
-      - version
-      - health
+        - id
+        - endpoint
+        - scope
+        - groups
+        - authMethod
+        - upstreamVersion
+        - enabled
+        - version
+        - health
       properties:
         environmentName:
           type: string
@@ -2137,7 +2137,7 @@ components:
     ZabbixSources:
       type: object
       required:
-      - items
+        - items
       properties:
         items:
           type: array
@@ -2156,10 +2156,10 @@ components:
     ZabbixTestResult:
       type: object
       required:
-      - version
-      - endpoint
-      - groups
-      - draft
+        - version
+        - endpoint
+        - groups
+        - draft
       properties:
         version:
           type: string
@@ -2174,8 +2174,8 @@ components:
     ZabbixSelection:
       type: object
       required:
-      - scope
-      - groupIds
+        - scope
+        - groupIds
       properties:
         draft:
           type: string
@@ -2202,24 +2202,24 @@ components:
     ZabbixQueued:
       type: object
       required:
-      - queued
+        - queued
       properties:
         queued:
           type: boolean
     ZabbixProblem:
       type: object
       required:
-      - id
-      - eventId
-      - title
-      - severity
-      - rawSeverity
-      - scope
-      - hosts
-      - acknowledged
-      - recovered
-      - startedAt
-      - sourceId
+        - id
+        - eventId
+        - title
+        - severity
+        - rawSeverity
+        - scope
+        - hosts
+        - acknowledged
+        - recovered
+        - startedAt
+        - sourceId
       properties:
         originalURL:
           type: string
@@ -2258,10 +2258,10 @@ components:
     ZabbixHealth:
       type: object
       required:
-      - id
-      - scope
-      - health
-      - hasSnapshot
+        - id
+        - scope
+        - health
+        - hasSnapshot
       properties:
         environmentName:
           type: string
@@ -2281,9 +2281,9 @@ components:
     ZabbixPreview:
       type: object
       required:
-      - hostCount
-      - problemCount
-      - problems
+        - hostCount
+        - problemCount
+        - problems
       properties:
         hostCount:
           type: integer
@@ -2296,9 +2296,9 @@ components:
     ZabbixProblems:
       type: object
       required:
-      - items
-      - sources
-      - truncated
+        - items
+        - sources
+        - truncated
       properties:
         items:
           type: array
