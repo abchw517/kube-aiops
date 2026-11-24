@@ -1458,16 +1458,59 @@ async function assertIncidentLifecycle(cdp) {
   await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics", (text) =>
     ["严重度分布", "近 7 天无新增", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
   "Unified overview did not show historical records and a compact empty trend");
-  const firstScreen = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-    const record = document.querySelector(".unified-recent tbody tr").getBoundingClientRect();
-    return document.querySelector(".overview-plot") === null && record.bottom < innerHeight &&
-      record.top < document.querySelector(".overview-analytics").getBoundingClientRect().top;
+  const trendLayout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const analytics = document.querySelector(".overview-analytics");
+    const records = document.querySelector(".overview-records");
+    const warning = document.querySelector(".overview-distribution .overview-warning .overview-progress");
+    const critical = document.querySelector(".overview-distribution .overview-critical .overview-progress");
+    const criticalShare = critical.firstElementChild.getBoundingClientRect().width / critical.getBoundingClientRect().width;
+    const warningShare = warning.firstElementChild.getBoundingClientRect().width / warning.getBoundingClientRect().width;
+    window.overviewRecordsBeforeWindowChange = records;
+    document.querySelector("[data-overview-jump]").click();
+    return {
+      emptyPlot: document.querySelector(".overview-plot") === null,
+      focus: document.activeElement.id,
+      beforeRecords: analytics.getBoundingClientRect().bottom <= records.getBoundingClientRect().top,
+      criticalShare,
+      warningShare,
+    };
   })()` });
-  if (!firstScreen.result?.value) throw new Error("The empty trend displaced the recorded diagnostics");
+  const layout = trendLayout.result?.value;
+  if (!layout?.emptyPlot || layout.focus !== "overview-recent-title" || !layout.beforeRecords ||
+      Math.abs(layout.criticalShare - 1 / 3) > .01 || Math.abs(layout.warningShare - 1 / 3) > .01) {
+    throw new Error(`Overview layout or severity widths: ${JSON.stringify(layout ?? trendLayout.exceptionDetails)}`);
+  }
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-trend-empty a").click()' });
   await assertText(cdp, text => text.includes("窗口内 1 条") && text.includes("订单服务故障"), "Wider trend did not expose the historical record");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-overview-point*="2026-11-20"]').click()` });
-  await assertText(cdp, text => text.includes("2026-11-20（UTC）共 1 条，故障 1 条"), "Trend point could not show its counts");
+  const trendInteraction = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const selected = document.querySelector('[data-overview-point][aria-pressed=true]');
+    const bar = selected.querySelector(".overview-trend-bars span").getBoundingClientRect();
+    const plot = selected.getBoundingClientRect();
+    const note = document.querySelector("[data-overview-note]");
+    const details = new URLSearchParams(document.querySelector(".unified-recent a").href.split("?")[1]).get("return");
+    const correct = selected.getAttribute("aria-label").includes("2026-11-20（UTC+8）共 1 条，故障事件 1 条") &&
+      note.textContent.includes("故障事件 1") && Math.abs(bar.bottom - plot.bottom) <= 1.5 &&
+      Math.abs(bar.height - (plot.height - 1) / 4) <= 1 &&
+      window.overviewRecordsBeforeWindowChange === document.querySelector(".overview-records") &&
+      details.includes("trendDays=14") && location.hash.includes("trendDays=14") &&
+      document.querySelector('[name="trendDays"]').value === "14";
+    selected.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    const first = document.querySelector('[data-overview-point="0"]');
+    const keyboard = first === document.activeElement && first.tabIndex === 0 && selected.tabIndex === -1 &&
+      note.textContent.includes("0 条");
+    delete window.overviewRecordsBeforeWindowChange;
+    return correct && keyboard;
+  })()` });
+  if (!trendInteraction.result?.value) throw new Error("Trend window changed records or single-day selection was incorrect");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-distribution .overview-critical a").click()' });
+  await assertText(cdp, text => text.includes("查看全部级别") && !text.includes("测试集群容量建议"), "Severity distribution did not apply the page filter");
+  const filteredDistribution = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const rails = [...document.querySelectorAll(".overview-distribution .overview-progress")];
+    return rails.map(rail => Math.round(100 * rail.firstElementChild.getBoundingClientRect().width / rail.getBoundingClientRect().width));
+  })()` });
+  if (filteredDistribution.result?.value?.join(",") !== "100,0,0") throw new Error("Filtered severity proportions are incorrect");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-distribution .overview-critical a").click()' });
+  await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("查看全部级别"), "Selected severity did not clear the filter");
   await assertIncidentDashboard(cdp);
   await cdp.send("Runtime.evaluate", { expression: "Date.now = window.originalOverviewClock; delete window.originalOverviewClock" });
 }
@@ -1514,17 +1557,17 @@ async function assertIncidentDashboard(cdp) {
   "Partial coverage was presented as an empty trend");
   await cdp.send("Runtime.evaluate", { expression: "window.failBothOverviewSources = true" });
   await assertPage(cdp, `${overview}?clusterId=test-k8s&trendDays=14`,
-    text => text.includes("最近诊断与图表暂不可用"), "Both unavailable sources were presented as zero");
+    text => text.includes("最近诊断暂不可用") && text.includes("诊断趋势暂不可用"), "Both unavailable sources were presented as zero");
   const unavailableTotal = await cdp.send("Runtime.evaluate", { expression: `
     document.querySelector(".metric-total strong").textContent`, returnByValue: true });
   if (unavailableTotal.result?.value !== "—") throw new Error("Failure had a definitive count");
   await cdp.send("Runtime.evaluate", { expression: "window.fetch = window.originalOverviewFetch; delete window.failBothOverviewSources; delete window.originalOverviewFetch" });
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-notice button").click()' });
-  await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("图表暂不可用"), "Retry did not restore the requested range");
+  await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("诊断趋势暂不可用"), "Retry did not restore the requested range");
   await assertPage(cdp, `${overview}?trendDays=30`, text => text.includes("全部可见实例") && text.includes("订单服务故障") &&
     text.includes("窗口内 1 条"), "Unified overview failed to reload");
-  for (const width of [1920, 1440, 390, 320]) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 958, deviceScaleFactor: 1, mobile: false });
+  for (const [width, height] of [[1920, 900], [1440, 900], [1280, 800], [390, 844], [320, 780]]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const table = document.querySelector(".unified-recent");
       const cards = document.querySelector(".overview-record-cards");
@@ -1533,13 +1576,18 @@ async function assertIncidentDashboard(cdp) {
         pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         tableVisible: getComputedStyle(table).display !== "none",
         cardsVisible: getComputedStyle(cards).display !== "none",
-        firstRowBottom: table.querySelector("tr").getBoundingClientRect().bottom,
+        recordsHeadingBottom: document.querySelector(".overview-record-heading").getBoundingClientRect().bottom,
+        plotScrolls: document.querySelector(".overview-plot-scroll").scrollWidth >
+          document.querySelector(".overview-plot-scroll").clientWidth,
+        stacked: document.querySelector(".overview-distribution-panel").getBoundingClientRect().top >=
+          document.querySelector(".overview-trend").getBoundingClientRect().bottom - 1,
       };
     })()` });
     const layout = state.result?.value;
     const desktop = width > 850;
     if (!layout?.scopeVisible || layout.pageOverflow || layout.tableVisible !== desktop ||
-        layout.cardsVisible === desktop || (desktop && layout.firstRowBottom >= 958)) {
+        layout.cardsVisible === desktop || layout.stacked === desktop ||
+        (!desktop && !layout.plotScrolls) || (desktop && layout.recordsHeadingBottom >= height)) {
       throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
     }
   }

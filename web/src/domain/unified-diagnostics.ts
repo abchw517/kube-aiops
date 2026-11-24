@@ -47,6 +47,11 @@ type DiagnosticRecord = {
 
 type Day = { date: string; incident: number; finding: number; zabbix: number };
 const dayMs = 86_400_000;
+const utc8OffsetMs = 8 * 3_600_000;
+
+function utc8Date(time: number): string {
+  return new Date(time + utc8OffsetMs).toISOString().slice(0, 10);
+}
 
 function findingKey(cluster: string, id: string): string {
   return JSON.stringify([cluster, id]);
@@ -92,10 +97,9 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
     rows.push({ id: problem.id, cluster: "", title: problem.title, severity: problem.severity,
       source: "zabbix", origin: "Zabbix", observed: problem.startedAt, problem });
   }
-  const end = Math.floor(now / dayMs) * dayMs;
   const daily = new Map<string, Day>();
   for (let offset = days - 1; offset >= 0; offset--) {
-    const date = new Date(end - offset * dayMs).toISOString().slice(0, 10);
+    const date = utc8Date(now - offset * dayMs);
     daily.set(date, { date, incident: 0, finding: 0, zabbix: 0 });
   }
   const counts: Record<Severity, number> = { critical: 0, warning: 0, info: 0 };
@@ -110,7 +114,7 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
       undated++;
       continue;
     }
-    const bucket = daily.get(new Date(record.time).toISOString().slice(0, 10));
+    const bucket = daily.get(utc8Date(record.time));
     if (bucket && record.time <= now) bucket[record.source]++;
   }
   return { total: records.length, counts, daily: [...daily.values()], undated, recent: records.slice(0, 5) };
