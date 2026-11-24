@@ -322,15 +322,17 @@ func (s *Server) findingCorrelation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bundle, err := target.Correlator.Correlate(r.Context(), correlation.Request{
-		FindingID: item.ID,
-		Scope: correlation.CorrelationScope{
-			Cluster:   item.Cluster,
-			Namespace: item.Namespace,
-			Resource:  item.Resource,
-		},
-		AnchorTime: item.CreatedAt,
-	})
+	query := correlation.CorrelationScope{Cluster: item.Cluster, Namespace: item.Namespace, Resource: item.Resource}
+	service := target.Correlator
+	if registry, ok := s.backend.(*ClusterBackends); ok && registry.ManagedEvidence != nil {
+		var err error
+		service, err = registry.ManagedEvidence(r.Context(), query, service)
+		if err != nil {
+			s.writeCorrelationError(w, r, err)
+			return
+		}
+	}
+	bundle, err := service.Correlate(r.Context(), correlation.Request{FindingID: item.ID, Scope: query, AnchorTime: item.CreatedAt})
 	if err != nil {
 		s.writeCorrelationError(w, r, err)
 		return

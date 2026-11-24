@@ -1,4 +1,4 @@
-import type { Finding, Incident, IncidentSeverity, Severity, ZabbixProblem } from "../api/generated.ts";
+import type { Finding, Incident, IncidentSeverity, ObservabilityAlert, Severity, ZabbixProblem } from "../api/generated.ts";
 
 export const diagnosticLevels = { critical: "严重", warning: "警告", info: "信息" } as const;
 export const incidentLevel: Record<IncidentSeverity, Severity> = { P1: "critical", P2: "warning", P3: "info" };
@@ -27,8 +27,9 @@ export function overviewSearch(query: URLSearchParams): URLSearchParams {
     if (value) result.set(key, value);
   }
   const source = query.get("source");
-  if (source === "incident" || source === "finding" || source === "zabbix") result.set("source", source);
+  if (source === "incident" || source === "finding" || source === "zabbix" || source === "alertmanager") result.set("source", source);
   if (query.get("recent") === "true") result.set("recent", "true");
+  if (query.get("alertRecent") === "true") result.set("alertRecent", "true");
   if (days !== 7) result.set("trendDays", String(days));
   return result;
 }
@@ -37,15 +38,16 @@ type DiagnosticRecord = {
   id: string;
   cluster: string;
   title: string;
-  severity: Severity;
-  source: "incident" | "finding" | "zabbix";
+  severity: Severity | "";
+  source: "incident" | "finding" | "zabbix" | "alertmanager";
+  alert?: ObservabilityAlert;
   problem?: ZabbixProblem;
   origin: string;
   status?: Incident["status"];
   observed?: string;
 };
 
-type Day = { date: string; incident: number; finding: number; zabbix: number };
+type Day = { date: string; incident: number; finding: number; zabbix: number; alertmanager: number };
 const dayMs = 86_400_000;
 const utc8OffsetMs = 8 * 3_600_000;
 
@@ -76,7 +78,7 @@ function timestamp(value: string | undefined): number | undefined {
 }
 
 export function aggregateDiagnostics(incidents: Incident[], findings: Finding[], severity?: Severity, now = Date.now(),
-  days: OverviewDays = 7, problems: ZabbixProblem[] = []) {
+  days: OverviewDays = 7, problems: ZabbixProblem[] = [], alerts: ObservabilityAlert[] = []) {
   const incidentByID = new Map(incidents.map((item) => [item.id, item]));
   const linked = new Set(incidents.flatMap(({ scope, findingId }) =>
     findingId ? [findingKey(scope.clusterId, findingId)] : []));
@@ -97,10 +99,14 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
     rows.push({ id: problem.id, cluster: "", title: problem.title, severity: problem.severity,
       source: "zabbix", origin: "Zabbix", observed: problem.startedAt, problem });
   }
+  for (const alert of alerts) {
+    rows.push({ id: alert.id, cluster: alert.scope.clusterId, title: alert.title, severity: alert.severity,
+      source: "alertmanager", origin: "Alertmanager", observed: alert.startedAt, alert });
+  }
   const daily = new Map<string, Day>();
   for (let offset = days - 1; offset >= 0; offset--) {
     const date = utc8Date(now - offset * dayMs);
-    daily.set(date, { date, incident: 0, finding: 0, zabbix: 0 });
+    daily.set(date, { date, incident: 0, finding: 0, zabbix: 0, alertmanager: 0 });
   }
   const counts: Record<Severity, number> = { critical: 0, warning: 0, info: 0 };
   const records = rows.filter((item) => !severity || item.severity === severity)
@@ -109,7 +115,7 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
       a.source.localeCompare(b.source) || a.cluster.localeCompare(b.cluster) || a.id.localeCompare(b.id));
   let undated = 0;
   for (const record of records) {
-    counts[record.severity]++;
+    if (record.severity) counts[record.severity]++;
     if (record.time === undefined) {
       undated++;
       continue;

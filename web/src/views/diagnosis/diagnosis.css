@@ -403,3 +403,18 @@
   .zabbix-dialog-actions { margin-inline-start: auto; }
   .zabbix-credentials-password { grid-template-columns: minmax(0, 1fr); }
 }
+
+.observability-sources { display: grid; gap: 8px; margin-block: 10px; }
+.observability-filters, .observability-provider > header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 13px; }
+.observability-filters label { display: flex; gap: 6px; align-items: center; }
+.observability-filters select { padding: 5px; }
+.observability-filters p { margin: 0; }
+.observability-provider > header { justify-content: space-between; }
+.observability-provider h2, .observability-sources h3 { margin: 0; font-size: 16px; }
+.observability-provider small { display: block; color: var(--muted); margin-inline-start: 2px; font-size: 12px; }
+.observability-card-row, .observability-empty, .observability-dashboards { padding: 10px 13px; }
+.observability-card-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.observability-empty { margin: 0; color: var(--muted); }
+@media (max-width: 520px) {
+  .observability-provider > header .button { min-height: 36px; padding: 4px 8px; font-size: 12px; }
+}

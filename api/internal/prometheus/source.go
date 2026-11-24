@@ -26,6 +26,7 @@ type Config = observability.Config
 
 type Source struct {
 	clusterLabel string
+	clusterKey   string
 	client       *observability.Client
 }
 
@@ -34,7 +35,11 @@ func New(config Config) (correlation.MetricSource, error) {
 	if err != nil || client == nil {
 		return nil, err
 	}
-	return &Source{client: client, clusterLabel: config.ClusterLabelValue}, nil
+	key := config.ClusterLabelKey
+	if key == "" {
+		key = "cluster"
+	}
+	return &Source{client: client, clusterLabel: config.ClusterLabelValue, clusterKey: key}, nil
 }
 
 func (s *Source) Metrics(ctx context.Context, query correlation.Query) ([]correlation.CorrelationSignal, error) {
@@ -100,7 +105,7 @@ func (s *Source) selector(scope correlation.CorrelationScope) (string, error) {
 			strings.ToLower(resource.Kind)+"="+strconv.Quote(resource.Name))
 	}
 	if s.clusterLabel != "" {
-		matchers = append(matchers, "cluster="+strconv.Quote(s.clusterLabel))
+		matchers = append(matchers, s.clusterKey+"="+strconv.Quote(s.clusterLabel))
 	}
 	return strings.Join(matchers, ","), nil
 }

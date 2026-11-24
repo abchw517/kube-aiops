@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -20,10 +21,11 @@ type ClusterTarget struct {
 // ClusterBackends retains the local backend for readiness and legacy calls.
 type ClusterBackends struct {
 	Backend
-	Targets map[string]ClusterTarget
-	mu      sync.RWMutex
-	managed map[string]ClusterTarget
-	local   *ClusterTarget
+	Targets         map[string]ClusterTarget
+	ManagedEvidence func(context.Context, correlation.CorrelationScope, correlation.Correlator) (correlation.Correlator, error)
+	mu              sync.RWMutex
+	managed         map[string]ClusterTarget
+	local           *ClusterTarget
 }
 
 func (b *ClusterBackends) SetLocal(target ClusterTarget) {

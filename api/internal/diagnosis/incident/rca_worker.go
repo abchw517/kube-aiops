@@ -18,6 +18,9 @@ func (s *Server) RunBackground(ctx context.Context) {
 	if s.Zabbix != nil {
 		go s.runZabbix(ctx)
 	}
+	if s.Observability != nil {
+		go s.runObservability(ctx)
+	}
 	if s.Model == nil {
 		return
 	}

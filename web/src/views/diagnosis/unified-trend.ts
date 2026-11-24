@@ -2,7 +2,7 @@ import { type aggregateDiagnostics, type OverviewDays, overviewWindows } from ".
 
 type Overview = ReturnType<typeof aggregateDiagnostics>;
 type Day = Overview["daily"][number];
-export const trendLabels = { incident: "故障事件", finding: "K8sGPT", zabbix: "Zabbix" } as const;
+export const trendLabels = { incident: "故障事件", finding: "K8sGPT", zabbix: "Zabbix", alertmanager: "Alertmanager" } as const;
 type Source = keyof typeof trendLabels;
 export type Trend = {
   data: Overview;
@@ -17,7 +17,7 @@ const cutoffTime = new Intl.DateTimeFormat("zh-CN", {
 });
 
 function dayTotal(day: Day): number {
-  return day.incident + day.finding + day.zabbix;
+  return day.incident + day.finding + day.zabbix + day.alertmanager;
 }
 
 function legend(sources: Source[], day?: Day): string {

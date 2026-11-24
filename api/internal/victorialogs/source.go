@@ -43,6 +43,7 @@ var catalog = []logClass{
 type Source struct {
 	client       *observability.Client
 	clusterLabel string
+	clusterKey   string
 }
 
 func New(config observability.Config) (correlation.LogSignalSource, error) {
@@ -50,7 +51,11 @@ func New(config observability.Config) (correlation.LogSignalSource, error) {
 	if err != nil || client == nil {
 		return nil, err
 	}
-	return &Source{client: client, clusterLabel: config.ClusterLabelValue}, nil
+	key := config.ClusterLabelKey
+	if key == "" {
+		key = "cluster"
+	}
+	return &Source{client: client, clusterLabel: config.ClusterLabelValue, clusterKey: key}, nil
 }
 
 func (s *Source) LogSignals(ctx context.Context, query correlation.Query) ([]correlation.CorrelationSignal, error) {
@@ -75,7 +80,7 @@ func (s *Source) LogSignals(ctx context.Context, query correlation.Query) ([]cor
 	selector := fmt.Sprintf(`{"kubernetes.pod_namespace"=%s,"kubernetes.pod_name"=%s}`,
 		strconv.Quote(resource.Namespace), strconv.Quote(resource.Name))
 	if s.clusterLabel != "" {
-		selector += " cluster:=" + strconv.Quote(s.clusterLabel)
+		selector += " " + s.clusterKey + ":=" + strconv.Quote(s.clusterLabel)
 	}
 	aggregates := make([]string, 0, len(catalog))
 	for _, class := range catalog {

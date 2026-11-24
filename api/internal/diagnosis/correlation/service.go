@@ -97,6 +97,21 @@ func NewService(options ServiceOptions) (*Service, error) {
 	}, nil
 }
 
+// WithManagedSources keeps the per-cluster evidence configuration as the fallback.
+func (s *Service) WithManagedSources(sources ServiceOptions) *Service {
+	result := *s
+	if sources.Prometheus != nil {
+		result.prometheus = sources.Prometheus
+	}
+	if sources.VictoriaLogs != nil {
+		result.victoriaLogs = sources.VictoriaLogs
+	}
+	if sources.Alertmanager != nil {
+		result.alertmanager = sources.Alertmanager
+	}
+	return &result
+}
+
 func Disabled() Correlator {
 	service, err := NewService(ServiceOptions{})
 	if err != nil {

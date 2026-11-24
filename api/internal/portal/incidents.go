@@ -66,7 +66,8 @@ func configureIncidents(ctx context.Context, store *identitystore.Store, admin *
 	automation := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_POLICY_ENVIRONMENTS"), func(r rune) bool { return r == ',' || r == ' ' })
 	zabbix := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_ZABBIX_ENDPOINTS"), func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
 	assets := assetmeta.New(os.Getenv("DIAGNOSTIC_CREDENTIALS_DIR"), zabbix)
-	return &incident.Server{
+	server := &incident.Server{
+		Observability:       configureObservability(store, o),
 		Zabbix:              configureZabbix(store, admin, assets, o, allowedEnvironment),
 		IngressScopeAllowed: scopeActive,
 		Assets:              assets,
@@ -77,28 +78,33 @@ func configureIncidents(ctx context.Context, store *identitystore.Store, admin *
 		Resolve: func(ctx context.Context, p identity.Principal, req incident.CreateRequest) (incident.Incident, error) {
 			return o.resolveIncident(ctx, p, admin, authorize, req)
 		},
-		Collect: func(ctx context.Context, i incident.Incident) (correlation.CorrelationBundle, error) {
-			target, ok := o.scopedCluster(i.Scope.ClusterID)
-			if !ok {
-				return correlation.CorrelationBundle{}, correlation.ErrUnavailable
-			}
-			service := target.Correlator
-			if service == nil && i.Scope.ClusterID == "local" {
-				service = local
-			}
-			if service == nil {
-				return correlation.CorrelationBundle{}, correlation.ErrUnavailable
-			}
-			anchor := time.Now().UTC()
-			if i.FindingID != "" && anchor.Sub(i.AnchorAt) > correlation.DefaultWindow {
-				anchor = i.AnchorAt
-			}
-			return service.Correlate(ctx, correlation.Request{
-				FindingID: i.ID, AnchorTime: anchor.Format(time.RFC3339),
-				Scope: correlation.CorrelationScope{Cluster: i.Scope.ClusterID, Namespace: i.Scope.Namespace, Resource: i.Resource},
-			})
-		},
-	}, nil
+	}
+	server.Collect = func(ctx context.Context, i incident.Incident) (correlation.CorrelationBundle, error) {
+		target, ok := o.scopedCluster(i.Scope.ClusterID)
+		if !ok {
+			return correlation.CorrelationBundle{}, correlation.ErrUnavailable
+		}
+		service := target.Correlator
+		if service == nil && i.Scope.ClusterID == "local" {
+			service = local
+		}
+		if service == nil {
+			return correlation.CorrelationBundle{}, correlation.ErrUnavailable
+		}
+		anchor := time.Now().UTC()
+		if i.FindingID != "" && anchor.Sub(i.AnchorAt) > correlation.DefaultWindow {
+			anchor = i.AnchorAt
+		}
+		service, err := applyObservability(ctx, server, i.Scope, service)
+		if err != nil {
+			return correlation.CorrelationBundle{}, correlation.ErrUnavailable
+		}
+		return service.Correlate(ctx, correlation.Request{
+			FindingID: i.ID, AnchorTime: anchor.Format(time.RFC3339),
+			Scope: correlation.CorrelationScope{Cluster: i.Scope.ClusterID, Namespace: i.Scope.Namespace, Resource: i.Resource},
+		})
+	}
+	return server, nil
 }
 
 func (o *onboarding) incidentBusinesses(ctx context.Context, scope incident.Scope, env string) ([]string, error) {

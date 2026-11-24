@@ -265,6 +265,22 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 			return provider(i).AnalyzeIncident(ctx, prompt, data)
 		}
 		managed.runDiagnostics = incidents.RunBackground
+		if managed.registry != nil {
+			managed.registry.ManagedEvidence = func(ctx context.Context, query correlation.CorrelationScope, base correlation.Correlator) (correlation.Correlator, error) {
+				scope, err := managed.resolveDiagnosticScope(ctx, incident.Scope{ClusterID: query.Cluster, Namespace: query.Namespace})
+				if errors.Is(err, incident.ErrBadScope) {
+					return base, nil
+				}
+				if err != nil {
+					return nil, correlation.ErrUnavailable
+				}
+				service, err := applyObservability(ctx, incidents, scope, base)
+				if err != nil {
+					return nil, correlation.ErrUnavailable
+				}
+				return service, nil
+			}
+		}
 	}
 	go wikis.RunSchedule(ctx)
 	return func(next http.Handler) http.Handler {

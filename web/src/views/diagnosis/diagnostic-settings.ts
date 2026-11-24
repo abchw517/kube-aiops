@@ -5,6 +5,7 @@ import { datasourcesPath } from "../../domain/resource-routes.ts";
 import { incidentError } from "./incident-list.ts";
 import { incidentSubview, submit } from "./incident-rca.ts";
 
+import { loadObservabilitySources } from "./observability-sources.ts";
 import { loadZabbixSources } from "./zabbix-sources.ts";
 
 export const policiesPath = "#/diagnostics/policies";
@@ -73,12 +74,13 @@ function datasourceForm(d?: DiagnosticDatasource): string {
 
 export async function loadDatasourcesPage(hash: string, canWrite: boolean, canTest: boolean) {
   const after = new URLSearchParams(hash.split("?")[1]).get("continue") || undefined;
-  const [page, zabbix] = await Promise.all([apiClient.listDiagnosticDatasources({ continue: after, limit: 25 }),
-    loadZabbixSources(canWrite, canTest)]);
+  const [page, zabbix, observability] = await Promise.all([apiClient.listDiagnosticDatasources({ continue: after, limit: 25 }),
+    loadZabbixSources(canWrite, canTest), loadObservabilitySources(canWrite, canTest)]);
   return {
     items: page.items,
     zabbix: zabbix.items,
-    html: `${zabbix.html}${canWrite ? `<details class="panel incident-header"><summary>新增资产数据源</summary>${datasourceForm()}</details>` : ""}
+    observability: observability.items,
+    html: `${zabbix.html}${observability.html}${canWrite ? `<details class="panel incident-header"><summary>新增资产数据源</summary>${datasourceForm()}</details>` : ""}
       ${page.items.map((d) => `<section class="panel incident-header">
         <div class="diagnostic-toolbar"><h2>${escapeHtml(d.name)}</h2><span>${providers[d.config.kind]} · ${d.enabled ? health[d.health] ?? "待验证" : "已停用"}</span></div>
         <p>${scopeLabel(d.scope)}</p>

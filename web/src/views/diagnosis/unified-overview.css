@@ -5,6 +5,7 @@
   --overview-finding: #117d75;
   --overview-incident: #397bd5;
   --overview-zabbix: #8958c8;
+  --overview-alertmanager: #a06415;
   --overview-plot-height: 164px;
   container: overview / inline-size;
   display: grid;
@@ -74,6 +75,7 @@ a.overview-metric:is([aria-current=true], :hover) { background: #eef6ff; text-de
 .overview-series-incident { --series: var(--overview-incident); }
 .overview-series-finding { --series: var(--overview-finding); }
 .overview-series-zabbix { --series: var(--overview-zabbix); }
+.overview-series-alertmanager { --series: var(--overview-alertmanager); }
 .overview-trend-empty { min-height: 106px; display: grid; place-content: center; justify-items: center; gap: 4px; text-align: center; padding: 12px; border: 1px dashed #c6d7e9; border-radius: 7px; background: #f4f8fc; }
 .overview-trend-empty p { margin: 0; color: var(--muted); font-size: 13px; }
 .overview-plot { --overview-days: 7; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }

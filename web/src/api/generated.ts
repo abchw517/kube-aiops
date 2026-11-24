@@ -1,5 +1,106 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: dae4cc73 791a5ea9 82ad394d 371b6849 40868049 8714000a b36a7e49 c01cd48f
+// Contract source SHA-256 groups: 96ec3122 ab4b681b 521255ec 04361484 7b1fed99 4afe958c 9ded0ee9 e780a813
+
+export interface ObservabilityScope {
+  "environmentId": string;
+  "businessId": string;
+  "clusterId": string;
+}
+
+export interface ObservabilityCredential {
+  "method": "none" | "bearer" | "basic";
+  "username"?: string;
+  "secret"?: string;
+}
+
+export interface ObservabilityTenant {
+  "account": number;
+  "project": number;
+}
+
+export interface ObservabilityDashboard {
+  "uid": string;
+  "title": string;
+  "url"?: string;
+}
+
+export interface ObservabilityAlert {
+  "namespace"?: string;
+  "id": string;
+  "title": string;
+  "state": "active" | "suppressed" | "unprocessed" | "departed";
+  "severity": "critical" | "warning" | "info" | "";
+  "rawSeverity"?: string;
+  "startedAt": string;
+  "scope": ObservabilityScope;
+}
+
+export interface ObservabilitySource {
+  "coverageFrom"?: number;
+  "id": string;
+  "kind": "prometheus" | "victorialogs" | "alertmanager" | "grafana";
+  "name": string;
+  "endpoint": string;
+  "scope": ObservabilityScope;
+  "shared": boolean;
+  "label"?: string;
+  "value"?: string;
+  "tenant"?: ObservabilityTenant;
+  "includeSuppressed"?: boolean;
+  "dashboards"?: Array<ObservabilityDashboard>;
+  "auth": "none" | "bearer" | "basic";
+  "enabled": boolean;
+  "version": number;
+  "checkedAt"?: number;
+  "syncedAt"?: number;
+  "failed"?: boolean;
+}
+
+export interface ObservabilityInput {
+  "kind": "prometheus" | "victorialogs" | "alertmanager" | "grafana";
+  "name": string;
+  "endpoint": string;
+  "scope": ObservabilityScope;
+  "shared": boolean;
+  "label"?: string;
+  "value"?: string;
+  "tenant"?: ObservabilityTenant;
+  "includeSuppressed"?: boolean;
+  "dashboardIds"?: Array<string>;
+  "credential"?: ObservabilityCredential;
+  "sourceId"?: string;
+  "preview"?: boolean;
+}
+
+export interface ObservabilityPreview {
+  "count": number;
+  "suppressed"?: number;
+  "dashboards"?: Array<ObservabilityDashboard>;
+  "alerts"?: Array<ObservabilityAlert>;
+}
+
+export interface ObservabilitySources {
+  "items": Array<ObservabilitySource>;
+  "legacy": Array<"prometheus" | "victorialogs" | "alertmanager" | "grafana">;
+}
+
+export interface ObservabilityAlerts {
+  "items": Array<ObservabilityAlert>;
+  "sources": Array<ObservabilitySource>;
+  "truncated": boolean;
+}
+
+export interface ObservabilityDashboards {
+  "items": Array<ObservabilityDashboard>;
+}
+
+export interface ObservabilityToggle {
+  "enabled": boolean;
+}
+
+export interface ObservabilityQueued {
+  "queued": boolean;
+}
 
 export interface ZabbixScope {
   "environmentId": string;
@@ -864,6 +965,44 @@ export interface ListZabbixProblemsParams {
   "metadataOnly"?: boolean;
 }
 
+export interface CreateObservabilitySourceParams {
+  "body": ObservabilityInput;
+}
+
+export interface ProbeObservabilitySourceParams {
+  "body": ObservabilityInput;
+}
+
+export interface UpdateObservabilitySourceParams {
+  "sourceId": string;
+  "If-Match": string;
+  "body": ObservabilityInput;
+}
+
+export interface ToggleObservabilitySourceParams {
+  "sourceId": string;
+  "If-Match": string;
+  "body": ObservabilityToggle;
+}
+
+export interface SyncObservabilitySourceParams {
+  "sourceId": string;
+}
+
+export interface ListObservabilityAlertsParams {
+  "environmentId"?: string;
+  "businessId"?: string;
+  "clusterId"?: string;
+  "recent"?: string;
+}
+
+export interface ListObservabilityDashboardsParams {
+  "clusterId": string;
+  "namespace": string;
+  "businessId"?: string;
+  "anchor"?: string;
+}
+
 export interface ApiClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
@@ -1258,6 +1397,71 @@ export class KubeAIOpsApiClient {
     const queryString = query.toString();
     if (queryString) path += `?${queryString}`;
     return this.request<ZabbixProblems>(path);
+  }
+
+  async listObservabilitySources(): Promise<ObservabilitySources> {
+    let path = `/api/v1/diagnostics/observability/sources`;
+    return this.request<ObservabilitySources>(path);
+  }
+
+  async createObservabilitySource(params: CreateObservabilitySourceParams): Promise<ObservabilitySource> {
+    let path = `/api/v1/diagnostics/observability/sources`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<ObservabilitySource>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async probeObservabilitySource(params: ProbeObservabilitySourceParams): Promise<ObservabilityPreview> {
+    let path = `/api/v1/diagnostics/observability/probe`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<ObservabilityPreview>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async updateObservabilitySource(params: UpdateObservabilitySourceParams): Promise<ObservabilitySource> {
+    let path = `/api/v1/diagnostics/observability/sources/${encodeURIComponent(String(params["sourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<ObservabilitySource>(path, { method: "PUT", headers, body: JSON.stringify(params.body) });
+  }
+
+  async toggleObservabilitySource(params: ToggleObservabilitySourceParams): Promise<ObservabilityToggle> {
+    let path = `/api/v1/diagnostics/observability/sources/${encodeURIComponent(String(params["sourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<ObservabilityToggle>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async syncObservabilitySource(params: SyncObservabilitySourceParams): Promise<ObservabilityQueued> {
+    let path = `/api/v1/diagnostics/observability/sources/${encodeURIComponent(String(params["sourceId"]))}/sync`;
+    const headers: Record<string, string> = {};
+    return this.request<ObservabilityQueued>(path, { method: "POST", headers });
+  }
+
+  async listObservabilityAlerts(params: ListObservabilityAlertsParams = {}): Promise<ObservabilityAlerts> {
+    let path = `/api/v1/diagnostics/observability/alerts`;
+    const query = new URLSearchParams();
+    if (params["environmentId"] !== undefined) query.set("environmentId", String(params["environmentId"]));
+    if (params["businessId"] !== undefined) query.set("businessId", String(params["businessId"]));
+    if (params["clusterId"] !== undefined) query.set("clusterId", String(params["clusterId"]));
+    if (params["recent"] !== undefined) query.set("recent", String(params["recent"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<ObservabilityAlerts>(path);
+  }
+
+  async listObservabilityDashboards(params: ListObservabilityDashboardsParams): Promise<ObservabilityDashboards> {
+    let path = `/api/v1/diagnostics/observability/dashboards`;
+    const query = new URLSearchParams();
+    query.set("clusterId", String(params["clusterId"]));
+    query.set("namespace", String(params["namespace"]));
+    if (params["businessId"] !== undefined) query.set("businessId", String(params["businessId"]));
+    if (params["anchor"] !== undefined) query.set("anchor", String(params["anchor"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<ObservabilityDashboards>(path);
   }
 
 }

@@ -37,6 +37,7 @@ var resourceLabels = map[string]string{
 type Source struct {
 	client       *observability.Client
 	clusterLabel string
+	clusterKey   string
 }
 
 func New(config observability.Config) (correlation.AlertSource, error) {
@@ -44,7 +45,11 @@ func New(config observability.Config) (correlation.AlertSource, error) {
 	if err != nil || client == nil {
 		return nil, err
 	}
-	return &Source{client: client, clusterLabel: config.ClusterLabelValue}, nil
+	key := config.ClusterLabelKey
+	if key == "" {
+		key = "cluster"
+	}
+	return &Source{client: client, clusterLabel: config.ClusterLabelValue, clusterKey: key}, nil
 }
 
 type matcher struct {
@@ -77,7 +82,7 @@ func (s *Source) Alerts(ctx context.Context, query correlation.Query) ([]correla
 		matchers = append(matchers, matcher{"namespace", resource.Namespace})
 	}
 	if s.clusterLabel != "" {
-		matchers = append(matchers, matcher{"cluster", s.clusterLabel})
+		matchers = append(matchers, matcher{s.clusterKey, s.clusterLabel})
 	}
 	params := url.Values{
 		"active": {"true"}, "silenced": {"true"}, "inhibited": {"true"}, "unprocessed": {"true"},

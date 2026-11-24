@@ -69,6 +69,7 @@ let incidentFixture;
 let rcaFixture;
 let datasourceFixture;
 let zabbixSourceFixture;
+let observabilityFixture;
 let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
@@ -721,6 +722,26 @@ async function incidents(request, response, url) {
           environmentName: "生产", businessName: "运维" }] : [], truncated: false });
     }
   }
+  if (path === "/observability/sources" && method === "GET") return json(response, 200, {items: observabilityFixture ? [observabilityFixture] : [], legacy: []});
+  if (["/observability/probe", "/observability/sources"].includes(path) && method === "POST") {
+    const body = await readIncidentBody(request);
+    if (body.kind !== "alertmanager" || body.scope?.environmentId !== "testing" || body.scope?.businessId !== "test" ||
+        body.scope?.clusterId !== "test-k8s" || body.label !== "cluster" || body.value !== "test-a" ||
+        body.credential?.secret !== "fixture-alertmanager-token") return json(response, 422, {});
+    if (path === "/observability/probe") return json(response, 200, {count: 1});
+    observabilityFixture = {id:"alertmanager-fixture",kind:body.kind,name:body.name,endpoint:body.endpoint,scope:body.scope,
+      auth:body.credential.method,shared:true,enabled:true,version:1,syncedAt:Math.floor(Date.now()/1000)};
+    return json(response, 200, observabilityFixture);
+  }
+  if (path === "/observability/alerts" && method === "GET") {
+    const source = observabilityFixture;
+    const included = source && [["environmentId",source.scope.environmentId],["businessId",source.scope.businessId],
+      ["clusterId",source.scope.clusterId]].every(([key,value])=>!url.searchParams.has(key)||url.searchParams.get(key)===value);
+    const items = included ? [{id:"am-alert",title:"GatewayErrors",severity:"warning",rawSeverity:"warning",
+      startedAt:new Date().toISOString(),state:"active",scope:source.scope}] : [];
+    return json(response, 200, {items, sources: included ? [source] : [], truncated: false});
+  }
+  if (path === "/observability/dashboards" && method === "GET") return json(response, 200, {items: []});
   if (path === "/datasources") {
     if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
     const body = await readIncidentBody(request);
