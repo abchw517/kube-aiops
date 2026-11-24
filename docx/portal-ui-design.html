@@ -726,7 +726,7 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <button class="am-btn" type="button" data-am="copy" data-done="已复制 ✓">复制源稿</button>
 </div>
 <main class="am-doc">
-<header class="am-head"><h1>kube-aiops 全站界面设计</h1><p class="am-sub">控制台布局、页面模式与实施验收</p><div class="am-head-meta"><span><b>source</b>main 3925c9c</span></div><div class="am-intro am-md"><div class="am-md"><p>采用深色顶栏、浅色侧栏和白色工作区。四个模块共用导航结构，各模块保留适合自身任务的内容布局。</p>
+<header class="am-head"><h1>kube-aiops 全站界面设计</h1><p class="am-sub">控制台布局、页面模式与实施验收</p><div class="am-head-meta"><span><b>source</b>main 49515c5</span></div><div class="am-intro am-md"><div class="am-md"><p>采用深色顶栏、浅色侧栏和白色工作区。四个模块共用导航结构，各模块保留适合自身任务的内容布局。</p>
 </div></div></header>
 <div class="am-doc-layout">
 <nav class="am-toc" aria-label="目录"><a href="#panel-A">A · 全站导航如何组织</a><a href="#panel-B">B · 色调与信息密度</a><a href="#panel-C">C · 四个模块采用什么布局</a><a href="#panel-D">D · 页面状态如何统一</a><a href="#panel-E">E · 窄屏如何保留操作</a><a href="#panel-F">F · 共享外框与模块边界</a><a href="#panel-G">G · 建议实施顺序与验收</a></nav><div class="am-doc-body">
@@ -750,12 +750,12 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 </thead>
 <tbody><tr>
 <td>顶栏</td>
-<td><code>#202430</code></td>
+<td><code>#17283c</code></td>
 <td>承载主导航和账号入口</td>
 </tr>
 <tr>
 <td>页面底色</td>
-<td><code>#EEF2F8</code></td>
+<td><code>#F0F4F8</code></td>
 <td>拉开白色工作面板与外框的层次</td>
 </tr>
 <tr>
@@ -795,7 +795,7 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <tbody><tr>
 <td>诊断控制台</td>
 <td>诊断总览、故障事件、原有诊断结果、数据源管理、诊断策略</td>
-<td>总览上方展示关键指标，中间展示趋势，下方展示故障列表。事件详情沿用关联拓扑和 AI 根因分析入口</td>
+<td>总览从上至下展示生效范围、值班指标、最近故障、趋势与级别分布。值班指标可进入同范围的故障列表。事件详情沿用关联拓扑和 AI 根因分析入口</td>
 </tr>
 <tr>
 <td>资源管理</td>
@@ -926,7 +926,7 @@ template: doc
 theme: paper
 title: kube-aiops 全站界面设计
 subtitle: 控制台布局、页面模式与实施验收
-source: main 3925c9c
+source: main 49515c5
 ---
 采用深色顶栏、浅色侧栏和白色工作区。四个模块共用导航结构，各模块保留适合自身任务的内容布局。
 
@@ -944,8 +944,8 @@ source: main 3925c9c
 
 | 区域 | 设计值 | 用途 |
 | --- | --- | --- |
-| 顶栏 | `#202430` | 承载主导航和账号入口 |
-| 页面底色 | `#EEF2F8` | 拉开白色工作面板与外框的层次 |
+| 顶栏 | `#17283c` | 承载主导航和账号入口 |
+| 页面底色 | `#F0F4F8` | 拉开白色工作面板与外框的层次 |
 | 面板和侧栏 | `#FFFFFF` | 为表格、表单和图表提供统一底色 |
 | 品牌蓝 | `#0875DF` / `#0069D1` | 高亮选中项、链接和主按钮 |
 | 状态色 | 绿、橙、红、灰 | 对应正常、注意、故障和未知。每个状态同时显示文字 |
@@ -957,7 +957,7 @@ source: main 3925c9c
 
 | 模块 | 现有入口 | 页面布局 |
 | --- | --- | --- |
-| 诊断控制台 | 诊断总览、故障事件、原有诊断结果、数据源管理、诊断策略 | 总览上方展示关键指标，中间展示趋势，下方展示故障列表。事件详情沿用关联拓扑和 AI 根因分析入口 |
+| 诊断控制台 | 诊断总览、故障事件、原有诊断结果、数据源管理、诊断策略 | 总览从上至下展示生效范围、值班指标、最近故障、趋势与级别分布。值班指标可进入同范围的故障列表。事件详情沿用关联拓扑和 AI 根因分析入口 |
 | 资源管理 | Kubernetes 集群管理、环境管理、业务线管理 | Kubernetes 集群管理采用范围树和主表。环境、业务线采用标题、列表和编辑入口 |
 | 运维知识库 | 知识文档、AI 知识问答、知识治理 | 搜索和筛选位于列表上方。详情保留章节目录、适用范围和关联诊断。问答与治理入口按权限显示 |
 | 系统管理 | 认证配置、用户管理、权限配置、操作审计、修改密码 | LDAP URL 和 DN 各占一行，连接参数与四步验证分别展示。权限管理直接显示可勾选矩阵、数据范围和授权清单。用户和审计采用筛选、列表和详情 |

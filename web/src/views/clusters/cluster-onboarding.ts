@@ -3,7 +3,7 @@ import { escapeHtml } from "../../components/html.ts";
 
 const endpoint = "/api/v1/admin/cluster-onboarding";
 const route = "#/resources/clusters";
-export const clusterManagementTitle = "Kubernetes 集群管理";
+import { clusterManagementTitle } from "../../domain/resource-routes.ts";
 const nodeValidationFailed = "已接入 · 节点校验失败";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],

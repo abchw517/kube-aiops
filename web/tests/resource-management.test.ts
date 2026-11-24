@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderCatalog, resolveResourceTab } from "../src/views/resources/resource-management.ts";
+import { resolveResourceTab } from "../src/domain/resource-routes.ts";
+import { renderCatalog } from "../src/views/resources/resource-management.ts";
 
 test("resource navigation defaults to clusters and scopes explicit links", () => {
   const access = { clusters: true, environments: true, "business-lines": false };

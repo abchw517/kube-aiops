@@ -1,22 +1,10 @@
 import { escapeHtml } from "../../components/html.ts";
-import { clusterManagementTitle, renderOnboarding } from "../clusters/cluster-onboarding.ts";
+import { renderOnboarding } from "../clusters/cluster-onboarding.ts";
 
-export const resourcePages = [
-  ["clusters", clusterManagementTitle],
-  ["environments", "环境管理"],
-  ["business-lines", "业务线管理"],
-] as const;
+import { resolveResourceTab, type ResourceAccess } from "../../domain/resource-routes.ts";
 
-type Tab = typeof resourcePages[number][0];
-type Catalog = Exclude<Tab, "clusters">;
+type Catalog = "environments" | "business-lines";
 type Entry = { id: string; name: string };
-export type ResourceAccess = Record<Tab, boolean>;
-
-export function resolveResourceTab(hash: string, access: ResourceAccess): Tab | undefined {
-  const requested = hash.split("/")[2];
-  if (requested) return resourcePages.find(([key]) => key === requested && access[key])?.[0];
-  return resourcePages.find(([key]) => access[key])?.[0];
-}
 
 export function renderCatalog(kind: Catalog, entries: Entry[], editable = true): string {
   const name = kind === "environments" ? "环境" : "业务线";

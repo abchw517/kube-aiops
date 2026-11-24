@@ -1,6 +1,7 @@
 import { apiClient } from "../../api/client.ts";
 import { ApiError, type IncidentOverview, type IncidentSeverity, type ListIncidentsParams } from "../../api/generated.ts";
 import { escapeHtml } from "../../components/html.ts";
+import { incidentMetricHref } from "./incident-filters.ts";
 
 const severityLevels = [
   { level: "P1", label: "P1 高风险", tone: "critical" },
@@ -16,23 +17,19 @@ function countOf(value: number | undefined): number | undefined {
 }
 
 /** 按服务端权限与当前筛选取得各级别总数，避免以最近列表推算分布。 */
-async function severityCounts(params: ListIncidentsParams, summary: IncidentOverview): Promise<SeverityCounts> {
+export async function loadIncidentSeverityCounts(params: ListIncidentsParams, summary: IncidentOverview): Promise<SeverityCounts> {
   const total = countOf(summary.counts.total);
-  const counts = { P1: undefined, P2: undefined, P3: undefined } as SeverityCounts;
-  await Promise.all(severityLevels.map(async ({ level }) => {
-    if (total === 0 || params.severity) {
-      counts[level] = !params.severity || level === params.severity ? total : 0;
-      return;
-    }
+  const [P1, P2, P3] = await Promise.all(severityLevels.map(async ({ level }) => {
+    if (total === 0 || params.severity) return !params.severity || level === params.severity ? total : 0;
     try {
       const result = await apiClient.getIncidentOverview({ ...params, severity: level });
-      counts[level] = countOf(result.counts.total);
+      return result.coverage === "partial" ? undefined : countOf(result.counts.total);
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) throw error;
-      counts[level] = undefined;
+      return undefined;
     }
   }));
-  return counts;
+  return { P1, P2, P3 };
 }
 
 /** 统一展示计数与不可用状态，避免把缺失数据当成零。 */
@@ -87,21 +84,27 @@ function renderTrend(trend: IncidentOverview["trend"]): string {
   </section>`;
 }
 
-/** 渲染诊断总览的四项指标与图表。 */
-export async function renderIncidentOverview(summary: IncidentOverview, params: ListIncidentsParams): Promise<string> {
-  const counts = await severityCounts(params, summary);
+/** 渲染值班指标，为相容的范围提供对应列表入口。 */
+export function renderIncidentMetrics(summary: IncidentOverview, params: ListIncidentsParams, counts: SeverityCounts): string {
   const metrics = [
-    ["故障事件", countOf(summary.counts.total), "total"],
-    ["处理中", countOf(summary.counts.investigating), "warning"],
-    ["已恢复", countOf(summary.counts.recovered), "recovered"],
-    ["高风险（P1）", counts.P1, "critical"],
+    ["待确认", countOf(summary.counts.pending), "warning", { key: "status", value: "pending" }],
+    ["处理中", countOf(summary.counts.investigating), "total", { key: "status", value: "investigating" }],
+    ["高风险（P1）", counts.P1, "critical", { key: "severity", value: "P1" }],
+    ["已恢复", countOf(summary.counts.recovered), "recovered", { key: "status", value: "recovered" }],
   ] as const;
   return `<dl class="incident-overview-metrics" aria-label="故障汇总">
-    ${metrics.map(([label, count, tone]) => `<div class="panel incident-overview-metric incident-plot-${tone}">
-      <dt>${escapeHtml(label)}</dt><dd>${countLabel(count)}</dd>
-    </div>`).join("")}
-  </dl>
-  <div class="incident-overview-plots">${renderTrend(summary.trend)}${renderSeverity(counts)}</div>`;
+    ${metrics.map(([label, count, tone, filter]) => {
+      const href = count === undefined ? undefined : incidentMetricHref(params, filter);
+      return `<div class="panel incident-overview-metric incident-plot-${tone}">
+        <dt>${href ? `<a href="${escapeHtml(href)}">${label}</a>` : label}</dt><dd>${countLabel(count)}</dd>
+      </div>`;
+    }).join("")}
+  </dl>`;
+}
+
+/** 将趋势和级别统计排在最近故障之后。 */
+export function renderIncidentOverviewCharts(summary: IncidentOverview, counts: SeverityCounts): string {
+  return `<div class="incident-overview-plots">${renderTrend(summary.trend)}${renderSeverity(counts)}</div>`;
 }
 
 /** 让选中的日期在图表下方持续可读。 */

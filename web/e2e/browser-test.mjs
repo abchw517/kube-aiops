@@ -879,7 +879,7 @@ try {
       catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
     })` });
     if (permissionNames.result?.value?.title !== "权限配置" || permissionNames.result?.value?.tab !== "权限管理" ||
-        permissionNames.result?.value?.catalog !== "权限目录") throw new Error("Permission workspace labels do not match their purpose");
+        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match their purpose");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1393,6 +1393,7 @@ async function assertIncidentLifecycle(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-incident-create]");
     form.elements.title.value = "订单服务故障";
+    form.elements.severity.value = "P1";
     form.elements.clusterId.value = "local";
     form.elements.clusterId.dispatchEvent(new Event("change"));
   })()` });
@@ -1432,6 +1433,88 @@ async function assertIncidentLifecycle(cdp) {
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-trend-point]").click()' });
   await assertText(cdp, (text) => text.includes("2026-11-20（UTC）共 1 件事件"),
     "Selecting a date did not reveal its observed count");
+  await assertIncidentDashboard(cdp);
+}
+
+// 验收筛选、指标下钻和窄屏键盘操作。
+async function assertIncidentDashboard(cdp) {
+  const overview = "http://127.0.0.1:4173/#/diagnostics";
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    document.querySelector(".incident-scope summary").click();
+    const form = document.querySelector("[data-incident-filters]");
+    form.elements.environmentId.value = "development";
+    form.elements.namespace.value = "default";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, text => text.includes("环境 研发 · 命名空间 default") &&
+    text.includes("订单服务故障"), "Collapsed overview lost the applied incident scope");
+  const order = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const scope = document.querySelector(".incident-scope");
+    return !scope.open && scope.getBoundingClientRect().bottom <
+      document.querySelector(".incident-overview-metrics").getBoundingClientRect().top &&
+      document.querySelector(".incident-table").getBoundingClientRect().bottom <
+      document.querySelector(".incident-overview-plots").getBoundingClientRect().top;
+  })()` });
+  if (!order.result?.value) throw new Error("Incident overview does not put scope and queue before the charts");
+  await cdp.send("Runtime.evaluate", { expression: `
+    Array.from(document.querySelectorAll(".incident-overview-metric a"))
+      .find(link => link.textContent === "高风险（P1）").click()
+  ` });
+  await assertText(cdp, text => text.includes("故障列表") && text.includes("严重程度 P1 高风险") &&
+    text.includes("命名空间 default") && text.includes("订单服务故障"), "P1 shortcut lost its severity or starting scope");
+  await cdp.send("Runtime.evaluate", { expression: "history.back()" });
+  await assertText(cdp, text => text.includes("最近故障事件") && text.includes("命名空间 default"),
+    "Browser back did not restore the overview scope");
+  await assertPage(cdp, `${overview}?status=investigating&q=${encodeURIComponent("订单")}`,
+    text => text.includes("暂不可用") && text.includes("订单服务故障"), "Unavailable P1 count hid the incident queue");
+  const links = await cdp.send("Runtime.evaluate", { returnByValue: true,
+    expression: `[...document.querySelectorAll(".incident-overview-metric a")].map(link => link.textContent)` });
+  if (links.result?.value?.join(",") !== "处理中") throw new Error("Conflicting or unavailable counts remained navigable");
+  await assertPage(cdp, `${overview}?q=${encodeURIComponent("无匹配故障")}`,
+    text => text.includes("当前范围内暂无故障") && text.includes("关键词 无匹配故障") && !text.includes("暂不可用"),
+    "Empty scope did not distinguish zero from unavailable counts");
+
+  await assertPage(cdp, overview, text => text.includes("全部可见范围") && text.includes("订单服务故障"),
+    "Incident overview failed to reload");
+  for (const width of [1440, 390, 320]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const table = document.querySelector(".incident-table");
+      return {
+        scopeVisible: document.querySelector(".incident-scope-current").getBoundingClientRect().height > 0,
+        pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        contentWidth: document.documentElement.scrollWidth,
+        tableScrolls: table.scrollWidth > table.clientWidth,
+        titleWidth: table.querySelector("td").getBoundingClientRect().width,
+      };
+    })()` });
+    const layout = state.result?.value;
+    if (!layout?.scopeVisible || layout.pageOverflow || layout.titleWidth < 160 || (width < 680 && !layout.tableScrolls)) {
+      throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
+    }
+  }
+  const mobile = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const button = document.querySelector(".portal-menu-toggle");
+    button.click();
+    const opened = button.getAttribute("aria-expanded") === "true" &&
+      document.activeElement.matches(".portal-sidebar a[aria-current=page]");
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const closed = button.getAttribute("aria-expanded") === "false" && document.activeElement === button;
+    button.click();
+    const link = document.querySelector('.portal-sidebar a[href="#/diagnostics/events"]');
+    link.focus();
+    link.click();
+    return opened && closed;
+  })()` });
+  if (!mobile.result?.value) throw new Error("Mobile sidebar did not move and restore keyboard focus");
+  await assertText(cdp, text => text.includes("故障列表"), "Mobile sidebar navigation failed");
+  const after = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
+    document.querySelector(".portal-menu-toggle").getAttribute("aria-expanded") === "false" &&
+    document.activeElement.id === "portal-content"
+  ` });
+  if (!after.result?.value) throw new Error("Mobile navigation did not close the menu and focus the workspace");
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
 }
 
 async function assertRemainingDiagnosticPages(cdp) {
@@ -1687,6 +1770,26 @@ async function assertRolePermissionSelection(cdp) {
 
 async function assertPortalFollowupPrototypes(cdp) {
   const portalPrototype = new URL("../../docx/portal-ui-prototype.html", import.meta.url);
+  await assertPage(cdp, `${portalPrototype.href}#/diagnostics`,
+    text => text.includes("全部可见范围") && text.includes("最近故障事件"), "Prototype did not show the on-call dashboard");
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+  const table = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const region = document.querySelector(".incident-results .scroll");
+    return region.scrollWidth > region.clientWidth && region.querySelector("td").getBoundingClientRect().width >= 160;
+  })()` });
+  if (!table.result?.value) throw new Error("Prototype fault titles were compressed on a narrow screen");
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    document.querySelector(".scope-bar summary").click();
+    const form = document.querySelector("#incident-filter");
+    form.elements.environmentId.value = "production";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, text => text.includes("环境 生产") && text.includes("支付接口 5xx 错误率上升") &&
+    !text.includes("日志采集延迟"), "Prototype incident filter did not apply consistently");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.metric a[href*="severity=P1"]').click()` });
+  await assertText(cdp, text => text.includes("故障列表") && text.includes("严重程度 P1 高风险") &&
+    text.includes("共 2 条故障"), "Prototype lost the current scope when opening an operating queue");
   await assertPage(cdp, `${portalPrototype.href}#/resources/clusters`,
     text => text.includes("Kubernetes 集群管理") && text.includes("集群列表"), "Global prototype did not show the renamed cluster page");
   const labels = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `[
@@ -1709,7 +1812,10 @@ async function assertPortalFollowupPrototypes(cdp) {
   if (!scopes.result?.value) throw new Error("Global prototype did not filter all environments from their headings");
 
   await assertPage(cdp, `${portalPrototype.href}#/admin/access`,
-    text => text.includes("权限配置") && text.includes("角色列表") && text.includes("权限目录"), "Global prototype lost the permission workspace");
+    text => text.includes("权限配置") && text.includes("角色列表"), "Global prototype lost the permission workspace");
+  const catalog = await cdp.send("Runtime.evaluate", { returnByValue: true,
+    expression: `document.querySelector('.permission-links a[href="permission-catalog/prototype.html"]')?.textContent` });
+  if (catalog.result?.value !== "权限配置") throw new Error("Global prototype did not rename the permission action");
   const frame = await cdp.send("Runtime.evaluate", { returnByValue: true,
     expression: `document.querySelector('iframe[title="角色配置与用户组"]')?.getAttribute("src")` });
   if (frame.result?.value !== "permission-catalog/group-admin-prototype.html?embed") {

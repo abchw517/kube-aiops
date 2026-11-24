@@ -1,7 +1,8 @@
 import { apiClient } from "../../api/client.ts";
 import type { Incident, IncidentDetail, IncidentEvidence, IncidentSeverity, IncidentStatus, IncidentTimelineEntry } from "../../api/generated.ts";
 import { escapeHtml, formatTimestamp } from "../../components/html.ts";
-import { incidentError, incidentEvents, incidentFilters, incidentHref, incidentQuery, incidentStatusLabels } from "./incident-list.ts";
+import { incidentEvents, incidentFilters, incidentHref, incidentQuery, incidentStatusLabels } from "./incident-filters.ts";
+import { incidentError } from "./incident-list.ts";
 
 import { incidentSubview } from "./incident-rca.ts";
 
