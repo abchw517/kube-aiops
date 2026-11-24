@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/assetmeta"
@@ -328,6 +330,7 @@ func (s *Server) testZabbix(w http.ResponseWriter, r *http.Request, p identity.P
 }
 
 type zabbixSelection struct {
+	Name     *string     `json:"name,omitempty"`
 	Draft    string      `json:"draft,omitempty"`
 	SourceID string      `json:"sourceId,omitempty"`
 	Scope    ZabbixScope `json:"scope"`
@@ -448,10 +451,18 @@ func (s *Server) createZabbix(w http.ResponseWriter, r *http.Request, p identity
 	if !adminhttp.Decode(w, r, &input) || input.SourceID != "" || !validZabbixGroups(input.GroupIDs) {
 		return zabbixBadInput
 	}
+	var name string
+	if input.Name != nil {
+		name = strings.TrimSpace(*input.Name)
+		if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsFunc(name, unicode.IsControl) {
+			return httpError{400, "ZABBIX_INVALID_NAME", "数据源名称应为 1 至 120 个字符，且不能包含控制字符。"}
+		}
+	}
 	d, credential, err := s.zabbixSelection(ctx, p, input)
 	if err != nil {
 		return err
 	}
+	d.Name = name
 	if err = s.validateZabbixSelection(ctx, p, d, credential, input.GroupIDs); err != nil {
 		return err
 	}

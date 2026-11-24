@@ -318,6 +318,13 @@
 .zabbix-source-card { padding: 12px 16px; overflow-wrap: anywhere; }
 .zabbix-source-card p { margin-block: 6px; }
 .zabbix-source-card details { margin-top: 10px; }
+.zabbix-panel-toggle { display: inline-flex; align-items: center; gap: 9px; padding: 6px 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.zabbix-panel-toggle::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+.zabbix-panel-toggle[aria-expanded="true"]::before { transform: rotate(45deg); }
+.zabbix-source-scope, .zabbix-scope-environment, .zabbix-environment-status { color: var(--muted); font-size: 13px; }
+.zabbix-scope-environment, .zabbix-environment-status { margin: 0 0 6px; }
+.zabbix-environment-status:empty { display: none; }
+.zabbix-environment-retry { justify-self: start; }
 .zabbix-dialog {
   box-sizing: border-box;
   width: min(660px, calc(100vw - 24px));

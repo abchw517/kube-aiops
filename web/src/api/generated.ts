@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 7298072f 7192610a 49cf3c21 54af8959 10ef9117 3688dee6 618a5087 44c829b6
+// Contract source SHA-256 groups: dae4cc73 791a5ea9 82ad394d 371b6849 40868049 8714000a b36a7e49 c01cd48f
 
 export interface ZabbixScope {
   "environmentId": string;
@@ -44,6 +44,7 @@ export interface ZabbixCredential {
 }
 
 export interface ZabbixSource {
+  "name"?: string;
   "environmentName"?: string;
   "businessName"?: string;
   "id": string;
@@ -79,6 +80,7 @@ export interface ZabbixTestResult {
 }
 
 export interface ZabbixSelection {
+  "name"?: string;
   "draft"?: string;
   "sourceId"?: string;
   "scope": ZabbixScope;

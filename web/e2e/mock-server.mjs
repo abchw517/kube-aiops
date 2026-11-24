@@ -682,7 +682,10 @@ async function incidents(request, response, url) {
       originalURL: "https://zabbix.example/tr_events.php?eventid=511&triggerid=40",
     };
     if (path === "/zabbix/scopes" && method === "GET") {
-      return json(response, 200, { environments: [{ id: "production", name: "生产", businesses: [{ id: "ops", name: "运维" }] }] });
+      return json(response, 200, { environments: [
+        { id: "production", name: "生产", businesses: [{ id: "ops", name: "运维" }] },
+        { id: "testing", name: "测试", businesses: [{ id: "test", name: "测试业务" }] },
+      ] });
     }
     if (path === "/zabbix/test" && method === "POST") {
       const input = await readIncidentBody(request);
@@ -702,8 +705,9 @@ async function incidents(request, response, url) {
     if (path === "/zabbix/sources") {
       if (method === "GET") return json(response, 200, { items: zabbixSourceFixture ? [zabbixSourceFixture] : [] });
       const input = await readIncidentBody(request);
-      if (input.draft !== "e2e-draft" || input.scope?.businessId !== "ops") return json(response, 400, {});
-      zabbixSourceFixture = { id: "zabbix-fixture", endpoint: "https://zabbix.example/api_jsonrpc.php", scope, groups,
+      if (input.draft !== "e2e-draft" || input.scope?.environmentId !== "production" ||
+        input.scope?.businessId !== "ops" || input.name !== "生产运维 Zabbix") return json(response, 400, {});
+      zabbixSourceFixture = { id: "zabbix-fixture", name: input.name, endpoint: "https://zabbix.example/api_jsonrpc.php", scope, groups,
         authMethod: "token", upstreamVersion: "6.0.36", enabled: true, version: 1, health: "available",
         environmentName: "生产", businessName: "运维", hostCount: 1, problemCount: 1, syncedAt: new Date().toISOString() };
       return json(response, 201, zabbixSourceFixture);

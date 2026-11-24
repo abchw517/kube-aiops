@@ -1609,6 +1609,14 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });
   await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
 
+  const emptyPanel = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const toggle = document.querySelector('[data-zabbix-action="collapse"]');
+    const add = document.querySelector('[data-zabbix-action="add"]');
+    toggle.click();
+    return toggle.textContent.trim() === "Zabbix 数据源" && toggle.getAttribute("aria-expanded") === "false" &&
+      document.getElementById(toggle.getAttribute("aria-controls")).hidden && !!add.getClientRects().length;
+  })()` });
+  if (!emptyPanel.result?.value) throw new Error("Collapsed Zabbix section should retain the add action");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-zabbix-action="add"]').click()` });
   for (const width of [1100, 390]) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
@@ -1620,6 +1628,7 @@ async function assertRemainingDiagnosticPages(cdp) {
       const footer = dialog.querySelector("footer").getBoundingClientRect();
       return dialog.querySelector('[name="method"]:checked').value === "token" &&
         !!dialog.querySelector(".zabbix-scope-wait") && dialog.querySelector("[data-zabbix-save]").disabled &&
+        left.contains(dialog.querySelector('[name="environmentId"]')) && left.contains(dialog.querySelector('[name="sourceName"]')) &&
         panel.left >= 0 && panel.right <= innerWidth && footer.bottom <= innerHeight &&
         (innerWidth > 760 ? left.offsetTop === right.offsetTop : left.offsetTop < right.offsetTop);
     })()` });
@@ -1648,6 +1657,17 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, text => text.includes("地址未在平台允许列表中") && text.includes("先测试连接"),
     "Zabbix policy rejection did not explain the issue");
 
+  const environmentBeforeTest = await cdp.send("Runtime.evaluate", { returnByValue: true, awaitPromise: true, expression: `(async () => {
+    const form = document.querySelector("[data-zabbix-form]");
+    const environment = form.elements.environmentId;
+    for (let times = 0; environment.disabled && times < 30; times++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    environment.value = "production";
+    environment.dispatchEvent(new Event("change", { bubbles: true }));
+    return environment.value === "production" && !form.elements.businessId && form.elements.sourceName.required;
+  })()` });
+  if (!environmentBeforeTest.result?.value) throw new Error("Zabbix environment must be selectable before the connection test");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-zabbix-form]");
     form.elements.endpoint.value = "https://zabbix.example";
@@ -1655,17 +1675,42 @@ async function assertRemainingDiagnosticPages(cdp) {
     form.querySelector('[data-zabbix-action="test"]').click();
   })()` });
   await assertText(cdp, text => text.includes("连接成功") && text.includes("Windows 应用主机"), "Zabbix connection test did not show groups");
-  await cdp.send("Runtime.evaluate", { expression: `(() => {
+  const scope = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     const form = document.querySelector("[data-zabbix-form]");
-    form.elements.environmentId.value = "production";
-    form.elements.environmentId.dispatchEvent(new Event("change", { bubbles: true }));
-    form.elements.businessId.value = "ops";
-    form.elements.businessId.dispatchEvent(new Event("change", { bubbles: true }));
+    const environment = form.elements.environmentId;
+    const business = form.elements.businessId;
+    const initialScope = environment.value === "production" && form.querySelectorAll('[name="environmentId"]').length === 1;
+    business.value = "ops";
+    environment.value = "testing";
+    environment.dispatchEvent(new Event("change", { bubbles: true }));
+    const businessReset = business.value === "" && [...business.options].some(option => option.value === "test") &&
+      ![...business.options].some(option => option.value === "ops");
+    environment.value = "production";
+    environment.dispatchEvent(new Event("change", { bubbles: true }));
+    business.value = "ops";
+    business.dispatchEvent(new Event("change", { bubbles: true }));
     form.querySelector('[name="groupId"]').click();
+    return initialScope && businessReset;
   })()` });
+  if (!scope.result?.value) throw new Error("Zabbix business options did not follow the selected environment");
   await assertText(cdp, text => text.includes("1 台主机") && text.includes("Windows 内存使用率高"), "Zabbix problem preview was not shown");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-zabbix-save]").click()` });
-  await assertText(cdp, text => text.includes("Zabbix · 生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  const nameRequired = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    const save = form.querySelector("[data-zabbix-save]");
+    const name = form.elements.sourceName;
+    name.value = "  ";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    const blocked = save.disabled;
+    name.value = "  生产运维 Zabbix  ";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    const enabled = !save.disabled;
+    save.click();
+    return blocked && enabled;
+  })()` });
+  if (!nameRequired.result?.value) throw new Error("Zabbix datasource name did not gate saving");
+  await assertText(cdp, text => text.includes("生产运维 Zabbix") && text.includes("生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  await assertPage(cdp, `${origin}/#/resources/datasources`,
+    text => text.includes("生产运维 Zabbix") && text.includes("同步正常"), "Zabbix source name did not survive reloading");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
