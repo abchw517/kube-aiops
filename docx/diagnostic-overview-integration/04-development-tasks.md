@@ -6,3 +6,6 @@
 | D2 统一记录集和有界分页 | domain/unified-diagnostics、views/diagnosis/unified-overview | 两个已授权列表 |
 | D3 渲染与导航恢复 | unified-overview、app、诊断样式 | D2 |
 | D4 回归 | web/tests、web/e2e 与可点击原型 | D1–D3 |
+| D5 页面重构 | 总览模板与独立样式 | 将最近诊断提到图表前，校对桌面、窄屏、空态和失败态 |
+| D6 视图参数与回链 | unified-diagnostics、详情回链 | 校验趋势日数，集群、级别及趋势窗均可恢复 |
+| D7 布局和交互回归 | 单元测试、Portal E2E、HTML 原型 | 验证历史记录可见、图表时间窗、日期读数与窄屏记录卡 |

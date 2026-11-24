@@ -1,5 +1,138 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 365a3240 10d9c371 18b96872 0a5d9b47 5f3ed1fc 68768475 ceaa08a5 99b788f2
+// Contract source SHA-256 groups: 7298072f 7192610a 49cf3c21 54af8959 10ef9117 3688dee6 618a5087 44c829b6
+
+export interface ZabbixScope {
+  "environmentId": string;
+  "businessId": string;
+}
+
+export interface ZabbixOption {
+  "id": string;
+  "name": string;
+}
+
+export interface ZabbixScopeChoice {
+  "id": string;
+  "name": string;
+  "businesses": Array<ZabbixOption>;
+}
+
+export interface ZabbixScopes {
+  "environments": Array<ZabbixScopeChoice>;
+}
+
+export interface ZabbixGroup {
+  "groupid": string;
+  "name": string;
+}
+
+export interface ZabbixHost {
+  "clusterId"?: string;
+  "hostid": string;
+  "name": string;
+}
+
+export interface ZabbixTag {
+  "tag": string;
+  "value": string;
+}
+
+export interface ZabbixCredential {
+  "method": "token" | "password";
+  "username"?: string;
+  "secret": string;
+}
+
+export interface ZabbixSource {
+  "environmentName"?: string;
+  "businessName"?: string;
+  "id": string;
+  "endpoint": string;
+  "scope": ZabbixScope;
+  "groups": Array<ZabbixGroup>;
+  "authMethod": string;
+  "upstreamVersion": string;
+  "enabled": boolean;
+  "version": number;
+  "health": string;
+  "checkedAt"?: string;
+  "syncedAt"?: string;
+  "hostCount"?: number;
+  "problemCount"?: number;
+}
+
+export interface ZabbixSources {
+  "items": Array<ZabbixSource>;
+}
+
+export interface ZabbixTestInput {
+  "endpoint"?: string;
+  "credential"?: ZabbixCredential;
+  "sourceId"?: string;
+}
+
+export interface ZabbixTestResult {
+  "version": string;
+  "endpoint": string;
+  "groups": Array<ZabbixGroup>;
+  "draft": string;
+}
+
+export interface ZabbixSelection {
+  "draft"?: string;
+  "sourceId"?: string;
+  "scope": ZabbixScope;
+  "groupIds": Array<string>;
+}
+
+export interface ZabbixChange {
+  "draft"?: string;
+  "groupIds"?: Array<string>;
+  "enabled"?: boolean;
+}
+
+export interface ZabbixQueued {
+  "queued": boolean;
+}
+
+export interface ZabbixProblem {
+  "originalURL"?: string;
+  "id": string;
+  "eventId": string;
+  "title": string;
+  "severity": Severity;
+  "rawSeverity": number;
+  "scope": ZabbixScope;
+  "hosts": Array<ZabbixHost>;
+  "acknowledged": boolean;
+  "recovered": boolean;
+  "startedAt": string;
+  "recoveredAt"?: string;
+  "tags"?: Array<ZabbixTag>;
+  "sourceId": string;
+}
+
+export interface ZabbixHealth {
+  "environmentName"?: string;
+  "businessName"?: string;
+  "id": string;
+  "scope": ZabbixScope;
+  "health": string;
+  "syncedAt"?: string;
+  "hasSnapshot": boolean;
+}
+
+export interface ZabbixPreview {
+  "hostCount": number;
+  "problemCount": number;
+  "problems": Array<ZabbixProblem>;
+}
+
+export interface ZabbixProblems {
+  "items": Array<ZabbixProblem>;
+  "sources": Array<ZabbixHealth>;
+  "truncated": boolean;
+}
 
 export interface RCAInput {
   "observation"?: string;
@@ -700,6 +833,35 @@ export interface ListDiagnosticPolicyRunsParams {
   "policyId": string;
 }
 
+export interface CreateZabbixSourceParams {
+  "body": ZabbixSelection;
+}
+
+export interface UpdateZabbixSourceParams {
+  "sourceId": string;
+  "If-Match": string;
+  "body": ZabbixChange;
+}
+
+export interface SyncZabbixSourceParams {
+  "sourceId": string;
+}
+
+export interface TestZabbixConnectionParams {
+  "body": ZabbixTestInput;
+}
+
+export interface PreviewZabbixProblemsParams {
+  "body": ZabbixSelection;
+}
+
+export interface ListZabbixProblemsParams {
+  "environmentId"?: string;
+  "businessId"?: string;
+  "recent"?: boolean;
+  "metadataOnly"?: boolean;
+}
+
 export interface ApiClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
@@ -1037,6 +1199,63 @@ export class KubeAIOpsApiClient {
   async listDiagnosticPolicyRuns(params: ListDiagnosticPolicyRunsParams): Promise<PolicyExecutions> {
     let path = `/api/v1/diagnostics/policies/${encodeURIComponent(String(params["policyId"]))}/runs`;
     return this.request<PolicyExecutions>(path);
+  }
+
+  async listZabbixScopes(): Promise<ZabbixScopes> {
+    let path = `/api/v1/diagnostics/zabbix/scopes`;
+    return this.request<ZabbixScopes>(path);
+  }
+
+  async listZabbixSources(): Promise<ZabbixSources> {
+    let path = `/api/v1/diagnostics/zabbix/sources`;
+    return this.request<ZabbixSources>(path);
+  }
+
+  async createZabbixSource(params: CreateZabbixSourceParams): Promise<ZabbixSource> {
+    let path = `/api/v1/diagnostics/zabbix/sources`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<ZabbixSource>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async updateZabbixSource(params: UpdateZabbixSourceParams): Promise<ZabbixSource> {
+    let path = `/api/v1/diagnostics/zabbix/sources/${encodeURIComponent(String(params["sourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    headers["Content-Type"] = "application/json";
+    return this.request<ZabbixSource>(path, { method: "PATCH", headers, body: JSON.stringify(params.body) });
+  }
+
+  async syncZabbixSource(params: SyncZabbixSourceParams): Promise<ZabbixQueued> {
+    let path = `/api/v1/diagnostics/zabbix/sources/${encodeURIComponent(String(params["sourceId"]))}/sync`;
+    const headers: Record<string, string> = {};
+    return this.request<ZabbixQueued>(path, { method: "POST", headers });
+  }
+
+  async testZabbixConnection(params: TestZabbixConnectionParams): Promise<ZabbixTestResult> {
+    let path = `/api/v1/diagnostics/zabbix/test`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<ZabbixTestResult>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async previewZabbixProblems(params: PreviewZabbixProblemsParams): Promise<ZabbixPreview> {
+    let path = `/api/v1/diagnostics/zabbix/preview`;
+    const headers: Record<string, string> = {};
+    headers["Content-Type"] = "application/json";
+    return this.request<ZabbixPreview>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async listZabbixProblems(params: ListZabbixProblemsParams = {}): Promise<ZabbixProblems> {
+    let path = `/api/v1/diagnostics/zabbix/problems`;
+    const query = new URLSearchParams();
+    if (params["environmentId"] !== undefined) query.set("environmentId", String(params["environmentId"]));
+    if (params["businessId"] !== undefined) query.set("businessId", String(params["businessId"]));
+    if (params["recent"] !== undefined) query.set("recent", String(params["recent"]));
+    if (params["metadataOnly"] !== undefined) query.set("metadataOnly", String(params["metadataOnly"]));
+    const queryString = query.toString();
+    if (queryString) path += `?${queryString}`;
+    return this.request<ZabbixProblems>(path);
   }
 
 }

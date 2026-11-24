@@ -1,4 +1,5 @@
 import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
+import { bindZabbixSources } from "./views/diagnosis/zabbix-sources.ts";
 import { bindUnifiedOverview, loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
@@ -245,11 +246,11 @@ export class PortalApp {
           const body = await renderIdentityAdmin("access", {
             initial: false, administrator: this.identityAdmin, superAdmin: this.superAdministrator,
             canChangePassword: this.canChangePassword, auditContent: `${this.identityAdmin ?
-              '<a class="button secondary" href="#/admin/access">返回权限配置</a>' : ""}${renderPermissionCatalog()}`,
+              '<nav class="identity-nav access-workspace-tabs" aria-label="权限管理"><a href="#/admin/access">角色</a><a href="#/admin/access/groups">用户组</a><a href="#/admin/access/catalog" aria-current="page">权限目录</a></nav>' : ""}${renderPermissionCatalog()}`,
           });
           if (generation !== this.renderGeneration) return;
           this.renderShell(body);
-          bindPermissionCatalog(this.root, catalog);
+          bindPermissionCatalog(this.root, catalog, { roleLink: this.identityAdmin });
         } catch {
           if (generation === this.renderGeneration) this.renderShell(errorState("无法加载权限目录。请核对访问权限后重试。"));
         }
@@ -261,7 +262,7 @@ export class PortalApp {
         return;
       }
       if (this.mustChangePassword || (this.identityAdmin && adminRoute) || (this.canChangePassword && hash === "#/admin/password")) {
-        const [, , resource = "ldap", roleID] = window.location.hash.split("/");
+        const [, , resource = "ldap", roleID] = (hash.split("?", 1)[0] ?? "").split("/");
         try {
           const body = await renderIdentityAdmin(this.mustChangePassword ? "password" : resource, {
             initial: this.mustChangePassword,
@@ -316,7 +317,7 @@ export class PortalApp {
       this.overviewRequest = request;
       try {
         const body = await loadUnifiedOverview(currentHash, this.incidentsAvailable,
-          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]));
+          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources);
         if (generation === this.renderGeneration) {
           this.renderShell(body);
           bindUnifiedOverview(this.root);
@@ -401,6 +402,7 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(page.html);
         bindDatasourcesPage(this.root, page.items, refresh, this.incidentCreate);
+        bindZabbixSources(this.root, page.zabbix, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);
         if (generation !== this.renderGeneration) return;

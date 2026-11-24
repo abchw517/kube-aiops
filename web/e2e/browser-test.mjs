@@ -838,19 +838,42 @@ try {
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-system-close]").click()' });
     await cdp.send("Runtime.evaluate", { awaitPromise: true, expression: 'fetch("/test/admin-session")' });
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'.portal-sidebar a[href="#/admin/access"]\').click()' });
-    await assertText(cdp, text => ["角色配置", "用户组", "批量勾选当前结果", "授权清单", "保存角色"].every(label => text.includes(label)),
-      "Permission management entry did not display the editable matrix from the prototype");
+    await assertText(cdp, text => ["角色", "用户组", "批量勾选当前结果", "授权清单", "预览并保存"].every(label => text.includes(label)),
+      "Permission management entry did not display the role workspace");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const form = document.querySelector("dialog[open] form");
+      const field = form.querySelector("[data-pc-query]");
+      field.value = "数据源管理";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    })()` });
+    const sourcePlacement = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const point = document.querySelector('[data-pc-check="diagnosis.connector.read"]');
+      if (!point?.closest(".permission-list-group").textContent.includes("资源管理 › 平台目录")) return false;
+      document.querySelector("[data-pc-read]").click();
+      return point.isConnected === false && document.querySelectorAll("[data-pc-check]:checked").length === 1;
+    })()` });
+    if (!sourcePlacement.result?.value) throw new Error("Datasource permissions were misplaced or read-only batch picked a write action");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-role-picker] [data-system-open="role:namespace-auditor"]').click()` });
+    await assertText(cdp, text => text.includes("编辑角色 · 命名空间审计员"), "Role picker did not change the active editor");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-role-picker] [data-system-open="role:diagnosis-reader"]').click()` });
+    await assertText(cdp, text => text.includes("编辑角色 · 诊断观察员") && text.includes("总待添加 1 项"), "Role picker lost the edited draft");
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'main a[href="#/admin/access/catalog"]\').click()' });
-    await assertText(cdp, text => ["返回权限配置", "从工具集合查看功能动作和接口授权条件。", "接口权限详情"].every(label => text.includes(label)),
+    await assertText(cdp, text => ["按业务页面查看权限", "点击详情查看接口与授权条件", "权限目录"].every(label => text.includes(label)),
       "Interface permission catalog did not render independent modules");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-pc-module="knowledge"]').click();
       const query = document.querySelector("[data-pc-query]");
       query.value = "knowledge.workflow.publish";
       query.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector('[data-pc-point="knowledge.workflow.publish"]').click();
     })()` });
     await assertText(cdp, text => text.includes("action=publish") && text.includes("/api/v1/wiki/candidates/{id}") && !text.includes("保存草稿"),
       "Catalog search did not isolate the publish action");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-pc-details] a[href*="permission="]').click()` });
+    await assertText(cdp, text => text.includes("授权清单") && text.includes("1 个接口权限点"),
+      "Catalog did not carry the permission search into the role workspace");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/catalog",
+      text => text.includes("按业务页面查看权限"), "Could not return to the read-only permission catalog");
     await assertRolePermissionSelection(cdp);
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] footer [data-system-close]').click()` });
     await assertText(cdp, text => text.includes("接口授权检查") && !text.includes("角色保存结果"), "Role list did not refresh after confirming the save");
@@ -862,6 +885,7 @@ try {
       filter.value = "configured";
       filter.dispatchEvent(new Event("change", { bubbles: true }));
       const point = form.querySelector('[data-pc-point="system.audit.list"]');
+      point?.click();
       const visible = Boolean(point?.hasAttribute("data-pc-configured")) &&
         form.querySelector("[data-pc-details]").textContent.includes("已保存");
       const audit = [...form.querySelectorAll("[data-role-grant]")].find(row => JSON.parse(row.dataset.roleGrant).code === "system.audit.list");
@@ -872,14 +896,14 @@ try {
     })()` });
     if (!configuredScope.result?.value) throw new Error("Role editor did not show or refresh configured interface scopes");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/access/roles",
-      (text) => text.includes("权限管理") && text.includes("权限配置") && text.includes("新建角色") && text.includes("访客只读"), "Renamed role workspace did not render");
+      (text) => text.includes("权限管理") && text.includes("权限目录") && text.includes("新建角色") && text.includes("访客只读"), "Renamed role workspace did not render");
     const permissionNames = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `({
       title: document.querySelector("main h1")?.textContent,
       tab: document.querySelector(".portal-sidebar [aria-current=page]")?.textContent,
       catalog: document.querySelector('main a[href="#/admin/access/catalog"]')?.textContent
     })` });
-    if (permissionNames.result?.value?.title !== "权限配置" || permissionNames.result?.value?.tab !== "权限管理" ||
-        permissionNames.result?.value?.catalog !== "权限配置") throw new Error("Permission workspace labels do not match their purpose");
+    if (permissionNames.result?.value?.title !== "权限管理" || permissionNames.result?.value?.tab !== "权限管理" ||
+        permissionNames.result?.value?.catalog !== "权限目录") throw new Error("Permission workspace labels do not match their purpose");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-system-open="role:"]').click();
       const form = document.querySelector("dialog[open] form");
@@ -1427,18 +1451,31 @@ async function assertIncidentLifecycle(cdp) {
     button.click();
   })()` });
   await assertText(cdp, (text) => text.includes("Unhealthy"), "Evidence detail did not load on demand");
+  await cdp.send("Runtime.evaluate", { expression: `
+    window.originalOverviewClock = Date.now;
+    Date.now = () => Date.parse("2026-11-28T12:00:00Z");
+  ` });
   await assertPage(cdp, "http://127.0.0.1:4173/#/diagnostics", (text) =>
-    ["诊断级别分布", "近 7 天诊断趋势", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
-  "Unified overview did not show both sources");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-incident-trend-point]").click()' });
-  await assertText(cdp, text => text.includes("（UTC）共") && text.includes("K8sGPT"), "Trend point could not show its counts");
+    ["严重度分布", "近 7 天无新增", "最近诊断", "订单服务故障", "测试集群容量建议"].every((label) => text.includes(label)),
+  "Unified overview did not show historical records and a compact empty trend");
+  const firstScreen = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    const record = document.querySelector(".unified-recent tbody tr").getBoundingClientRect();
+    return document.querySelector(".overview-plot") === null && record.bottom < innerHeight &&
+      record.top < document.querySelector(".overview-analytics").getBoundingClientRect().top;
+  })()` });
+  if (!firstScreen.result?.value) throw new Error("The empty trend displaced the recorded diagnostics");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-trend-empty a").click()' });
+  await assertText(cdp, text => text.includes("窗口内 1 条") && text.includes("订单服务故障"), "Wider trend did not expose the historical record");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-overview-point*="2026-11-20"]').click()` });
+  await assertText(cdp, text => text.includes("2026-11-20（UTC）共 1 条，故障 1 条"), "Trend point could not show its counts");
   await assertIncidentDashboard(cdp);
+  await cdp.send("Runtime.evaluate", { expression: "Date.now = window.originalOverviewClock; delete window.originalOverviewClock" });
 }
 
 // 验收统一筛选、跨来源下钻和窄屏键盘操作。
 async function assertIncidentDashboard(cdp) {
   const overview = "http://127.0.0.1:4173/#/diagnostics";
-  await assertPage(cdp, `${overview}?clusterId=local&severity=critical`, text => text.includes("订单服务故障") &&
+  await assertPage(cdp, `${overview}?clusterId=local&severity=critical&trendDays=14`, text => text.includes("订单服务故障") &&
     !text.includes("测试集群容量建议"), "Unified instance and severity scope did not apply");
   const summary = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => ({
     total: document.querySelector('[aria-label="诊断指标"] .metric-total strong').textContent,
@@ -1448,34 +1485,61 @@ async function assertIncidentDashboard(cdp) {
       !summary.result.value.links[0].includes("/incidents/")) throw new Error("Linked Finding was counted twice");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
   await assertText(cdp, text => text.includes("返回诊断总览"), "Incident detail did not preserve its overview origin");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical"]').click()` });
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical&trendDays=14"]').click()` });
   await assertText(cdp, text => text.includes("最近诊断") && text.includes("订单服务故障"), "Overview did not restore scope");
-  await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info`, text => text.includes("测试集群容量建议"),
+  await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info&trendDays=30`, text => text.includes("测试集群容量建议"),
     "Unified overview did not display the remote Finding");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
   await assertText(cdp, text => text.includes("返回诊断总览") && text.includes("测试环境容器资源建议"),
     "Finding detail did not preserve its cluster instance and overview origin");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
   await assertText(cdp, text => text.includes("测试集群容量建议") && text.includes("最近诊断"), "Finding back link lost the filters");
+  const findingReturn = await cdp.send("Runtime.evaluate", { expression: "location.hash", returnByValue: true });
+  if (!findingReturn.result?.value?.includes("trendDays=30")) throw new Error("Finding back link lost its trend window");
   await assertPage(cdp, `${overview}?clusterId=local&severity=info`,
     text => text.includes("当前范围暂无诊断记录"), "Empty unified overview did not report zero results");
-  await assertPage(cdp, overview, text => text.includes("全部可见实例") && text.includes("订单服务故障"),
-    "Unified overview failed to reload");
-  for (const width of [1440, 390, 320]) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    window.originalOverviewFetch = window.fetch;
+    window.fetch = (input, options) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+      if (url.pathname === "/api/v1/diagnostics/incidents" ||
+        (window.failBothOverviewSources && url.pathname === "/api/v1/findings")) {
+        return Promise.resolve(new Response("{}", { status: 503 }));
+      }
+      return window.originalOverviewFetch(input, options);
+    };
+  })()` });
+  await assertPage(cdp, `${overview}?clusterId=test-k8s`, text => text.includes("仅统计已获取记录") &&
+    text.includes("数据覆盖不完整") && text.includes("测试集群容量建议"),
+  "Partial coverage was presented as an empty trend");
+  await cdp.send("Runtime.evaluate", { expression: "window.failBothOverviewSources = true" });
+  await assertPage(cdp, `${overview}?clusterId=test-k8s&trendDays=14`,
+    text => text.includes("最近诊断与图表暂不可用"), "Both unavailable sources were presented as zero");
+  const unavailableTotal = await cdp.send("Runtime.evaluate", { expression: `
+    document.querySelector(".metric-total strong").textContent`, returnByValue: true });
+  if (unavailableTotal.result?.value !== "—") throw new Error("Failure had a definitive count");
+  await cdp.send("Runtime.evaluate", { expression: "window.fetch = window.originalOverviewFetch; delete window.failBothOverviewSources; delete window.originalOverviewFetch" });
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-notice button").click()' });
+  await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("图表暂不可用"), "Retry did not restore the requested range");
+  await assertPage(cdp, `${overview}?trendDays=30`, text => text.includes("全部可见实例") && text.includes("订单服务故障") &&
+    text.includes("窗口内 1 条"), "Unified overview failed to reload");
+  for (const width of [1920, 1440, 390, 320]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 958, deviceScaleFactor: 1, mobile: false });
     const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-      const table = document.querySelector(".incident-table");
+      const table = document.querySelector(".unified-recent");
+      const cards = document.querySelector(".overview-record-cards");
       return {
         scopeVisible: document.querySelector("[data-unified-filters]").getBoundingClientRect().height > 0,
         pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        viewportWidth: document.documentElement.clientWidth,
-        contentWidth: document.documentElement.scrollWidth,
-        tableScrolls: table.scrollWidth > table.clientWidth,
-        titleWidth: table.querySelector("td").getBoundingClientRect().width,
+        tableVisible: getComputedStyle(table).display !== "none",
+        cardsVisible: getComputedStyle(cards).display !== "none",
+        firstRowBottom: table.querySelector("tr").getBoundingClientRect().bottom,
       };
     })()` });
     const layout = state.result?.value;
-    if (!layout?.scopeVisible || layout.pageOverflow || layout.titleWidth < 160 || (width < 680 && !layout.tableScrolls)) {
+    const desktop = width > 850;
+    if (!layout?.scopeVisible || layout.pageOverflow || layout.tableVisible !== desktop ||
+        layout.cardsVisible === desktop || (desktop && layout.firstRowBottom >= 958)) {
       throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
     }
   }
@@ -1520,7 +1584,7 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-topology-node="asset:host-fixture"]').click()` });
   await assertText(cdp, (text) => text.includes("部署记录核对") && text.includes("已确认"), "Topology node details did not show link provenance");
 
-  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("新增数据源") && text.includes("暂无数据源"), "Datasource page did not load");
+  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("接入 Zabbix") && text.includes("暂无资产数据源"), "Datasource page did not load");
   const sourceRoute = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
     location.hash === "#/resources/datasources?continue=fixture" &&
     document.querySelector(".portal-sidebar [aria-current=page]").textContent === "数据源管理"
@@ -1529,6 +1593,8 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const form = document.querySelector("[data-datasource-form]");
     form.closest("details").open = true;
+    form.elements.kind.value = "zabbix";
+    form.elements.kind.dispatchEvent(new Event("change", { bubbles: true }));
     form.elements.name.value = "监控数据源 fixture";
     form.elements.endpoint.value = "https://zabbix.example/api_jsonrpc.php";
     form.elements.assetIds.value = "10010";
@@ -1542,6 +1608,29 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, (text) => text.includes("已读取配置资产"), "Datasource health did not update");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });
   await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
+
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-zabbix-action="add"]').click()` });
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    form.elements.endpoint.value = "https://zabbix.example";
+    form.elements.secret.value = "fixture-zabbix-token";
+    form.querySelector('[data-zabbix-action="test"]').click();
+  })()` });
+  await assertText(cdp, text => text.includes("连接成功") && text.includes("Windows 应用主机"), "Zabbix connection test did not show groups");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-zabbix-form]");
+    form.elements.environmentId.value = "production";
+    form.elements.environmentId.dispatchEvent(new Event("change", { bubbles: true }));
+    form.elements.businessId.value = "ops";
+    form.elements.businessId.dispatchEvent(new Event("change", { bubbles: true }));
+    form.querySelector('[name="groupId"]').click();
+  })()` });
+  await assertText(cdp, text => text.includes("1 台主机") && text.includes("Windows 内存使用率高"), "Zabbix problem preview was not shown");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-zabbix-save]").click()` });
+  await assertText(cdp, text => text.includes("Zabbix · 生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
+  await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
+    "Zabbix problems did not load into the unified overview");
 
   await assertPage(cdp, `${origin}/#/diagnostics/policies`, (text) => text.includes("新增诊断策略") && text.includes("暂无诊断策略"), "Policy page did not load");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -1572,7 +1661,7 @@ async function assertDiagnosticCenter(cdp) {
   })()` });
   await assertText(cdp, (text) => text.includes("查看故障事件") && text.includes("测试集群容量建议") &&
     !text.includes("CrashLoopBackOff detected"), "Overview did not preserve the selected scope");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-overview .diagnostic-toolbar a").click()' });
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-actions a").click()' });
   await assertText(cdp, (text) => text.includes("共 1 条故障信号") && text.includes("测试集群容量建议"),
     "Overview-to-events link lost the environment filter");
 
@@ -1639,12 +1728,14 @@ async function assertRolePermissionSelection(cdp) {
   if (!readOnly.result?.value) throw new Error("Read-only catalog offers grant controls");
   await cdp.send("Runtime.evaluate", { expression: `[...document.querySelectorAll(".portal-sidebar a")]
     .find(link => link.textContent.trim() === "权限管理").click()` });
-  await assertText(cdp, text => ["新建角色", "角色配置", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
+  await assertText(cdp, text => ["角色", "用户组", "授权清单", "重试加载接口权限"].every(label => text.includes(label)),
     "Permission management navigation did not directly open the editable role workspace");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
-    const form = document.querySelector("dialog[open] [data-role-edit]");
-    form.elements.name.value = "接口授权检查";
+    document.querySelector('[data-role-picker] [data-system-open="role:"]').click();
   })()` });
+  await assertText(cdp, text => text.includes("新建角色") && text.includes("重试加载接口权限"),
+    "New role did not open inside the workspace");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector("dialog[open] [data-role-edit]").elements.name.value = "接口授权检查"` });
   await assertText(cdp, text => text.includes("重试加载接口权限"), "Catalog failure removed the role editor recovery entry");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-role-catalog-retry]").click()` });
   await assertText(cdp, text => text.includes("批量勾选当前结果") && text.includes("选择接口权限"), "Retry did not restore permission controls");
@@ -1655,7 +1746,7 @@ async function assertRolePermissionSelection(cdp) {
     const check = form.querySelector('[data-pc-check="diagnosis.finding.list"]');
     const action = form.querySelector('[data-pc-point="diagnosis.finding.list"]');
     const matrix = check.closest(".permission-catalog-table");
-    if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth <= matrix.clientWidth ||
+    if (form.elements.name.value !== "接口授权检查" || matrix.scrollWidth > matrix.clientWidth ||
         !form.closest("[data-role-workspace]") || form.closest("dialog").matches(":modal") ||
         document.documentElement.scrollWidth > 390) return null;
     check.scrollIntoView({ block: "center", inline: "center" });
@@ -1663,7 +1754,7 @@ async function assertRolePermissionSelection(cdp) {
     const actionBounds = action.getBoundingClientRect();
     const x = checkBounds.x + checkBounds.width / 2;
     const y = checkBounds.y + checkBounds.height / 2;
-    return checkBounds.x >= actionBounds.right && document.elementFromPoint(x, y) === check ? { x, y } : null;
+    return checkBounds.right <= actionBounds.right && document.elementFromPoint(x, y) === check ? { x, y } : null;
   })()` });
   if (!position.result?.value) throw new Error("Narrow-screen role checkbox was clipped, displaced or lost on catalog retry");
   for (const type of ["mousePressed", "mouseReleased"]) {
@@ -1681,7 +1772,7 @@ async function assertRolePermissionSelection(cdp) {
     const form = document.querySelector("dialog[open] form");
     const find = '[data-pc-check="diagnosis.finding.list"]';
     const summary = '[data-pc-check="diagnosis.finding.summary"]';
-    const toolkit = '[data-pc-toolkit-toggle="历史诊断"]';
+    const toolkit = '[data-pc-toolkit-toggle="诊断控制台 › 诊断工作区"]';
     const filter = value => {
       const query = form.querySelector("[data-pc-query]");
       query.value = value;

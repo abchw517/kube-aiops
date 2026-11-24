@@ -1,4 +1,4 @@
-import type { Finding, Incident, IncidentSeverity, Severity } from "../api/generated.ts";
+import type { Finding, Incident, IncidentSeverity, Severity, ZabbixProblem } from "../api/generated.ts";
 
 export const diagnosticLevels = { critical: "严重", warning: "警告", info: "信息" } as const;
 export const incidentLevel: Record<IncidentSeverity, Severity> = { P1: "critical", P2: "warning", P3: "info" };
@@ -8,18 +8,44 @@ export function overviewLevel(value: string | null): Severity | undefined {
   return value === "critical" || value === "warning" || value === "info" ? value : undefined;
 }
 
+export const overviewWindows = [7, 14, 30] as const;
+export type OverviewDays = typeof overviewWindows[number];
+
+export function overviewDays(value: string | null): OverviewDays {
+  return overviewWindows.find((days) => String(days) === value) ?? 7;
+}
+
+export function overviewSearch(query: URLSearchParams): URLSearchParams {
+  const result = new URLSearchParams();
+  const cluster = query.get("clusterId")?.trim() || query.get("cluster")?.trim();
+  const severity = overviewLevel(query.get("severity"));
+  const days = overviewDays(query.get("trendDays") ?? query.get("days"));
+  if (cluster && cluster !== "*") result.set("clusterId", cluster);
+  if (severity) result.set("severity", severity);
+  for (const key of ["environmentId", "businessId"]) {
+    const value = query.get(key)?.trim();
+    if (value) result.set(key, value);
+  }
+  const source = query.get("source");
+  if (source === "incident" || source === "finding" || source === "zabbix") result.set("source", source);
+  if (query.get("recent") === "true") result.set("recent", "true");
+  if (days !== 7) result.set("trendDays", String(days));
+  return result;
+}
+
 type DiagnosticRecord = {
   id: string;
   cluster: string;
   title: string;
   severity: Severity;
-  source: "incident" | "finding";
+  source: "incident" | "finding" | "zabbix";
+  problem?: ZabbixProblem;
   origin: string;
   status?: Incident["status"];
   observed?: string;
 };
 
-type Day = { date: string; incident: number; finding: number };
+type Day = { date: string; incident: number; finding: number; zabbix: number };
 const dayMs = 86_400_000;
 
 function findingKey(cluster: string, id: string): string {
@@ -44,7 +70,8 @@ function timestamp(value: string | undefined): number | undefined {
   return Number.isFinite(time) ? time : undefined;
 }
 
-export function aggregateDiagnostics(incidents: Incident[], findings: Finding[], severity?: Severity, now = Date.now()) {
+export function aggregateDiagnostics(incidents: Incident[], findings: Finding[], severity?: Severity, now = Date.now(),
+  days: OverviewDays = 7, problems: ZabbixProblem[] = []) {
   const incidentByID = new Map(incidents.map((item) => [item.id, item]));
   const linked = new Set(incidents.flatMap(({ scope, findingId }) =>
     findingId ? [findingKey(scope.clusterId, findingId)] : []));
@@ -61,11 +88,15 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
       severity: item.severity, source: "finding", origin: "K8sGPT", observed: item.createdAt });
   }
 
+  for (const problem of problems) {
+    rows.push({ id: problem.id, cluster: "", title: problem.title, severity: problem.severity,
+      source: "zabbix", origin: "Zabbix", observed: problem.startedAt, problem });
+  }
   const end = Math.floor(now / dayMs) * dayMs;
   const daily = new Map<string, Day>();
-  for (let offset = 6; offset >= 0; offset--) {
+  for (let offset = days - 1; offset >= 0; offset--) {
     const date = new Date(end - offset * dayMs).toISOString().slice(0, 10);
-    daily.set(date, { date, incident: 0, finding: 0 });
+    daily.set(date, { date, incident: 0, finding: 0, zabbix: 0 });
   }
   const counts: Record<Severity, number> = { critical: 0, warning: 0, info: 0 };
   const records = rows.filter((item) => !severity || item.severity === severity)

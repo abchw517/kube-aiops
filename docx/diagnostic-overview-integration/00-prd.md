@@ -11,6 +11,10 @@
 
 ## 交付文档
 
-- [设计方案](design.md) · [可点击 HTML 原型](prototype.html)
+- [数据融合设计](design.md) · [UI 重构方案](ui-redesign.md) · [可点击 HTML 原型](prototype.html)
 - [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md)
 - [开发任务](04-development-tasks.md) · [测试用例](05-test-cases.md)
+
+## 总览布局验收
+
+筛选使用紧凑工具栏，显示已应用的实例和级别。最近诊断位于图表之前，1920×958 与 1440×900 首屏至少可见首条诊断。默认近 7 天无新增时，用紧凑空态提供近 14 天入口。切换趋势窗口后，指标、分布与最近记录保持同一筛选口径。详情回跳恢复趋势窗口。

@@ -1,3 +1,4 @@
+import { comparePageTrails, permissionTrail, portalPages, type PageRegistry } from "../../domain/page-registry.ts";
 import { escapeHtml as h } from "../../components/html.ts";
 import type { Scope } from "./platform-scopes.ts";
 
@@ -14,6 +15,9 @@ type Operation = {
 };
 
 type Feature = {
+  key?: string;
+  legacyName?: string;
+  location?: string;
   module: string;
   toolkit: string;
   name: string;
@@ -30,13 +34,35 @@ export type PermissionCatalog = {
 export type InterfaceGrant = { code: string; scope: Scope };
 type Point = Operation & { feature: Feature };
 
-const columns = [["C", "增 · 新增"], ["D", "删 · 撤销"], ["U", "改 · 变更"], ["R", "查 · 查询"]] as const;
+const actions: Record<string, string> = { C: "创建 / 启动", D: "撤销", U: "变更", R: "读取" };
 const endpoint = "/api/v1/admin/permission-catalog";
 
 export async function loadPermissionCatalog(): Promise<PermissionCatalog> {
   const res = await fetch(endpoint);
   if (!res.ok || !res.headers.get("Content-Type")?.includes("application/json")) throw new Error("permission catalog unavailable");
-  return await res.json() as PermissionCatalog;
+  return projectPermissionCatalog(await res.json() as PermissionCatalog);
+}
+
+/** Project presentation metadata without changing the authorized catalog operations. */
+export function projectPermissionCatalog(source: PermissionCatalog, registry: PageRegistry = portalPages): PermissionCatalog {
+  const modules: Record<string, string> = {};
+  const rows = source.rows.map((row) => ({ row, trail: permissionTrail(row.key, registry) }))
+    .sort((a, b) => {
+      if (!a.trail.length) return b.trail.length ? 1 : 0;
+      return b.trail.length ? comparePageTrails(a.trail, b.trail) : -1;
+    }).map(({ row, trail }) => {
+      const owner = trail[0];
+      const page = trail.at(-1);
+      const module = owner?.id ?? "_unassigned";
+      modules[module] = owner?.label ?? "未关联页面";
+      return { ...row, module, toolkit: trail.slice(1, -1).map(({ label }) => label).join(" › ") || "未关联页面",
+        legacyName: row.name, name: page?.label ?? row.name, location: trail.map(({ label }) => label).join(" › ") || "未关联页面" };
+    });
+  return { ...source, modules, rows };
+}
+
+export function permissionDescriptors(catalog: PermissionCatalog | null) {
+  return new Map(catalog?.rows.flatMap(feature => feature.points.map(point => [point.code, { ...point, feature }] as const)));
 }
 
 export function catalogSource(catalog: PermissionCatalog | null): string {
@@ -45,29 +71,25 @@ export function catalogSource(catalog: PermissionCatalog | null): string {
 
 export function renderPermissionCatalog(edit = false): string {
   return `<section class="permission-catalog" aria-label="${edit ? "接口权限勾选" : "权限目录"}" data-pc-root data-pc-edit="${edit}">
-    ${edit ? "" : `<div class="permission-catalog-heading"><span class="permission-catalog-mark" aria-hidden="true">K</span>
-      <div><h2>权限目录</h2><p>从工具集合查看功能动作和接口授权条件。</p></div></div>`}
+    ${edit ? "" : '<header class="permission-directory-intro"><h2>按业务页面查看权限</h2><p>点击详情查看接口与授权条件</p></header>'}
     <div class="permission-catalog-workspace">
       <div class="permission-catalog-main">
         <nav class="permission-catalog-tabs" aria-label="权限模块"></nav>
         <div class="permission-catalog-filters">
-          <input type="search" data-pc-query aria-label="搜索权限" placeholder="搜索功能、权限编码或接口">
-          <select data-pc-toolkit aria-label="工具集合"></select>
+          <input type="search" data-pc-query aria-label="搜索权限" placeholder="搜索名称、旧名、编码或接口">
+          <select data-pc-toolkit aria-label="页面分组"></select>
+          <select data-pc-action aria-label="操作类型"><option value="">全部动作</option>${Object.entries(actions).map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}</select>
           <select data-pc-filter aria-label="权限筛选"><option value="">全部权限</option><option value="risk">高风险</option>
           ${edit ? '<option value="selected">待添加</option><option value="configured">已加入清单</option>' : ""}</select>
         </div>
         ${edit ? `<div class="permission-selection-toolbar">
           <label class="permission-batch"><input type="checkbox" data-pc-all> 批量勾选当前结果</label>
-          <span data-pc-selected role="status"></span>
+          <button type="button" class="button secondary" data-pc-read>勾选筛选内读取</button><span data-pc-selected role="status"></span>
           <button type="button" class="button secondary" data-pc-clear>清空待添加</button>
         </div>` : ""}
-        <div class="catalog-table-wrap permission-catalog-table" role="region" aria-label="功能点增删改查矩阵" tabindex="0">
-          <table class="catalog-table"><thead><tr><th scope="col">功能点</th>
-            ${columns.map(([, label]) => `<th scope="col">${label}</th>`).join("")}
-          </tr></thead><tbody data-pc-matrix></tbody></table>
-        </div><p data-pc-count class="permission-catalog-count" role="status"></p>
+        <div class="permission-catalog-table" aria-label="按页面排列的权限动作" data-pc-matrix></div><p data-pc-count class="permission-catalog-count" role="status"></p>
       </div>
-      <aside class="permission-catalog-detail" aria-label="接口权限详情" tabindex="-1"><h3>接口权限详情</h3><div data-pc-details></div></aside>
+      <aside class="permission-catalog-detail" aria-label="接口权限详情" tabindex="-1" hidden><h3>接口权限详情</h3><div data-pc-details></div></aside>
     </div>
   </section>`;
 }
@@ -81,11 +103,14 @@ type State = {
   original: InterfaceGrant[];
   onSelectionChange?: () => void;
   active?: string;
+  roleLink?: boolean;
 };
 
 const states = new WeakMap<HTMLElement, State>();
 
 export function bindPermissionCatalog(container: HTMLElement, catalog: PermissionCatalog, options: {
+  initialQuery?: string;
+  roleLink?: boolean;
   configured?: InterfaceGrant[];
   original?: InterfaceGrant[];
   onSelectionChange?: () => void;
@@ -94,16 +119,18 @@ export function bindPermissionCatalog(container: HTMLElement, catalog: Permissio
   if (!root) return;
   const { configured = [], original = configured, onSelectionChange } = options;
   const state: State = {
-    catalog, module: Object.keys(catalog.modules)[0] ?? "", selected: new Set(), configured, original, onSelectionChange,
-    points: new Map(catalog.rows.flatMap(feature => feature.points.map(point => [point.code, { ...point, feature }]))),
+    catalog, module: "", selected: new Set(), configured, original, onSelectionChange, roleLink: options.roleLink,
+    points: permissionDescriptors(catalog),
   };
   states.set(root, state);
+  const search = root.querySelector<HTMLInputElement>("[data-pc-query]");
+  if (search && options.initialQuery) search.value = options.initialQuery;
   showModule(root, state);
   root.addEventListener("input", event => {
     if (event.target instanceof HTMLElement && event.target.matches("[data-pc-query]")) draw(root, state);
   });
   root.addEventListener("change", event => {
-    if (event.target instanceof HTMLSelectElement && event.target.matches("[data-pc-toolkit],[data-pc-filter]")) draw(root, state);
+    if (event.target instanceof HTMLSelectElement && event.target.matches("[data-pc-toolkit],[data-pc-filter],[data-pc-action]")) draw(root, state);
     if (event.target instanceof HTMLInputElement) changeSelection(event.target, root, state);
   });
   root.addEventListener("click", event => click(event, root, state));
@@ -114,10 +141,10 @@ function showModule(root: HTMLElement, state: State): void {
   const nav = root.querySelector(".permission-catalog-tabs");
   const toolkits = root.querySelector("[data-pc-toolkit]");
   if (!nav || !toolkits) return;
-  nav.innerHTML = Object.entries(modules).map(([id, name]) =>
+  nav.innerHTML = [["", "全部模块"], ...Object.entries(modules)].map(([id, name]) =>
     `<button type="button" data-pc-module="${h(id)}" aria-pressed="${id === state.module}">${h(name)}</button>`).join("");
-  const available = [...new Set(rows.filter(row => row.module === state.module).map(row => row.toolkit))];
-  toolkits.innerHTML = `<option value="">全部工具集合</option>${available.map(label => `<option>${h(label)}</option>`).join("")}`;
+  const available = [...new Set(rows.filter(row => !state.module || row.module === state.module).map(row => row.toolkit))];
+  toolkits.innerHTML = `<option value="">全部分组</option>${available.map(label => `<option>${h(label)}</option>`).join("")}`;
   draw(root, state);
 }
 
@@ -126,7 +153,7 @@ function click(event: MouseEvent, root: HTMLElement, state: State): void {
   const target = event.target.closest<HTMLButtonElement>("button");
   if (!target) return;
   const nextModule = target.dataset.pcModule;
-  if (nextModule && nextModule in state.catalog.modules && nextModule !== state.module) {
+  if (nextModule !== undefined && (!nextModule || Object.hasOwn(state.catalog.modules, nextModule)) && nextModule !== state.module) {
     state.module = nextModule;
     state.active = undefined;
     showModule(root, state);
@@ -137,6 +164,19 @@ function click(event: MouseEvent, root: HTMLElement, state: State): void {
     draw(root, state);
     if (matchMedia("(max-width: 900px)").matches) root.querySelector<HTMLElement>(".permission-catalog-detail")?.focus();
     else root.querySelector<HTMLElement>("[data-pc-point][aria-pressed=true]")?.focus();
+  }
+  if (target.hasAttribute("data-pc-read")) {
+    for (const choice of visibleChoices(root)) {
+      const code = choice.dataset.pcCheck;
+      if (code && state.points.get(code)?.action === "R") state.selected.add(code);
+    }
+    draw(root, state);
+  }
+  if (target.hasAttribute("data-pc-close-detail")) {
+    const previous = state.active;
+    state.active = undefined;
+    draw(root, state);
+    if (previous) root.querySelector<HTMLElement>(`[data-pc-point="${CSS.escape(previous)}"]`)?.focus();
   }
   if (target.hasAttribute("data-pc-clear")) {
     state.selected.clear();
@@ -168,6 +208,12 @@ function changeSelection(box: HTMLInputElement, root: HTMLElement, state: State)
 }
 
 function drawSelection(root: HTMLElement, state: State): void {
+  const read = root.querySelector<HTMLButtonElement>("[data-pc-read]");
+  if (read) {
+    const amount = visibleChoices(root).filter(({ dataset }) => dataset.pcCheck && state.points.get(dataset.pcCheck)?.action === "R").length;
+    read.disabled = amount === 0;
+    read.textContent = `勾选筛选内读取 · ${amount}`;
+  }
   for (const batch of root.querySelectorAll<HTMLInputElement>("[data-pc-all], [data-pc-toolkit-toggle]")) {
     const choices = visibleChoices(root, batch.dataset.pcToolkitToggle);
     const checked = choices.filter(choice => choice.checked).length;
@@ -187,49 +233,53 @@ function drawSelection(root: HTMLElement, state: State): void {
 function draw(root: HTMLElement, state: State): void {
   const matrix = root.querySelector("[data-pc-matrix]");
   const count = root.querySelector("[data-pc-count]");
-  const details = root.querySelector("[data-pc-details]");
+  const details = root.querySelector<HTMLElement>("[data-pc-details]");
   if (!matrix || !details || !count) return;
   const edit = root.dataset.pcEdit === "true";
   const query = root.querySelector<HTMLInputElement>("[data-pc-query]")?.value.trim().toLowerCase() ?? "";
   const toolkit = root.querySelector<HTMLSelectElement>("[data-pc-toolkit]")?.value ?? "";
   const filter = root.querySelector<HTMLSelectElement>("[data-pc-filter]")?.value;
+  const action = root.querySelector<HTMLSelectElement>("[data-pc-action]")?.value;
   const configuredCodes = new Set(state.configured.map(grant => grant.code));
-  const features = state.catalog.rows.filter(row => row.module === state.module && (!toolkit || row.toolkit === toolkit))
+  const features = state.catalog.rows.filter(row => (!state.module || row.module === state.module) && (!toolkit || row.toolkit === toolkit))
     .map(row => {
-      const match = `${row.name} ${row.desc} ${row.toolkit}`.toLowerCase().includes(query);
+      const match = `${row.name} ${row.legacyName ?? ""} ${row.desc} ${row.location ?? row.toolkit}`.toLowerCase().includes(query);
       return { ...row, points: row.points.filter(p =>
         (match || [p.code, p.label, p.method, p.path, p.rule].join(" ").toLowerCase().includes(query)) &&
-        (filter !== "risk" || p.risk === "高风险") && (filter !== "selected" || state.selected.has(p.code)) &&
+        (!action || p.action === action) && (filter !== "risk" || p.risk === "高风险" || p.risk === "敏感") && (filter !== "selected" || state.selected.has(p.code)) &&
         (filter !== "configured" || configuredCodes.has(p.code))) };
     }).filter(row => row.points.length > 0);
   const visible = features.flatMap(row => row.points);
-  if (!visible.some(p => p.code === state.active)) state.active = visible[0]?.code;
+  if (!visible.some(p => p.code === state.active)) state.active = undefined;
   const groups = new Map<string, typeof features>();
   for (const row of features) {
-    const group = groups.get(row.toolkit);
+    const key = `${state.catalog.modules[row.module] ?? row.module} › ${row.toolkit}`;
+    const group = groups.get(key);
     if (group) group.push(row);
-    else groups.set(row.toolkit, [row]);
+    else groups.set(key, [row]);
   }
-  matrix.innerHTML = [...groups].map(([name, rows]) => {
-    const head = `<tr class="permission-group"><th colspan="5"><div><span>${h(name)}</span>
-       ${edit ? `<label class="permission-batch"><input type="checkbox" data-pc-toolkit-toggle="${h(name)}" aria-label="勾选本集合 ${h(name)}"> 勾选本集合</label>` : ""}</div></th></tr>`;
-    return head + rows.map(row => `<tr><th scope="row">${h(row.name)}<small>${h(row.desc)}</small></th>${columns.map(([key]) => {
-      const actions = row.points.filter(p => p.action === key);
-      return `<td>${actions.map(p => `<div class="permission-action-row"${state.selected.has(p.code) ? ' data-pc-selected-point="true"' : ""}>
-         <button type="button" class="permission-point" data-risk="${h(p.risk)}" data-pc-point="${h(p.code)}"
-         aria-pressed="${p.code === state.active}"${configuredCodes.has(p.code) ? ' data-pc-configured="true"' : ""}>
-         ${h(p.label)}${configuredCodes.has(p.code) ? " · 已配置" : ""}</button>
-         ${edit ? `<label class="permission-action-check"><input type="checkbox" data-pc-check="${h(p.code)}" data-pc-set="${h(row.toolkit)}"
-           aria-label="勾选 ${h(p.label)}${p.restricted ? "（仅现有管理身份）" : ""}"${state.selected.has(p.code) ? " checked" : ""}
-           ${p.restricted ? ' disabled title="仅现有管理身份"' : ""}></label>` : ""}
-         </div>`).join("") || '<span class="permission-empty" title="当前无此类动作">—</span>'}</td>`;
-    }).join("")}</tr>`).join("");
-  }).join("") || '<tr><td colspan="5">暂无匹配权限。</td></tr>';
+  matrix.innerHTML = [...groups].map(([name, rows]) =>
+    `<section class="permission-list-group"><header><h3>${h(name)}</h3>
+      ${edit ? `<label class="permission-batch"><input type="checkbox" data-pc-toolkit-toggle="${h(name)}">勾选本组筛选结果</label>` : ""}</header>
+       ${rows.map(row => `<div class="permission-list-page"><h4>${h(row.name)}</h4><ul>${row.points.map(p =>
+        `<li class="permission-list-action">
+          ${edit ? `<label class="permission-action-check"><input type="checkbox" data-pc-check="${h(p.code)}" data-pc-set="${h(name)}"
+            aria-label="勾选 ${h(p.label)}"${state.selected.has(p.code) ? " checked" : ""}${p.restricted ? " disabled" : ""}>
+            <span>${h(p.label)}</span></label>` : `<span>${h(p.label)}</span>`}
+          <span class="system-badge">${h(actions[p.action] ?? p.action)}</span>
+          ${p.restricted ? '<span class="system-badge">现有管理身份</span>' : ""}
+          ${["高风险", "敏感"].includes(p.risk) ? `<span class="system-badge" data-risk="${h(p.risk)}">${h(p.risk)}</span>` : ""}
+          <button type="button" class="permission-point" data-risk="${h(p.risk)}" data-pc-point="${h(p.code)}" aria-label="查看 ${h(p.label)} 详情"
+            aria-pressed="${p.code === state.active}"${configuredCodes.has(p.code) ? ' data-pc-configured="true"' : ""}>${configuredCodes.has(p.code) ? "已配置 · " : ""}详情</button>
+        </li>`).join("")}</ul></div>`).join("")}
+    </section>`).join("") || '<p class="permission-catalog-count">暂无匹配权限。</p>';
   count.textContent = `${features.length} 项功能 · ${visible.length} 个接口权限点`;
   if (edit) drawSelection(root, state);
   const point = state.active ? state.points.get(state.active) : undefined;
+  const detailPanel = details.closest<HTMLElement>(".permission-catalog-detail");
+  if (detailPanel) detailPanel.hidden = !point;
   if (!point) {
-    details.textContent = "请选择一个权限点查看详情。";
+    details.replaceChildren();
     return;
   }
   const scopeLabels: Record<string, string> = { development: "研发", testing: "测试", staging: "预发布", production: "生产" };
@@ -239,14 +289,15 @@ function draw(root: HTMLElement, state: State): void {
   const draft = new Map(state.configured.filter(grant => grant.code === point.code).map(grant => [grantKey(grant), grant]));
   const configured = [...draft].map(([key, grant]) => `${describeScope(grant)} · ${original.has(key) ? "已保存" : "待保存"}`);
   configured.push(...[...original].filter(([key]) => !draft.has(key)).map(([, grant]) => `${describeScope(grant)} · 待移除`));
-  details.innerHTML = `<p class="permission-ancestry">${h(point.feature.toolkit)} / ${h(point.feature.name)}</p>
+  details.innerHTML = `<button class="button secondary" type="button" data-pc-close-detail>关闭详情</button><p class="permission-ancestry">${h(point.feature.location ?? point.feature.name)}</p>
     <h4>${h(point.label)}</h4><span class="system-badge" data-risk="${h(point.risk)}">${h(point.risk)}</span>
     ${point.restricted ? '<span class="system-badge">现有管理身份</span>' : ""}
     <dl><div><dt>权限编码</dt><dd><code>${h(point.code)}</code></dd></div>
     <div><dt>方法与路径</dt><dd><strong>${h(point.method)}</strong> <code>${h(point.path)}</code></dd></div>
     <div><dt>分流与约束</dt><dd>${h(point.rule || "按实际资源范围校验。")}</dd></div>
     <div><dt>适用范围</dt><dd>${h(point.feature.scope)}</dd></div>
-    ${configured.length ? `<div><dt>角色授权范围</dt><dd><ul>${configured.map(scope => `<li>${h(scope)}</li>`).join("")}</ul></dd></div>` : ""}</dl>`;
+    ${configured.length ? `<div><dt>角色授权范围</dt><dd><ul>${configured.map(scope => `<li>${h(scope)}</li>`).join("")}</ul></dd></div>` : ""}</dl>
+    ${state.roleLink ? `<a class="button secondary" href="#/admin/access?${h(new URLSearchParams({ permission: point.code }).toString())}">在角色中查找</a>` : ""}`;
 }
 
 export function selectedPermissions(form: HTMLFormElement): Point[] {

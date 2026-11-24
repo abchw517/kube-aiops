@@ -18,6 +18,7 @@ import (
 const base = "/api/v1/diagnostics"
 
 type Server struct {
+	Zabbix              *ZabbixIntegration
 	IngressScopeAllowed func(context.Context, Scope) (bool, error)
 	Assets              AssetConnector
 	ResolveScope        func(context.Context, Scope) (Scope, error)
@@ -63,6 +64,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.registerRCA(mux)
 	s.registerTopology(mux)
 	s.registerDatasource(mux)
+	s.registerZabbix(mux)
 	s.registerPolicy(mux)
 	mux.HandleFunc("GET /api/v1/diagnostics/overview", s.protect(s.overview))
 	mux.HandleFunc("GET /api/v1/diagnostics/incidents", s.protect(s.list))

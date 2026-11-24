@@ -5,6 +5,8 @@ import { datasourcesPath } from "../../domain/resource-routes.ts";
 import { incidentError } from "./incident-list.ts";
 import { incidentSubview, submit } from "./incident-rca.ts";
 
+import { loadZabbixSources } from "./zabbix-sources.ts";
+
 export const policiesPath = "#/diagnostics/policies";
 
 const providers: Record<DatasourceConfig["kind"], string> = { zabbix: "Zabbix", "aliyun-ecs": "阿里云 ECS", "tencent-cvm": "腾讯云 CVM" };
@@ -55,7 +57,7 @@ function datasourceForm(d?: DiagnosticDatasource): string {
   return `<form data-datasource-form="${escapeHtml(d?.id ?? "")}">
     <div class="incident-form-grid">
       <label>名称<input name="name" value="${escapeHtml(d?.name)}" required maxlength="60"></label>
-      ${d ? `<p>类型 · ${providers[d.config.kind]}</p>` : `<label>类型<select name="kind">${options(providers, "zabbix")}</select></label>`}
+      ${d ? `<p>类型 · ${providers[d.config.kind]}</p>` : `<label>类型<select name="kind">${options({ ...providers, zabbix: "Zabbix 主机资产（文件凭据）" }, "aliyun-ecs")}</select></label>`}
       <label data-zabbix-option>Zabbix API 地址<input name="endpoint" type="url" value="${escapeHtml(d?.config.endpoint)}" placeholder="https://zabbix.example/api_jsonrpc.php"></label>
       <label data-cloud-option>云地域<input name="region" value="${escapeHtml(d?.config.region)}" placeholder="cn-hangzhou"></label>
       <label class="incident-form-wide">资产原生 ID（逗号分隔）<input name="assetIds" required value="${escapeHtml(d?.config.assetIds.join(","))}"></label>
@@ -71,10 +73,12 @@ function datasourceForm(d?: DiagnosticDatasource): string {
 
 export async function loadDatasourcesPage(hash: string, canWrite: boolean, canTest: boolean) {
   const after = new URLSearchParams(hash.split("?")[1]).get("continue") || undefined;
-  const page = await apiClient.listDiagnosticDatasources({ continue: after, limit: 25 });
+  const [page, zabbix] = await Promise.all([apiClient.listDiagnosticDatasources({ continue: after, limit: 25 }),
+    loadZabbixSources(canWrite, canTest)]);
   return {
     items: page.items,
-    html: `${canWrite ? `<details class="panel incident-header"><summary>新增数据源</summary>${datasourceForm()}</details>` : ""}
+    zabbix: zabbix.items,
+    html: `${zabbix.html}${canWrite ? `<details class="panel incident-header"><summary>新增资产数据源</summary>${datasourceForm()}</details>` : ""}
       ${page.items.map((d) => `<section class="panel incident-header">
         <div class="diagnostic-toolbar"><h2>${escapeHtml(d.name)}</h2><span>${providers[d.config.kind]} · ${d.enabled ? health[d.health] ?? "待验证" : "已停用"}</span></div>
         <p>${scopeLabel(d.scope)}</p>
@@ -87,7 +91,7 @@ export async function loadDatasourcesPage(hash: string, canWrite: boolean, canTe
         }).toString())}"><summary>可见资产</summary><div role="status"></div></details>
         ${canWrite ? `<details class="incident-actions"><summary>编辑配置与启停</summary>${datasourceForm(d)}</details>` : ""}
       </section>`).join("")}
-      ${page.items.length ? "" : '<section class="state-card"><h2>暂无数据源</h2><p>当前范围内没有已配置的诊断数据源。</p></section>'}
+      ${page.items.length ? "" : "<p>暂无资产数据源。</p>"}
       ${paging(datasourcesPath, after, page.pagination.continue)}`,
   };
 }

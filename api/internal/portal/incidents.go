@@ -64,9 +64,11 @@ func configureIncidents(ctx context.Context, store *identitystore.Store, admin *
 	}
 	automation := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_POLICY_ENVIRONMENTS"), func(r rune) bool { return r == ',' || r == ' ' })
 	zabbix := strings.FieldsFunc(os.Getenv("DIAGNOSTIC_ZABBIX_ENDPOINTS"), func(r rune) bool { return r == ',' || r == ' ' })
+	assets := assetmeta.New(os.Getenv("DIAGNOSTIC_CREDENTIALS_DIR"), zabbix)
 	return &incident.Server{
+		Zabbix:              configureZabbix(store, admin, assets, o, allowedEnvironment),
 		IngressScopeAllowed: scopeActive,
-		Assets:              assetmeta.New(os.Getenv("DIAGNOSTIC_CREDENTIALS_DIR"), zabbix),
+		Assets:              assets,
 		ValidateActor:       admin.ValidateSession,
 		ResolveScope:        o.resolveConnectionScope,
 		AutomationEnabled:   func(scope incident.Scope) bool { return slices.Contains(automation, scope.EnvironmentID) },

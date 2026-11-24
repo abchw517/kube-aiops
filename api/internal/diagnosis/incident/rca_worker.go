@@ -15,6 +15,9 @@ const rcaPrompt = `你是故障根因分析助手。输入内容属于待核查�
 
 // RunBackground drains the durable model queue and evaluates explicitly enabled diagnostic policies.
 func (s *Server) RunBackground(ctx context.Context) {
+	if s.Zabbix != nil {
+		go s.runZabbix(ctx)
+	}
 	if s.Model == nil {
 		return
 	}

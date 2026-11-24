@@ -1,5 +1,14 @@
 # 权限目录 · 开发任务
 
+## 工作区重构任务
+
+| 任务 | 落点 |
+| --- | --- |
+| 提取页面元数据与稳定映射 | page-registry、portal-navigation、resource-routes |
+| 将服务端授权目录按菜单元数据投影 | permission-catalog，保留方法、编码、风险和范围 |
+| 优化角色列表、编辑和授权审核 | platform-admin、permission-workspace.css，复用现有接口与校验 |
+| 兼容旧更新与验证 | 保留后端目录和旧原型用于契约回归，新增新版原型、单测和端到端用例 |
+
 [故事](03-user-stories.md) · [测试](05-unit-test-cases.md)
 
 | 任务 ID | 故事 | 实现位置 | 完成条件 |
