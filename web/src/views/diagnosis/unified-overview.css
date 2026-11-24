@@ -76,7 +76,9 @@ a.overview-metric:is([aria-current=true], :hover) { background: #eef6ff; text-de
 .overview-series-zabbix { --series: var(--overview-zabbix); }
 .overview-trend-empty { min-height: 106px; display: grid; place-content: center; justify-items: center; gap: 4px; text-align: center; padding: 12px; border: 1px dashed #c6d7e9; border-radius: 7px; background: #f4f8fc; }
 .overview-trend-empty p { margin: 0; color: var(--muted); font-size: 13px; }
-.overview-plot { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+.overview-plot { --overview-days: 7; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+.overview-plot[data-overview-days="14"] { --overview-days: 14; }
+.overview-plot[data-overview-days="30"] { --overview-days: 30; }
 .overview-ticks { display: grid; align-content: space-between; height: calc(var(--overview-plot-height) + 12px); min-width: 24px; text-align: end; }
 .overview-ticks, .overview-dates { color: var(--muted); font-size: 11px; line-height: 12px; font-variant-numeric: tabular-nums; }
 .overview-plot-scroll { min-width: 0; overflow-x: auto; scrollbar-width: thin; padding-block-start: 6px; }

@@ -1763,6 +1763,29 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
+  for (const days of [7, 14, 30]) {
+    const plot = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      document.querySelector('[data-overview-window="${days}"]').click();
+      const grid = document.querySelector(".overview-plot-grid");
+      const dates = document.querySelector(".overview-dates");
+      const columnCount = node => getComputedStyle(node).gridTemplateColumns.split(" ").length;
+      const first = grid.firstElementChild.getBoundingClientRect();
+      const last = grid.lastElementChild.getBoundingClientRect();
+      const bar = grid.querySelector(".overview-trend-bars .overview-series-zabbix").getBoundingClientRect();
+      return {
+        columns: columnCount(grid),
+        dateColumns: columnCount(dates),
+        rowAligned: first.top === last.top && first.left < last.left,
+        barHeight: bar.height,
+        zabbixCount: document.querySelector("[data-overview-note] .overview-series-zabbix").textContent,
+      };
+    })()` });
+    const layout = plot.result?.value;
+    if (layout?.columns !== days || layout.dateColumns !== days || !layout.rowAligned ||
+        layout.barHeight <= 0 || layout.zabbixCount !== "Zabbix 1") {
+      throw new Error(`Zabbix ${days}-day trend did not render under the Portal CSP: ${JSON.stringify(layout ?? plot.exceptionDetails)}`);
+    }
+  }
 
   await assertPage(cdp, `${origin}/#/diagnostics/policies`, (text) => text.includes("新增诊断策略") && text.includes("暂无诊断策略"), "Policy page did not load");
   await cdp.send("Runtime.evaluate", { expression: `(() => {

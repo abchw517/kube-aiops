@@ -68,7 +68,7 @@ function renderPlot(points: Day[], today: string, sources: Source[]): string {
   const buttons = points.map((day, index) => {
     const label = `${day.date}（UTC+8）共 ${dayTotal(day)} 条${sources.map(key => `，${trendLabels[key]} ${day[key]} 条`).join("")}`;
     const segments = sources.filter(source => day[source] > 0).map(source =>
-      `<span class="overview-series-${source}" style="height:${day[source] / scale * 100}%"></span>`).join("");
+      `<span class="overview-series-${source}" data-overview-bar-height="${day[source] / scale * 100}"></span>`).join("");
     return `<button type="button" class="overview-trend-day" tabindex="${index === latest ? 0 : -1}"
       data-overview-point="${index}" aria-pressed="${index === latest}" aria-label="${label}" title="${label}">
       <span class="overview-trend-bars" aria-hidden="true">${segments}</span></button>`;
@@ -80,7 +80,7 @@ function renderPlot(points: Day[], today: string, sources: Source[]): string {
     return `<span>${visible ? date.slice(5).replace("-", "/") : ""}</span>`;
   }).join("");
   const firstDay = points[latest];
-  return `<div class="overview-plot" style="--overview-days:${points.length}">
+  return `<div class="overview-plot" data-overview-days="${points.length}">
     <div class="overview-ticks" aria-hidden="true">${[4, 3, 2, 1, 0].map(tick => `<span>${tick * scaleStep}</span>`).join("")}</div>
     <div class="overview-plot-scroll"><div class="overview-plot-content">
       <div class="overview-plot-grid" role="group" aria-label="每日新增诊断，使用左右方向键切换日期">${buttons}</div>
@@ -93,6 +93,10 @@ export function bindOverviewTrend(root: HTMLElement, trend: Trend, days: Overvie
   const note = root.querySelector<HTMLElement>("[data-overview-note]");
   const scroll = root.querySelector<HTMLElement>(".overview-plot-scroll");
   if (!note || !scroll) return;
+  // The Portal CSP blocks style attributes in markup. Apply computed dimensions through CSSOM.
+  for (const bar of scroll.querySelectorAll<HTMLElement>("[data-overview-bar-height]")) {
+    bar.style.height = `${bar.dataset.overviewBarHeight}%`;
+  }
   const points = trend.data.daily.slice(-days);
   const today = points.at(-1)?.date ?? "";
   const buttons = [...scroll.querySelectorAll<HTMLButtonElement>("[data-overview-point]")];

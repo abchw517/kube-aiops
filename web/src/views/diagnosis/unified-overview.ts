@@ -233,7 +233,7 @@ function renderDistribution(data: Overview | undefined, query: URLSearchParams, 
       const percent = data?.total ? (count ?? 0) / data.total * 100 : 0;
       const row = `<span class="overview-distribution-row"><span>${label}</span>
         <span><strong>${count ?? "—"}</strong><small>${data?.total ? `${percent.toFixed(1)}%` : "—"}</small></span></span>
-        <span class="overview-progress" aria-hidden="true"><span style="width:${percent}%"></span></span>`;
+        <span class="overview-progress" aria-hidden="true"><span data-overview-progress-width="${percent}"></span></span>`;
       return `<li class="overview-${level}">${data ? `<a href="${severityHref(query, level, severity)}"
         ${severity === level ? 'aria-current="true"' : ""}>${row}</a>` : row}</li>`;
     }).join("")}</ul>
@@ -309,6 +309,9 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
   const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
   const overview = root.querySelector<HTMLElement>(".unified-overview");
   if (!form || !chart || !overview) return;
+  for (const bar of overview.querySelectorAll<HTMLElement>("[data-overview-progress-width]")) {
+    bar.style.width = `${bar.dataset.overviewProgressWidth}%`;
+  }
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const next = new URLSearchParams();

@@ -4,6 +4,9 @@ import { extname, posix } from "node:path";
 
 const port = Number(process.env.PORT ?? "4173");
 const root = new URL("../dist/", import.meta.url);
+const nginxConfig = await readFile(new URL("../../config/web/nginx.conf", import.meta.url), "utf8");
+const contentSecurityPolicy = nginxConfig.match(/add_header Content-Security-Policy "([^"]+)"/)?.[1];
+if (!contentSecurityPolicy) throw new Error("Missing Portal Content-Security-Policy");
 
 const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
 
@@ -504,11 +507,11 @@ createServer(async (request, response) => {
     const requested = url.pathname === "/" ? "index.html" : posix.normalize(url.pathname).replace(/^\/+/, "");
     const fileUrl = new URL(requested, root);
     const body = await readFile(fileUrl);
-    response.writeHead(200, { "Content-Type": contentType(extname(requested)) });
+    response.writeHead(200, { "Content-Type": contentType(extname(requested)), "Content-Security-Policy": contentSecurityPolicy });
     response.end(body);
   } catch {
     const body = await readFile(new URL("index.html", root));
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": contentSecurityPolicy });
     response.end(body);
   }
 }).listen(port, "127.0.0.1", () => console.log(`mock server listening on ${port}`));
