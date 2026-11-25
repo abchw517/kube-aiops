@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kube-aiops · 最近诊断与知识检索原型</title>
+<style>
+:root {
+  color-scheme: light;
+  --canvas:#f2f5fa; --rail:#f9fafe; --surface:#fff; --soft:#f6f8fc;
+  --ink:#18243a; --muted:#526178; --line:#e2e8f2; --field:#aab7cd;
+  --accent:#484bc2; --accent-dark:#373a9e; --accent-soft:#ecedff;
+  --red:#a52b4a; --yellow:#82500c; --teal:#17675b; --blue:#2c5695;
+  --r-card:20px; --r-inner:15px; --r-control:12px; --shadow:0 4px 18px #1d35740c;
+  font:100%/1.55 Inter,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  color:var(--ink); background:var(--canvas); font-synthesis:none;
+}
+* { box-sizing:border-box; }
+body { margin:0; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:clamp(1.625rem,2.4vw,2rem); line-height:1.25; letter-spacing:-.025em; }
+h2 { font-size:1.1875rem; line-height:1.35; }
+h3 { font-size:1rem; }
+small { font-size:.8125rem; }
+a { color:var(--accent-dark); text-decoration:none; }
+button, input, select { font:inherit; }
+button, select, summary { cursor:pointer; }
+button:disabled { cursor:default; opacity:.48; }
+[hidden] { display:none !important; }
+:focus-visible { outline:3px solid #716cf0; outline-offset:2px; }
+.skip { position:fixed; left:16px; top:-80px; z-index:15; background:white; border-radius:12px; padding:9px 12px; }
+.skip:focus { top:10px; }
+.topbar { min-height:68px; display:flex; align-items:center; gap:22px; padding:8px 24px; background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:3; }
+.brand { display:inline-flex; align-items:center; gap:10px; color:var(--ink); min-width:187px; font-weight:760; font-size:1.125rem; }
+.logo { display:inline-grid; place-items:center; width:36px; height:36px; border-radius:12px; background:linear-gradient(145deg,#6466dc,var(--accent)); color:#fff; box-shadow:0 3px 10px #484bc238; }
+.top-nav { display:flex; gap:5px; }
+.top-nav a, .side-nav a { min-height:41px; display:inline-flex; align-items:center; border-radius:var(--r-control); padding:7px 13px; color:var(--muted); font-weight:650; font-size:.9375rem; }
+.top-nav a:hover, .side-nav a:hover { background:var(--soft); }
+.top-nav a[aria-current], .side-nav a[aria-current] { background:var(--accent-soft); color:var(--accent-dark); }
+.demo { margin-left:auto; color:var(--muted); font-size:.8125rem; white-space:nowrap; }
+.demo::before { content:""; display:inline-block; width:7px; height:7px; background:#6768d7; margin-right:6px; border-radius:50%; }
+.frame { display:grid; grid-template-columns:221px minmax(0,1fr); min-height:calc(100dvh - 68px); }
+.side { padding:25px 13px; border-right:1px solid var(--line); background:var(--rail); }
+.side-nav { position:sticky; top:94px; display:grid; gap:4px; }
+.side-nav h2 { font-size:1.0625rem; margin:0 9px 12px; }
+.side-nav a { gap:8px; }
+.side-nav a::before { content:""; width:7px; height:7px; border:1px solid currentColor; border-radius:50%; flex:none; }
+.side-nav a[aria-current]::before { background:currentColor; }
+main { min-width:0; max-width:1670px; width:100%; margin:auto; align-self:start; padding:23px clamp(18px,2.4vw,36px) 40px; }
+.breadcrumb { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:11px; color:var(--muted); font-size:.8125rem; }
+.breadcrumb a { color:var(--muted); }
+.page-head { margin-bottom:17px; display:flex; justify-content:space-between; align-items:end; gap:12px; flex-wrap:wrap; }
+.page-head p, .panel-head p { color:var(--muted); margin-top:4px; font-size:.9375rem; }
+.panel { min-width:0; border:1px solid var(--line); border-radius:var(--r-card); background:white; box-shadow:var(--shadow); }
+.panel-head { display:flex; flex-wrap:wrap; align-items:start; justify-content:space-between; gap:12px; padding:16px 19px; }
+.actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:7px 13px; border:1px solid var(--field); border-radius:var(--r-control); background:white; color:var(--ink); font-size:.9375rem; font-weight:640; white-space:nowrap; }
+.btn:hover:not(:disabled) { background:var(--soft); }
+.btn.primary { background:var(--accent); color:white; border-color:var(--accent); }
+.btn.primary:hover:not(:disabled) { background:var(--accent-dark); }
+.btn.quiet { border-color:transparent; background:transparent; color:var(--accent-dark); }
+.btn.small { min-height:36px; padding:5px 10px; font-size:.875rem; }
+input, select { width:100%; min-width:0; min-height:42px; padding:7px 10px; border:1px solid var(--field); border-radius:var(--r-control); background:white; color:var(--ink); }
+input::placeholder { color:var(--muted); }
+select { appearance:none; padding-right:34px; background-image:linear-gradient(45deg,transparent 50%,#566583 50%),linear-gradient(135deg,#566583 50%,transparent 50%); background-position:calc(100% - 17px) 53%,calc(100% - 12px) 53%; background-size:5px 5px; background-repeat:no-repeat; }
+.field { display:grid; align-content:start; gap:4px; font-size:.875rem; font-weight:650; min-width:0; }
+.field :is(select,input) { font-size:.9375rem; font-weight:480; }
+.inline { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.text-link { padding:0; border:0; background:transparent; color:var(--accent-dark); font-size:inherit; font-weight:650; text-align:start; }
+.text-link:hover { text-decoration:underline; text-underline-offset:3px; }
+.muted { color:var(--muted); }
+.count { color:var(--muted); font-size:.875rem; font-variant-numeric:tabular-nums; }
+.badge { display:inline-flex; align-items:center; min-height:25px; padding:2px 8px; border-radius:999px; background:var(--soft); color:var(--muted); font-size:.8125rem; font-weight:650; white-space:nowrap; }
+.badge.critical { color:var(--red); background:#fcebf0; }
+.badge.warning { color:var(--yellow); background:#fff1d9; }
+.badge.info { color:var(--blue); background:#eaf1ff; }
+.badge.good { color:var(--teal); background:#e3f3ed; }
+.table-panel { overflow:hidden; }
+.record-filters { display:flex; align-items:end; flex-wrap:wrap; gap:10px; padding:0 19px 15px; }
+.record-filters .field { width:148px; max-width:100%; }
+.record-filters .btn { min-height:42px; }
+.table-wrap { min-width:0; }
+table { width:100%; border-collapse:collapse; table-layout:fixed; }
+th, td { text-align:start; padding:12px 13px; border-top:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+th { background:var(--soft); color:var(--muted); font-size:.875rem; font-weight:650; }
+td { font-size:.9375rem; }
+th:first-child,td:first-child { padding-inline-start:19px; }
+th:last-child,td:last-child { padding-inline-end:19px; }
+th:first-child { width:40%; }
+th:nth-child(2) { width:9%; }
+th:nth-child(3) { width:11%; }
+th:nth-child(4) { width:11%; }
+th:nth-child(5) { width:14%; }
+th:nth-child(6) { width:15%; }
+td time { font-variant-numeric:tabular-nums; }
+tbody tr:not(.expand-row):hover { background:#fafaff; }
+.expand-row td { background:var(--soft); padding-block:11px; }
+.expand-row p { font-size:.875rem; color:var(--muted); }
+.disclosure { display:inline-block; margin-inline-end:5px; }
+[aria-expanded=true] .disclosure { transform:rotate(90deg); }
+.pagination { display:flex; flex-wrap:wrap; justify-content:space-between; gap:9px 12px; align-items:center; padding:12px 19px; border-top:1px solid var(--line); }
+.paging-controls { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-left:auto; }
+.paging-controls button { min-width:36px; min-height:38px; padding:2px 8px; font-size:1.2rem; line-height:1; }
+.paging-controls select { width:auto; min-height:38px; font-size:.875rem; }
+.page-number { min-width:82px; text-align:center; color:var(--ink); font-variant-numeric:tabular-nums; font-size:.875rem; }
+.limit-form { display:flex; width:100%; justify-content:end; align-items:end; gap:9px; flex-wrap:wrap; padding-top:6px; }
+.limit-form .field { width:156px; }
+.limit-error { color:var(--red); flex-basis:100%; text-align:end; font-size:.875rem; }
+.empty { padding:36px 16px; text-align:center; color:var(--muted); }
+.empty strong { color:var(--ink); }
+.empty p { margin:5px 0 12px; }
+.search-panel { padding:17px 19px; background:linear-gradient(124deg,#eeefff,#fbfcff 72%); margin-bottom:16px; }
+.search-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; max-width:850px; }
+.search-form input { min-height:47px; font-size:1rem; }
+.suggestions { margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.suggestions small { margin-right:4px; color:var(--muted); }
+.sterm { min-height:30px; border:1px solid #cbd0ee; border-radius:999px; padding:3px 9px; color:var(--accent-dark); background:#ffffffa0; font-size:.8125rem; }
+.sterm:hover { background:white; }
+.knowledge-layout { display:grid; grid-template-columns:208px minmax(0,1fr); gap:15px; align-items:start; }
+.filter-card > summary { list-style:none; cursor:pointer; padding:13px 15px; font-weight:720; border-radius:var(--r-card); }
+.filter-card summary::-webkit-details-marker { display:none; }
+.filter-card summary::after { content:"▾"; float:right; color:var(--muted); }
+.filter-card[open] summary::after { transform:rotate(180deg); }
+.filter-form { padding:0 15px 15px; display:grid; gap:10px; }
+.results-head { align-items:center; border-bottom:1px solid var(--line); }
+.results-head select { width:auto; min-height:39px; font-size:.875rem; }
+.applied { padding:9px 19px; border-bottom:1px solid var(--line); background:var(--soft); }
+.applied button { border:0; border-radius:999px; padding:4px 8px; background:white; color:var(--accent-dark); font-size:.875rem; }
+.docs { list-style:none; padding:0 18px; margin:0; }
+.doc { display:grid; grid-template-columns:40px minmax(0,1fr) auto; align-items:start; gap:11px; padding:14px 0; }
+.doc + .doc { border-top:1px solid var(--line); }
+.doc-icon { display:grid; place-items:center; width:39px; height:39px; border-radius:12px; background:var(--accent-soft); color:var(--accent-dark); font-weight:730; }
+.doc-icon.run { background:#e4f4ee; color:var(--teal); }
+.doc-icon.review { background:#fff2dd; color:var(--yellow); }
+.doc-body { min-width:0; display:grid; gap:5px; }
+.doc-title { display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; font-size:1.0625rem; line-height:1.4; }
+.doc-summary { color:var(--muted); font-size:.9375rem; }
+.doc-meta { display:flex; align-items:center; flex-wrap:wrap; gap:4px 11px; color:var(--muted); font-size:.8125rem; }
+.doc-meta strong { font-weight:650; color:var(--ink); }
+.match { color:var(--accent-dark); font-size:.8125rem; }
+mark { background:#f0eeff; color:var(--accent-dark); border-radius:3px; padding-inline:1px; }
+dialog { padding:0; border:1px solid var(--line); border-radius:24px 0 0 24px; width:min(552px,100%); max-width:none; height:100dvh; max-height:none; margin:0 0 0 auto; color:var(--ink); background:white; box-shadow:0 20px 65px #1d275a44; }
+dialog::backdrop { background:#1a264f69; }
+.dialog-frame { display:grid; grid-template-rows:auto minmax(0,1fr) auto; height:100%; }
+.dialog-head,.dialog-foot { display:flex; justify-content:space-between; align-items:start; gap:10px; padding:17px 19px; }
+.dialog-head { border-bottom:1px solid var(--line); }
+.dialog-foot { border-top:1px solid var(--line); align-items:center; }
+.dialog-body { overflow:auto; overscroll-behavior:contain; display:grid; gap:13px; align-content:start; padding:15px 19px; }
+.close { flex:none; width:40px; height:40px; border:0; border-radius:12px; background:var(--soft); color:var(--ink); font-size:1.5rem; line-height:1; }
+.note { background:var(--accent-soft); border-radius:var(--r-inner); padding:12px; color:#383887; font-size:.9375rem; }
+.preview-box { padding:12px; border:1px solid var(--line); border-radius:var(--r-inner); }
+.preview-box ul { margin:5px 0; padding-left:1.3em; }
+.preview-box p { color:var(--muted); margin-top:4px; }
+.dialog-meta { display:flex; gap:6px 10px; flex-wrap:wrap; color:var(--muted); font-size:.875rem; margin-top:5px; }
+@media(max-width:1100px){.frame{grid-template-columns:181px minmax(0,1fr)}.brand{min-width:147px}.knowledge-layout{grid-template-columns:170px minmax(0,1fr)}}
+@media(max-width:850px){
+  table,tbody{display:block}thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;padding:12px 16px;border-top:1px solid var(--line)}
+  tbody tr>td,tbody tr>td:first-child,tbody tr>td:last-child{padding:0;border:0}
+  td:first-child,.expand-row td{grid-column:1/-1}
+  td[data-label]:not(:first-child)::before{content:attr(data-label);display:block;font-size:.8125rem;color:var(--muted)}
+  .expand-row{background:var(--soft)}
+}
+@media(max-width:720px){
+  .topbar{position:static;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:10px 13px}
+  .top-nav{grid-column:1/-1;grid-row:2}
+  .demo{grid-row:1;grid-column:2}
+  .side{display:none}.frame{display:block}main{padding:14px 12px 28px}
+  .panel-head,.record-filters,.pagination,.search-panel{padding-inline:13px}
+  .knowledge-layout{grid-template-columns:1fr}
+  .filter-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .docs{padding-inline:12px}.doc{grid-template-columns:34px minmax(0,1fr);gap:8px}.doc-icon{width:33px;height:33px}
+  .doc>.btn{grid-column:2;justify-self:start}
+  .pagination .paging-controls{margin-left:0}.limit-form{justify-content:start}.limit-error{text-align:start}
+  dialog{border-radius:22px 0 0 22px}
+}
+@media(max-width:420px){.record-filters .field{width:auto;flex:1 1 43%}.panel-head .actions .btn{font-size:.8125rem}.paging-controls{gap:5px}.dialog-head,.dialog-foot,.dialog-body{padding-inline:13px}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="topbar">
+  <a class="brand" href="#/diagnostics"><span class="logo" aria-hidden="true">K</span> kube-aiops</a>
+  <nav class="top-nav" aria-label="模块导航">
+    <a href="#/diagnostics" data-module="diagnostics">诊断控制台</a>
+    <a href="#/wiki" data-module="wiki">运维知识库</a>
+  </nav>
+  <span class="demo">交互原型 · 演示数据</span>
+</header>
+<div class="frame"><aside class="side" id="sidebar"></aside><main id="main" tabindex="-1"></main></div>
+<dialog id="drawer" aria-labelledby="detail-title"></dialog>
+<script>
+'use strict';
+const main = document.getElementById('main');
+const drawer = document.getElementById('drawer');
+let active = 'diagnostics';
+let opener;
+let openFilters = matchMedia('(min-width:721px)').matches;
+const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const levels = {严重:'critical',警告:'warning',信息:'info',已恢复:'good',已验证:'good',待复核:'warning'};
+const badge = value => `<span class="badge ${levels[value] || ''}">${e(value)}</span>`;
+const btn = (text, action, cls = '') => `<button type="button" class="btn ${cls}" data-action="${action}">${text}</button>`;
+function opts(values,val) {
+  return values.map(item => {
+    const [key,label] = Array.isArray(item) ? item : [item,item];
+    return `<option value="${e(key)}"${String(key) === String(val)?' selected':''}>${e(label)}</option>`;
+  }).join('');
+}
+const select = (label,key,values,selected,attrs='') => `<label class="field">${label}<select name="${key}" ${attrs}>${opts(values,selected)}</select></label>`;
+const defaultOption = (name,values) => [['',name],...values];
+const params = () => new URLSearchParams(location.hash.split('?')[1] || '');
+function integer(raw, fallback, max = Number.MAX_SAFE_INTEGER) {
+  if (!/^\d+$/.test(raw || '')) return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 1 && value <= max ? value : fallback;
+}
+function update(changes) {
+  const search = params();
+  for (const [key,value] of Object.entries(changes)) {
+    if (value === '' || value == null) search.delete(key);
+    else search.set(key,String(value));
+  }
+  history.replaceState(null,'','#/'+active+(search.size ? '?'+search.toString() : ''));
+}
+function focusTo(selector) { main.querySelector(selector)?.focus({preventScroll:true}); }
+
+const sources = ['Zabbix','故障事件','K8sGPT','Alertmanager'];
+const templates = [
+  ['Windows 可用内存持续低于 1 GB','警告','Zabbix','增长较快的进程内存值得优先核对。'],
+  ['容器重启次数异常增加','严重','故障事件','查看最近发布、退出码与探针事件。'],
+  ['Pod 等待调度，节点资源不足','警告','K8sGPT','对比 Pending Pod 的请求量和匹配节点可用资源。'],
+  ['应用日志卷空间使用率超过 85%','警告','Zabbix','确认日志增长速率、轮转任务与持久卷剩余空间。'],
+  ['网关证书进入续期窗口','信息','Zabbix','核对证书到期日及自动续期任务。'],
+  ['上游请求错误率持续升高','严重','Alertmanager','按路由和后端服务拆分 5xx 与连接失败。'],
+  ['Deployment 可用副本数偏低','警告','K8sGPT','查看滚动发布条件、可用副本和近期事件。'],
+  ['业务 API 连接占用异常','信息','故障事件','联合查看并发连接数与响应耗时。']
+];
+const leading = [
+  ['Windows 内存使用率持续 5 分钟高于 90%','日志采集节点 01','14:10:02'],
+  ['Windows 可用内存低于 1 GB','应用节点 JOB-02','11:26:39'],
+  ['Windows 可用内存低于 1 GB','微服务 WEB-03','11:16:43'],
+  ['Windows 可用内存低于 1 GB','微服务 WEB-04','10:38:28'],
+  ['可用内存低于 1 GB','应用节点 05','06:42:01']
+];
+const records = [
+  ...leading.map(([title,host,time],i)=>({id:i+1,title,host,time:'2026/11/25 '+time,level:'警告',source:'Zabbix',status:'未恢复',note:'可用内存低于触发阈值，建议先核对持续时间、进程内存和系统缓存。'})),
+  ...Array.from({length:18},(_,i)=>{
+    const [title,level,source,note]=templates[i%templates.length];
+    const day=24-Math.floor(i/3);
+    const hour=16-i%3*4;
+    const hosts={Zabbix:'应用节点','故障事件':'prod / payments',K8sGPT:'dev / default',Alertmanager:'prod / gateway'};
+    return {id:i+6,title,host:hosts[source]+' · '+String(i+6).padStart(2,'0'),time:`2026/11/${day} ${hour}:21:00`,level,source,status:i%5===2?'已恢复':source==='故障事件'?'待排查':'未恢复',note};
+  })
+];
+const headings = ['问题','级别','处置状态','来源','主机或实例','首次发现'];
+function recordsState() {
+  const query=params();
+  const source=sources.includes(query.get('source'))?query.get('source'):'';
+  const level=['严重','警告','信息'].includes(query.get('level'))?query.get('level'):'';
+  const size=integer(query.get('pageSize'),5,100);
+  const list=records.filter(rec=>(!source || rec.source===source)&&(!level || rec.level===level));
+  const pages=Math.max(1,Math.ceil(list.length/size));
+  const page=Math.min(integer(query.get('page'),1),pages);
+  const start=(page-1)*size;
+  return {source,level,size,list,pages,page,start,rows:list.slice(start,start+size)};
+}
+function pagination(page,pages,total,start,end,{custom=false,size=5}={}) {
+  const label=custom?'最近诊断分页':'知识文档分页';
+  const pageText=total?`第 ${page} / ${pages} 页`:'0 页';
+  return `<footer class="pagination">
+    <span class="count" aria-live="polite">${total?`显示第 ${start+1}–${end} 条 · 共 <strong>${total}</strong> 条`:'共 0 条'}</span>
+    <nav class="paging-controls" aria-label="${label}">
+      <button type="button" class="btn" aria-label="上一页" data-action="prev" ${page<=1?'disabled':''}>‹</button>
+      <span class="page-number" aria-live="polite">${pageText}</span>
+      <button type="button" class="btn" aria-label="下一页" data-action="next" ${page>=pages?'disabled':''}>›</button>
+      ${custom?`<select aria-label="每页条数" aria-controls="custom-limit" data-page-size>
+        ${opts([[5,'5 条/页'],[10,'10 条/页'],[15,'15 条/页'],...([5,10,15].includes(size)?[]:[[size,`${size} 条/页（自定义）`]]),['custom','自定义…']],size)}</select>`:''}
+    </nav>
+    ${custom?`<form class="limit-form" id="custom-limit" data-form="limit" hidden novalidate>
+      <label class="field">自定义每页条数<input name="limit" type="number" min="1" max="100" step="1" inputmode="numeric" aria-describedby="limit-hint limit-error" required></label>
+      <small class="muted" id="limit-hint">1–100 条</small><button class="btn primary small" type="submit">应用</button>${btn('取消','cancel-limit','small')}
+      <p class="limit-error" id="limit-error" role="alert" hidden></p></form>`:''}</footer>`;
+}
+function recordsTable(rows) {
+  if (!rows.length) return `<div class="empty"><strong>暂无符合筛选条件的诊断记录</strong><p>可清除来源和级别筛选后再查看。</p>${btn('清除筛选','reset-records')}</div>`;
+  return `<div class="table-wrap"><table aria-label="最近诊断记录">
+    <thead><tr>${headings.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map(row=>{
+      const cells=[`<button class="text-link" type="button" aria-expanded="false" aria-controls="record-${row.id}" data-expand="${row.id}"><span class="disclosure" aria-hidden="true">▸</span>${e(row.title)}</button>`,
+        badge(row.level),e(row.status),e(row.source),e(row.host),`<time>${row.time}</time>`];
+      return `<tr>${cells.map((cell,i)=>`<td data-label="${headings[i]}">${cell}</td>`).join('')}</tr><tr class="expand-row" id="record-${row.id}" hidden><td colspan="6"><p><strong>诊断说明</strong>　${e(row.note)}</p></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+function diagnostics() {
+  const {source,level,size,list,pages,page,start,rows}=recordsState();
+  return `<header class="page-head"><div><h1>诊断总览</h1><p>查看当前范围内的诊断记录与处置状态。</p></div></header>
+    <section class="panel table-panel" aria-labelledby="recent-title">
+      <header class="panel-head"><div><h2 id="recent-title">最近诊断</h2><p>按首次发现时间倒序 · UTC+8</p></div><div class="actions">
+        ${btn('查看故障事件','incidents','small')}${btn('查看原有诊断结果','findings','small')}</div></header>
+      <form class="record-filters" data-form="records" aria-label="最近诊断筛选">
+        ${select('来源','source',defaultOption('全部来源',sources),source,'data-record-filter')}
+        ${select('级别','level',defaultOption('全部级别',['严重','警告','信息']),level,'data-record-filter')}
+        ${source || level?btn('清除筛选','reset-records','quiet small'):''}</form>
+      ${recordsTable(rows)}${pagination(page,pages,list.length,start,start+rows.length,{custom:true,size})}</section>`;
+}
+
+const docs = [
+  {id:'pod-restart',title:'Pod 反复重启排障手册',type:'排障手册',env:'生产',business:'平台运维',resource:'Pod',team:'SRE 值班组',date:'2026-11-24',revision:3,status:'已验证',keywords:['CrashLoopBackOff','OOMKilled','探针'],
+   summary:'先核对终止原因和上次退出日志，再区分内存、启动命令和探针失败。',
+   applicable:'适用于应用容器进入 CrashLoopBackOff，且近期出现持续重启的集群。',
+   checks:['检查上次终止原因、退出码和重启增长趋势。','按时间关联最近发布、容器上一轮日志与探针事件。','标记 OOMKilled、启动命令退出和探针失败这三条路径。'],
+   recovery:'重启次数停止增长，实例 Ready 且主要请求指标回到正常范围。'},
+  {id:'node-memory',title:'Windows 主机内存告警处理',type:'排障手册',env:'生产',business:'平台运维',resource:'主机',team:'主机运维组',date:'2026-11-23',revision:2,status:'已验证',keywords:['Zabbix','内存','可用内存'],
+   summary:'检查可用内存、进程工作集和分页压力，确认告警是否由持续增长引起。',
+   applicable:'适用于 Zabbix 主机可用内存低于阈值或内存使用率持续偏高。',
+   checks:['对齐首次告警时间和主机的内存趋势。','核对工作集增长突出的进程及近期变更。'],
+   recovery:'可用内存回到阈值上方，分页压力恢复，相关告警清除。'},
+  {id:'gateway',title:'网关 5xx 升高排查指南',type:'操作指南',env:'生产',business:'支付',resource:'Gateway',team:'网关平台组',date:'2026-11-22',revision:2,status:'已验证',keywords:['5xx','Envoy Gateway','网关'],
+   summary:'按路由拆分 5xx，定位超时、上游连接失败或应用返回错误。',
+   applicable:'适用于网关侧错误率升高，需要区分控制面、数据面和后端应用。',
+   checks:['查看问题路径的请求量、错误率、P95 延迟。','区分代理生成的错误与上游返回的错误，并对照路由和后端实例。'],
+   recovery:'5xx 和尾部延迟回落，关键路由与后端探测稳定。'},
+  {id:'pending',title:'Pending Pod 调度问题排查',type:'排障手册',env:'测试',business:'平台运维',resource:'Pod',team:'容器平台组',date:'2026-11-20',revision:4,status:'已验证',keywords:['FailedScheduling','Pending','节点容量'],
+   summary:'从调度事件定位资源不足、节点约束、污点或卷绑定。',
+   applicable:'适用于 Pod 保持 Pending，调度事件可用的场景。',
+   checks:['先读取 FailedScheduling 的具体原因。','核对节点可分配资源、亲和性和污点容忍。','若涉及 PVC，确认存储类和节点拓扑。'],
+   recovery:'Pod 调度成功并完成就绪检查。'},
+  {id:'log-volume',title:'日志卷空间告警复盘',type:'故障复盘',env:'生产',business:'数据平台',resource:'主机',team:'可观测平台组',date:'2026-11-19',revision:1,status:'待复核',keywords:['磁盘','日志','空间'],
+   summary:'记录日志轮转滞后引起的容量告警，列出复核路径和长期治理措施。',
+   applicable:'适用于日志卷容量持续增长、日志轮转任务延迟的历史场景。',
+   checks:['核对告警周期内的空间曲线与日志增量。','复核当时的轮转策略是否仍适用于当前版本。'],
+   recovery:'空间利用率回落，轮转任务稳定执行，业务写入恢复。'},
+  {id:'rollout',title:'Deployment 发布后副本不可用',type:'排障手册',env:'生产',business:'支付',resource:'Deployment',team:'支付服务组',date:'2026-11-18',revision:2,status:'已验证',keywords:['CrashLoopBackOff','探针','滚动发布'],
+   summary:'对比发布前后 ReplicaSet，确认就绪探针、镜像与资源限制。',
+   applicable:'适用于发布后可用副本数下降、应用请求出现波动的情况。',
+   checks:['核对 Deployment 条件和旧、新 ReplicaSet。','对比探针和镜像版本，查看容器事件。'],
+   recovery:'可用副本数达到目标，并持续通过就绪检查。'},
+  {id:'cert',title:'网关证书续期核对清单',type:'操作指南',env:'生产',business:'平台运维',resource:'Gateway',team:'网关平台组',date:'2026-11-17',revision:1,status:'已验证',keywords:['证书','TLS','网关'],
+   summary:'核对证书的绑定、到期时间、名称和证书链。',
+   applicable:'适用于网关收到证书即将到期的预警。',
+   checks:['确认服务域名和所使用的证书。','核对续期任务最近结果及监听器证书绑定。'],
+   recovery:'关键域名握手成功，证书有效期与证书链符合预期。'},
+  {id:'logs',title:'VictoriaLogs 日志检索入门',type:'操作指南',env:'研发',business:'数据平台',resource:'日志',team:'可观测平台组',date:'2026-11-16',revision:1,status:'已验证',keywords:['日志','VictoriaLogs','检索'],
+   summary:'先按集群和时间缩小范围，再按服务与关键字定位相关日志。',
+   applicable:'适用于在日志平台中定位指定时间与资源的异常。',
+   checks:['确认事故发生时段和集群。','筛选命名空间、服务及请求关联标识。'],
+   recovery:'获得可和故障时间线对应的日志片段。'}
+];
+const dimensions = [
+  ['env','环境',['生产','测试','研发']],['business','业务线',['平台运维','支付','数据平台']],
+  ['resource','资源类型',['Pod','主机','Gateway','Deployment','日志']],['type','知识类型',['排障手册','操作指南','故障复盘']]
+];
+function knowledgeState() {
+  const query=params(), q=(query.get('q')||'').slice(0,120).trim(), order=query.get('sort')==='date'?'date':'relevance';
+  const facets=Object.fromEntries(dimensions.map(([key,,values])=>[key,values.includes(query.get(key))?query.get(key):'']));
+  const tokens=q.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const list=docs.map(doc=>{
+    const hay=[doc.title,doc.summary,doc.applicable,doc.team,...doc.keywords].join(' ').toLocaleLowerCase();
+    return {...doc, score:tokens.reduce((sum,token)=>sum+(doc.title.toLocaleLowerCase().includes(token)?3:0)+(doc.keywords.some(k=>k.toLocaleLowerCase().includes(token))?2:0),0), match:tokens.every(token=>hay.includes(token))};
+  }).filter(doc=>doc.match&&Object.entries(facets).every(([k,v])=>!v||doc[k]===v))
+    .sort((a,b)=>(order==='relevance'?b.score-a.score:0)||b.date.localeCompare(a.date));
+  const pages=Math.max(1,Math.ceil(list.length/5));
+  const page=Math.min(integer(query.get('page'),1),pages), start=(page-1)*5;
+  return {q,order,facets,list,pages,page,start,rows:list.slice(start,start+5)};
+}
+function highlight(value, q) {
+  if(!q) return e(value);
+  const parts=q.split(/\s+/).filter(Boolean).map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  if(!parts.length) return e(value);
+  return value.split(new RegExp('('+parts.join('|')+')','i')).map((part,i)=>i%2?`<mark>${e(part)}</mark>`:e(part)).join('');
+}
+function wiki() {
+  const {q,order,facets,list,pages,page,start,rows}=knowledgeState();
+  const current=[...(q?[['q',q]]:[]),...dimensions.filter(([key])=>facets[key]).map(([key,label])=>[key,label+' · '+facets[key]])];
+  return `<header class="page-head"><div><h1>知识检索</h1><p>按症状、报错或事件 Reason 查找排障知识。</p></div></header>
+    <section class="panel search-panel" aria-label="检索知识">
+      <form data-form="search" class="search-form" role="search"><input type="search" aria-label="搜索知识" name="q" value="${e(q)}" maxlength="120" placeholder="例如 CrashLoopBackOff、内存、网关 5xx"><button class="btn primary" type="submit">搜索</button></form>
+      <div class="suggestions"><small>常用关键词</small>${['CrashLoopBackOff','内存','FailedScheduling','证书'].map(term=>`<button type="button" class="sterm" data-term="${term}">${term}</button>`).join('')}</div></section>
+    <div class="knowledge-layout">
+      <details class="panel filter-card" ${openFilters?'open':''}><summary>筛选条件</summary>
+        <form data-form="facets" class="filter-form" aria-label="知识筛选">
+          ${dimensions.map(([key,label,values])=>select(label,key,defaultOption('全部'+label,values),facets[key])).join('')}
+          <div class="actions"><button class="btn primary small" type="submit">应用</button>${btn('清除筛选','clear-facets','quiet small')}</div></form></details>
+      <section class="panel" aria-labelledby="results-title">
+        <header class="panel-head results-head"><div><h2 id="results-title">知识文档</h2><p aria-live="polite">共 ${list.length} 篇</p></div>
+          <select aria-label="结果排序" data-sort>${opts([['relevance',q?'相关度优先':'默认排序'],['date','最近更新']],order)}</select></header>
+        ${current.length?`<div class="inline applied" aria-label="已应用筛选">${current.map(([key,label])=>`<button type="button" data-remove="${key}" aria-label="移除 ${e(label)}">${e(label)} ×</button>`).join('')}</div>`:''}
+        ${rows.length?`<ul class="docs">${rows.map(doc=>{
+          const icon=doc.type==='排障手册'?['排','run']:doc.type==='故障复盘'?['复','review']:['指',''];
+          const matches=doc.keywords.filter(key=>q&&q.toLocaleLowerCase().split(/\s+/).some(token=>key.toLocaleLowerCase().includes(token)));
+          return `<li class="doc"><span class="doc-icon ${icon[1]}" aria-hidden="true">${icon[0]}</span>
+            <div class="doc-body"><h3 class="doc-title"><button type="button" class="text-link" data-read="${doc.id}">${highlight(doc.title,q)}</button>${badge(doc.type)}${doc.status==='待复核'?badge(doc.status):''}</h3>
+            <p class="doc-summary">${highlight(doc.summary,q)}</p>
+            <p class="doc-meta"><span><strong>适用</strong> ${doc.env} / ${doc.business} / ${doc.resource}</span><span>${doc.team}</span><span>更新于 ${doc.date.slice(5)} · v${doc.revision}</span></p>
+            ${matches.length?`<p class="match">匹配到 ${matches.map(key=>highlight(key,q)).join(' · ')}</p>`:''}</div>
+            <button type="button" class="btn small" data-doc="${doc.id}" aria-label="快速查看 ${e(doc.title)}">快速查看</button></li>`;
+        }).join('')}</ul>${pagination(page,pages,list.length,start,start+rows.length)}`:
+        `<div class="empty"><strong>暂无符合条件的文档</strong><p>尝试缩短关键词，或移除环境和资源类型筛选。</p>${btn('清除全部条件','clear-knowledge')}</div>`}</section></div>`;
+}
+
+const content = name => `<nav class="breadcrumb" aria-label="面包屑"><a href="#/${active}">${active==='wiki'?'运维知识库':'诊断控制台'}</a><span aria-hidden="true">/</span><span aria-current="page">${name}</span></nav>`;
+function reading(doc,compact=false) {
+  return `${doc.status==='待复核'?'<p class="note">待复核 · 请先核对适用范围与当前版本。</p>':''}
+    <section class="preview-box"><h3>适用条件</h3><p>${e(doc.applicable)}</p></section>
+    <section class="preview-box"><h3>先查什么</h3><ul>${(compact?doc.checks.slice(0,2):doc.checks).map(check=>`<li>${e(check)}</li>`).join('')}</ul></section>
+    <section class="preview-box"><h3>恢复判断</h3><p>${e(doc.recovery)}</p></section>`;
+}
+function docMeta(doc) {
+  return `<div class="dialog-meta">${badge(doc.type)}${badge(doc.status)}<span>${doc.env} / ${doc.business} / ${doc.resource}</span><span>${doc.team} · v${doc.revision} · ${doc.date}</span></div>`;
+}
+function fullDoc(doc) {
+  return `<header class="page-head"><div><h1>${e(doc.title)}</h1>${docMeta(doc)}</div>
+    <a class="btn" href="#/wiki${location.hash.includes('?')?'?'+params():''}">返回检索结果</a></header>
+    <article class="panel dialog-body" style="max-width:930px">${reading(doc)}</article>`;
+}
+function showDrawer(title,subtitle,body,extra='') {
+  opener=document.activeElement;
+  drawer.innerHTML=`<div class="dialog-frame"><header class="dialog-head"><div><h2 id="detail-title" tabindex="-1">${title}</h2>${subtitle}</div>
+    <button type="button" class="close" data-action="close" aria-label="关闭">×</button></header><div class="dialog-body">${body}</div>
+    <footer class="dialog-foot"><span class="count">演示数据</span><div class="actions">${btn('关闭','close','small')}${extra}</div></footer></div>`;
+  drawer.showModal();
+  drawer.querySelector('h2').focus();
+}
+drawer.addEventListener('close',()=>{
+  if(drawer.open) return;
+  drawer.replaceChildren();
+  if(opener?.isConnected) opener.focus({preventScroll:true});
+});
+function quickDoc(id) {
+  const doc=docs.find(item=>item.id===id);
+  if(doc) showDrawer(e(doc.title),docMeta(doc),reading(doc,true),`<button type="button" class="btn primary small" data-read="${doc.id}">阅读全文</button>`);
+}
+function readDoc(id) {
+  const query=params().toString();
+  if(drawer.open) drawer.close();
+  location.hash='#/wiki/'+id+(query?'?'+query:'');
+}
+function sourcePreview(source) {
+  const visible=recordsState().list.filter(item=>item.source===source);
+  showDrawer(source==='K8sGPT'?'原有诊断结果':'故障事件',`<p class="dialog-meta">当前筛选范围内的记录 · UTC+8</p>`,
+    visible.length?visible.map(rec=>`<article class="preview-box"><h3>${e(rec.title)}</h3><p>${badge(rec.level)}　${rec.status} · ${e(rec.host)} · ${rec.time}</p><p>${e(rec.note)}</p></article>`).join(''):'<div class="empty"><strong>当前筛选范围暂无此来源记录</strong></div>');
+}
+function render(focus='') {
+  const path=location.hash.split('?')[0].slice(2);
+  active=path?.startsWith('wiki')?'wiki':'diagnostics';
+  const readId=path?.startsWith('wiki/')?path.split('/')[1]:'';
+  const doc=docs.find(item=>item.id===readId);
+  const label=active==='wiki'?'运维知识库':'诊断控制台';
+  const page=active==='wiki'?'知识检索':'诊断总览';
+  document.querySelectorAll('[data-module]').forEach(a=>{
+    if(a.dataset.module===active) a.setAttribute('aria-current','true');
+    else a.removeAttribute('aria-current');
+  });
+  document.getElementById('sidebar').innerHTML=`<nav class="side-nav" aria-label="模块栏目"><h2>${label}</h2><a href="#/${active}" aria-current="page">${page}</a></nav>`;
+  main.innerHTML=content(doc?'知识详情':page)+(active==='diagnostics'?diagnostics():doc?fullDoc(doc):wiki());
+  if(focus) focusTo(focus);
+}
+function change(changes, focus='') {
+  const filter=main.querySelector('.filter-card');
+  if(filter) openFilters=filter.open;
+  update(changes);
+  render(focus);
+}
+function nextPage(delta) {
+  const {page,pages}=active==='diagnostics'?recordsState():knowledgeState();
+  const next=Math.min(pages,Math.max(1,page+delta));
+  if(next===page) return;
+  const selector=delta>0 ? '[data-action="next"]:not(:disabled)' : '[data-action="prev"]:not(:disabled)';
+  change({page:next===1?'':next},selector);
+  if(!main.querySelector(selector)) focusTo('[data-action="'+(delta>0?'prev':'next')+'"]:not(:disabled)');
+}
+function cancelLimit() {
+  main.querySelector('#custom-limit').hidden=true;
+  const field=main.querySelector('[data-page-size]');
+  field.value=recordsState().size;
+  field.focus({preventScroll:true});
+}
+document.addEventListener('click',event=>{
+  const trigger=event.target.closest('button');
+  if(!trigger) return;
+  const data=trigger.dataset;
+  if(data.expand) {
+    const expanded=trigger.getAttribute('aria-expanded')==='true';
+    trigger.setAttribute('aria-expanded',String(!expanded));
+    document.getElementById('record-'+data.expand).hidden=expanded;
+    return;
+  }
+  if(data.doc) { quickDoc(data.doc); return; }
+  if(data.read) { readDoc(data.read); return; }
+  if(data.term) { change({q:data.term,page:''},'[name="q"]'); return; }
+  if(data.remove) { change({[data.remove]:'',page:''},'[name="q"]'); return; }
+  switch(data.action) {
+    case 'prev': nextPage(-1); break;
+    case 'next': nextPage(1); break;
+    case 'cancel-limit': cancelLimit(); break;
+    case 'reset-records': change({source:'',level:'',page:''},'[name="source"]'); break;
+    case 'clear-facets': change({...Object.fromEntries(dimensions.map(([key])=>[key,''])),page:''},'.filter-card summary'); break;
+    case 'clear-knowledge': change({...Object.fromEntries(dimensions.map(([key])=>[key,''])),q:'',page:''},'[name="q"]'); break;
+    case 'incidents': sourcePreview('故障事件'); break;
+    case 'findings': sourcePreview('K8sGPT'); break;
+    case 'close': drawer.close(); break;
+  }
+});
+main.addEventListener('change',event=>{
+  const input=event.target;
+  if(input.matches('[data-page-size]')) {
+    const form=main.querySelector('#custom-limit');
+    if(input.value==='custom') {
+      const error=form.querySelector('#limit-error');
+      form.hidden=false;
+      form.elements.limit.value=recordsState().size;
+      form.elements.limit.removeAttribute('aria-invalid');
+      error.hidden=true;
+      form.elements.limit.focus();
+      form.elements.limit.select();
+    } else change({pageSize:input.value==='5'?'':input.value,page:''},'[data-page-size]');
+  }
+  if(input.matches('[data-record-filter]')) change({[input.name]:input.value,page:''},'[name="'+input.name+'"]');
+  if(input.matches('[data-sort]')) change({sort:input.value==='relevance'?'':input.value,page:''},'[data-sort]');
+});
+main.addEventListener('keydown',event=>{
+  if(event.key==='Escape' && event.target.closest('#custom-limit')) { event.preventDefault(); cancelLimit(); }
+});
+main.addEventListener('submit',event=>{
+  const form=event.target;
+  if(!form.dataset.form) return;
+  event.preventDefault();
+  const data=new FormData(form);
+  if(form.dataset.form==='limit') {
+    const field=form.elements.limit;
+    const size=integer(field.value,0,100);
+    const error=form.querySelector('#limit-error');
+    if(!size || field.validity.badInput) {
+      field.setAttribute('aria-invalid','true');
+      error.textContent='请输入 1–100 之间的整数。';
+      error.hidden=false;
+      field.focus();
+      return;
+    }
+    change({pageSize:size===5?'':size,page:''},'[data-page-size]');
+  } else if(form.dataset.form==='search') change({q:String(data.get('q')).trim(),page:''},'[name="q"]');
+  else if(form.dataset.form==='facets') change({...Object.fromEntries(data.entries()),page:''},'.filter-card summary');
+});
+window.addEventListener('hashchange',()=>{
+  if(location.hash==='#main') return;
+  if(drawer.open) drawer.close();
+  render();
+  window.scrollTo(0,0);
+  main.focus({preventScroll:true});
+});
+render();
+</script>
+</body>
+</html>

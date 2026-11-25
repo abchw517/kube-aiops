@@ -1,0 +1,1219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kubernetes 集群管理 · kube-aiops</title>
+<style>
+:root{font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#172942;background:#eef3f8;--muted:#526581;--border:#d7e1ed;--blue:#1258c5;--pale:#eff5ff;--bg:#f7f9fc}
+*{box-sizing:border-box}
+body{margin:0}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #79abf6;outline-offset:2px}
+.dialog{width:min(1000px, calc(100% - 40px));max-width:none;max-height:none;border:0;border-radius:14px;padding:0;color:inherit;box-shadow:0 24px 85px #0f254355}
+.dialog::backdrop{background:#182b46a6}
+.layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:min(700px,calc(100dvh - 48px));background:#fff}
+.hero{padding:20px 26px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border)}
+.hero h2{font-size:23px;letter-spacing:.005em;line-height:1.3;margin:0 0 8px}
+.identity{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.identity strong{color:#334963;overflow-wrap:anywhere}
+.identity code{font:inherit;font-family:ui-monospace,monospace;overflow-wrap:anywhere}
+.mode{color:#265985;background:#ecf4ff;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.close{background:transparent;border:0;color:#506680;font-size:24px;line-height:1;border-radius:7px;width:36px;height:36px;flex:none}
+.close:hover{background:#edf2f8}
+.form-layout{display:grid;grid-template-columns:215px minmax(0,1fr);min-height:0}
+.rail{background:var(--bg);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:5px}
+.nav-item{text-align:left;background:transparent;color:#354a66;border:1px solid transparent;padding:10px 11px;border-radius:8px}
+.nav-item strong,.nav-item span{display:block}
+.nav-item span{font-size:12px;color:var(--muted);margin-top:2px}
+.nav-item:hover{background:#edf3fa}
+.nav-item[aria-selected=true]{color:#154faa;background:#eaf2ff;border-color:#bed5fa}
+.scroll{overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:21px 25px 25px}
+.panel h3{font-size:19px;line-height:1.3;margin-bottom:3px}
+.panel>p{margin-bottom:16px}
+.card{border:1px solid var(--border);background:#fff;border-radius:9px;margin-top:13px;padding:15px 16px}
+.card h4{font-size:14px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 16px;margin:0;padding:0;border:0}
+.full{grid-column:1/-1}
+.field{min-width:0}
+.field label{display:block;margin-bottom:4px;font-weight:650;color:#273c58}
+.req{color:#a22e36;font-size:13px}
+.field input,.field select,.field textarea{width:100%;min-width:0;border:1px solid #b9c9db;border-radius:6px;padding:8px 10px;background:#fff;color:#172942;min-height:38px}
+.field input[readonly],.field input:disabled{background:#f1f4f8;color:#455a73;border-color:#d9e2ee}
+.field textarea{resize:vertical;min-height:73px}
+.field [aria-invalid=true]{border-color:#b6293a}
+.field .hint,.error{display:block;margin-top:4px;font-size:12px}
+.error{color:#a42236;font-weight:600}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.switch-row label{display:block;font-weight:650;margin-bottom:2px;cursor:pointer}
+.switch{appearance:none;flex:none;width:41px;height:23px;border:1px solid #8296af;border-radius:20px;background:#72869f;position:relative;cursor:pointer;margin:0}
+.switch::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:white}
+.switch:checked{background:var(--blue);border-color:var(--blue)}
+.switch:checked::after{left:21px}
+details.card{padding:0}
+details summary{cursor:pointer;padding:13px 14px 13px 16px;font-weight:650}
+details summary:hover{background:#f4f8fd;border-radius:9px}
+details summary .count{margin-left:8px;color:var(--muted);font-size:12px;font-weight:450}
+details .details-body{padding:1px 15px 15px}
+.details-body>p{margin:0 0 10px}
+.footer{background:#fff;border-top:1px solid var(--border);padding:12px 25px;display:flex;align-items:center;justify-content:space-between;gap:10px 14px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.btn{border:1px solid #b8c8dc;border-radius:7px;background:white;color:#263f60;min-height:38px;padding:7px 12px;font-weight:650;white-space:nowrap}
+.btn:hover:not(:disabled){background:#edf4fe}
+.primary{background:var(--blue);border-color:var(--blue);color:white}
+.primary:hover:not(:disabled){background:#104ca9}
+.btn:disabled{cursor:default;opacity:.55}
+.status{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.status[data-tone=error]{color:#a42236}
+.status[data-tone=ok]{color:#17664e}
+.feedback{padding:11px 12px;border:1px solid #ccdced;border-radius:7px;background:#f4f8ff;margin-top:12px}
+.feedback[data-tone=error]{background:#fff4f4;color:#8b2232;border-color:#efc7cb}
+.feedback[data-tone=ok]{background:#edf9f4;color:#166049;border-color:#bfe1d2}
+.feedback strong,.feedback span{display:block}
+.feedback span{margin-top:2px;font-size:13px}
+.confirm{width:min(420px,calc(100% - 28px));border:0;border-radius:12px;padding:21px;color:inherit;box-shadow:0 16px 65px #0f254355}
+.confirm::backdrop{background:#182b4680}
+.confirm p{margin:8px 0 17px}
+.confirm .actions{justify-content:flex-end}
+@media(max-width:760px){
+  .dialog{width:calc(100% - 20px)}
+  .layout{height:calc(100dvh - 22px)}
+  .hero{padding:15px 16px}
+  .hero h2{font-size:21px}
+  .form-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .rail{padding:7px 10px;border-right:0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  .nav-item{text-align:center;padding:6px 3px}
+  .nav-item span{display:none}
+  .scroll{padding:15px 15px 18px}
+  .footer{padding:10px 14px}
+}
+@media(max-width:540px){
+  .hero .identity{gap:4px 9px}
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .footer{display:grid;grid-template-columns:minmax(0,1fr);gap:5px}
+  .actions{justify-content:end}
+  .status{min-height:19px}
+  .row{padding:12px}
+}
+h1,h2,h3,h4,p,dl,dd{margin:0}
+.crumb,.hint{font-size:13px;color:var(--muted)}
+.portal-header{display:flex;align-items:center;gap:30px;min-height:61px;padding:0 22px;background:#14263b;color:#e5edf8}
+.portal-brand{font-weight:760;display:flex;align-items:center;gap:9px;white-space:nowrap}
+.portal-mark{display:grid;place-items:center;width:28px;height:28px;background:#18456f;border:1px solid #5d87b2;border-radius:7px}
+.portal-nav{display:flex;gap:25px;align-items:center;font-size:13px}
+.portal-nav b{color:#fff;padding:19px 0 16px;border-bottom:3px solid #86b7fe}
+.portal-shell{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:calc(100vh - 61px)}
+.portal-sidebar{background:#fff;border-right:1px solid var(--border);padding:20px 12px;color:#344b66}
+.portal-sidebar h2{font-size:16px;padding:0 8px}
+.portal-sidebar p{font-size:12px;margin:21px 8px 6px;color:var(--muted)}
+.portal-sidebar span,.portal-sidebar strong{display:block;padding:8px;border-radius:7px}
+.portal-sidebar strong{background:#eaf2ff;color:#164d9c}
+.portal-main{padding:22px 26px 34px;min-width:0;width:100%;max-width:1600px;margin-inline:auto}
+.portal-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:5px 0 16px}
+.portal-head h1{font-size:27px;line-height:1.25;margin-bottom:5px}
+.console{background:#fff;border:1px solid var(--border);border-radius:11px;box-shadow:0 2px 6px #132b4809}
+.view-tabs{display:flex;gap:21px;border-bottom:1px solid var(--border);padding:0 16px}
+.view-tabs button{padding:11px 5px 9px;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font-weight:650}
+.view-tabs button[aria-selected=true]{color:#124b9f;border-bottom-color:var(--blue)}
+.console-body{padding:14px 16px 16px}
+.summary-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.metric{background:#f7f9fc;border:1px solid var(--border);border-radius:8px;color:#3c5470;min-width:0;padding:7px 11px;font-weight:630;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:5px}
+.metric b{font-variant-numeric:tabular-nums;font-size:21px;color:#233c58}
+.metric[data-metric=issue] b{color:#983a27}
+.metric[data-metric=waiting] b{color:#7b550b}
+.metric[aria-pressed=true]{background:#edf5ff;border-color:#a5c5f2}
+.cluster-filters{display:flex;align-items:end;gap:9px;flex-wrap:wrap;margin:13px 0 5px}
+.cluster-filters .field{min-width:110px}
+.cluster-filters .field.search{flex:1;min-width:180px;max-width:360px}
+.cluster-filters .field input,.cluster-filters .field select{min-height:36px;padding:6px 8px}
+.cluster-filters .field label{font-size:12px}
+.btn.ghost{background:transparent;border-color:transparent;color:#164f9e}
+.btn.mini{min-height:30px;font-size:12px;padding:4px 7px}
+.btn.danger{background:#a62e3e;border-color:#a62e3e;color:white}
+.btn.danger:hover{background:#842231}
+.results-bar{display:flex;justify-content:space-between;align-items:center;gap:7px;margin:5px 0 7px;min-height:28px}
+.legend{font-size:12px;color:var(--muted)}
+.grid-frame{border:1px solid var(--border);border-radius:8px}
+.resource-table{border-collapse:collapse;width:100%;text-align:left;table-layout:fixed}
+.resource-table th{background:#f1f5fb;color:#3a5271;padding:8px 9px;font-size:12px;font-weight:690}
+.resource-table th:first-child{width:22%;border-radius:7px 0 0 0}
+.resource-table th:nth-child(2){width:13%}
+.resource-table th:nth-child(3){width:12%}
+.resource-table th:nth-child(4){width:14%}
+.resource-table th:nth-child(5){width:12%}
+.resource-table th:nth-child(6){width:14%}
+.resource-table th:last-child{width:13%;border-radius:0 7px 0 0;text-align:right}
+.resource-table td{border-top:1px solid #e3eaf3;padding:9px;vertical-align:middle;overflow-wrap:anywhere}
+.resource-table tr:nth-child(2n) td{background:#fbfcfe}
+.resource-table tr:hover td{background:#f5f9ff}
+.resource-table.namespaces th{width:33%;text-align:left}
+.resource-table.namespaces th:last-child{width:20%}
+.table-link{font:inherit;font-weight:700;color:#164e9c;text-align:left;word-break:break-word;padding:0;border:0;background:none}
+.table-link:hover{text-decoration:underline}
+.cell-title{font-weight:690}
+.cell-sub{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.cell-id{font-family:ui-monospace,monospace}
+.pill{display:inline-block;padding:2px 6px;border-radius:5px;font-size:12px;font-weight:660}
+.pill.good,.inline-state.good{background:#e8f5ed;color:#155f48}
+.pill.issue,.inline-state.issue{background:#fff0eb;color:#953721}
+.pill.waiting,.inline-state.waiting{background:#fff5d9;color:#775107}
+.pill.normal,.inline-state.normal{background:#eaf2ff;color:#284f83}
+.pill.muted{background:#edf1f6;color:#4f637c}
+.mode-label{display:inline-flex;gap:5px;align-items:center;font-size:12px;color:#2f4c6d}
+.mode-dot{width:6px;height:6px;border-radius:50%;background:#5585bc;flex:none}
+.mode-label[data-mode=push] .mode-dot{background:#8771ad}
+.mode-label[data-mode=local] .mode-dot{background:#468d83}
+.cell-time{font-size:13px;font-variant-numeric:tabular-nums}
+.resource-table .actions{justify-content:flex-end;gap:3px}
+.row-menu{position:relative}
+.row-menu>summary{display:grid;place-items:center;width:29px;height:31px;border-radius:6px;cursor:pointer;list-style:none;color:#365778}
+.row-menu>summary::-webkit-details-marker{display:none}
+.row-menu>summary:hover,.row-menu[open]>summary{background:#eaf2fc}
+.menu-popup{position:absolute;z-index:2;top:calc(100% + 3px);right:0;width:max-content;min-width:134px;padding:4px;border-radius:7px;border:1px solid var(--border);background:#fff;box-shadow:0 9px 23px #17334f30}
+tr:nth-last-child(-n+2) .menu-popup{bottom:calc(100% + 3px);top:auto}
+.menu-popup button{display:block;width:100%;padding:5px 8px;border:0;border-radius:4px;background:none;text-align:left;color:#274361}
+.menu-popup button:hover{background:#edf4ff}
+.menu-popup button[data-task=remove]{color:#972838}
+.empty-space{text-align:center;padding:32px 12px;border:1px dashed #c9d9ec;border-radius:8px;background:#f8fbff}
+.empty-space p{margin:4px 0 10px;color:var(--muted)}
+.inline-state{padding:8px 10px;border-radius:7px;font-size:13px;margin-bottom:9px}
+.notice-area{margin-top:9px}
+.demo-controls{display:flex;justify-content:flex-end;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+.demo-controls select{border:1px solid #bdcde1;border-radius:6px;background:#fff;padding:3px 6px;color:#334e6c}
+.slideout,.task-dialog{border:0;color:var(--ink,#172942);padding:0;box-shadow:0 22px 70px #172d4855;max-width:none;max-height:none}
+.slideout::backdrop,.task-dialog::backdrop{background:#162b478f}
+.slideout{width:min(520px,100%);height:100dvh;margin:0 0 0 auto}
+.task-dialog{width:min(650px,calc(100% - 22px));border-radius:11px;overflow:hidden}
+.overlay-layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 28px)}
+.slideout .overlay-layout{height:100%;max-height:none}
+.overlay-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.overlay-head h2{font-size:21px;margin-bottom:2px}
+.overlay-head h2:focus{outline:none}
+.overlay-scroll{padding:13px 18px;overflow:auto;overscroll-behavior:contain}
+.slideout .overlay-scroll{background:#f6f9fd}
+.overlay-footer{display:flex;justify-content:space-between;align-items:center;gap:7px 12px;padding:10px 18px;border-top:1px solid var(--border)}
+.overlay-footer .actions{gap:6px}
+.detail-meta{display:grid;grid-template-columns:95px minmax(0,1fr);gap:6px;font-size:13px}
+.detail-meta dt{color:var(--muted)}
+.detail-meta dd{overflow-wrap:anywhere}
+.detail-card{padding:10px 12px;background:white;border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+.detail-card h3,.detail-card h4{font-size:14px;margin-bottom:5px}
+.node-list{padding:0;margin:6px 0 0;list-style:none}
+.node-list li{border-top:1px solid var(--border);padding:5px 0;display:flex;justify-content:space-between;gap:7px;overflow-wrap:anywhere}
+.health-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:wrap}
+.detail-card .btn{margin-top:5px}
+.choose-mode{display:grid;gap:8px;padding-bottom:2px}
+.connect-choice{background:#fff;color:#193451;border:1px solid var(--border);border-radius:8px;display:block;text-align:left;padding:10px 12px}
+.connect-choice:hover,.connect-choice[aria-pressed=true]{background:#edf5ff;border-color:#9fc0ee}
+.connect-choice strong,.connect-choice span{display:block}
+.connect-choice span{font-size:13px;color:var(--muted);margin-top:3px}
+.task-dialog .field input,.task-dialog .field select{min-height:36px;padding:6px 8px}
+.ownership-items{display:grid;gap:6px;margin-top:8px}
+.ownership-items label{display:flex;align-items:center;gap:5px;font-weight:550}
+.ownership-items input{accent-color:var(--blue)}
+.one-time{width:100%;resize:vertical;padding:7px 8px;border:1px solid var(--border);border-radius:6px}
+@media(max-width:1100px){
+ .portal-shell{grid-template-columns:155px minmax(0,1fr)}
+ .portal-main{padding:16px}
+ .resource-table td,.resource-table th{padding-inline:6px}
+}
+@media(max-width:850px){
+ .portal-shell{display:block}.portal-sidebar{display:none}
+ .portal-header{gap:14px;padding:0 12px}
+ .portal-nav{gap:10px;flex-wrap:wrap}
+}
+@media(max-width:680px){
+ .portal-header{flex-wrap:wrap;min-height:49px;gap:3px 13px}.portal-nav b{padding:9px 0 6px}
+ .portal-main{padding:12px}.portal-head h1{font-size:22px}.portal-head p{font-size:12px}.portal-head{align-items:flex-start}
+ .console-body{padding:9px}.metric{font-size:12px;padding:5px 6px}.metric b{font-size:17px}
+ .cluster-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .cluster-filters .field{min-width:0}.cluster-filters .field.search{min-width:0;max-width:none;grid-column:1/-1}
+ .resource-table,.resource-table tbody{display:block}
+ .resource-table thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+ .resource-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 9px;border-top:1px solid var(--border);padding:7px}
+ .resource-table tr:first-child{border:0}
+ .resource-table td{display:block;padding:0;border:0}
+ .resource-table td:first-child,.resource-table:not(.namespaces) td:last-child{grid-column:1/-1}
+ .resource-table td[data-label]::before{content:attr(data-label);display:block;font-size:11px;color:var(--muted)}
+ .resource-table tr:nth-child(2n) td{background:transparent}
+ .menu-popup{top:auto;bottom:calc(100% + 3px)}
+ .overlay-head,.overlay-scroll,.overlay-footer{padding-inline:12px}
+}
+</style>
+</head>
+<body>
+<header class="portal-header">
+  <div class="portal-brand"><span class="portal-mark">K</span> kube-aiops</div>
+  <div class="portal-nav"><span>诊断控制台</span><b>资源管理</b><span>运维知识库</span><span>系统管理</span></div>
+</header>
+<div class="portal-shell">
+  <aside class="portal-sidebar"><h2>资源管理</h2><p>集群资源</p><strong aria-current="page">Kubernetes 集群管理</strong><p>平台目录</p><span>环境管理</span><span>业务线管理</span><span>数据源管理</span></aside>
+  <main class="portal-main">
+    <p class="crumb">资源管理 › Kubernetes 集群管理</p>
+    <header class="portal-head">
+      <div><h1>Kubernetes 集群管理</h1><p class="hint">查看集群采集状态，管理接入和命名空间归属。</p></div>
+      <button type="button" class="btn primary" id="add-cluster">＋ 接入集群</button>
+    </header>
+    <section class="console">
+      <div class="view-tabs" role="tablist" aria-label="集群资源视图">
+        <button type="button" id="view-clusters" role="tab" aria-selected="true" aria-controls="resource-panel" data-view="clusters">集群列表</button>
+        <button type="button" id="view-namespaces" role="tab" aria-selected="false" aria-controls="resource-panel" data-view="namespaces" tabindex="-1">命名空间</button>
+      </div>
+      <div class="console-body" id="resource-panel" role="tabpanel" aria-labelledby="view-clusters">
+        <div class="summary-strip" id="summary-strip">
+          <button type="button" class="metric" data-metric="all" aria-pressed="true">全部集群<b id="count-all">0</b></button>
+          <button type="button" class="metric" data-metric="issue" aria-pressed="false">需处理<b id="count-issue">0</b></button>
+          <button type="button" class="metric" data-metric="waiting" aria-pressed="false">等待采集<b id="count-waiting">0</b></button>
+        </div>
+        <div class="cluster-filters">
+          <div class="field search"><label for="query">搜索</label><input id="query" type="search" placeholder="集群名称、实例名称或 ID"></div>
+          <div class="field"><label for="filter-env">环境</label><select id="filter-env"><option value="">全部环境</option><option>生产</option><option>预发</option><option>测试</option><option>研发</option><option>未设置环境</option></select></div>
+          <div class="field" id="mode-filter-wrap"><label for="filter-mode">接入方式</label><select id="filter-mode"><option value="">全部方式</option><option value="local">本地自动采集</option><option value="pull">外部直连</option><option value="push">采集上报</option></select></div>
+          <div class="field" id="collection-filter-wrap"><label for="filter-status">状态</label><select id="filter-status"><option value="">全部状态</option><option value="issue">需处理</option><option value="waiting">等待采集</option><option value="normal">已接入</option><option value="paused">已停用</option><option value="removed">已解除连接</option></select></div>
+          <div class="field" id="scope-filter-wrap" hidden><label for="filter-cluster">集群实例</label><select id="filter-cluster"></select></div>
+          <button type="button" class="btn ghost" id="clear-clusters">清空筛选</button>
+        </div>
+        <div class="results-bar"><p class="hint" id="result-text" role="status"></p><span class="legend" id="clock-label">时间 · UTC+8</span></div>
+        <p class="inline-state waiting" id="namespace-note" hidden></p>
+        <div class="grid-frame" id="cluster-table"><table class="resource-table" aria-label="集群列表">
+          <thead><tr><th scope="col">集群 / 实例 ID</th><th scope="col">环境 / 业务线</th><th scope="col">接入方式</th><th scope="col">采集状态</th><th scope="col">节点状态</th><th scope="col">最近活动</th><th scope="col">操作</th></tr></thead>
+          <tbody id="cluster-rows"></tbody>
+        </table></div>
+        <div class="grid-frame" id="namespace-table" hidden><table class="resource-table namespaces" aria-label="命名空间列表">
+          <thead><tr><th scope="col">命名空间</th><th scope="col">集群 / 实例 ID</th><th scope="col">环境</th></tr></thead><tbody id="namespace-rows"></tbody>
+        </table></div>
+        <div class="empty-space" id="empty-view" hidden></div>
+        <p class="inline-state good notice-area" id="cluster-notice" role="status" hidden></p>
+      </div>
+    </section>
+    <div class="demo-controls">
+      <label for="demo-scenario">原型场景</label><select id="demo-scenario"><option value="normal">日常巡检</option><option value="read">只读权限</option><option value="empty">暂无集群</option><option value="failure">加载失败</option></select>
+      <label for="demo-probe">校验结果</label><select id="demo-probe"><option value="success">校验通过</option><option value="permission">节点权限不足</option><option value="network">连接超时</option></select><span>使用样例数据</span>
+    </div>
+  </main>
+</div>
+<dialog id="cluster-detail" class="slideout" aria-labelledby="detail-title"></dialog>
+<dialog id="cluster-task" class="task-dialog" aria-labelledby="task-title"></dialog>
+<dialog class="dialog" id="editor" aria-labelledby="editor-title">
+  <form class="layout" id="form" novalidate>
+    <header class="hero">
+      <div><h2 id="editor-title">编辑集群配置</h2><div class="identity">
+        <strong id="current-group"></strong><span>实例 ID <code id="current-id"></code></span><span class="mode">外部直连</span>
+      </div></div>
+      <button type="button" class="close" aria-label="关闭编辑配置" id="close-editor">×</button>
+    </header>
+
+    <div class="form-layout">
+      <div class="rail" role="tablist" aria-label="配置分区">
+        <button type="button" class="nav-item" id="tab-basic" role="tab" aria-controls="basic" aria-selected="true"><strong>基本信息</strong><span>名称、归属和启用状态</span></button>
+        <button type="button" class="nav-item" id="tab-connect" role="tab" aria-controls="connect" aria-selected="false" tabindex="-1"><strong>连接与凭据</strong><span>API 地址和认证方式</span></button>
+        <button type="button" class="nav-item" id="tab-observe" role="tab" aria-controls="observe" aria-selected="false" tabindex="-1"><strong>观测与诊断</strong><span>Engine、证据源和 AI 复核</span></button>
+      </div>
+      <div class="scroll" id="content">
+        <section class="panel" id="basic" role="tabpanel" aria-labelledby="tab-basic">
+          <h3>基本信息</h3><p class="hint">设置集群在资源列表中的名称、归属和采集状态。</p>
+          <div class="card grid">
+            <div class="field full" id="edit-id-wrap"><label for="edit-id">实例 ID <span class="req" aria-hidden="true">*</span></label><input id="edit-id" name="id" required placeholder="例如 prod-k8s-02"></div>
+            <div class="field"><label for="group">集群名称 <span class="req" aria-hidden="true">*</span></label><input id="group" name="group" required aria-describedby="group-help"><span class="hint" id="group-help">资源列表中的集群分组名称。</span></div>
+            <div class="field"><label for="name">实例名称 <span class="req" aria-hidden="true">*</span></label><input id="name" name="name" required aria-describedby="name-help"><span class="hint" id="name-help">用于识别当前采集实例。</span></div>
+            <div class="field"><label for="environment">环境</label><select id="environment" required aria-describedby="environment-help"></select><span class="hint" id="environment-help">首次采集已成功，环境已锁定。</span></div>
+            <div class="field"><label for="business">业务线 <span class="req" aria-hidden="true">*</span></label><select id="business" name="business" required><option>全局</option><option>运维</option><option>有数</option><option>云帆</option></select></div>
+            <div class="field"><label for="clusterType">集群类型</label><select id="clusterType" name="clusterType"><option value="shared">共用集群</option><option value="dedicated">独立业务集群</option></select><span class="hint" id="type-help" hidden>独立业务集群须选择已登记的业务线。</span></div>
+          </div>
+          <div class="card switch-row"><div><label for="enabled">启用实例</label><p class="hint" id="enabled-help">停用将在保存后生效，平台会停止采集该实例。</p></div><input type="checkbox" class="switch" role="switch" id="enabled" name="enabled" aria-describedby="enabled-help"></div>
+        </section>
+
+        <section class="panel" id="connect" role="tabpanel" aria-labelledby="tab-connect" hidden>
+          <h3>连接与凭据</h3><p class="hint">测试连接会验证 Kubernetes API 和节点读取权限。</p>
+          <div class="card grid">
+            <div class="field full"><label for="apiURL">Kubernetes API 地址 <span class="req" id="api-required" aria-hidden="true">*</span></label><input id="apiURL" name="apiURL" type="url" required aria-describedby="api-help" placeholder="https://kubernetes.example.com:6443"><span class="hint" id="api-help"></span></div>
+            <div class="field full"><label for="credentialKind">凭据方式</label><select id="credentialKind" name="credentialKind" aria-describedby="credential-help"><option value="">沿用 kubeconfig</option><option value="kubeconfig">使用新的 kubeconfig</option><option value="token">使用 ServiceAccount Token</option><option value="certificate">使用客户端证书与私钥</option></select><span class="hint" id="credential-help"></span></div>
+            <div class="field full" data-credential="kubeconfig" hidden><label for="kubeconfig">kubeconfig <span class="req" aria-hidden="true">*</span></label><textarea id="kubeconfig" name="kubeconfig" autocomplete="off" spellcheck="false" placeholder="粘贴示例 kubeconfig" disabled></textarea></div>
+            <div class="field full" data-credential="token" hidden><label for="token">只读 Token <span class="req" aria-hidden="true">*</span></label><input type="password" id="token" name="token" autocomplete="off" disabled></div>
+            <div class="field full" data-credential="token certificate" hidden><label for="ca">Kubernetes CA（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="ca" name="ca" autocomplete="off" spellcheck="false" disabled></textarea></div>
+            <div class="field" data-credential="certificate" hidden><label for="certificate">客户端证书（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="certificate" name="certificate" autocomplete="off" spellcheck="false" disabled></textarea></div>
+            <div class="field" data-credential="certificate" hidden><label for="privateKey">客户端私钥（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="privateKey" name="privateKey" autocomplete="off" spellcheck="false" disabled></textarea></div>
+          </div>
+          <button type="button" class="btn ghost mini" id="fill-editor">填入示例凭据</button>
+          <div class="feedback" id="connection-result" role="status" hidden><strong></strong><span></span></div>
+        </section>
+
+        <section class="panel" id="observe" role="tabpanel" aria-labelledby="tab-observe" hidden>
+          <h3>观测与诊断</h3><p class="hint">设置诊断 Engine，并按需配置指标、日志和告警证据源。</p>
+          <div class="card">
+            <h4>诊断 Engine</h4>
+            <div class="grid">
+              <div class="field"><label for="engineNamespace">Engine 命名空间 <span class="req" aria-hidden="true">*</span></label><input id="engineNamespace" name="engineNamespace" required></div>
+              <div class="field"><label for="engineName">Engine 实例名 <span class="req" aria-hidden="true">*</span></label><input id="engineName" name="engineName" required></div>
+            </div>
+          </div>
+          <details class="card" id="sources"><summary>观测证据源 <span class="count" id="source-count"></span></summary>
+            <div class="details-body"><p class="hint">地址均为可选。清空已填写地址后保存，即移除该证据源配置。</p><div class="grid">
+              <div class="field"><label for="prometheusURL">Prometheus 地址</label><input id="prometheusURL" name="prometheusURL" type="url" placeholder="https://prometheus.example.com"></div>
+              <div class="field"><label for="victoriaLogsURL">VictoriaLogs 地址</label><input id="victoriaLogsURL" name="victoriaLogsURL" type="url" placeholder="https://logs.example.com"></div>
+              <div class="field"><label for="alertmanagerURL">Alertmanager 地址</label><input id="alertmanagerURL" name="alertmanagerURL" type="url" placeholder="https://alertmanager.example.com"></div>
+            </div></div>
+          </details>
+          <div class="card switch-row"><div><label for="aiEnabled">启用 AI 复核</label><p class="hint" id="ai-help">启用时，平台会读取目标 Engine Secret。</p></div><input type="checkbox" class="switch" role="switch" id="aiEnabled" name="aiEnabled" aria-describedby="ai-help"></div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p class="status" id="form-status" role="status" aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" class="btn" id="cancel">取消</button>
+        <button type="submit" class="btn" id="test">测试连接</button>
+        <button type="submit" class="btn primary" id="save" disabled>保存配置</button>
+      </div>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title">
+  <h3 id="confirm-title">放弃未保存的修改？</h3>
+  <p class="hint">关闭后，本次编辑的内容将被丢弃。</p>
+  <div class="actions"><button type="button" class="btn" id="keep-editing" autofocus>继续编辑</button><button type="button" class="btn primary" id="discard">放弃修改</button></div>
+</dialog>
+<script>
+"use strict";
+const byId = id => document.getElementById(id);
+const h = value => String(value ?? "").replace(/[&<>"']/g,char=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+})[char]);
+const modes = {local:"本地自动采集",pull:"外部直连",push:"采集上报"};
+const envs = ["生产","预发","测试","研发"];
+const businesses = ["全局","运维","有数","云帆"];
+const baseRows = [
+  { id:"prod-main", group:"生产核心集群", name:"prod-main-k8s", environment:"生产", business:"运维", mode:"pull",
+    credentialKind:"kubeconfig", enabled:true, collected:true, collection:"stale", nodeFailures:2, checked:"11-25 16:14", sampled:"11-25 15:48",
+    error:"节点读取权限不足。可核对目标集群凭据对应身份的节点读取权限。",
+    nodes:[["prod-main-01","Ready"],["prod-main-02","Ready"],["prod-main-03","Ready"]], namespaces:["default","apps","monitoring"], findings:6,
+    ownership:{"运维":["monitoring"],"有数":["apps"]} },
+  { id:"local", group:"平台管理集群", name:"local-k8s", environment:"生产", business:"运维", mode:"local",
+    clusterType:"dedicated", enabled:true, collected:true, collection:"normal", checked:"11-25 16:16", sampled:"11-25 16:16",
+    nodes:[["platform-01","Ready"],["platform-02","Ready"],["platform-03","Ready"]],
+    namespaces:["default","monitoring","kube-aiops"], findings:2, ownership:{"运维":["kube-aiops","monitoring"]} },
+  { id:"edge-south", group:"生产边缘集群", name:"edge-south-k8s", environment:"生产", business:"云帆", mode:"push",
+    clusterType:"dedicated", enabled:true, collected:true, collection:"offline", reported:"11-25 16:02", findings:4 },
+  { id:"pre-platform", group:"预发应用集群", name:"pre-k8s", environment:"预发", business:"有数", mode:"push",
+    enabled:true, collected:false, collection:"wait-report" },
+  { id:"test-workload", group:"测试业务集群", name:"test-k8s", environment:"测试", business:"有数", mode:"pull",
+    enabled:true, collected:false, collection:"missing" },
+  { id:"dev", group:"研发-K8S集群", name:"dev-k8s", environment:"研发", business:"全局", mode:"pull",
+    credentialKind:"token", enabled:true, collected:true, collection:"normal", checked:"11-25 16:13", sampled:"11-25 16:13",
+    nodes:[["dev-worker-01","Ready"],["dev-worker-02","NotReady"]], namespaces:["default","dev-base","monitoring"],
+    findings:3, ownership:{"运维":["monitoring"],"有数":["dev-base"]}, apiURL:"https://kube-api.dev.example.com:6443" },
+  { id:"pre-tools", group:"预发工具集群", name:"pre-tools-k8s", environment:"预发", business:"运维", mode:"pull",
+    credentialKind:"certificate", enabled:false, collected:true, collection:"normal", checked:"11-25 11:05", sampled:"11-25 11:05",
+    nodes:[["pre-tools-01","Ready"]], namespaces:["tools"], findings:0, namespaceError:true }
+];
+const collectionInfo = {
+  normal:["已采集","good","normal"], online:["上报在线","good","normal"],
+  stale:["节点数据已过期","issue","issue"], failed:["采集校验失败","issue","issue"],
+  partial:["部分采集异常","issue","issue"], offline:["采集离线","issue","issue"],
+  timeout:["首次采集超时","issue","issue"], missing:["待补录凭据","issue","issue"],
+  "wait-report":["等待首次上报","waiting","waiting"], "wait-findings":["已上报，等待诊断","waiting","waiting"],
+  "wait-collection":["等待首次采集","waiting","waiting"]
+};
+let clusters = structuredClone(baseRows);
+let scene = "normal";
+let view = "clusters";
+let filterEnv = "";
+let listFilter = {query:"",mode:"",status:""};
+let nsFilter = {query:"",cluster:""};
+let detailRow;
+let detailTrigger;
+let task;
+let editorTrigger;
+let editorRow;
+let editorRotate = false;
+const inFlight = new Set();
+const drawer = byId("cluster-detail");
+const taskDialog = byId("cluster-task");
+const shortTime = () => new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})
+  .format(new Date()).replace(/\//g,"-");
+const rowById = id => clusters.find(row=>row.id===id);
+const safeKey = row => h(row.id);
+const clusterTypeLabel = row => row.clusterType==="dedicated"?"独立业务集群":"共用集群";
+const canWrite = () => scene==="normal" || scene==="empty";
+const canCheck = row => row.enabled&&!row.removed&&(row.mode==="local"||(row.mode==="pull"&&row.credentialKind));
+const canAssign = row => row.enabled&&!row.removed&&(row.mode!=="pull"||Boolean(row.credentialKind));
+const hasHistory = row => Boolean(row.nodes?.length && (row.collection==="stale"||row.collection==="failed"));
+const nodeCounts = row => ({total:row.nodes?.length || 0,ready:row.nodes?.filter(([,state])=>state==="Ready").length || 0});
+function collectState(row) {
+  if(row.removed)return ["已解除连接","muted","removed"];
+  if(!row.enabled)return ["已停用","muted","paused"];
+  if(row.collection==="normal" && (row.namespaceError||row.findingError))return collectionInfo.partial;
+  return collectionInfo[row.collection] || collectionInfo["wait-collection"];
+}
+function nodeState(row) {
+  if(row.removed || !row.enabled)return ["—","muted",""];
+  if(hasHistory(row))return ["历史快照","waiting",""];
+  if(row.collection==="failed")return ["未获取节点","muted",""];
+  const counts=nodeCounts(row);
+  if(!counts.total)return ["未采集","muted",""];
+  if(row.nodes.some(([,node])=>node==="NotReady"))return [counts.ready+" / "+counts.total+" Ready","issue","有 NotReady 节点"];
+  if(row.nodes.some(([,node])=>node==="Unknown"))return ["状态未知","waiting","含 Unknown 节点"];
+  return [counts.ready+" / "+counts.total+" Ready","good",""];
+}
+const clusterState = row => {
+  const collection=collectState(row)[2];
+  if(collection!=="normal")return collection;
+  const node=nodeState(row);
+  return node[1]==="issue" || node[0]==="状态未知" ? "issue" : "normal";
+};
+const activity = row => row.mode==="push" ? [row.reported,"最近上报"] :
+  row.checked ? [row.checked,"最近检查"] : [row.sampled,"节点采样"];
+const chip = (label,tone) => '<span class="pill '+tone+'">'+label+'</span>';
+function modeLabel(row) {
+  return '<span class="mode-label" data-mode="'+row.mode+'"><span class="mode-dot"></span>'+modes[row.mode]+'</span>';
+}
+function clusterAction(row,key,label) {
+  return '<button type="button" data-task="'+key+'" data-id="'+safeKey(row)+'">'+label+'</button>';
+}
+function notice(message,tone="good") {
+  const target=byId("cluster-notice");
+  target.hidden=!message;
+  target.textContent=message;
+  target.className="inline-state "+tone+" notice-area";
+}
+function paintCluster(row) {
+  const [text,tone]=collectState(row);
+  const [nodes,nodeTone,nodeDetail]=nodeState(row);
+  const [at,atLabel]=activity(row);
+  let menu="";
+  if(canWrite()){
+    if(row.removed && row.mode==="local")menu=clusterAction(row,"reconnect","重新连接");
+    if(!row.removed){
+      menu=clusterAction(row,"edit",row.mode==="local"?"编辑归属":row.mode==="pull"&&!row.credentialKind?"补录凭据":"编辑配置");
+      if(canAssign(row))menu+=clusterAction(row,"ownership","命名空间归属");
+      if(row.mode==="push"||(row.mode==="pull"&&row.credentialKind))menu+=clusterAction(row,"rotate",row.mode==="push"?"轮换上报凭据":"轮换直连凭据");
+      menu+=clusterAction(row,"remove","删除连接");
+    }
+  }
+  const open='<button type="button" class="btn ghost mini" data-detail="'+safeKey(row)+'">采集详情</button>';
+  return '<tr data-record="'+safeKey(row)+'"><td><button type="button" class="table-link" data-detail="'+safeKey(row)+'">'+h(row.group)+'</button><span class="cell-sub"><span class="cell-id">'+safeKey(row)+'</span> · '+clusterTypeLabel(row)+'</span></td>'+
+    '<td data-label="环境 / 业务线">'+h(row.environment||"未设置环境")+'<span class="cell-sub">'+h(row.business||"待补齐")+'</span></td>'+
+    '<td data-label="接入方式">'+modeLabel(row)+'</td><td data-label="采集状态">'+chip(text,tone)+'</td>'+
+    '<td data-label="节点状态">'+chip(nodes,nodeTone)+(nodeDetail?'<span class="cell-sub">'+nodeDetail+'</span>':"")+'</td>'+
+    '<td data-label="最近活动"><span class="cell-time">'+h(at||"—")+'</span><span class="cell-sub">'+atLabel+'</span></td>'+
+    '<td><div class="actions">'+open+(menu?'<details class="row-menu"><summary aria-label="'+h(row.group)+'的更多操作">⋯</summary><div class="menu-popup">'+menu+'</div></details>':"")+'</div></td></tr>';
+}
+const listedEnvironment = row => !filterEnv || (row.environment||"未设置环境")===filterEnv;
+const normalized = text => text.trim().toLocaleLowerCase();
+function paintResource() {
+  const listing=view==="clusters";
+  const failure=scene==="failure";
+  byId("resource-panel").setAttribute("aria-labelledby","view-"+view);
+  byId("summary-strip").hidden=!listing;
+  byId("clock-label").hidden=!listing;
+  byId("mode-filter-wrap").hidden=!listing;
+  byId("collection-filter-wrap").hidden=!listing;
+  byId("scope-filter-wrap").hidden=listing;
+  byId("add-cluster").hidden=!canWrite();
+  byId("cluster-table").hidden=true;
+  byId("namespace-table").hidden=true;
+  byId("namespace-note").hidden=true;
+  const base=clusters.filter(listedEnvironment);
+  let empty=byId("empty-view");
+  let count=0;
+  if(listing){
+    const needle=normalized(listFilter.query);
+    const range=base.filter(row=>(!listFilter.mode||row.mode===listFilter.mode) &&
+      [row.group,row.name,row.id].some(value=>normalized(value).includes(needle)));
+    const visible=range.filter(row=>!listFilter.status || clusterState(row)===listFilter.status);
+    byId("count-all").textContent=failure?"—":range.length;
+    byId("count-issue").textContent=failure?"—":range.filter(row=>clusterState(row)==="issue").length;
+    byId("count-waiting").textContent=failure?"—":range.filter(row=>clusterState(row)==="waiting").length;
+    for(const button of document.querySelectorAll("[data-metric]")){
+      button.disabled=failure;
+      button.setAttribute("aria-pressed",String(button.dataset.metric===(listFilter.status||"all")));
+    }
+    if(!failure)byId("cluster-rows").innerHTML=visible.map(paintCluster).join("");
+    byId("cluster-table").hidden=failure||!visible.length;
+    count=visible.length;
+    byId("result-text").textContent=failure?"暂时无法统计":"显示 "+count+" / "+range.length+" 个集群";
+  } else {
+    const valid=base.filter(row=>!row.removed);
+    if(!valid.some(row=>row.id===nsFilter.cluster))nsFilter.cluster="";
+    byId("filter-cluster").innerHTML='<option value="">全部集群</option>'+valid.map(row=>'<option value="'+safeKey(row)+'">'+h(row.group)+" · "+safeKey(row)+'</option>').join("");
+    byId("filter-cluster").value=nsFilter.cluster;
+    const scope=valid.filter(row=>!nsFilter.cluster||row.id===nsFilter.cluster);
+    const missing=scope.filter(row=>row.namespaceError||!row.namespaces?.length);
+    const items=scope.filter(row=>!row.namespaceError).flatMap(row=>(row.namespaces||[]).filter(name=>normalized(name).includes(normalized(nsFilter.query))).map(name=>({row,name})));
+    const note=byId("namespace-note");
+    note.hidden=failure||!scope.length||!missing.length;
+    note.textContent=missing.length===1?missing[0].group+(missing[0].namespaceError?"的命名空间采集失败，详情中可查看状态。":"暂无命名空间数据。"):
+      missing.length+" 个集群暂无可用命名空间数据，可从对应集群的采集详情查看状态。";
+    if(!failure)byId("namespace-rows").innerHTML=items.map(({row,name})=>'<tr><td><strong>'+h(name)+'</strong></td>'+
+      '<td data-label="集群 / 实例 ID"><button type="button" class="table-link" data-detail="'+safeKey(row)+'">'+h(row.group)+'</button><span class="cell-sub cell-id">'+safeKey(row)+'</span></td>'+
+      '<td data-label="环境">'+h(row.environment||"未设置环境")+'</td></tr>').join("");
+    count=items.length;
+    byId("namespace-table").hidden=failure||!count;
+    byId("result-text").textContent=failure?"暂时无法统计":"显示 "+count+" 个命名空间";
+  }
+  empty.hidden=!failure&&count>0;
+  if(failure)empty.innerHTML='<h3>集群目录加载失败</h3><p>重新加载后可继续查看当前范围。</p><button type="button" class="btn" data-reload>重新加载</button>';
+  else if(count===0){
+    const filtersActive=filterEnv || (listing?listFilter.query||listFilter.mode||listFilter.status:nsFilter.query||nsFilter.cluster);
+    let title=listing?"尚未接入集群":"暂无命名空间数据";
+    let copy=listing?"选择外部直连或采集上报开始接入。":"集群采集到命名空间后，会在这里显示。";
+    let cta=listing&&canWrite()?'<button type="button" class="btn primary" data-add>接入集群</button>':"";
+    if(clusters.length&&filtersActive&&(listing||nsFilter.query)){
+      title=listing?"没有匹配的集群":"没有匹配的命名空间";
+      copy="调整关键词或筛选条件后再试。";
+      cta='<button type="button" class="btn" data-clear>清空筛选</button>';
+    }
+    empty.innerHTML="<h3>"+title+"</h3><p>"+copy+"</p>"+cta;
+  }
+}
+function setView(next,focus=false) {
+  view=next;
+  for(const button of document.querySelectorAll("[data-view]")){
+    const active=button.dataset.view===view;
+    button.setAttribute("aria-selected",String(active));
+    button.tabIndex=active?0:-1;
+    if(active&&focus)button.focus();
+  }
+  const listing=view==="clusters";
+  byId("query").value=listing?listFilter.query:nsFilter.query;
+  byId("query").placeholder=listing?"集群名称、实例名称或 ID":"搜索命名空间";
+  byId("filter-env").value=filterEnv;
+  byId("filter-mode").value=listFilter.mode;
+  byId("filter-status").value=listFilter.status;
+  paintResource();
+}
+function resetFilters() {
+  filterEnv="";
+  if(view==="clusters")listFilter={query:"",mode:"",status:""};
+  else nsFilter={query:"",cluster:""};
+  setView(view);
+}
+function overlay(title,subtitle,body,footer,form=false) {
+  const tag=form?"form":"div";
+  const headingId=form||!body.includes('data-detail-meta')?"task-title":"detail-title";
+  return '<'+tag+' class="overlay-layout"><header class="overlay-head"><div><h2 id="'+headingId+'" tabindex="-1">'+title+'</h2><p class="hint">'+subtitle+'</p></div><button type="button" class="close" data-close-overlay aria-label="关闭">×</button></header>'+
+    '<div class="overlay-scroll">'+body+'</div><footer class="overlay-footer">'+footer+'</footer></'+tag+'>';
+}
+const secondary = (label,attr="data-close-overlay") => '<button type="button" class="btn" '+attr+'>'+label+'</button>';
+const primaryButton = (label,klass="primary",attr="") => '<button type="submit" class="btn '+klass+'" '+attr+'>'+label+'</button>';
+function showDetails(row,trigger) {
+  detailRow=row;
+  detailTrigger=trigger;
+  paintDetail();
+  drawer.showModal();
+  drawer.querySelector("h2").focus();
+}
+function paintDetail() {
+  const row=detailRow;
+  const [status,tone]=collectState(row);
+  const [when,recent]=activity(row);
+  const [nodes,nodeTone]=nodeState(row);
+  const timeItem=(label,value)=>'<dt>'+label+'</dt><dd>'+h(value||"—")+'</dd>';
+  const history=hasHistory(row);
+  const head='<div class="health-row" data-detail-meta>'+chip(status,tone)+modeLabel(row)+'</div>'+
+    '<section class="detail-card"><h3>集群信息</h3><dl class="detail-meta">'+timeItem("实例 ID",row.id)+timeItem("环境 / 业务线",[row.environment,row.business].filter(Boolean).join(" / "))+
+    timeItem(recent,when)+(row.mode==="push"?"":timeItem(history?"上次成功采样":"最近节点采样",row.sampled))+'</dl></section>';
+  const nodesList=row.nodes?.length?'<ul class="node-list">'+row.nodes.map(([name,state])=>
+    '<li>'+h(name)+chip(state,state==="Ready"?"good":state==="NotReady"?"issue":"waiting")+'</li>').join("")+'</ul>':
+    '<p class="hint">'+(row.mode==="push"?"当前上报数据没有可展示的节点快照。":"暂无节点数据。")+'</p>';
+  const sections='<section class="detail-card"><h3>'+(history?"历史节点快照":"节点状态")+'</h3>'+
+      (history?'<p class="hint">采样于 '+h(row.sampled)+' · UTC+8</p>':chip(nodes,nodeTone))+nodesList+'</section>'+
+    '<section class="detail-card"><h3>命名空间</h3><p class="hint">'+(row.namespaceError?"命名空间采集失败。":row.namespaces?.length?"已采集 "+row.namespaces.length+" 个命名空间。":"暂无命名空间数据。")+'</p>'+
+      (!row.namespaceError&&row.namespaces?.length?secondary("查看命名空间","data-open-namespaces"):"")+'</section>'+
+    '<section class="detail-card"><h3>K8sGPT 诊断</h3><p class="hint">'+(row.findingError?"诊断采集异常，请核对 Engine 和 Result 读取权限。":
+       row.findings>0?"最近收到 "+row.findings+" 条诊断结果。":"尚未收到诊断结果。")+'</p></section>';
+  const actions='<p class="hint" role="status">'+(inFlight.has(row.id)?"正在校验节点读取…":"时间 · UTC+8")+'</p><div class="actions">'+
+    (canWrite()&&canAssign(row)&&!row.namespaceError&&row.namespaces?.length?secondary("命名空间归属",'data-task="ownership" data-id="'+safeKey(row)+'"'):"")+
+    (canWrite()&&canCheck(row)?'<button type="button" class="btn primary" data-recheck '+(inFlight.has(row.id)?"disabled":"")+'>重新校验</button>':"")+'</div>';
+  drawer.innerHTML=overlay(h(row.group),h(row.name),head+(row.error?'<p class="inline-state issue" role="status">'+h(row.error)+'</p>':"")+sections,actions);
+}
+function recheck(row) {
+  if(inFlight.has(row.id)||!canCheck(row)||!canWrite())return;
+  inFlight.add(row.id);
+  paintDetail();
+  drawer.querySelector("h2").focus();
+  const result=byId("demo-probe").value;
+  setTimeout(()=>{
+    inFlight.delete(row.id);
+    row.checked=shortTime();
+    if(result==="success"){
+      row.error="";
+      row.nodeFailures=0;
+      row.collection=row.collected?"normal":"wait-collection";
+      if(row.nodes?.length)row.sampled=row.checked;
+    }else{
+      row.error=result==="permission"?"节点读取权限不足，请核对节点读取权限。":"Kubernetes API 连接超时，请检查平台到集群的网络路径。";
+      row.nodeFailures=(row.nodeFailures||0)+1;
+      row.collection=row.nodes?.length&&row.nodeFailures>=2?"stale":"failed";
+    }
+    paintResource();
+    if(drawer.open && detailRow===row){
+      paintDetail();
+      drawer.querySelector("[data-recheck]")?.focus();
+    }
+    notice(row.group+" · "+(result==="success"?"校验通过，最近检查时间已更新。":"校验失败，请查看采集详情。"),result==="success"?"good":"issue");
+  },460);
+}
+function changeTaskContent() {
+  const {mode,row}=task;
+  const finish=(status,buttons)=>'<p class="hint" id="task-status" role="status">'+status+'</p><div class="actions">'+buttons+'</div>';
+  if(mode==="chooser"){
+    const choices='<div class="choose-mode">'+[["pull","平台可直接访问目标集群的 Kubernetes API。"],["push","采集端主动向平台上报诊断快照。"]].map(([id,desc])=>
+      '<button type="button" class="connect-choice" data-connect="'+id+'" aria-pressed="'+(task.selected===id)+'"><strong>'+modes[id]+'</strong><span>'+desc+'</span></button>').join("")+'</div>';
+    taskDialog.innerHTML=overlay("接入集群","按平台与目标集群之间的网络可达性选择。",choices,
+      finish("本地自动采集实例由平台自动发现。",secondary("取消")+'<button type="button" class="btn primary" data-next-mode '+(task.selected?"":"disabled")+'>开始配置</button>'));
+    return;
+  }
+  if(mode==="owner"){
+    const dedicated=row.clusterType==="dedicated";
+    const ownerSelect=selectHTML("assignment-business",task.business,["",...(dedicated?[row.business]:businesses.filter(key=>key!=="全局"))],"请选择业务线",dedicated);
+    const body='<label for="assignment-business">业务线</label><div class="field">'+ownerSelect+'</div>'+
+      '<div id="ownership-fields"></div>';
+    taskDialog.innerHTML=overlay("命名空间归属",h(row.group)+" · "+safeKey(row),body,finish("",secondary("取消")+primaryButton("保存归属","primary",'id="save-assignment"')),true);
+    paintOwnership();
+    return;
+  }
+  if(mode==="push"||mode==="identity"){
+    const local=row?.mode==="local";
+    const r=row||{};
+    const lock=r.collected;
+    const fields='<div class="grid">'+
+      taskField("task-id","实例 ID",'<input id="task-id" required value="'+h(r.id)+'" '+(row?"readonly":"placeholder=\"例如 edge-shared\"")+'>')+
+      taskField("task-group","集群名称",'<input id="task-group" required value="'+h(r.group)+'">')+
+      taskField("task-name","实例名称",'<input id="task-name" required value="'+h(r.name)+'">')+
+      taskField("task-environment","环境",selectHTML("task-environment",r.environment,["",...envs],"请选择环境",lock))+
+      taskField("task-business","业务线",selectHTML("task-business",r.business||"全局",businesses))+
+      (local?"":taskField("task-type","集群类型",selectHTML("task-type",r.clusterType==="dedicated"?"独立业务集群":"共用集群",["共用集群","独立业务集群"])))+
+      '</div>'+
+      (local?"":'<details class="card"><summary>观测证据源</summary><div class="details-body grid">'+
+        [["prometheusURL","Prometheus 地址"],["victoriaLogsURL","VictoriaLogs 地址"],["alertmanagerURL","Alertmanager 地址"]].map(([key,label])=>
+          taskField("task-"+key,label,'<input type="url" id="task-'+key+'" value="'+h(r[key])+'">')).join("")+
+        '</div></details><p class="hint"><label><input type="checkbox" id="task-enabled" '+(r.enabled===false?"":"checked")+'> 启用实例</label></p>');
+    taskDialog.innerHTML=overlay(local?"编辑归属":row?"编辑采集上报配置":"新增采集上报集群",lock?"首次采集成功，环境已锁定。":local?"本地自动采集":"采集端向平台上报诊断快照。",fields,
+      finish(mode==="push"?"保存后获取一次性上报凭据。":"",secondary("取消")+primaryButton(local?"保存归属":"保存配置")),true);
+    return;
+  }
+  if(mode==="token"){
+    taskDialog.innerHTML=overlay(task.issued?"上报凭据已生成":"轮换上报凭据",h(row.group)+" · "+safeKey(row),
+      task.issued?'<label for="issued-token">本次凭据</label><textarea class="one-time" id="issued-token" rows="2" readonly>'+h(task.issued)+'</textarea><p class="hint">此凭据只显示一次。请将它配置到采集端 Secret。</p>':
+      '<p>确认后原凭据立即失效。更新采集端 Secret 后可继续上报。</p>',
+      finish(task.issued?"示例凭据":"",task.issued?secondary("完成"):secondary("取消")+primaryButton("确认轮换")),!task.issued);
+    return;
+  }
+  const remove=mode==="remove";
+  taskDialog.innerHTML=overlay(remove?"删除集群连接":"重新连接本地集群",h(row.group)+" · "+safeKey(row),
+    '<p>'+(remove?"平台将停止采集并清理此实例在 kube-aiops 中的采集快照和命名空间归属。":"使用已登记的名称与归属开始新一轮采集。")+'</p>',
+    finish("",secondary("取消")+primaryButton(remove?"确认删除":"重新连接",remove?"danger":"primary")),true);
+}
+function selectHTML(id,current,choices,placeholder="",locked=false) {
+  return '<select id="'+id+'" '+(locked?"disabled":"required")+'>'+choices.map(value=>'<option value="'+h(value)+'" '+(value===current?"selected":"")+'>'+h(value||placeholder)+'</option>').join("")+'</select>';
+}
+function taskField(id,label,content) {
+  return '<div class="field"><label for="'+id+'">'+label+'</label>'+content+'</div>';
+}
+function openingTask(mode,row,trigger) {
+  if(!canWrite())return;
+  if(mode==="edit"&&row.mode==="pull"){openEditor(row,trigger);return;}
+  if(mode==="rotate"&&row.mode==="pull"){openEditor(row,trigger,true);return;}
+  const fixedBusiness=row?.clusterType==="dedicated"?row.business:"";
+  task={mode:mode==="ownership"?"owner":mode==="edit"?"identity":mode==="rotate"?"token":mode,
+    row,trigger,selected:"",business:fixedBusiness,drafts:new Map()};
+  changeTaskContent();
+  taskDialog.showModal();
+  taskDialog.querySelector("h2").focus();
+}
+function paintOwnership() {
+  const root=byId("ownership-fields");
+  const save=byId("save-assignment");
+  const {row,business,drafts}=task;
+  const names=row.namespaceError?[]:(row.namespaces||[]);
+  save.disabled=!business||!names.length;
+  if(!names.length){root.innerHTML='<p class="hint">该集群暂无可设置归属的命名空间。</p>';return;}
+  if(!business){root.innerHTML='<p class="hint">选择业务线后，再勾选对应的命名空间。</p>';return;}
+  const selected=drafts.get(business)??new Set(row.ownership?.[business]||[]);
+  root.innerHTML='<div class="ownership-items">'+names.map(name=>'<label><input type="checkbox" name="ns-choice" value="'+h(name)+'" '+(selected.has(name)?"checked":"")+'> '+h(name)+'</label>').join("")+'</div>';
+}
+function requestTaskClose() {
+  taskDialog.close();
+}
+function saveTask(event) {
+  event.preventDefault();
+  const {mode,row}=task;
+  if(mode==="owner"){
+    if(!task.business)return;
+    row.ownership??={};
+    const selected=[...taskDialog.querySelectorAll("[name=ns-choice]:checked")].map(node=>node.value);
+    row.ownership[task.business]=selected;
+    task.drafts.delete(task.business);
+    if(task.drafts.size)byId("task-status").textContent="已保存当前业务线，其他业务线仍有未保存的勾选。";
+    else taskDialog.close();
+    notice(row.group+" · 命名空间归属已保存。");
+    return;
+  }
+  if(mode==="token"){
+    task.issued="prototype-report-token-"+row.id;
+    changeTaskContent();
+    taskDialog.querySelector("h2").focus();
+    return;
+  }
+  if(mode==="push"||mode==="identity"){
+    const value=id=>byId("task-"+id)?.value.trim()||"";
+    const id=value("id");
+    if(!/^[a-z0-9][a-z0-9-]*$/.test(id)||(!row&&rowById(id))){
+      byId("task-status").textContent="请选择未使用的实例 ID，使用小写字母、数字或连字符。";
+      byId("task-id").focus();
+      return;
+    }
+    if(!value("group")||!value("name")){
+      byId("task-status").textContent="请输入集群名称和实例名称。";
+      byId(!value("group")?"task-group":"task-name").focus();
+      return;
+    }
+    const dedicated=value("type")==="独立业务集群";
+    if(dedicated&&value("business")==="全局"){
+      byId("task-status").textContent="独立业务集群需要选择已登记的业务线。";
+      byId("task-business").focus();
+      return;
+    }
+    const settings={group:value("group"),name:value("name"),environment:value("environment"),business:value("business")};
+    const changes=row?.mode==="local"?settings:{...settings,enabled:byId("task-enabled").checked,clusterType:dedicated?"dedicated":"shared",
+      prometheusURL:value("prometheusURL"),victoriaLogsURL:value("victoriaLogsURL"),alertmanagerURL:value("alertmanagerURL")};
+    if(mode==="push"){
+      const created={...changes,id,mode:"push",collected:false,collection:"wait-report"};
+      clusters.unshift(created);
+      task.row=created;
+      task.mode="token";
+      task.issued="prototype-report-token-"+id;
+      paintResource();
+      changeTaskContent();
+      taskDialog.querySelector("h2").focus();
+      notice(created.group+" · 配置已保存，等待首次上报。");
+    }else {
+      Object.assign(row,changes);
+      taskDialog.close();
+      paintResource();
+      notice(row.group+" · 配置已保存。");
+    }
+    return;
+  }
+  if(mode==="remove"){
+    if(row.mode==="local"){
+      Object.assign(row,{removed:true,enabled:false,checked:"",sampled:"",reported:"",nodes:[],namespaces:[],ownership:{},findings:0,collected:false,error:""});
+    }else clusters=clusters.filter(entry=>entry!==row);
+    notice(row.group+" · 已删除连接。");
+  }else{
+    Object.assign(row,{removed:false,enabled:true,collection:"wait-collection"});
+    notice(row.group+" · 已重新连接，等待首次采集。");
+  }
+  taskDialog.close();
+  paintResource();
+}
+byId("add-cluster").addEventListener("click",event=>openingTask("chooser",undefined,event.currentTarget));
+byId("clear-clusters").addEventListener("click",resetFilters);
+byId("query").addEventListener("input",event=>{
+  (view==="clusters"?listFilter:nsFilter).query=event.target.value;
+  paintResource();
+});
+byId("filter-env").addEventListener("change",event=>{filterEnv=event.target.value;paintResource();});
+byId("filter-mode").addEventListener("change",event=>{listFilter.mode=event.target.value;paintResource();});
+byId("filter-status").addEventListener("change",event=>{listFilter.status=event.target.value;paintResource();});
+byId("filter-cluster").addEventListener("change",event=>{nsFilter.cluster=event.target.value;paintResource();});
+document.querySelector(".view-tabs").addEventListener("click",event=>{
+  const tab=event.target.closest("[data-view]");
+  if(tab)setView(tab.dataset.view);
+});
+document.querySelector(".view-tabs").addEventListener("keydown",event=>{
+  if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
+  event.preventDefault();
+  setView(event.key==="Home"?"clusters":event.key==="End"?"namespaces":view==="clusters"?"namespaces":"clusters",true);
+});
+byId("resource-panel").addEventListener("click",event=>{
+  const button=event.target.closest("button");
+  if(!button)return;
+  if(button.dataset.metric){
+    listFilter.status=button.dataset.metric==="all"?"":button.dataset.metric;
+    setView(view);
+  }
+  if(button.hasAttribute("data-clear")){
+    resetFilters();
+    byId("query").focus();
+  }
+  if(button.hasAttribute("data-add"))openingTask("chooser",undefined,button);
+  if(button.hasAttribute("data-reload")){
+    scene="normal";
+    clusters=structuredClone(baseRows);
+    byId("demo-scenario").value="normal";
+    paintResource();
+    byId("query").focus();
+    notice("集群目录已重新加载。");
+  }
+  const row=rowById(button.dataset.detail||button.dataset.id);
+  if(!row)return;
+  const menu=button.closest(".row-menu");
+  if(menu)menu.open=false;
+  const origin=menu?.querySelector("summary")||button;
+  if(button.dataset.detail)showDetails(row,origin);
+  if(button.dataset.task)openingTask(button.dataset.task,row,origin);
+});
+document.addEventListener("click",event=>{
+  const clicked=event.target.closest(".row-menu");
+  for(const menu of document.querySelectorAll(".row-menu[open]"))if(menu!==clicked)menu.open=false;
+});
+byId("resource-panel").addEventListener("keydown",event=>{
+  const menu=event.target.closest(".row-menu[open]");
+  if(event.key!=="Escape"||!menu)return;
+  event.preventDefault();
+  menu.open=false;
+  menu.querySelector("summary").focus();
+});
+drawer.addEventListener("click",event=>{
+  const button=event.target.closest("button");
+  if(!button)return;
+  if(button.hasAttribute("data-close-overlay"))drawer.close();
+  if(button.hasAttribute("data-open-namespaces")){
+    filterEnv=detailRow.environment||"未设置环境";
+    nsFilter={query:"",cluster:detailRow.id};
+    detailTrigger=byId("view-namespaces");
+    drawer.close();
+    setView("namespaces",true);
+  }
+  if(button.hasAttribute("data-recheck"))recheck(detailRow);
+  if(button.dataset.task)openingTask(button.dataset.task,detailRow,button);
+});
+function restoreFocus(trigger,row) {
+  if(trigger?.isConnected){trigger.focus();return;}
+  if(drawer.open){drawer.querySelector("h2")?.focus();return;}
+  (row?document.querySelector('[data-detail="'+CSS.escape(row.id)+'"]')||byId("query"):byId("add-cluster")).focus();
+}
+drawer.addEventListener("close",()=>restoreFocus(detailTrigger,detailRow));
+taskDialog.addEventListener("click",event=>{
+  const button=event.target.closest("button");
+  if(!button)return;
+  if(button.hasAttribute("data-close-overlay"))requestTaskClose();
+  if(button.hasAttribute("data-connect")){
+    task.selected=button.dataset.connect;
+    byId("cluster-task").querySelector("[data-next-mode]").disabled=false;
+    for(const choice of taskDialog.querySelectorAll("[data-connect]"))choice.setAttribute("aria-pressed",String(choice===button));
+  }
+  if(button.hasAttribute("data-next-mode")){
+    if(task.selected==="pull"){
+      const origin=task.trigger;
+      taskDialog.close();
+      openEditor(undefined,origin);
+    }else{
+      task.mode="push";
+      changeTaskContent();
+      taskDialog.querySelector("h2").focus();
+    }
+  }
+});
+taskDialog.addEventListener("input",event=>{
+  const input=event.target;
+  if(input.id==="assignment-business"){
+    task.business=input.value;
+    paintOwnership();
+  }
+  if(input.name==="ns-choice"&&task.business){
+    const checked=[...taskDialog.querySelectorAll("[name=ns-choice]:checked")].map(node=>node.value);
+    const saved=task.row.ownership?.[task.business]||[];
+    if(checked.length===saved.length&&checked.every(name=>saved.includes(name)))task.drafts.delete(task.business);
+    else task.drafts.set(task.business,new Set(checked));
+    byId("task-status").textContent=task.drafts.size?"有未保存的归属变更。":"";
+  }
+});
+taskDialog.addEventListener("submit",saveTask);
+taskDialog.addEventListener("close",()=>{
+  if(!byId("editor").open)restoreFocus(task?.trigger,task?.row);
+  taskDialog.replaceChildren();
+  task=undefined;
+});
+byId("demo-scenario").addEventListener("change",event=>{
+  scene=event.target.value;
+  clusters=["empty","failure"].includes(scene)?[]:structuredClone(baseRows);
+  filterEnv="";
+  listFilter={query:"",mode:"",status:""};
+  nsFilter={query:"",cluster:""};
+  notice("");
+  setView("clusters");
+});
+const editor = byId("editor");
+const confirmClose = byId("confirm");
+const form = byId("form");
+const status = byId("form-status");
+const save = byId("save");
+const test = byId("test");
+const tabs = [...form.querySelectorAll("[role=tab]")];
+const sourceIds = ["prometheusURL", "victoriaLogsURL", "alertmanagerURL"];
+const credentialIds = ["kubeconfig", "token", "ca", "certificate", "privateKey"];
+const kindNames = { kubeconfig: "kubeconfig", token: "ServiceAccount Token", certificate: "客户端证书" };
+const editorDefaults = {
+  group:"", name:"", environment:"", business:"全局", clusterType:"shared", enabled:true, apiURL:"",
+  engineNamespace:"k8sgpt-operator-system", engineName:"k8sgpt", prometheusURL:"", victoriaLogsURL:"",
+  alertmanagerURL:"", aiEnabled:false
+};
+let stored = {...editorDefaults};
+let storedKind;
+let startKind;
+let busy = false;
+const configIds = Object.keys(editorDefaults);
+
+function fieldValue(id) {
+  const input = byId(id);
+  return input.type === "checkbox" ? input.checked : input.value.trim();
+}
+function isDirty() {
+  const credentialDirty = byId("credentialKind").value !== startKind || credentialIds.some(id => fieldValue(id));
+  return Boolean(credentialDirty || (!editorRow && fieldValue("edit-id")) ||
+    (!editorRotate && configIds.some(id => fieldValue(id) !== stored[id])));
+}
+function setStatus(message, tone = "") {
+  status.textContent = message;
+  status.dataset.tone = tone;
+}
+function refreshState() {
+  save.disabled = busy || !isDirty();
+  test.disabled = busy;
+  byId("source-count").textContent = sourceIds.filter((id) => fieldValue(id)).length + " / 3 项已填写";
+  byId("type-help").hidden = fieldValue("clusterType") !== "dedicated";
+}
+function activate(panel, moveFocus = false, scrollToTop = true) {
+  for (const tab of tabs) {
+    const target = tab.getAttribute("aria-controls");
+    const active = target === panel;
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+    byId(target).hidden = !active;
+    if (active && moveFocus) tab.focus();
+  }
+  if (scrollToTop) byId("content").scrollTop = 0;
+}
+function clearError(field) {
+  if (!field.hasAttribute("aria-invalid")) return;
+  field.removeAttribute("aria-invalid");
+  const errorId = field.id + "-error";
+  byId(errorId)?.remove();
+  const remaining = (field.getAttribute("aria-describedby") || "").split(" ").filter((id) => id && id !== errorId);
+  if (remaining.length) field.setAttribute("aria-describedby", remaining.join(" "));
+  else field.removeAttribute("aria-describedby");
+}
+function showError(field, message) {
+  clearError(field);
+  const error = document.createElement("span");
+  error.className = "error";
+  error.id = field.id + "-error";
+  error.textContent = message;
+  field.after(error);
+  field.setAttribute("aria-invalid", "true");
+  field.setAttribute("aria-describedby", [field.getAttribute("aria-describedby"), error.id].filter(Boolean).join(" "));
+  const details = field.closest("details");
+  if (details) details.open = true;
+  activate(field.closest(".panel").id, false, false);
+  field.focus();
+  field.scrollIntoView({ block: "nearest" });
+  setStatus(message, "error");
+}
+function syncCredentials(reset = false) {
+  const kind = byId("credentialKind").value;
+  for (const wrapper of form.querySelectorAll("[data-credential]")) {
+    const field = wrapper.querySelector("input, textarea");
+    if (reset) field.value = "";
+    clearError(field);
+    wrapper.hidden = !wrapper.dataset.credential.split(" ").includes(kind);
+    field.disabled = wrapper.hidden;
+    field.required = !wrapper.hidden;
+  }
+  const fromKubeconfig = kind === "kubeconfig";
+  byId("apiURL").disabled = fromKubeconfig;
+  byId("apiURL").required = !fromKubeconfig;
+  byId("api-required").hidden = fromKubeconfig;
+  if (fromKubeconfig) clearError(byId("apiURL"));
+  byId("api-help").textContent = fromKubeconfig ? "API 地址由新 kubeconfig 提供。" : "平台通过此地址访问目标集群。";
+  byId("credential-help").textContent = kind ? "请使用示例凭据。实际保存按现有规则校验。" : "沿用已保存的 " + kindNames[storedKind] + "。";
+}
+function connectionFeedback(tone, title, message) {
+  const result = byId("connection-result");
+  result.hidden = !title;
+  result.dataset.tone = tone;
+  result.querySelector("strong").textContent = title;
+  result.querySelector("span").textContent = message;
+}
+function openEditor(row,trigger,rotate=false) {
+  editorRow=row;
+  editorTrigger=trigger;
+  editorRotate=rotate;
+  stored={...editorDefaults,apiURL:row?"https://"+row.id+".example.com:6443":""};
+  for(const id of configIds) if(row?.[id]!==undefined) stored[id]=row[id];
+  storedKind=row?.credentialKind;
+  startKind=storedKind&&!rotate?"":"kubeconfig";
+  byId("editor-title").textContent=rotate?"轮换直连凭据":row?storedKind?"编辑集群配置":"补录直连凭据":"新增外部直连集群";
+  save.textContent=rotate?"校验并轮换":"保存配置";
+  byId("current-group").textContent=row?.group||"新集群";
+  byId("current-id").textContent=row?.id||"待填写";
+  byId("edit-id").value=row?.id||"";
+  byId("edit-id-wrap").hidden=Boolean(row);
+  byId("edit-id").disabled=Boolean(row);
+  const env=byId("environment");
+  env.replaceChildren(...(row?.collected?[stored.environment]:["",...envs]).map(name=>new Option(name||"请选择环境",name)));
+  env.disabled=Boolean(row?.collected);
+  byId("environment-help").textContent=row?.collected?"首次采集已成功，环境已锁定。":"从环境目录选择该集群的归属。";
+  byId("tab-basic").hidden=rotate;
+  byId("tab-observe").hidden=rotate;
+  for (const id of configIds) {
+    const field = byId(id);
+    if (field.type === "checkbox") field.checked = stored[id];
+    else field.value = stored[id];
+  }
+  for (const field of form.querySelectorAll("[aria-invalid]")) clearError(field);
+  byId("credentialKind").value=startKind;
+  byId("credentialKind").options[0].disabled=Boolean(startKind);
+  byId("credentialKind").options[0].textContent=storedKind?"沿用 "+kindNames[storedKind]:"选择凭据方式";
+  byId("sources").open=false;
+  syncCredentials(true);
+  connectionFeedback("", "", "");
+  const target=rotate||(row&&!storedKind)?"connect":"basic";
+  activate(target);
+  setStatus("暂无未保存的修改");
+  refreshState();
+  editor.showModal();
+  byId("tab-"+target).focus();
+}
+function requestClose() {
+  if (busy) return;
+  if (isDirty()) confirmClose.showModal();
+  else editor.close();
+}
+function isWebURL(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+function validationError() {
+  const ids = editorRotate ? ["apiURL", ...credentialIds] :
+    ["edit-id","group","name","environment","apiURL",...credentialIds,"engineNamespace","engineName",...sourceIds];
+  for (const id of ids) {
+    const field = byId(id);
+    if (field.disabled) continue;
+    const label = field.labels[0].childNodes[0].textContent.trim();
+    if (field.required && !fieldValue(id)) return [field, "请填写" + label + "。"];
+    if (field.type === "url" && fieldValue(id) && !isWebURL(fieldValue(id))) {
+      return [field, label + "需使用有效的 HTTP 或 HTTPS 地址。"];
+    }
+  }
+  if (!editorRow && (!/^[a-z0-9][a-z0-9-]*$/.test(fieldValue("edit-id")) || rowById(fieldValue("edit-id")))) {
+    return [byId("edit-id"), "请使用尚未登记的小写字母、数字或连字符实例 ID。"];
+  }
+  if (!editorRotate && fieldValue("clusterType") === "dedicated" && fieldValue("business") === "全局") {
+    return [byId("business"), "独立业务集群须选择已登记的业务线。"];
+  }
+}
+for (const tab of tabs) {
+  tab.addEventListener("click", () => activate(tab.getAttribute("aria-controls")));
+  tab.addEventListener("keydown", (event) => {
+    const available=tabs.filter(node=>!node.hidden);
+    const delta = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
+    if (delta === undefined && !["Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = event.key === "Home" ? 0 : event.key === "End" ? available.length - 1
+      : (available.indexOf(tab) + delta + available.length) % available.length;
+    activate(available[index].getAttribute("aria-controls"), true);
+  });
+}
+form.addEventListener("input", (event) => {
+  if (event.target.id === "credentialKind") syncCredentials(true);
+  clearError(event.target);
+  if (event.target.id === "clusterType") clearError(byId("business"));
+  if (["apiURL", "credentialKind", ...credentialIds].includes(event.target.id)) connectionFeedback("", "", "");
+  if (!busy) setStatus(isDirty() ? "有未保存的修改" : "暂无未保存的修改");
+  refreshState();
+});
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const testing = event.submitter === test;
+  if (busy || (!testing && !isDirty())) return;
+  const invalid = validationError();
+  if (invalid) {
+    showError(...invalid);
+    return;
+  }
+  busy = true;
+  form.setAttribute("aria-busy", "true");
+  const fields = [...form.querySelectorAll("input, select, textarea")].filter((field) => !field.disabled);
+  for (const field of fields) field.disabled = true;
+  setStatus(testing ? "正在测试连接…" : "正在保存配置…");
+  refreshState();
+  await new Promise((resolve) => setTimeout(resolve, 520));
+  for (const field of fields) field.disabled = false;
+  busy = false;
+  form.removeAttribute("aria-busy");
+  const scenario = byId("demo-probe").value;
+  if (testing || (fieldValue("credentialKind") && scenario !== "success")) {
+    const result = {
+      success: ["ok", "连接测试通过", "Kubernetes API 可访问，节点读取权限验证通过。"],
+      permission: ["error", "节点读取权限不足", "请核对凭据对应的身份是否具有集群级 list nodes 权限。"],
+      network: ["error", "Kubernetes API 连接超时", "请检查平台到目标 API 地址的网络连通性。"]
+    }[scenario];
+    connectionFeedback(...result);
+    activate("connect");
+    byId("tab-connect").focus();
+    byId("connection-result").scrollIntoView({block:"nearest"});
+    setStatus(result[1], result[0]);
+  } else {
+    const kind = fieldValue("credentialKind");
+    const changed = Object.fromEntries(configIds.map(id=>[id,fieldValue(id)]));
+    if(kind==="kubeconfig"){
+      const server=fieldValue("kubeconfig").match(/^\s*server:\s*(https?:\/\/[^\s]+)\s*$/m);
+      if(server)changed.apiURL=server[1];
+    }
+    let saved=editorRow;
+    if(saved){
+      if(editorRotate)saved.apiURL=changed.apiURL;
+      else Object.assign(saved,changed);
+      if(kind)saved.credentialKind=kind;
+      if(saved.collection==="missing")saved.collection="wait-collection";
+    }else{
+      saved={...changed,id:fieldValue("edit-id"),mode:"pull",credentialKind:kind,
+        collected:false,collection:"wait-collection",checked:shortTime()};
+      clusters.unshift(saved);
+    }
+    editor.close();
+    paintResource();
+    notice(saved.group+" · "+(editorRotate?"直连凭据已轮换。":"配置已保存。"));
+  }
+  refreshState();
+});
+byId("fill-editor").addEventListener("click",()=>{
+  const values={kubeconfig:"clusters:\n  - cluster:\n      server: https://kube-api.example.com:6443",token:"prototype-only-token",
+    ca:"示例 CA",certificate:"示例客户端证书",privateKey:"示例客户端私钥"};
+  for (const id of credentialIds) if (!byId(id).disabled) {byId(id).value=values[id];clearError(byId(id));}
+  if (!byId("apiURL").disabled && !fieldValue("apiURL")) byId("apiURL").value="https://kube-api.example.com:6443";
+  setStatus(isDirty()?"有未保存的修改":"当前沿用原凭据");
+  connectionFeedback("", "", "");
+  refreshState();
+});
+byId("close-editor").addEventListener("click", requestClose);
+byId("cancel").addEventListener("click", requestClose);
+byId("keep-editing").addEventListener("click", () => confirmClose.close());
+byId("discard").addEventListener("click", () => {
+  confirmClose.close();
+  editor.close();
+});
+editor.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  requestClose();
+});
+editor.addEventListener("close", () => {
+  byId("credentialKind").selectedIndex = 0;
+  syncCredentials(true);
+  restoreFocus(editorTrigger,editorRow);
+});
+setView("clusters");
+</script>
+</body>
+</html>

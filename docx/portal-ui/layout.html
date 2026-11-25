@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kube-aiops · 前端布局原型</title>
+<style>
+:root {
+  color-scheme: light;
+  --canvas: #f2f5fa;
+  --rail: #f9fafe;
+  --surface: #fff;
+  --subtle: #f6f8fc;
+  --ink: #18243a;
+  --muted: #526178;
+  --quiet: #61718a;
+  --line: #e2e8f2;
+  --field: #cbd5e5;
+  --accent: #484bc2;
+  --accent-hover: #373a9e;
+  --accent-soft: #ecedff;
+  --indigo: #6768d7;
+  --mint: #269488;
+  --purple: #a17bd2;
+  --danger: #a52b4a;
+  --danger-soft: #fcecf1;
+  --warning: #865014;
+  --warning-soft: #fff1d8;
+  --info: #285499;
+  --info-soft: #eaf2ff;
+  --success: #17675b;
+  --success-soft: #e1f3ed;
+  --radius: 20px;
+  --control: 12px;
+  --shadow: 0 4px 18px #1d35740a;
+  font: 100%/1.55 "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-synthesis: none;
+  color: var(--ink);
+  background: var(--canvas);
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); text-decoration: none; }
+button, input, select, textarea { font: inherit; }
+button, select, summary { cursor: pointer; }
+button:disabled { cursor: default; opacity: .54; }
+:focus-visible { outline: 3px solid #716cf0; outline-offset: 3px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 2rem; line-height: 1.23; letter-spacing: -.035em; }
+h2 { font-size: 1.22rem; line-height: 1.4; letter-spacing: -.015em; }
+h3 { font-size: 1rem; }
+small { font-size: .8125rem; }
+[hidden] { display: none !important; }
+.skip { position: fixed; z-index: 20; left: 16px; top: -100px; padding: 10px 14px; background: white; border-radius: 10px; }
+.skip:focus { top: 12px; }
+.topbar { min-height: 72px; position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 32px; padding: 0 30px; background: #fff; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--ink); font-size: 1.125rem; font-weight: 780; letter-spacing: -.025em; flex: 0 0 170px; white-space: nowrap; }
+.logo { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: linear-gradient(145deg,#6668e3,#4446b5); color: #fff; font-weight: 800; box-shadow: 0 4px 11px #4949b92a; }
+.top-nav { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.top-nav a { padding: 9px 14px; font-size: .9375rem; font-weight: 640; white-space: nowrap; color: var(--muted); border-radius: 11px; }
+.top-nav a:hover, .side-nav a:hover { background: var(--subtle); color: var(--ink); }
+.top-nav a[aria-current], .side-nav a[aria-current] { background: var(--accent-soft); color: var(--accent-hover); }
+.header-meta { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.preview-link { white-space: nowrap; border-radius: 9px; font-size: .875rem; padding: 6px 8px; }
+.preview-link:hover { background: var(--accent-soft); }
+.demo { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--muted); font-size: .8125rem; }
+.demo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--indigo); }
+.frame { min-height: calc(100dvh - 72px); display: grid; grid-template-columns: 244px minmax(0,1fr); }
+.sidebar { min-width: 0; padding: 29px 16px 28px; background: var(--rail); border-right: 1px solid var(--line); }
+.side-inner { position: sticky; top: 100px; }
+.side-title { font-size: 1rem; font-weight: 760; margin: 0 11px 19px; }
+.side-group { margin-bottom: 22px; }
+.side-group p { margin: 0 11px 7px; font-size: .8125rem; font-weight: 630; color: var(--quiet); }
+.side-nav a { color: var(--muted); display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px 10px; border-radius: 11px; font-size: .90625rem; font-weight: 630; }
+.side-nav a + a { margin-top: 3px; }
+.nav-icon { flex: 0 0 18px; display: inline-grid; place-items: center; font-size: 1.03125rem; line-height: 1; }
+.mobile-nav { display: none; }
+main { min-width: 0; width: 100%; max-width: 1630px; margin-inline: auto; padding: 24px clamp(20px, 2.45vw, 40px) 48px; }
+.breadcrumb { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 13px; font-size: .8125rem; color: var(--quiet); }
+.breadcrumb a { color: var(--muted); }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.page-head p { margin-top: 5px; color: var(--muted); font-size: .9375rem; }
+.actions, .inline, .filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 43px; padding: 8px 15px; border: 1px solid var(--field); border-radius: var(--control); background: var(--surface); color: var(--ink); font-weight: 650; font-size: .9375rem; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--subtle); border-color: #a8b4ce; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 4px 9px #4548b51b; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.small { min-height: 36px; font-size: .875rem; padding: 6px 11px; }
+.text-btn { border: 0; padding: 0; background: transparent; text-align: start; color: var(--accent-hover); font-size: inherit; font-weight: 670; overflow-wrap: anywhere; }
+.text-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.close { width: 42px; height: 42px; border: 0; border-radius: 12px; background: var(--subtle); color: var(--ink); font-size: 1.5rem; line-height: 1; flex: none; }
+.close:hover { background: var(--accent-soft); }
+input:not([type=checkbox]):not([type=radio]), select, textarea { width: 100%; min-width: 0; min-height: 43px; padding: 8px 11px; border: 1px solid var(--field); border-radius: var(--control); background: white; color: var(--ink); font-weight: 500; }
+select { appearance: none; padding-inline-end: 35px; background-image: linear-gradient(45deg,transparent 50%,#566583 50%),linear-gradient(135deg,#566583 50%,transparent 50%); background-position: calc(100% - 17px) 52%,calc(100% - 12px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
+input::placeholder { color: var(--quiet); }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 17px; height: 17px; flex: 0 0 17px; margin: 0; }
+label.field { display: grid; gap: 5px; align-content: start; font-size: .9375rem; font-weight: 640; min-width: 0; }
+.check { display: flex; align-items: center; gap: 9px; min-height: 42px; font-size: .9375rem; cursor: pointer; }
+.check span { min-width: 0; }
+.filters { gap: 10px 14px; }
+.filters .field { min-width: 130px; }
+.filters .search { flex: 1 1 230px; }
+.filters .result { color: var(--muted); font-size: .875rem; align-self: end; padding-bottom: 9px; margin-left: auto; }
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.panel-pad { padding: 20px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 17px 20px; }
+.panel-head p { color: var(--muted); margin-top: 3px; font-size: .875rem; }
+.stack { display: grid; gap: 16px; min-width: 0; }
+.metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 13px; }
+.metric { padding: 15px 16px; min-width: 0; text-align: start; color: var(--ink); }
+.metric:hover { border-color: #b1b7e9; background: #fdfdff; }
+.metric[aria-pressed=true] { border-color: #c9cafa; background: linear-gradient(135deg,#f5f4ff,#fcfdff 67%); }
+.metric-top { display: flex; align-items: center; gap: 9px; white-space: nowrap; font-size: .875rem; font-weight: 650; color: var(--muted); }
+.metric-icon { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: .9rem; font-weight: 760; }
+.metric[data-level=严重] .metric-icon { color: var(--danger); background: var(--danger-soft); }
+.metric[data-level=警告] .metric-icon { color: var(--warning); background: var(--warning-soft); }
+.metric[data-level=信息] .metric-icon { color: var(--info); background: var(--info-soft); }
+.metric strong { display: block; font-size: 1.875rem; line-height: 1.2; letter-spacing: -.04em; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.analysis-grid { display: grid; grid-template-columns: minmax(0,2.15fr) minmax(240px,1fr); gap: 16px; align-items: stretch; }
+.segment { display: inline-flex; flex-wrap: nowrap; max-width: 100%; gap: 3px; padding: 4px; border-radius: 12px; background: #f0f2f9; }
+.segment button { border: 1px solid transparent; border-radius: 9px; min-height: 32px; padding: 4px 10px; color: var(--muted); font-size: .875rem; font-weight: 640; white-space: nowrap; background: transparent; }
+.segment button:hover { color: var(--ink); }
+.segment button[aria-pressed=true] { background: white; border-color: var(--line); color: var(--accent-hover); box-shadow: 0 2px 4px #1d35740b; }
+.chart { padding: 0 20px 17px; }
+.plot-area { display: grid; grid-template-columns: 22px minmax(0,1fr); }
+.axis { height: 132px; display: flex; flex-direction: column; justify-content: space-between; color: var(--quiet); font-size: .75rem; font-variant-numeric: tabular-nums; margin-top: -8px; padding-bottom: 0; }
+.plot { height: 124px; display: grid; grid-template-columns: repeat(var(--days),minmax(0,1fr)); align-items: stretch; border-bottom: 1px solid var(--line); gap: clamp(1px, .45vw, 7px); background: repeating-linear-gradient(to bottom,var(--line) 0px,var(--line) 1px, transparent 1px,transparent 25%); }
+.day { position: relative; border: 0; background: transparent; min-width: 0; padding: 0; display: flex; align-items: center; justify-content: flex-start; flex-direction: column-reverse; border-radius: 5px 5px 0 0; }
+.day:hover, .day[aria-pressed=true] { background: #e9ebff8c; }
+.bar { display: block; width: min(73%,27px); min-width: 3px; flex: 0 0 var(--share); }
+.bar:last-child { border-radius: 5px 5px 0 0; }
+.series-0 { background: var(--indigo); }
+.series-1 { background: var(--mint); }
+.series-2 { background: var(--purple); }
+.x-axis { margin-left: 22px; display: flex; justify-content: space-between; padding-top: 5px; font-size: .75rem; color: var(--quiet); }
+.chart-footer { min-height: 33px; margin-top: 9px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; color: var(--muted); font-size: .8125rem; }
+.chart-footer strong { color: var(--ink); }
+.legend { display: flex; gap: 11px; flex-wrap: wrap; }
+.legend span, .distribution-row span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.swatch { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: none; }
+.distribution { padding: 0 20px 18px; display: grid; gap: 11px; }
+.ring { width: 113px; aspect-ratio: 1; margin: 0 auto 3px; border-radius: 50%; position: relative; display: grid; place-items: center; background: conic-gradient(#d66b8a 0% var(--critical), #e3a351 var(--critical) var(--warning-edge), #7b9fe5 var(--warning-edge) 100%); }
+.ring-inner { display: grid; align-content: center; text-align: center; width: 82px; height: 82px; border-radius: 50%; background: white; line-height: 1.2; }
+.ring-inner strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.ring-inner small { color: var(--muted); margin-top: 3px; }
+.distribution-row { display: grid; grid-template-columns: minmax(0,1fr) auto 42px; align-items: center; gap: 9px; font-size: .875rem; }
+.distribution-row strong, .distribution-row small { text-align: right; font-variant-numeric: tabular-nums; }
+.distribution-row small { color: var(--quiet); }
+.swatch.critical { background: #d66b8a; }
+.swatch.warning { background: #e3a351; }
+.swatch.info { background: #7b9fe5; }
+.table-panel { overflow: hidden; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; text-align: start; font-variant-numeric: tabular-nums; }
+th, td { padding: 12px 14px; border-top: 1px solid #e9edf5; text-align: start; overflow-wrap: anywhere; font-size: .9375rem; vertical-align: middle; }
+th { background: var(--subtle); color: var(--muted); font-size: .875rem; font-weight: 650; white-space: nowrap; }
+th:first-child, td:first-child { padding-inline-start: 20px; }
+th:last-child, td:last-child { padding-inline-end: 20px; }
+tbody tr:hover { background: #fafbff; }
+td:first-child { min-width: 180px; }
+td small, .cell-meta { display: block; color: var(--quiet); font-size: .8125rem; font-weight: 450; margin-top: 2px; }
+.badge { display: inline-flex; align-items: center; padding: 3px 9px; min-height: 27px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-size: .875rem; font-weight: 670; line-height: 1.3; white-space: nowrap; }
+.badge.critical { background: var(--danger-soft); color: var(--danger); }
+.badge.warning { background: var(--warning-soft); color: var(--warning); }
+.badge.info { background: var(--info-soft); color: var(--info); }
+.badge.good { background: var(--success-soft); color: var(--success); }
+.empty { min-height: 160px; display: grid; align-content: center; justify-items: center; gap: 5px; text-align: center; padding: 22px; color: var(--muted); }
+.empty strong { color: var(--ink); }
+.list-controls { padding: 15px 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: .875rem; }
+.list-controls label { display: inline-flex; align-items: center; gap: 8px; }
+.tabbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 5px; background: #e9edf7; border-radius: 14px; width: fit-content; }
+.tabbar button { border: 1px solid transparent; min-height: 38px; padding: 6px 13px; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 650; font-size: .9375rem; }
+.tabbar button[aria-pressed=true] { background: white; border-color: var(--line); color: var(--accent-hover); box-shadow: 0 2px 4px #1d35740b; }
+.group { border-top: 1px solid var(--line); }
+.group summary { padding: 13px 20px; font-size: .9375rem; font-weight: 650; }
+.group summary small { margin-left: 7px; color: var(--quiet); }
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(250px,100%),1fr)); gap: 13px; }
+.doc-card { padding: 17px; display: grid; gap: 8px; align-content: start; }
+.doc-card p { color: var(--muted); font-size: .9375rem; }
+.doc-card small { color: var(--quiet); }
+.callout { padding: 12px 15px; border-radius: 13px; background: var(--accent-soft); color: #3d438b; font-size: .9375rem; }
+dialog { border: 1px solid var(--line); padding: 0; color: var(--ink); width: min(960px,calc(100% - 32px)); max-height: calc(100dvh - 32px); border-radius: 24px; box-shadow: 0 20px 78px #16234448; background: white; overflow: hidden; }
+dialog::backdrop { background: #1a264f68; }
+dialog.drawer { width: min(510px,100%); height: 100dvh; max-height: none; margin: 0 0 0 auto; border-radius: 24px 0 0 24px; }
+.overlay { display: grid; grid-template-rows: auto minmax(0,1fr) auto; max-height: calc(100dvh - 32px); }
+.drawer .overlay { height: 100%; max-height: none; }
+.overlay-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; padding: 20px 23px 16px; border-bottom: 1px solid var(--line); }
+.overlay-head p { margin-top: 4px; color: var(--muted); font-size: .9375rem; }
+.overlay-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 17px 23px; }
+.overlay-foot { min-height: 66px; padding: 10px 23px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); }
+.overlay-foot .actions { margin-left: auto; }
+.overlay-foot small { color: var(--muted); }
+.overlay-grid, .form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px; align-items: start; }
+.box { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; }
+.box > h3 { margin-bottom: 8px; }
+.box > p { color: var(--muted); font-size: .9375rem; }
+.option-card { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--field); border-radius: 12px; cursor: pointer; min-width: 0; }
+.option-card:has(input:checked) { border-color: #a3a7f0; background: var(--accent-soft); }
+.option-card small { display: block; color: var(--muted); }
+.subdued-box { border-radius: 13px; background: var(--subtle); padding: 12px 14px; }
+.details-list { display: grid; grid-template-columns: minmax(88px,.65fr) minmax(0,1.35fr); gap: 8px 14px; margin: 0; }
+.details-list dt { color: var(--muted); font-size: .9375rem; }
+.details-list dd { margin: 0; overflow-wrap: anywhere; }
+.step-form { display: grid; grid-template-columns: 170px minmax(0,1fr); gap: 15px; }
+.step-nav { display: grid; gap: 5px; align-content: start; padding: 8px; background: var(--subtle); border-radius: 15px; }
+.step-nav button { border: 1px solid transparent; min-height: 39px; text-align: start; border-radius: 10px; background: transparent; color: var(--muted); padding: 7px 10px; font-size: .9375rem; }
+.step-nav button[aria-pressed=true] { background: white; border-color: var(--line); color: var(--accent-hover); font-weight: 680; }
+.toast { position: fixed; z-index: 12; right: 22px; bottom: 20px; max-width: calc(100% - 44px); padding: 12px 16px; border-radius: 13px; background: #243250; color: white; box-shadow: var(--shadow); font-size: .9375rem; }
+
+body.login-mode .frame { grid-template-columns: minmax(0,1fr); background: radial-gradient(ellipse at 48% 32%,#e8ebff 0%,var(--canvas) 54%); }
+body.login-mode .sidebar { display: none; }
+body.login-mode main { align-self: center; justify-self: center; }
+.login-card { width: min(440px,100%); margin: 10px auto; padding: 28px; display: grid; gap: 21px; box-shadow: 0 12px 46px #45478b14; }
+.login-kicker { margin-bottom: 7px; color: var(--accent); font-size: .9375rem; font-weight: 760; }
+@media (max-width: 1120px) {
+  .frame { grid-template-columns: 216px minmax(0,1fr); }
+  .topbar { gap: 20px; padding-inline: 22px; }
+  .brand { flex-basis: 153px; }
+  .sidebar { padding-inline: 12px; }
+  .analysis-grid { grid-template-columns: minmax(0,1.7fr) minmax(205px,1fr); }
+}
+@media (max-width: 920px) {
+  .frame { grid-template-columns: 184px minmax(0,1fr); }
+  .side-nav a { align-items: flex-start; }
+  .side-nav .nav-icon { padding-top: 4px; }
+  main { padding-inline: 18px; }
+  .analysis-grid { grid-template-columns: minmax(0,1fr); }
+  .distribution { grid-template-columns: 113px minmax(0,1fr); align-items: center; }
+  .ring { grid-row: span 3; margin: 0; }
+  .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 740px) {
+  .topbar { position: static; min-height: auto; display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 13px 16px 8px; }
+  .top-nav { grid-row: 2; grid-column: 1 / -1; overflow-x: auto; padding: 2px 2px 5px; }
+  .top-nav a { padding-inline: 10px; font-size: .875rem; }
+  .header-meta { grid-row: 1; grid-column: 2; gap: 6px; }
+  .preview-link { font-size: .8125rem; }
+  .frame { display: block; }
+  .sidebar { display: none; }
+  .mobile-nav { display: block; margin-bottom: 13px; }
+  main { padding: 16px 14px 30px; }
+  .page-head { align-items: flex-start; flex-direction: column; margin-bottom: 16px; gap: 11px; }
+  h1 { font-size: 1.65rem; }
+  .metrics { gap: 9px; }
+  .metric { padding: 11px 13px; }
+  .metric strong { font-size: 1.6rem; }
+  .table-wrap { overflow: visible; }
+  table, tbody { display: block; }
+  thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  tbody tr { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; padding: 11px 15px; border-top: 1px solid var(--line); gap: 8px; }
+  tbody tr > td, tbody tr > td:first-child, tbody tr > td:last-child { padding: 0; border: 0; min-width: 0; }
+  td:first-child { grid-column: 1 / -1; }
+  td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; color: var(--quiet); font-size: .8125rem; margin-bottom: 2px; }
+  .panel-head { padding-inline: 15px; }
+  .overlay-grid, .step-form { grid-template-columns: 1fr; }
+  .step-nav { display: flex; flex-wrap: wrap; gap: 2px; }
+  .step-nav button { padding-inline: 7px; }
+  .overlay-head, .overlay-body, .overlay-foot { padding-inline: 14px; }
+}
+@media (max-width: 430px) {
+  .chart { padding-inline: 14px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .filters .result { margin-left: 0; }
+  dialog.drawer { border-radius: 18px 0 0 18px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="topbar">
+  <a class="brand" href="#/diagnostics"><span class="logo" aria-hidden="true">K</span> kube-aiops</a>
+  <nav id="top-nav" class="top-nav" aria-label="主导航"></nav>
+  <div class="header-meta"><span class="demo">原型 · 演示数据</span><a class="preview-link" href="#/login">登录页</a></div>
+</header>
+<div class="frame">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main id="main" tabindex="-1"></main>
+</div>
+<dialog id="overlay" aria-labelledby="overlay-title"></dialog>
+<p id="toast" class="toast" role="status" hidden></p>
+<script>
+'use strict';
+const pages = {
+  overview:   { path: '/diagnostics', title: '诊断总览', icon: '◫', intro: '汇总故障事件、K8sGPT 诊断和 Zabbix 问题。' },
+  incidents:  { path: '/diagnostics/events', title: '故障事件', icon: '◇', intro: '按级别和处置状态定位需要跟进的事件。' },
+  findings:   { path: '/findings', title: '原有诊断结果', icon: '▤', intro: '查看 K8sGPT 返回的资源、发现时间和诊断说明。' },
+  policy:     { path: '/diagnostics/policies', title: '诊断策略', icon: '≡', intro: '查看策略的生效范围、合并周期和状态。' },
+  clusters:   { path: '/resources/clusters', title: 'Kubernetes 集群管理', icon: '⬡', intro: '区分集群连接、节点健康和最近一次采集结果。' },
+  environments:{ path: '/resources/environments', title: '环境管理', icon: '▱', intro: '管理环境标识及其关联的集群。' },
+  business:   { path: '/resources/business-lines', title: '业务线管理', icon: '⊞', intro: '查看业务线归属、启用状态和关联范围。' },
+  sources:    { path: '/resources/datasources', title: '数据源管理', icon: '▥', intro: '管理监控与诊断来源、同步状态和云资产连接。' },
+  wiki:       { path: '/wiki', title: '知识检索', icon: '▤', intro: '按标题、标签或内容关键字查找排障文档。' },
+  governance: { path: '/wiki/governance', title: '知识治理', icon: '≡', intro: '跟进入库候选、复核状态与知识来源。' },
+  ldap:       { path: '/admin/ldap', title: '认证配置', icon: '◇', intro: '管理本地登录和 LDAP 目录接入。' },
+  users:      { path: '/admin/users', title: '用户管理', icon: '◉', intro: '查看账号状态、身份来源和角色绑定。' },
+  access:     { path: '/admin/access', title: '权限管理', icon: '⊡', intro: '按页面位置查看角色、用户组和权限目录。' },
+  password:   { path: '/admin/password', title: '修改密码', icon: '◈', intro: '更新当前会话账号的登录密码。' },
+  audit:      { path: '/admin/operations', title: '操作审计', icon: '▧', intro: '按动作与结果追溯平台配置变更。' },
+};
+const modules = [
+  { title: '诊断控制台', groups: [['诊断工作区', ['overview','incidents','findings']],['诊断配置',['policy']]] },
+  { title: '资源管理', groups: [['集群资源', ['clusters']],['平台目录',['environments','business','sources']]] },
+  { title: '运维知识库', groups: [['知识工作区', ['wiki','governance']]] },
+  { title: '系统管理', groups: [['身份与访问', ['ldap','users','access','password']],['审计',['audit']]] },
+];
+const filtersByPage = new Map();
+const state = { page: 'overview', days: 7, level: '', env: '', day: 6, sourceTab: 'monitor', accessTab: '角色', clustered: false };
+const pageEl = document.getElementById('main');
+const modal = document.getElementById('overlay');
+const toast = document.getElementById('toast');
+let opener, toastTimer;
+const safe = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const link = key => '#' + pages[key].path;
+const groupOf = key => modules.find(module => module.groups.some(([, keys]) => keys.includes(key)));
+const button = (text, action, cls = '') => `<button type="button" class="btn ${cls}" data-action="${action}">${text}</button>`;
+const tone = { 严重: 'critical', 警告: 'warning', 信息: 'info', 待复核: 'warning', 待排查: 'warning', 采集异常: 'warning', 部分异常: 'warning', 停用: '', 失败: 'critical', 未恢复: 'warning', 在线: 'good', 已启用: 'good', 已恢复: 'good', 已发布: 'good', 已验证: 'good', 同步正常: 'good', 请求可用: 'good', 成功: 'good', 已生效: 'good' };
+const badge = value => `<span class="badge ${tone[value] || ''}">${safe(value)}</span>`;
+const rowLink = (title, id, sub = '') => `<button type="button" class="text-btn" data-detail="${safe(id)}">${safe(title)}</button>${sub ? `<small>${safe(sub)}</small>` : ''}`;
+const wrap = (head, cells) => `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${cells.map(row => `<tr>${row.map((cell, i) => `<td data-label="${head[i]}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const empty = (title = '暂无匹配结果', sub = '调整筛选条件后再试。') => `<div class="empty"><strong>${title}</strong><span>${sub}</span></div>`;
+const option = (value, label, selected = '') => `<option value="${safe(value)}"${selected === value ? ' selected' : ''}>${safe(label)}</option>`;
+const selectField = (label, name, options, selected = '', attrs = '') => `<label class="field">${label}<select name="${name}" ${attrs}>${options.map(item => Array.isArray(item) ? option(item[0], item[1], selected) : option(item, item, selected)).join('')}</select></label>`;
+const field = (label, name, value = '', attrs = '') => `<label class="field">${label}<input name="${name}" value="${safe(value)}" ${attrs}></label>`;
+const check = (label, name, enabled = false) => `<label class="check"><input type="checkbox" name="${name}" ${enabled ? 'checked' : ''}><span>${label}</span></label>`;
+const segment = (items, value, attr, label) => `<div class="segment" role="group" aria-label="${label}">${items.map(([id,text]) => `<button type="button" data-${attr}="${id}" aria-pressed="${String(id) === String(value)}">${text}</button>`).join('')}</div>`;
+const tabs = (items, value, attr, label) => `<div class="tabbar" role="group" aria-label="${label}">${items.map(([id,text]) => `<button type="button" data-${attr}="${id}" aria-pressed="${id === value}">${text}</button>`).join('')}</div>`;
+const envList = ['生产','测试','研发'];
+const issues = [
+  { id:'issue-1', name:'支付 API 实例发生 CrashLoopBackOff', resource:'prod-k8s / payments / pay-api', level:'严重', status:'待排查', kind:'故障事件', env:'生产', time:'11/25 13:52', detail:'payments 命名空间内出现连续容器重启。优先检查最近一次部署和容器退出原因。' },
+  { id:'issue-2', name:'Windows 可用内存低于 1 GB', resource:'WIN-APP-07', level:'警告', status:'未恢复', kind:'Zabbix', env:'生产', time:'11/25 13:40', detail:'最近 5 分钟可用内存持续低于阈值，请核对进程内存与缓存压力。' },
+  { id:'issue-3', name:'待调度 Pod 缺少可用节点', resource:'dev-k8s / default / worker', level:'警告', status:'待复核', kind:'K8sGPT', env:'研发', time:'11/25 12:36', detail:'调度器未找到满足资源请求与节点选择条件的节点。检查 requests 与节点可分配资源。' },
+  { id:'issue-4', name:'日志卷空间使用率超过 85%', resource:'TEST-LOG-02 / data', level:'信息', status:'已恢复', kind:'Zabbix', env:'测试', time:'11/25 10:18', detail:'卷空间使用率已回落。可在数据源复查触发和恢复时间。' },
+  { id:'issue-5', name:'网关证书有效期不足 30 天', resource:'prod-k8s / gateway', level:'信息', status:'待排查', kind:'故障事件', env:'生产', time:'11/24 16:30', detail:'证书进入续期窗口。确认续期任务和网关使用的证书版本。' },
+];
+const clusters = [
+  { id:'prod-k8s', name:'生产-K8S 集群', env:'生产', business:'支付', mode:'外部直连', status:'在线', nodes:'24 / 24 Ready', time:'11/25 13:58', endpoint:'https://k8s-prod.example.com:6443', enabled:true },
+  { id:'test-k8s', name:'测试-K8S 集群', env:'测试', business:'运维', mode:'本地自动采集', status:'在线', nodes:'8 / 8 Ready', time:'11/25 13:57', enabled:true },
+  { id:'dev-k8s', name:'研发-K8S 集群', env:'研发', business:'运维', mode:'外部直连', status:'部分异常', nodes:'5 / 6 Ready', time:'11/25 13:53', endpoint:'https://k8s-dev.example.com:6443', enabled:true },
+];
+const sources = [
+  { id:'zabbix-prod', name:'生产主机监控', env:'生产', kind:'Zabbix', usage:'问题同步', status:'同步正常', time:'11/25 13:58', endpoint:'https://zabbix.example.com', tab:'monitor' },
+  { id:'prom-prod', name:'生产集群指标', env:'生产', kind:'Prometheus', usage:'指标证据', status:'请求可用', time:'11/25 13:54', endpoint:'https://prom.example.com', tab:'monitor' },
+  { id:'log-prod', name:'应用日志检索', env:'生产', kind:'VictoriaLogs', usage:'日志证据', status:'请求可用', time:'11/25 13:49', endpoint:'https://logs.example.com', tab:'monitor' },
+  { id:'alarm-test', name:'测试告警聚合', env:'测试', kind:'Alertmanager', usage:'告警同步', status:'采集异常', time:'11/25 13:32', endpoint:'https://alerts.example.com', tab:'monitor' },
+  { id:'grafana-dev', name:'研发排障仪表盘', env:'研发', kind:'Grafana', usage:'诊断仪表盘', status:'请求可用', time:'11/25 13:05', endpoint:'https://grafana.example.com', tab:'monitor' },
+  { id:'ecs-prod', name:'生产云主机资产', env:'生产', kind:'阿里云 ECS', usage:'主机资产', status:'同步正常', time:'11/25 13:42', tab:'assets' },
+  { id:'cvm-test', name:'测试云主机资产', env:'测试', kind:'腾讯云 CVM', usage:'主机资产', status:'停用', time:'11/24 16:22', tab:'assets' },
+];
+const documents = [
+  {id:'doc-1', name:'Kubernetes 容器反复重启排障', tag:'Kubernetes · 容器', status:'已发布', time:'11/24 15:40', detail:'先观察容器退出原因、重启次数和上次退出状态，再检查探针与最近发布。'},
+  {id:'doc-2', name:'Windows 主机内存告警处理', tag:'Zabbix · 主机', status:'已发布', time:'11/23 10:18', detail:'核对可用内存、分页文件和进程工作集。结合告警持续时间判断是否存在持续增长。'},
+  {id:'doc-3', name:'网关证书续期与回滚', tag:'Gateway API · 证书', status:'已发布', time:'11/21 14:52', detail:'先确认现网证书和绑定关系。更新后校验握手、有效期、域名和证书链。'},
+];
+const entries = {
+  policy: [
+    {id:'policy-1', name:'生产事件聚合', idText:'prod-event-merge', scope:'生产', extra:'30 分钟', status:'已生效'},
+    {id:'policy-2', name:'测试诊断输出', idText:'test-findings', scope:'测试', extra:'15 分钟', status:'停用'},
+  ],
+  environments: [
+    {id:'env-prod', name:'生产', idText:'production', scope:'1 个集群', extra:'业务生产环境', status:'已启用'},
+    {id:'env-test', name:'测试', idText:'testing', scope:'1 个集群', extra:'集成验证与联调', status:'已启用'},
+    {id:'env-dev', name:'研发', idText:'development', scope:'1 个集群', extra:'开发自测', status:'已启用'},
+  ],
+  business: [
+    {id:'biz-pay', name:'支付', idText:'payment', scope:'1 个集群', extra:'支付与清结算', status:'已启用'},
+    {id:'biz-ops', name:'运维', idText:'ops', scope:'2 个集群', extra:'平台运维', status:'已启用'},
+    {id:'biz-data', name:'数据平台', idText:'data', scope:'0 个集群', extra:'离线与实时数据', status:'停用'},
+  ],
+  governance: [
+    {id:'gov-1', name:'内存告警复盘建议', idText:'候选内容', scope:'故障事件', extra:'11/25 11:32', status:'待复核'},
+    {id:'gov-2', name:'网关证书续期与回滚', idText:'知识文档', scope:'人工维护', extra:'11/21 14:52', status:'已发布'},
+  ],
+  users: [
+    {id:'user-1', name:'平台管理员', idText:'admin', scope:'本地账号', extra:'平台管理员', status:'已启用'},
+    {id:'user-2', name:'值班工程师', idText:'oncall', scope:'LDAP', extra:'诊断值班', status:'已启用'},
+    {id:'user-3', name:'研发观察员', idText:'dev-viewer', scope:'LDAP', extra:'只读观察', status:'停用'},
+  ],
+  roles: [
+    {id:'role-1', name:'平台管理员', idText:'platform-admin', scope:'全局', extra:'系统管理、资源管理', status:'已启用'},
+    {id:'role-2', name:'诊断值班', idText:'diagnostic-oncall', scope:'生产 / 运维', extra:'诊断控制台、运维知识库', status:'已启用'},
+    {id:'role-3', name:'只读观察', idText:'read-only', scope:'研发', extra:'诊断控制台', status:'已启用'},
+  ],
+  groups: [
+    {id:'group-1', name:'SRE 值班', idText:'sre-oncall', scope:'2 名成员', extra:'诊断值班', status:'已启用'},
+    {id:'group-2', name:'研发观察员', idText:'dev-viewers', scope:'1 名成员', extra:'只读观察', status:'已启用'},
+  ],
+  audit: [
+    {id:'audit-1', name:'验证 Zabbix 连接', idText:'admin', scope:'数据源管理', extra:'11/25 13:58', status:'成功'},
+    {id:'audit-2', name:'重新校验 Kubernetes 集群', idText:'oncall', scope:'集群管理', extra:'11/25 13:53', status:'失败'},
+    {id:'audit-3', name:'更新角色归属', idText:'admin', scope:'权限管理', extra:'11/25 10:21', status:'成功'},
+  ],
+};
+const detailInfo = new Map();
+const records = [...issues, ...clusters, ...sources, ...documents, ...Object.values(entries).flat()];
+for (const record of records) detailInfo.set(record.id, record);
+
+function view() {
+  const path = location.hash.slice(1).split('?')[0];
+  if (path === '/login') return 'login';
+  return Object.keys(pages).find(key => pages[key].path === path) || 'overview';
+}
+
+function navigation() {
+  const module = groupOf(state.page);
+  document.getElementById('top-nav').innerHTML = modules.map(item => `<a href="${link(item.groups[0][1][0])}"${item === module ? ' aria-current="true"' : ''}>${item.title}</a>`).join('');
+  document.getElementById('sidebar').innerHTML = `<div class="side-inner"><p class="side-title">${module.title}</p><nav class="side-nav" aria-label="模块导航">${module.groups.map(([label, keys]) => `<div class="side-group"><p>${label}</p>${keys.map(key => `<a href="${link(key)}"${key === state.page ? ' aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${pages[key].icon}</span>${pages[key].title}</a>`).join('')}</div>`).join('')}</nav></div>`;
+  const firstKey = module.groups[0][1][0];
+  return `<nav class="breadcrumb" aria-label="面包屑"><a href="${link(firstKey)}">${module.title}</a><span aria-hidden="true">/</span><span aria-current="page">${pages[state.page].title}</span></nav>
+    <div class="mobile-nav"><select aria-label="模块页面" data-mobile-page>${module.groups.flatMap(([,keys]) => keys).map(key => option(key,pages[key].title,state.page)).join('')}</select></div>`;
+}
+
+function pageHead(action = '') {
+  const { title, intro } = pages[state.page];
+  return `<header class="page-head"><div><h1>${title}</h1><p>${intro}</p></div>${action ? `<div class="actions">${action}</div>` : ''}</header>`;
+}
+
+const severityTotals = {'': [24, 76, 12], 生产: [18, 45, 8], 测试: [4, 19, 3], 研发: [2, 12, 1]};
+const series = ['故障事件','K8sGPT','Zabbix'];
+const levels = ['严重','警告','信息'];
+function dailySeries(offset) {
+  const recent = [[2,4,2],[1,2,3],[2,5,4],[0,3,3],[2,3,2],[3,4,4],[3,3,6]];
+  if (offset >= -6) return recent[offset + 6];
+  const i = offset + 29;
+  const counts = [[1,0,1],[0,1,1],[1,1,0]][i % 3].slice();
+  if (i < 20 && i % 4 === 0) counts[i % 3]++;
+  return counts;
+}
+const dailyBuckets = new Map();
+let allocated = [0,0,0];
+const environmentTotals = envList.map(name => severityTotals[name].reduce((sum,count) => sum + count, 0));
+let seen = 0;
+for (let day = -29; day <= 0; day++) {
+  const bucket = new Map(envList.map(name => [name,[0,0,0]]));
+  const counts = dailySeries(day);
+  counts.forEach((count,seriesIndex) => {
+    for (let i = 0; i < count; i++) {
+      seen++;
+      const deficits = allocated.map((value,envIndex) => seen * environmentTotals[envIndex] / 112 - value);
+      const env = deficits.indexOf(Math.max(...deficits));
+      allocated[env]++;
+      bucket.get(envList[env])[seriesIndex]++;
+    }
+  });
+  bucket.set('',counts);
+  dailyBuckets.set(day,bucket);
+}
+function countForDay(offset) {
+  return dailyBuckets.get(offset).get(state.env);
+}
+function dateForDay(offset) {
+  const date = new Date(Date.UTC(2026,10,25 + offset));
+  return `${date.getUTCMonth()+1}/${String(date.getUTCDate()).padStart(2,'0')}`;
+}
+
+function trend() {
+  const rows = Array.from({length:state.days}, (_, i) => {
+    const offset = i - state.days + 1;
+    return { date: dateForDay(offset), counts: countForDay(offset) };
+  });
+  const sum = a => a.reduce((total,value) => total + value, 0);
+  const max = Math.max(4, Math.ceil(Math.max(...rows.map(({counts}) => sum(counts))) / 4) * 4);
+  const active = rows[state.day] || rows.at(-1);
+  return `<article class="panel">
+    <div class="panel-head"><div><h2>诊断趋势</h2><p>${rows[0].date} – ${rows.at(-1).date} · UTC+8 · 按首次发现日统计</p></div>
+    ${segment([[7,'7天'],[14,'14天'],[30,'30天']],state.days,'days','诊断趋势窗口')}</div>
+    <div class="chart">
+      <div class="plot-area"><div class="axis" aria-hidden="true">${[1,.75,.5,.25,0].map(f => `<span>${max*f}</span>`).join('')}</div>
+        <div class="plot" role="group" aria-label="每日诊断量" style="--days:${state.days}">${rows.map(({date,counts},i) => {
+          const label = date + ' · ' + series.map((key,j) => key + ' ' + counts[j]).join(' · ');
+          return `<button class="day" type="button" data-day="${i}" title="${label}" aria-label="${label}" aria-pressed="${state.day===i}">${counts.map((count,j) => count ? `<span class="bar series-${j}" style="--share:${count*100/max}%"></span>` : '').join('')}</button>`;
+        }).join('')}</div></div>
+      <div class="x-axis" aria-hidden="true">${[0,Math.round((rows.length-1)/3),Math.round((rows.length-1)*2/3),rows.length-1].map(i => `<span>${rows[i].date}</span>`).join('')}</div>
+      <div class="chart-footer"><span><strong>${active.date} · ${sum(active.counts)} 条</strong>　窗口内 ${sum(rows.map(row => sum(row.counts)))} 条</span>
+        <div class="legend">${series.map((name,i) => `<span><i class="swatch series-${i}"></i>${name} ${active.counts[i]}</span>`).join('')}</div></div>
+    </div>
+  </article>`;
+}
+
+function overviewContent() {
+  const values = severityTotals[state.env];
+  const total = values.reduce((sum,n) => sum+n,0);
+  const options = [['','全部环境'],...envList];
+  const distribution = `<article class="panel"><div class="panel-head"><div><h2>严重度分布</h2><p>${state.env || '全部环境'} · 当前诊断记录</p></div></div>
+    <div class="distribution"><div class="ring" aria-hidden="true" style="--critical:${values[0]/total*100}%;--warning-edge:${(values[0]+values[1])/total*100}%"><div class="ring-inner"><strong>${total}</strong><small>诊断记录</small></div></div>
+    ${levels.map((level,i) => `<div class="distribution-row"><span><i class="swatch ${tone[level]}"></i>${level}</span><strong>${values[i]}</strong><small>${Math.round(values[i]/total*100)}%</small></div>`).join('')}</div></article>`;
+  const recent = issues.filter(item => (!state.env || item.env === state.env) && (!state.level || item.level === state.level));
+  return pageHead(`<label class="field">环境范围<select aria-label="环境范围" data-overview-env>${options.map(item => Array.isArray(item) ? option(item[0],item[1],state.env) : option(item,item,state.env)).join('')}</select></label>`) +
+    `<div class="stack">
+      <section class="metrics" aria-label="诊断记录统计">${['',...levels].map((level,i) => `<button class="panel metric" type="button" data-level="${level}" aria-controls="recent-issues" aria-pressed="${state.level===level}"><span class="metric-top"><span class="metric-icon" aria-hidden="true">${['▤','!','△','i'][i]}</span>${level || '诊断记录总数'}</span><strong>${[total,...values][i]}</strong></button>`).join('')}</section>
+      <section class="analysis-grid" aria-label="诊断数据分析">${trend()}${distribution}</section>
+      <section class="panel table-panel" id="recent-issues"><div class="panel-head"><div><h2>最近诊断${state.level ? ' · '+state.level : ''}</h2><p>按首次发现时间倒序 · UTC+8</p></div><a class="btn small" href="${link('incidents')}">查看故障事件</a></div>
+      ${recent.length ? issueTable(recent) : empty('该范围暂无最近记录','可切换环境或点击「诊断记录总数」重置级别。')}</section>
+    </div>`;
+}
+
+function issueTable(rows) {
+  return wrap(['问题','级别','处置状态','来源','首次发现'], rows.map(row =>
+    [rowLink(row.name,row.id,row.resource),badge(row.level),badge(row.status),safe(row.kind),safe(row.time)]));
+}
+function clusterTable(rows) {
+  return wrap(['集群','环境 / 业务线','接入方式','采集状态','节点健康','最近采集','操作'], rows.map(row =>
+    [rowLink(row.name,row.id,row.id),safe(row.env + ' / ' + row.business),safe(row.mode),badge(row.status),safe(row.nodes),safe(row.time),
+      `<button class="btn small" type="button" data-edit-cluster="${safe(row.id)}">${row.mode === '本地自动采集' ? '编辑归属' : '编辑配置'}</button>`]));
+}
+function sourceTable(rows) {
+  return wrap(['数据源','类型','环境','用途','运行状态','最近活动'], rows.map(row =>
+    [rowLink(row.name,row.id,row.endpoint),safe(row.kind),safe(row.env),safe(row.usage),badge(row.status),safe(row.time)]));
+}
+function entryTable(rows, [scope,extra]) {
+  return wrap(['名称',scope,extra,'状态'], rows.map(row => [rowLink(row.name,row.id,row.idText),safe(row.scope),safe(row.extra),badge(row.status)]));
+}
+
+function currentList() {
+  const summary = {
+    incidents: { rows: issues.filter(item => item.kind === '故障事件'), table: issueTable, search: '搜索事件或受影响对象' },
+    findings: { rows: issues.filter(item => item.kind === 'K8sGPT'), table: issueTable, search: '搜索资源或诊断名称' },
+    clusters: { rows: clusters, table: clusterTable, search: '搜索集群名称、实例 ID' },
+    sources: { rows: sources.filter(row => row.tab === state.sourceTab), table: sourceTable, search: '搜索名称、类型或访问地址' },
+    wiki: { rows: documents, search: '搜索标题、标签或正文摘要' },
+  };
+  const headers = { policy:['作用范围','合并周期'], environments:['关联范围','说明'], business:['关联范围','说明'],
+    governance:['来源','更新时间'], users:['身份来源','角色'], audit:['操作模块','时间 · UTC+8'] };
+  if (state.page === 'access') {
+    const role = state.accessTab === '角色';
+    if (state.accessTab === '权限目录') {
+      const rows = modules.flatMap(module => module.groups.flatMap(([label,keys]) => keys.map(key => ({
+        name:pages[key].title, scope:module.title, extra:label, key }))));
+      return { rows, search:'搜索模块或页面名称', table: items => wrap(['页面','一级模块','导航分组'],
+        items.map(row => [`<a class="text-btn" href="${link(row.key)}">${row.name}</a>`,row.scope,row.extra])) };
+    }
+    return { rows: entries[role ? 'roles' : 'groups'], search:'搜索名称或标识', table: rows => entryTable(rows,role ? ['授权范围','已授权模块'] : ['成员','关联角色']) };
+  }
+  return summary[state.page] || { rows: entries[state.page], table: rows => entryTable(rows,headers[state.page]), search:'搜索名称或标识' };
+}
+function listKey() { return state.page + (state.page === 'sources' ? state.sourceTab : state.page === 'access' ? state.accessTab : ''); }
+function listFilter() { return filtersByPage.get(listKey()) || {}; }
+function listRows(config) {
+  const f = listFilter();
+  const query = (f.query ?? '').trim().toLowerCase();
+  return config.rows.filter(row => (!f.env || row.env === f.env) && (!f.status || row.status === f.status)
+    && (!f.kind || row.kind === f.kind) && (!query || Object.values(row).some(value => String(value).toLowerCase().includes(query))));
+}
+function cards(rows) {
+  return `<div class="catalog-grid">${rows.map(row => `<article class="panel doc-card"><small>${row.tag}</small><h2>${rowLink(row.name,row.id)}</h2><p>${row.detail}</p><small>更新于 ${row.time}</small></article>`).join('')}</div>`;
+}
+function listBody(config, rows) {
+  if (!rows.length) return `<div class="panel">${empty()}</div>`;
+  if (state.page === 'wiki') return cards(rows);
+  if (state.page === 'sources' && state.clustered) {
+    return `<div class="panel table-panel">${[...new Set(rows.map(row => row.kind))].map(kind => {
+      const items = rows.filter(row => row.kind === kind);
+      return `<details class="group" open><summary>${kind} <small>${items.length} 个</small></summary>${sourceTable(items)}</details>`;
+    }).join('')}</div>`;
+  }
+  return `<div class="panel table-panel">${config.table(rows)}</div>`;
+}
+function listPage() {
+  const config = currentList();
+  const rows = listRows(config);
+  const f = listFilter();
+  const action = {
+    sources: button('＋ 新增数据源','add-source','primary'), clusters: button('＋ 接入集群','add-cluster','primary'),
+    environments:button('＋ 新增环境','add-entry','primary'), business:button('＋ 新增业务线','add-entry','primary'),
+  }[state.page];
+  const possible = key => [...new Set(config.rows.map(row => row[key]).filter(Boolean))];
+  let tabbar = '';
+  if (state.page === 'sources') tabbar = tabs([['monitor','监控与诊断'],['assets','资产数据源']],state.sourceTab,'source-tab','数据源类别');
+  if (state.page === 'access') tabbar = tabs(['角色','用户组','权限目录'].map(item => [item,item]),state.accessTab,'access-tab','权限工作区');
+  return pageHead(action) + `<div class="stack">${tabbar}<section class="panel panel-pad filters" aria-label="列表筛选">
+    <label class="field search">搜索<input type="search" name="query" data-filter value="${safe(f.query)}" placeholder="${config.search}"></label>
+    ${possible('kind').length > 1 && state.page === 'sources' ? selectField('类型','kind',[['','全部类型'],...possible('kind')],f.kind,'data-filter') : ''}
+    ${possible('env').length ? selectField('环境','env',[['','全部环境'],...envList],f.env,'data-filter') : ''}
+    ${possible('status').length > 1 && state.page !== 'wiki' ? selectField('状态','status',[['','全部状态'],...possible('status')],f.status,'data-filter') : ''}
+    ${state.page === 'sources' ? `<label class="check"><input type="checkbox" data-group-sources ${state.clustered?'checked':''}><span>按类型分组</span></label>` : ''}
+    <span class="result" data-list-count aria-live="polite">${rows.length} 项</span></section>
+    <div id="list-results">${listBody(config,rows)}</div></div>`;
+}
+
+function settingsPage() {
+  if (state.page === 'password') return pageHead() + `<form class="panel panel-pad stack" data-form="password" style="max-width:620px">
+    ${field('当前密码','old','','type="password" autocomplete="off" required')}
+    ${field('新密码','new','','type="password" autocomplete="new-password" minlength="8" required')}
+    ${field('确认新密码','repeat','','type="password" autocomplete="new-password" minlength="8" required')}
+    <div class="actions"><button class="btn primary">保存密码</button><output role="status"></output></div></form>`;
+  return pageHead() + `<form class="panel panel-pad stack" data-form="ldap" style="max-width:780px"><h2>LDAP 连接</h2>
+    <div class="form-grid">${field('服务器地址','endpoint','ldaps://ldap.example.com:636','required')}${field('搜索 Base DN','base','dc=example,dc=com','required')}</div>
+    ${check('启用 LDAP 登录','enabled',true)}<div class="actions"><button class="btn primary">保存配置</button>${button('测试连接','test-ldap')}<output role="status"></output></div></form>`;
+}
+
+function loginPage() {
+  return `<section class="panel login-card"><div><p class="login-kicker">kube-aiops</p><h1>登录控制台</h1><p class="cell-meta">使用平台账号或企业 LDAP 账号登录。</p></div>
+    <form class="stack" data-form="login">${field('账号','username','','placeholder="输入演示账号" required')}
+    ${field('密码','secret','','type="password" autocomplete="off" placeholder="输入演示密码" required')}
+    ${check('使用 LDAP 账号','ldap')}
+    <button class="btn primary" type="submit">登录</button></form></section>`;
+}
+function paint(focusKey = '') {
+  document.body.classList.toggle('login-mode',state.page === 'login');
+  if (state.page === 'login') {
+    document.querySelector('#top-nav [aria-current]')?.removeAttribute('aria-current');
+    pageEl.innerHTML = loginPage();
+    return;
+  }
+  pageEl.innerHTML = navigation() + (state.page === 'overview' ? overviewContent() :
+    ['ldap','password'].includes(state.page) ? settingsPage() : listPage());
+  if (focusKey) pageEl.querySelector(focusKey)?.focus({preventScroll:true});
+}
+function refreshList() {
+  const config = currentList();
+  const rows = listRows(config);
+  document.getElementById('list-results').innerHTML = listBody(config,rows);
+  pageEl.querySelector('[data-list-count]').textContent = rows.length + ' 项';
+}
+function notify(message) {
+  window.clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.hidden = false;
+  toastTimer = window.setTimeout(() => { toast.hidden = true; }, 3400);
+}
+
+function showOverlay(title, subtitle, body, footer, {drawer = false, form = ''} = {}) {
+  if (!modal.open) opener = document.activeElement;
+  modal.classList.toggle('drawer',drawer);
+  const tag = form ? 'form' : 'div';
+  modal.innerHTML = `<${tag} class="overlay" ${form ? `data-form="${form}"` : ''}>
+    <header class="overlay-head"><div><h2 id="overlay-title" tabindex="-1">${title}</h2>${subtitle ? `<p>${subtitle}</p>` : ''}</div><button type="button" class="close" aria-label="关闭" data-action="dismiss">×</button></header>
+    <div class="overlay-body">${body}</div>
+    <footer class="overlay-foot">${footer}</footer></${tag}>`;
+  if (!modal.open) modal.showModal();
+  modal.querySelector('h2').focus();
+}
+modal.addEventListener('close', () => {
+  if (modal.open) return;
+  modal.replaceChildren();
+  if (opener?.isConnected) opener.focus();
+  else pageEl.querySelector('.page-head button, h1')?.focus();
+});
+const cancel = button('取消','dismiss');
+const save = text => `<button type="submit" class="btn primary">${text}</button>`;
+const footer = (actions, hint = '') => `<small role="status" data-overlay-status>${hint}</small><div class="actions">${actions}</div>`;
+const describe = rows => `<dl class="details-list">${rows.map(([label,value]) => `<dt>${label}</dt><dd>${safe(value)}</dd>`).join('')}</dl>`;
+
+function openDetail(id) {
+  const item = detailInfo.get(id);
+  if (!item) return;
+  const fields = [
+    ['实例 ID', item.nodes ? item.id : ''],['状态',item.status],['级别',item.level],['来源 / 类型',item.kind],
+    ['环境',item.env],['业务线',item.business],['主机或资源',item.resource],['接入方式',item.mode],['节点健康',item.nodes],
+    ['访问地址',item.endpoint],['关联范围',item.scope],['说明',item.extra],['标签',item.tag],['时间 · UTC+8',item.time],
+  ].filter(([,value]) => value);
+  let action = button('关闭','dismiss');
+  if (item.nodes) action += `<button type="button" class="btn primary" data-edit-cluster="${safe(item.id)}">${item.mode === '本地自动采集' ? '编辑归属' : '编辑配置'}</button>`;
+  if (item.tab && item.kind === 'Zabbix') action += `<button type="button" class="btn primary" data-edit-source="${safe(item.id)}">调整连接</button>`;
+  if (state.page === 'environments' || state.page === 'business') action += `<button type="button" class="btn primary" data-edit-entry="${safe(item.id)}">编辑</button>`;
+  showOverlay(safe(item.name),safe(pages[state.page].title),
+    `<div class="stack"><section class="box"><h3>基本信息</h3>${describe(fields)}</section>
+    ${item.detail ? `<section class="box"><h3>${item.tag ? '处理步骤' : '诊断说明'}</h3><p>${safe(item.detail)}</p></section>` : ''}
+    ${item.level ? `<details class="box"><summary>关联证据</summary><p>${safe(item.kind)} · ${safe(item.resource)} · ${safe(item.time)}</p></details>` : ''}</div>`,
+    footer(action),{drawer:true});
+}
+
+const connectors = {
+  monitor: [['Zabbix','同步问题和主机组'],['Prometheus','提供指标证据'],['VictoriaLogs','提供日志证据'],['Alertmanager','同步告警'],['Grafana','提供诊断仪表盘']],
+  assets: [['阿里云 ECS','同步云主机资产'],['腾讯云 CVM','同步云主机资产']],
+};
+function sourceChooser() {
+  showOverlay('新增数据源',state.sourceTab === 'monitor' ? '监控与诊断' : '资产数据源',
+    `<div class="catalog-grid">${connectors[state.sourceTab].map(([name,usage]) => `<button type="button" class="btn" data-connector="${name}"><div><strong>${name}</strong><small class="cell-meta">${usage}</small></div></button>`).join('')}</div>`,footer(cancel));
+}
+function sourceSetup(kind, id = '') {
+  const item = detailInfo.get(id);
+  const isZabbix = kind === 'Zabbix';
+  const auth = isZabbix ? `<div class="form-grid" aria-label="认证方式">
+    <label class="option-card"><input type="radio" name="auth" value="token" checked><span><strong>API Token</strong><small>用于长期同步</small></span></label>
+    <label class="option-card"><input type="radio" name="auth" value="password"><span><strong>账号密码</strong><small>使用只读账号</small></span></label>
+    </div><div data-account hidden>${field('账号','username','','autocomplete="off"')}</div>${field('API Token','secret','','type="password" autocomplete="new-password" placeholder="输入演示凭据" required')}`
+    : field('访问凭据','secret','','type="password" autocomplete="new-password" placeholder="输入演示凭据" required');
+  const connection = `<section class="box stack"><h3>连接</h3><div class="form-grid">
+    ${selectField('环境','env',[['','请选择环境'],...envList],item?.env,'required')}${field('名称','name',item?.name,'placeholder="例如 生产主机监控" required')}</div>
+    ${field(state.sourceTab === 'assets' ? '服务地址' : kind + ' 访问地址','endpoint',item?.endpoint,'type="url" placeholder="https://monitoring.example.com" required')}
+    ${auth}<p role="status" data-test-feedback></p></section>`;
+  const scope = `<section class="box stack"><h3>${isZabbix?'采集范围':'接入验证'}</h3><div data-scope-result class="subdued-box"><p>${isZabbix?'测试连接成功后，可选择主机组并预览问题。':'测试连接成功后，可确认数据源的可读状态。'}</p></div></section>`;
+  showOverlay((id ? '调整 ' : '接入 ') + safe(kind),'填写连接信息后，在同一页完成测试和保存。',
+    `<div class="overlay-grid" data-source-kind="${safe(kind)}" data-edit-id="${safe(id)}">${connection}${scope}</div>`,
+    footer(cancel + button('测试连接','test-source') + `<button type="submit" class="btn primary" disabled>${id?'保存配置':'保存并启用'}</button>`,'先测试连接'),{form:'source'});
+}
+function sourceReady(form) {
+  const kind = form.querySelector('[data-source-kind]').dataset.sourceKind;
+  const ready = form.dataset.tested === 'true' && (kind !== 'Zabbix' || !!form.elements.group?.checked);
+  form.querySelector('[type=submit]').disabled = !ready;
+  form.querySelector('[data-overlay-status]').textContent = ready ? '已验证 · 可保存' : form.dataset.tested === 'true' ? '请选择采集主机组' : '先测试连接';
+  if (kind === 'Zabbix' && form.dataset.tested === 'true') form.querySelector('[data-scope-preview]').textContent =
+    ready ? '8 台主机 · 2 条活跃问题' : '选择主机组后查看问题预览。';
+}
+function testSource(form) {
+  for (const name of ['env','name','endpoint','username','secret']) {
+    const field = form.elements[name];
+    if (field && !field.closest('[hidden]') && !field.reportValidity()) return;
+  }
+  form.dataset.tested = 'true';
+  form.querySelector('[data-test-feedback]').innerHTML = badge('已验证') + '　连接成功 · 演示结果';
+  const box = form.querySelector('[data-scope-result]');
+  const zabbix = form.querySelector('[data-source-kind]').dataset.sourceKind === 'Zabbix';
+  box.innerHTML = zabbix ? `<strong>采集主机组</strong>${check('演示主机组 · Windows 应用主机','group')}<p data-scope-preview></p>`
+    : '<strong>连接测试成功</strong><p>演示范围内的资源可读。</p>';
+  sourceReady(form);
+}
+function clusterSetup(id = '') {
+  const item = detailInfo.get(id);
+  const local = item?.mode === '本地自动采集';
+  const basic = `<section class="box stack" data-pane="basic"><h3>名称与归属</h3><div class="form-grid">
+    ${field('实例 ID','id',item?.id,id ? 'readonly required' : 'required placeholder="例如 prod-k8s"')}
+    ${field('集群名称','name',item?.name,'required')}
+    ${selectField('环境','env',[['','请选择环境'],...envList],item?.env,'required')}
+    ${selectField('业务线','business',['运维','支付','数据平台'],item?.business,'required')}</div>
+    ${local ? '' : check('启用实例','enabled',item?.enabled !== false)}</section>`;
+  const connection = `<section class="box stack" data-pane="connect" hidden><h3>Kubernetes API 与直连凭据</h3>
+    ${field('Kubernetes API 地址','endpoint',item?.endpoint,'type="url" placeholder="https://kubernetes.example.com:6443"')}
+    ${selectField('凭据方式','credential',['沿用 kubeconfig','Token 与 CA'])}</section>`;
+  const observe = `<section class="box stack" data-pane="observe" hidden><h3>诊断 Engine</h3><div class="form-grid">
+    ${field('Engine 命名空间','namespace','k8sgpt-operator-system')}${field('Engine 实例名','engine','k8sgpt')}</div>
+    <details class="box"><summary>观测证据源</summary><div class="stack">${field('Prometheus 地址','prometheus')}${field('VictoriaLogs 地址','victorialogs')}${field('Alertmanager 地址','alertmanager')}</div></details>
+    ${check('启用 AI 复核（读取目标 Engine Secret）','ai',item?.ai)}</section>`;
+  const nav = `<nav class="step-nav" aria-label="配置分区">${[['basic','基本信息'],['connect','连接与凭据'],['observe','观测与诊断']].map(([key,name]) =>
+    `<button type="button" data-step="${key}" aria-pressed="${key==='basic'}">${name}</button>`).join('')}</nav>`;
+  showOverlay(id ? local ? '编辑集群归属' : '编辑集群配置' : '新增外部直连集群',
+    item ? safe(item.name + ' · ' + item.mode) : '外部直连',
+    local ? basic : `<div class="step-form">${nav}<div>${basic}${connection}${observe}</div></div>`,
+    footer(cancel + (local ? '' : button('测试连接','test-cluster')) + save('保存配置')),{form:'cluster'});
+  modal.querySelector('form').dataset.editId = id;
+}
+function entrySetup(id = '') {
+  const item = detailInfo.get(id);
+  const label = state.page === 'environments' ? '环境' : '业务线';
+  showOverlay((id?'编辑':'新增')+label,'名称用于页面展示，ID 用于绑定和筛选。',
+    `<div class="stack">${field('名称','name',item?.name,'required')}${field('ID','id',item?.idText,id?'readonly required':'required')}
+    ${field('说明','extra',item?.extra)}${check('启用','enabled',item?.status !== '停用')}</div>`,
+    footer(cancel + save('保存')),{form:'entry'});
+  modal.querySelector('form').dataset.editId = id;
+}
+function saveForm(form) {
+  const data = new FormData(form);
+  const value = name => String(data.get(name) ?? '').trim();
+  let row;
+  let collection;
+  let editingId = form.dataset.editId;
+  if (form.dataset.form === 'source') {
+    if (form.querySelector('[type=submit]').disabled) return;
+    const holder = form.querySelector('[data-source-kind]');
+    const {sourceKind:kind, editId} = holder.dataset;
+    editingId = editId;
+    const prior = detailInfo.get(editingId);
+    collection = sources;
+    row = {...prior,id:editingId || 'source-demo-'+Date.now(), name:value('name'), env:value('env'),kind,
+      usage:connectors[state.sourceTab].find(item => item[0] === kind)[1],status:'同步正常',endpoint:value('endpoint'),time:'刚刚',tab:state.sourceTab};
+  } else if (form.dataset.form === 'cluster') {
+    const prior = detailInfo.get(editingId);
+    collection = clusters;
+    if (!editingId && clusters.some(row => row.id === value('id'))) {
+      form.querySelector('[data-overlay-status]').textContent = '实例 ID 已存在，请输入其他 ID。';
+      return;
+    }
+    row = {...prior,id:value('id'),name:value('name'),env:value('env'),business:value('business'),
+      mode:prior?.mode ?? '外部直连',status:prior?.mode === '本地自动采集' || data.has('enabled') ? '在线' : '停用',
+      nodes:prior?.nodes ?? '待采集',time:'刚刚',endpoint:value('endpoint'),enabled:data.has('enabled'),ai:data.has('ai')};
+  } else {
+    const prior = detailInfo.get(editingId);
+    collection = entries[state.page];
+    if (!editingId && collection.some(row => row.idText === value('id'))) {
+      form.querySelector('[data-overlay-status]').textContent = 'ID 已存在，请输入其他 ID。';
+      return;
+    }
+    row = {...prior,id:editingId || 'catalog-demo-'+Date.now(),name:value('name'),idText:value('id'),
+      status:data.has('enabled')?'已启用':'停用',scope:prior?.scope ?? '0 个集群',extra:value('extra')};
+  }
+  if (editingId) collection.splice(collection.findIndex(item => item.id === editingId),1,row);
+  else collection.unshift(row);
+  detailInfo.set(row.id,row);
+  modal.close();
+  refreshList();
+  notify('已保存演示配置');
+}
+
+document.addEventListener('click', event => {
+  const trigger = event.target.closest('button');
+  if (!trigger) return;
+  const data = trigger.dataset;
+  if (data.days) { state.days = Number(data.days); state.day = state.days-1; paint('[data-days="'+data.days+'"]'); return; }
+  if (Object.hasOwn(data,'day')) { state.day = Number(data.day); paint('[data-day="'+data.day+'"]'); return; }
+  if (Object.hasOwn(data,'level')) { state.level = data.level; paint('[data-level="'+data.level+'"]'); return; }
+  if (data.sourceTab) { state.sourceTab = data.sourceTab; paint('[data-source-tab="'+data.sourceTab+'"]'); return; }
+  if (data.accessTab) { state.accessTab = data.accessTab; paint('[data-access-tab="'+data.accessTab+'"]'); return; }
+  if (data.detail) { openDetail(data.detail); return; }
+  if (data.connector) { sourceSetup(data.connector); return; }
+  if (data.editCluster) { clusterSetup(data.editCluster); return; }
+  if (data.editEntry) { entrySetup(data.editEntry); return; }
+  if (data.editSource) { sourceSetup('Zabbix',data.editSource); return; }
+  if (data.step) {
+    for (const step of modal.querySelectorAll('[data-step]')) step.setAttribute('aria-pressed',String(step === trigger));
+    for (const panel of modal.querySelectorAll('[data-pane]')) panel.hidden = panel.dataset.pane !== data.step;
+    return;
+  }
+  const form = trigger.closest('form');
+  switch (data.action) {
+    case 'dismiss': modal.close(); break;
+    case 'add-source': sourceChooser(); break;
+    case 'add-cluster': clusterSetup(); break;
+    case 'add-entry': entrySetup(); break;
+    case 'test-source': testSource(form); break;
+    case 'test-cluster': form.querySelector('[data-overlay-status]').textContent = '演示结果 · Kubernetes API 连接成功'; break;
+    case 'test-ldap': form.querySelector('output').textContent = '演示结果 · LDAP 连接成功'; break;
+  }
+});
+document.addEventListener('input', event => {
+  const target = event.target;
+  if (target.matches('[data-filter]')) {
+    filtersByPage.set(listKey(),{...listFilter(),[target.name]:target.value});
+    refreshList();
+  }
+  const form = target.form;
+  if (form?.dataset.form !== 'source') return;
+  if (target.name === 'auth') {
+    const password = target.value === 'password';
+    form.querySelector('[data-account]').hidden = !password;
+    form.elements.username.required = password;
+    form.elements.secret.value = '';
+    form.elements.secret.closest('label').firstChild.textContent = password ? '密码' : 'API Token';
+  }
+  if (target.name !== 'group') {
+    if (form.dataset.tested === 'true') {
+      form.dataset.tested = 'false';
+      form.querySelector('[data-test-feedback]').textContent = '';
+      form.querySelector('[data-scope-result]').textContent = '连接信息已修改，请重新测试。';
+    }
+  }
+  sourceReady(form);
+});
+document.addEventListener('change', event => {
+  const target = event.target;
+  if (target.matches('[data-mobile-page]')) location.hash = link(target.value);
+  if (target.matches('[data-group-sources]')) { state.clustered = target.checked; refreshList(); }
+  if (target.matches('[data-overview-env]')) { state.env = target.value; paint('[data-overview-env]'); }
+});
+document.addEventListener('invalid', event => {
+  const pane = event.target.closest('[data-pane][hidden]');
+  if (pane) modal.querySelector('[data-step="' + pane.dataset.pane + '"]')?.click();
+}, true);
+document.addEventListener('submit', event => {
+  const form = event.target;
+  if (!form.dataset.form) return;
+  event.preventDefault();
+  if (form.dataset.form === 'login') {
+    location.hash = link('overview');
+  } else if (form.dataset.form === 'password') {
+    const matches = form.elements.new.value === form.elements.repeat.value;
+    form.querySelector('output').textContent = matches ? '演示结果 · 密码已更新' : '两次输入的新密码不一致。';
+    if (matches) form.reset();
+  } else if (form.dataset.form === 'ldap') form.querySelector('output').textContent = '已保存演示配置';
+  else saveForm(form);
+});
+function route() {
+  const next = view();
+  if (modal.open) modal.close();
+  state.page = next;
+  paint();
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange', () => { if (location.hash !== '#main') route(); });
+route();
+</script>
+</body>
+</html>

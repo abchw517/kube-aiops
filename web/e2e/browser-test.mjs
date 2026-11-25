@@ -2276,7 +2276,7 @@ async function assertRolePermissionSelection(cdp) {
 }
 
 async function assertPortalFollowupPrototypes(cdp) {
-  const portalPrototype = new URL("../../docx/portal-ui-prototype.html", import.meta.url);
+  const portalPrototype = new URL("../../docx/portal-ui/shell-regression.html", import.meta.url);
   await assertPage(cdp, `${portalPrototype.href}#/diagnostics`,
     text => text.includes("全部可见范围") && text.includes("最近故障事件"), "Prototype did not show the on-call dashboard");
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -2321,11 +2321,11 @@ async function assertPortalFollowupPrototypes(cdp) {
   await assertPage(cdp, `${portalPrototype.href}#/admin/access`,
     text => text.includes("权限配置") && text.includes("角色列表"), "Global prototype lost the permission workspace");
   const catalog = await cdp.send("Runtime.evaluate", { returnByValue: true,
-    expression: `document.querySelector('.permission-links a[href="permission-catalog/prototype.html"]')?.textContent` });
+    expression: `document.querySelector('.permission-links a[href="../system-management/permission-catalog.html"]')?.textContent` });
   if (catalog.result?.value !== "权限配置") throw new Error("Global prototype did not rename the permission action");
   const frame = await cdp.send("Runtime.evaluate", { returnByValue: true,
     expression: `document.querySelector('iframe[title="角色配置与用户组"]')?.getAttribute("src")` });
-  if (frame.result?.value !== "permission-catalog/group-admin-prototype.html?embed") {
+  if (frame.result?.value !== "../system-management/group-admin-prototype.html?embed") {
     throw new Error("Global prototype is not using the PR #111 permission workflow");
   }
 
@@ -2362,10 +2362,10 @@ async function assertPortalFollowupPrototypes(cdp) {
   })()` });
   if (!ldap.result?.value) throw new Error("Global LDAP prototype did not require verification before saving");
 
-  const resource = new URL("../../docx/resource-management/prototype.html", import.meta.url);
+  const resource = new URL("../../docx/resource-management/cluster-onboarding.html", import.meta.url);
   await assertPage(cdp, resource.href, text => text.includes("Kubernetes 集群管理") && text.includes("采集状态"),
     "Resource-management prototype lost the renamed cluster page");
-  const system = new URL("../../docx/system-management/prototype.html#ldap", import.meta.url);
+  const system = new URL("../../docx/system-management/admin-workspace.html#ldap", import.meta.url);
   await assertPage(cdp, system.href, text => text.includes("LDAP 连接配置"), "System-management LDAP prototype did not render");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-ldap-section] summary").click()` });
   await assertText(cdp, text => ["LDAP URL", "用户与组搜索设置", "测试员工认证", "保存并启用"].every(label => text.includes(label)),
@@ -2373,7 +2373,7 @@ async function assertPortalFollowupPrototypes(cdp) {
 }
 
 async function assertPermissionPrototype(cdp) {
-  const directory = new URL("../../docx/permission-catalog/prototype.html", import.meta.url);
+  const directory = new URL("../../docx/system-management/permission-catalog.html", import.meta.url);
   await assertPage(cdp, directory.href, text => text.includes("编辑示例角色") && text.includes("权限编码"),
     "Permission catalog HTML prototype did not initialize");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('a[href="group-admin-prototype.html"]').click()` });

@@ -15,7 +15,7 @@
 
 交付与验收记录见 [Phase 1.4](docx/phase-1.4-completion.md) 和 [Phase 2](docx/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docx/kubernetes-v1.36-baseline.md)。
 
-系统管理支持按诊断控制台、运维知识库、资源管理和系统管理浏览权限点。接口权限可逐项或按当前结果批量勾选，并绑定数据范围后保存。超级管理员可让 LDAP 员工通过用户组继承系统管理员。相关需求、原型及验收用例见 [权限目录](docx/permission-catalog/00-prd.md)。
+系统管理支持按诊断控制台、运维知识库、资源管理和系统管理浏览权限点。接口权限可逐项或按当前结果批量勾选，并绑定数据范围后保存。超级管理员可让 LDAP 员工通过用户组继承系统管理员。相关需求、原型及验收用例见 [权限目录](docx/system-management/00-prd.md#角色工作区与权限目录)。
 
 ## Web Portal Demo
 
@@ -90,7 +90,7 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 
 ## 目录结构
 
-目录与文件的组织要求见[代码规范](docx/coding-standards.md)。
+目录与文件的组织要求见[代码规范](docx/coding-standards.md)。产品设计、PRD、开发任务、测试与交互原型从[五个模块文档入口](docx/development-standard.md#模块文档入口)查阅和更新。
 
 ```text
 .
@@ -545,4 +545,4 @@ Remediation -> Disabled
 - Phase 4 · 人工审批修复
 - Phase 5 · 受控自动修复
 
-阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。 Phase 3 的知识回写与诊断检索见 [LLM Wiki 集成设计](docx/llm-wiki-integration.md)。
+阶段目标、进入条件和验收标准见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。 Phase 3 的知识回写与诊断检索见 [LLM Wiki 集成设计](docx/operations-knowledge/design.md#llm-wiki-知识闭环与演进)。
