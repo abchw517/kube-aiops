@@ -219,6 +219,6 @@ Go 客户端调用 POST /api/chat，读取 analysis，超时 45 秒。缺少精�
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings --from-file=bindings.json=./bindings.json --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic --patch-file deploy/examples/holmes/api-bindings-patch.yaml
+kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic --patch-file deploy/examples/holmes/api-bindings.patch
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api
 ```

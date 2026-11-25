@@ -445,7 +445,7 @@ Zabbix 的 `sourceId` 来自告警快照，范围为环境和业务。Alertmanag
 kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings \
   --from-file=bindings.json=./bindings.json --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic \
-  --patch-file deploy/examples/holmes/api-bindings-patch.yaml
+  --patch-file deploy/examples/holmes/api-bindings.patch
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
 ```
 
