@@ -13,7 +13,9 @@
   - Phase 1.4.4: Sanitizer — **Completed**
   - Phase 1.4.5: Production Gates — **Completed**
 - Phase 2: Observability Correlation — **Completed**
-- Phase 3: RCA Agent + Runbook — **Planned**
+- Phase 3: RCA Agent + Runbook — **In progress**
+  - Initial Holmes integration implemented for Zabbix and Alertmanager alerts, Finding review, incident RCA and Wiki Q&A.
+  - Local Go, Portal and contract checks passed with mocked Holmes. Real data sources, model/tool scope and production rollout remain acceptance items.
 
 ## Phase 1.3 Completion Evidence
 
