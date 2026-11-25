@@ -7,6 +7,7 @@ import "./views/permissions/audit.css";
 import "./views/permissions/authentication.css";
 import "./views/permissions/permission-workspace.css";
 import "./views/resources/resources.css";
+import "./views/resources/catalog.css";
 import "./views/wiki/wiki.css";
 
 const root = document.querySelector<HTMLElement>("#app");

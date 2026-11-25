@@ -556,54 +556,132 @@ try {
       expression: 'document.querySelector("dialog[open] [data-onboarding-mode] input[name=environment]").readOnly', returnByValue: true,
     });
     if (!lockedEnvironment.result?.value) throw new Error("A collected cluster must have a read-only environment");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/environments",
+    const catalogOrigin = "http://127.0.0.1:4173";
+    await assertPage(cdp, `${catalogOrigin}/#/resources/environments`,
       (text) => text.includes("环境管理") && text.includes("新增环境"), "Environment catalog did not render");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 720, deviceScaleFactor: 1, mobile: true });
+    await assertDOM(cdp, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`, "Catalog overflowed at 390 px");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="add"]').click()` });
     const idPattern = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-      const id = document.querySelector('dialog[open] input[name="id"]');
+      const form = document.querySelector("[data-resource-catalog]");
+      const id = form.elements.id;
       id.value = "new-dev";
       const valid = id.checkValidity();
       id.value = "INVALID";
-      return valid && !id.checkValidity();
+      const invalid = !id.checkValidity();
+      id.value = "";
+      return valid && invalid && form.querySelector("footer").getBoundingClientRect().bottom <= innerHeight;
     })()` });
-    if (!idPattern.result?.value) throw new Error("New catalog IDs must follow the browser ID pattern");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-catalog-action="close"]').click()` });
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="edit"]').click()` });
-    const writable = await cdp.send("Runtime.evaluate", {
-      expression: 'document.querySelector("[data-catalog-dialog] input[name=id]").readOnly', returnByValue: true,
-    });
-    if (writable.result?.value !== false) throw new Error("Existing catalog ID must be editable");
+    if (!idPattern.result?.value) throw new Error("Catalog ID validation or mobile footer failed");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-resource-close]').click()` });
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('[data-catalog-action=detail]').click();
+      document.querySelector('[data-detail-edit]').click();` });
+    await assertDOM(cdp, `document.querySelector("[data-catalog-dialog] input[name=id]").readOnly &&
+      document.querySelector("[data-catalog-id-fields]").hidden &&
+      document.querySelector("[data-catalog-dialog] button[type=submit]").disabled`, "Existing ID must begin locked");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       const form = document.querySelector("[data-resource-catalog]");
       form.elements.name.value = "研发环境";
-      form.elements.id.value = "new-dev";
-      form.requestSubmit();
+      form.elements.name.dispatchEvent(new Event("input", { bubbles: true }));
+      form.querySelector("[data-resource-close]").click();
     })()` });
-    await assertText(cdp, (text) => text.includes("研发环境") && text.includes("new-dev") && !text.includes("保存"), "Catalog rename did not close the editor");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="delete"]').click()` });
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-resource-catalog]").requestSubmit()' });
-    await assertText(cdp, (text) => text.includes("dev-k8s"), "Referenced catalog deletion did not explain the conflict");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="close"]').click()` });
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="add"]').click()` });
+    await assertDOM(cdp, `document.querySelector("[data-catalog-discard]").open`, "Closing a modified draft did not ask for confirmation");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector("[data-keep-draft]").click();
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `!document.querySelector("[data-catalog-dialog]").open &&
+      document.querySelector("[data-catalog-detail]").open &&
+      document.querySelector('[data-entry-id=development] [data-catalog-action=detail]').textContent === "研发环境"`,
+      "Name-only edit must preserve the current ID and update the open details");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector("[data-catalog-detail] [data-resource-close]").click();
+      document.querySelector('[data-catalog-action=edit]').click();
+      document.querySelector('[data-unlock-id]').click();
+      document.querySelector("[data-resource-catalog]").elements.id.value = "retired-id";
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `document.querySelector("[name=id]").getAttribute("aria-invalid") === "true" &&
+      document.querySelector('[id=catalog-id-error]').textContent.includes("历史 ID")`, "Server-side alias conflict did not identify the ID");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector("[name=id]").value = "new-dev";
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `!!document.querySelector('[data-entry-id=new-dev]') && !document.querySelector("[data-catalog-dialog]").open`, "Unlocked ID change was not saved");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('[data-entry-id=new-dev] summary').click();
+      document.querySelector('[data-catalog-action=delete]').click();
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `document.querySelector(".catalog-references li")?.textContent.includes("dev-k8s") &&
+      !!document.querySelector("[data-copy-references]") && !!document.querySelector("[data-entry-id=new-dev]")`, "Deletion conflict must show references and keep the row");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+        writeText: async () => { throw new Error("fixture clipboard unavailable"); },
+      } });
+      document.querySelector("[data-copy-references]").click();
+    })()` });
+    await assertDOM(cdp, `document.querySelector("textarea[aria-label=待复制内容]")?.value === "dev-k8s"`,
+      "Clipboard denial must offer the reference text");
+    await cdp.send("Runtime.evaluate", { expression: `
+      delete navigator.clipboard;
+      document.querySelector('dialog[open] [data-resource-close]').click();` });
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=save-error`);
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-catalog-action="add"]').click();
       const form = document.querySelector("[data-resource-catalog]");
       form.elements.id.value = "sandbox";
       form.elements.name.value = "沙盒";
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => text.includes("沙盒") && text.includes("sandbox"), "Catalog creation did not preserve the entered ID");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-catalog-action="delete"][data-entry-id="sandbox"]').click()` });
+    await assertDOM(cdp, `document.querySelector("[data-catalog-form-status]")?.textContent.includes("操作失败") &&
+      document.querySelector("[data-resource-catalog]").elements.name.value === "沙盒"`, "Failed creation did not preserve the draft");
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=normal`);
     await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-resource-catalog]").requestSubmit()' });
-    await assertText(cdp, (text) => !text.includes("sandbox"), "Unreferenced catalog deletion failed");
-    await assertPage(cdp, "http://127.0.0.1:4173/#/resources/business-lines",
-      (text) => text.includes("业务线 ID") && text.includes("云帆") && text.includes("新增业务线"), "Business catalog did not match the shared layout");
+    await assertDOM(cdp, `!!document.querySelector("[data-entry-id=sandbox]")`, "Catalog creation did not preserve the entered ID");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('[data-entry-id=sandbox] summary').click();
+      document.querySelector('[data-entry-id=sandbox] [data-catalog-action=delete]').click();
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `!document.querySelector("[data-entry-id=sandbox]")`, "Unreferenced catalog deletion failed");
+    await cdp.send("Runtime.evaluate", { expression: `
+      const search = document.querySelector('[data-catalog-search]');
+      search.value = "no-match";
+      search.dispatchEvent(new Event("input", { bubbles: true }));` });
+    await assertText(cdp, text => text.includes("没有匹配的条目"), "Catalog search did not show an empty filter result");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('nav.catalog-tabs a[href="#/resources/business-lines"]').click()` });
+    await assertText(cdp, (text) => text.includes("业务线 ID") && text.includes("云帆") && text.includes("新增业务线"), "Business catalog did not match the shared layout");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
-      document.querySelector('[data-catalog-action="edit"][data-entry-id="yunfan"]').click();
+      document.querySelector('[data-entry-id=yunfan] [data-catalog-action=edit]').click();
+      document.querySelector('[data-unlock-id]').click();
       const form = document.querySelector("[data-resource-catalog]");
       form.elements.id.value = "yunfan-app";
       form.requestSubmit();
     })()` });
-    await assertText(cdp, (text) => text.includes("yunfan-app"), "Business ID was not saved");
+    await assertDOM(cdp, `!!document.querySelector('[data-entry-id=yunfan-app]')`, "Business ID was not saved");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('[data-entry-id=yunfan-app] summary').click();
+      document.querySelector('[data-entry-id=yunfan-app] [data-catalog-action=delete]').click();
+      document.querySelector("[data-resource-catalog]").requestSubmit();` });
+    await assertDOM(cdp, `[...document.querySelectorAll(".catalog-references small")].map(el=>el.textContent).join("/") === "命名空间归属/角色范围"`,
+      "Business deletion must distinguish namespace and role references");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('dialog[open] [data-resource-close]').click();
+      document.querySelector('nav.catalog-tabs a[href="#/resources/environments"]').click();` });
+    await assertDOM(cdp, `document.querySelector('[data-catalog-kind=environments] [data-catalog-search]')?.value === "no-match"`,
+      "Catalog tab switch lost environment filters");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.resource-filters [data-catalog-action=clear]').click()` });
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=load-error`);
+    await assertPage(cdp, `${catalogOrigin}/#/resources/business-lines?case=unavailable`,
+      text => text.includes("目录加载失败") && text.includes("重新加载"), "Catalog list failed without a retry state");
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=normal`);
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-catalog-action=retry]").click()` });
+    await assertDOM(cdp, `!!document.querySelector("[data-entry-id=yunfan-app]")`, "Catalog list did not recover in place");
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=readonly`);
+    await assertPage(cdp, `${catalogOrigin}/#/resources/business-lines?case=readonly`,
+      text => text.includes("只读权限") && text.includes("云帆"), "Read-only catalog did not load");
+    await assertDOM(cdp, `!document.querySelector("[data-catalog-action=add], [data-catalog-action=edit], [data-catalog-action=delete]") &&
+      !!document.querySelector("[data-catalog-action=copy]")`, "Read-only catalog exposed a write action");
+    await fetch(`${catalogOrigin}/test/catalog-mode?mode=normal`);
+    await assertPage(cdp, `${catalogOrigin}/#/resources/business-lines`, text => text.includes("新增业务线"), "Catalog admin did not recover");
     const nav = await cdp.send("Runtime.evaluate", { expression: `(() => {
       const links = [...document.querySelectorAll(".workspace-nav > a")];
       const current = links.find((link) => link.getAttribute("aria-current") === "location");

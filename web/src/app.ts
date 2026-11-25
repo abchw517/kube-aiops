@@ -1,3 +1,5 @@
+import { bindResourceCatalog } from "./views/resources/catalog-workspace.ts";
+import type { Catalog, CatalogFilters } from "./views/resources/catalog-model.ts";
 import { renderObservabilityDashboardLinks } from "./views/diagnosis/observability-sources.ts";
 import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
 import { loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
@@ -5,7 +7,7 @@ import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog }
 import { bindPortalForms } from "./portal-forms.ts";
 import { bindDefaultRoleWorkspace, filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
 import { bindClusterWorkspace } from "./views/clusters/cluster-workspace.ts";
-import { handleResourceCatalogClick, renderResourceManagement } from "./views/resources/resource-management.ts";
+import { renderResourceManagement } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
 import { handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
@@ -71,6 +73,7 @@ export class PortalApp {
   private permissionCatalog = false;
   private auditRead = false;
   private wikiAccess: WikiAccess | undefined;
+  private catalogFilters = new Map<Catalog, CatalogFilters>();
   private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
   private findingAI = false;
   private reviewAccess = false;
@@ -90,7 +93,6 @@ export class PortalApp {
   start(): void {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
-      handleResourceCatalogClick(event);
       void handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
@@ -235,14 +237,21 @@ export class PortalApp {
         }
         this.renderShell(loadingState("正在加载资源管理。"));
         try {
-          const body = await renderResourceManagement(hash, this.resourceAccess, this.identityAdmin);
+          const page = await renderResourceManagement(hash, this.resourceAccess, this.identityAdmin);
           if (generation === this.renderGeneration) {
-            const clusterList = path === "#/resources/clusters" || (path === "#/resources" && this.resourceAccess.clusters);
-            this.renderShell(body, false, clusterList);
-            bindClusterWorkspace(this.root);
+            this.renderShell(page.html, false, page.ownsHeading);
+            if (page.catalog) {
+              const { kind } = page.catalog;
+              const filters = this.catalogFilters.get(kind) ?? { query: "", sort: "sequence" };
+              this.catalogFilters.set(kind, filters);
+              bindResourceCatalog(this.root, page.catalog, filters);
+            } else bindClusterWorkspace(this.root);
           }
-        } catch {
-          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载资源管理。"));
+        } catch (error) {
+          if (generation === this.renderGeneration) {
+            if (error instanceof Response && [401, 403].includes(error.status)) this.renderRequestError(new ApiError(error.status, undefined));
+            else this.renderShell(errorState("无法加载资源管理。"));
+          }
         }
         return;
       }
@@ -760,6 +769,7 @@ export class PortalApp {
       });
       if (response.status !== 204) throw new Error("logout failed");
       this.clusters = undefined;
+      this.catalogFilters.clear();
       this.namespaces = new Map();
       this.knownKinds.clear();
       this.showLogout = false;
