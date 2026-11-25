@@ -42,6 +42,10 @@
 a.overview-metric:is([aria-current=true], :hover) { background: var(--accent-soft); text-decoration: none; }
 .overview-metric[aria-current=true] { border-color: #b6b8ed; }
 .overview-records { min-width: 0; overflow: hidden; }
+.overview-record-footer { padding: 12px 18px; border-top: 1px solid var(--line); }
+.overview-record-footer > .muted { margin-inline-end: auto; }
+.overview-limit-error { flex-basis: 100%; margin: 0; text-align: end; color: var(--red); }
+.overview-limit-error:empty { display: none; }
 .overview-record-heading { padding: 13px 18px 11px; }
 .overview-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .overview-actions .button { min-height: 32px; }

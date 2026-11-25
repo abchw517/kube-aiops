@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -193,6 +194,50 @@ func TestWikiWithPortalTestAccounts(t *testing.T) {
 		if out := request("GET", knowledge+"?documentType="+url.QueryEscape("排障手册"), "", alice, 200); !strings.Contains(out.Body.String(), `"total":1`) || strings.Contains(out.Body.String(), `"body"`) {
 			t.Fatal(out.Body.String())
 		}
+		t.Run("orders all matched versions before paging", func(t *testing.T) {
+			t.Cleanup(func() {
+				if _, err := store.ExecContext(context.Background(), "DELETE FROM wiki_documents WHERE id LIKE 'sort-fixture-%'"); err != nil {
+					t.Error(err)
+				}
+			})
+			for i := 0; i < 21; i++ {
+				title := fmt.Sprintf("候选文档 %02d", i)
+				if i == 0 {
+					title = "排序基准"
+				}
+				at := time.Date(2026, time.January, 1+i, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+				if _, err := store.ExecContext(t.Context(), "INSERT INTO wiki_documents VALUES(?,?,?,?,?,?,?,?,?)",
+					fmt.Sprintf("sort-fixture-%02d", i), "local", "dev", "测试", "运维", "排障手册", title, "排序基准", at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			type searchPage struct {
+				Items      []Document `json:"items"`
+				NextCursor string     `json:"nextCursor"`
+			}
+			read := func(path string) searchPage {
+				t.Helper()
+				var page searchPage
+				out := request("GET", path, "", alice, 200)
+				if err := json.Unmarshal(out.Body.Bytes(), &page); err != nil || len(page.Items) == 0 {
+					t.Fatalf("empty search page: %v, %s", err, out.Body)
+				}
+				return page
+			}
+			path := knowledge + "?q=" + url.QueryEscape("排序基准")
+			if ranked := read(path); ranked.Items[0].ID != "sort-fixture-00" {
+				t.Fatalf("default relevance changed: %s", ranked.Items[0].ID)
+			}
+			recent := read(path + "&sort=recent")
+			if len(recent.Items) != 20 || recent.Items[0].ID != "sort-fixture-20" || recent.NextCursor == "" {
+				t.Fatalf("first date-ordered page: %d items, first %s, cursor %q", len(recent.Items), recent.Items[0].ID, recent.NextCursor)
+			}
+			cursor := "&cursor=" + url.QueryEscape(recent.NextCursor)
+			if last := read(path + "&sort=recent" + cursor); len(last.Items) != 1 || last.Items[0].ID != "sort-fixture-00" {
+				t.Fatalf("date-ordered second page did not contain the oldest document: %+v", last.Items)
+			}
+			request("GET", path+cursor, "", alice, 400)
+		})
 		path := knowledge + "/" + doc.ID + "/revisions/1"
 		request("GET", path, "", alice, 200)
 		revision := knowledge + "/" + doc.ID + "/revisions"

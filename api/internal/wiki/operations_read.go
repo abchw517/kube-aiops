@@ -205,12 +205,14 @@ func (a *Service) searchDocuments(ctx context.Context, p identity.Principal, que
 		return nil, nil, err
 	}
 	type match struct {
-		doc   Document
-		score int
+		doc       Document
+		score     int
+		published time.Time
 	}
 	var matches []match
 	filters := map[string][]string{"environment": {}, "business": {}, "resourceType": {}, "documentType": {}}
 	q := strings.ToLower(strings.TrimSpace(query.Get("q")))
+	recentFirst := !recommend && query.Get("sort") == "recent"
 	for _, doc := range docs {
 		allowed, err := a.canRead(ctx, p, doc, target, recommend)
 		if err != nil {
@@ -241,12 +243,22 @@ func (a *Service) searchDocuments(ctx context.Context, p identity.Principal, que
 			continue
 		}
 		doc.Match = reason
-		matches = append(matches, match{doc, score})
+		entry := match{doc: doc, score: score}
+		if recentFirst {
+			entry.published, _ = time.Parse(time.RFC3339Nano, doc.CreatedAt)
+		}
+		matches = append(matches, entry)
 	}
 	for _, values := range filters {
 		slices.Sort(values)
 	}
 	slices.SortFunc(matches, func(a, b match) int {
+		if recentFirst {
+			if date := b.published.Compare(a.published); date != 0 {
+				return date
+			}
+			return strings.Compare(a.doc.ID, b.doc.ID)
+		}
 		if a.score != b.score {
 			return b.score - a.score
 		}

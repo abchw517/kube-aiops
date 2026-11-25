@@ -207,6 +207,21 @@ try {
       (text) => text.includes("需要身份认证") && text.includes("LDAP / Active Directory"),
       "Anonymous session did not show the login form",
     );
+    for (const width of [1280, 390]) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 760, deviceScaleFactor: 1, mobile: false });
+      await assertDOM(cdp, `(() => {
+        const scene = document.querySelector(".login-scene canvas");
+        const form = document.querySelector("[data-login]");
+        const checkbox = form.elements.provider.getBoundingClientRect();
+        const label = form.elements.provider.labels[0].getBoundingClientRect();
+        return scene.getBoundingClientRect().width > 0 && scene.hasAttribute("height") &&
+          getComputedStyle(scene.parentElement).pointerEvents === "none" &&
+          Math.abs(checkbox.top + checkbox.bottom - label.top - label.bottom) < 2 &&
+          form.querySelector('[type="submit"]').getBoundingClientRect().bottom <= innerHeight &&
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+      })()`, `Login backdrop or form layout failed at ${width}px`);
+    }
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     for (const [password, expected] of [
       ["incorrect", "登录失败，请核对登录方式和账号密码。"],
       ["fixture-password", "共 3 条诊断结果"],
@@ -375,6 +390,23 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/wiki?q=ImagePullBackOff",
       (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新建知识"),
       "Wiki search did not load the knowledge list");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-wiki-preview-id]").click()' });
+    await assertText(cdp, text => text.includes("先查什么") && text.includes("验证仓库权限") && text.includes("恢复判断"),
+      "Wiki quick preview did not load the visible version");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-wiki-preview-read]").click()' });
+    await assertText(cdp, text => text.includes("返回检索结果") && text.includes("验证仓库权限"), "Wiki full document did not load from preview");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('a[href="#/wiki?q=ImagePullBackOff"]').click()` });
+    await assertDOM(cdp, `document.querySelector("#wiki-search-term")?.value === "ImagePullBackOff"`, "Wiki return lost the search term");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      const sort = document.querySelector("[data-wiki-sort]");
+      sort.value = "recent";
+      sort.dispatchEvent(new Event("change", { bubbles: true }));
+    })()` });
+    await assertDOM(cdp, `document.querySelector('[data-wiki-sort] option[value="recent"]')?.defaultSelected && location.hash.includes("sort=recent")`,
+      "Wiki recent order failed to persist");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 760, deviceScaleFactor: 1, mobile: false });
+    await assertDOM(cdp, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`, "Wiki results overflowed at 390 px");
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     const wikiDialog = await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("[data-wiki-dialog]").open',
       returnByValue: true,
@@ -1738,6 +1770,39 @@ async function assertIncidentDashboard(cdp) {
   ` });
   if (!after.result?.value) throw new Error("Mobile navigation did not close the menu and focus the workspace");
   await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    window.originalPagedFetch = window.fetch;
+    window.fetch = (input, options) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+      if (url.pathname !== "/api/v1/findings") return window.originalPagedFetch(input, options);
+      const items = Array.from({length: 23}, (_, index) => ({
+        id: "paged-" + index, cluster: "local", problem: "分页诊断 " + (index + 1),
+        severity: "info", createdAt: new Date(Date.UTC(2026, 10, 25 - index)).toISOString()
+      }));
+      return Promise.resolve(Response.json({items, pagination: {}}));
+    };
+  })()` });
+  await assertPage(cdp, overview + "?source=finding", text => text.includes("显示第 1–5 条") && text.includes("共 23 条"), "Recent diagnostics were not paginated");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-overview-page="2"]').click()` });
+  await assertDOM(cdp, `document.querySelector(".unified-recent tbody tr")?.textContent.includes("分页诊断 6") &&
+    location.hash.includes("recentPage=2") && document.querySelector(".unified-recent a")?.href.includes("recentPage%3D2")`, "Second diagnostics page or return link was incorrect");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const select = document.querySelector("[data-overview-limit]");
+    select.value = "custom";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    const form = document.querySelector("#overview-custom-limit");
+    form.elements.limit.value = "101";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, text => text.includes("请输入 1–100 之间的整数"), "Custom diagnostics limit accepted an invalid value");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("#overview-custom-limit");
+    form.elements.limit.value = "7";
+    form.requestSubmit();
+  })()` });
+  await assertDOM(cdp, `document.querySelectorAll(".unified-recent tbody tr").length === 7 &&
+    location.hash.includes("recentPageSize=7") && !location.hash.includes("recentPage=2")`, "Custom limit did not return to the first page");
+  await cdp.send("Runtime.evaluate", { expression: "window.fetch = window.originalPagedFetch; delete window.originalPagedFetch" });
 }
 
 async function assertRemainingDiagnosticPages(cdp) {

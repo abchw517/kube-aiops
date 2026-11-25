@@ -15,6 +15,23 @@ export function overviewDays(value: string | null): OverviewDays {
   return overviewWindows.find((days) => String(days) === value) ?? 7;
 }
 
+export const overviewPageSizes = [5, 10, 15] as const;
+export const maxOverviewPageSize = 100;
+
+export function overviewPageSize(value: string | null): number | undefined {
+  if (!value || !/^\d{1,3}$/.test(value)) return undefined;
+  const size = Number(value);
+  if (size > 0 && size <= maxOverviewPageSize) return size;
+}
+
+export function overviewRecordPage(query: URLSearchParams, total: number) {
+  const size = overviewPageSize(query.get("recentPageSize")) ?? overviewPageSizes[0];
+  const pages = Math.max(1, Math.ceil(total / size));
+  const requested = Number(query.get("recentPage"));
+  const page = Number.isSafeInteger(requested) && requested > 1 ? Math.min(requested, pages) : 1;
+  return { page, pages, size, start: (page - 1) * size, end: Math.min(page * size, total) };
+}
+
 export function overviewSearch(query: URLSearchParams): URLSearchParams {
   const result = new URLSearchParams();
   const cluster = query.get("clusterId")?.trim() || query.get("cluster")?.trim();
@@ -31,6 +48,10 @@ export function overviewSearch(query: URLSearchParams): URLSearchParams {
   if (query.get("recent") === "true") result.set("recent", "true");
   if (query.get("alertRecent") === "true") result.set("alertRecent", "true");
   if (days !== 7) result.set("trendDays", String(days));
+  const page = query.get("recentPage");
+  if (page && /^[1-9]\d*$/.test(page) && Number.isSafeInteger(Number(page)) && Number(page) > 1) result.set("recentPage", page);
+  const size = overviewPageSize(query.get("recentPageSize"));
+  if (size && size !== overviewPageSizes[0]) result.set("recentPageSize", String(size));
   return result;
 }
 
@@ -123,5 +144,5 @@ export function aggregateDiagnostics(incidents: Incident[], findings: Finding[],
     const bucket = daily.get(utc8Date(record.time));
     if (bucket && record.time <= now) bucket[record.source]++;
   }
-  return { total: records.length, counts, daily: [...daily.values()], undated, recent: records.slice(0, 5) };
+  return { total: records.length, counts, daily: [...daily.values()], undated, records };
 }
