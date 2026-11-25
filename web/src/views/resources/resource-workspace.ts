@@ -28,18 +28,23 @@ export function restoreResourceFocus(origin: HTMLElement | null, fallback: HTMLE
   else fallback?.focus();
 }
 
-export function bindDirtyDialog(dialog: HTMLDialogElement, closeSelector: string, busy: () => boolean): { clean: () => void } {
+export function bindDirtyDialog(
+  dialog: HTMLDialogElement,
+  closeSelector: string,
+  busy: () => boolean,
+  { confirmOnButtonClose = true } = {},
+): { clean: () => void } {
   let dirty = false;
-  const canClose = () => !busy() && (!dirty || window.confirm("放弃未保存的修改？"));
+  const canClose = (confirmDiscard: boolean) => !busy() && (!confirmDiscard || !dirty || window.confirm("放弃未保存的修改？"));
   dialog.addEventListener("input", (event) => {
     if (event.target instanceof HTMLInputElement && event.target.type === "search") return;
     dirty = true;
   });
   dialog.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || !event.target.closest(closeSelector)) return;
-    if (canClose()) dialog.close();
+    if (canClose(confirmOnButtonClose)) dialog.close();
   });
-  dialog.addEventListener("cancel", (event) => { if (!canClose()) event.preventDefault(); });
+  dialog.addEventListener("cancel", (event) => { if (!canClose(true)) event.preventDefault(); });
   return { clean: () => { dirty = false; } };
 }
 

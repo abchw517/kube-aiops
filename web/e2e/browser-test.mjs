@@ -1772,6 +1772,36 @@ async function assertRemainingDiagnosticPages(cdp) {
     if (!layout.result?.value) throw new Error(`Zabbix onboarding dialog layout is incorrect at ${width} px`);
   }
   await cdp.send("Emulation.clearDeviceMetricsOverride");
+  for (const position of ["footer", "header"]) {
+    const closed = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const dialog = document.querySelector(".zabbix-dialog[open]");
+      const form = dialog.querySelector("[data-zabbix-form]");
+      form.elements.sourceName.value = "未保存的 Zabbix";
+      form.elements.sourceName.dispatchEvent(new Event("input", { bubbles: true }));
+      form.elements.secret.value = "unsaved-fixture-token";
+      form.elements.secret.dispatchEvent(new Event("input", { bubbles: true }));
+      const confirm = window.confirm;
+      let prompted = false;
+      window.confirm = () => { prompted = true; return false; };
+      try {
+        dialog.querySelector('${position} [data-zabbix-action="close"]').click();
+        return !prompted && !dialog.open;
+      } finally {
+        window.confirm = confirm;
+      }
+    })()` });
+    if (!closed.result?.value) throw new Error(`Zabbix ${position} close must dismiss a changed form without asking for confirmation`);
+    await assertDOM(cdp, `!document.querySelector("[data-zabbix-form]") && !document.body.innerText.includes("未保存的 Zabbix")`,
+      "Closing Zabbix did not clear its unsaved draft");
+    await cdp.send("Runtime.evaluate", { expression: `
+      document.querySelector('.resource-page-head [data-source-add]').click();
+      document.querySelector('[data-source-kind="zabbix"]').click();
+      document.querySelector('[data-source-next]').click();` });
+    await assertDOM(cdp, `(() => {
+      const form = document.querySelector(".zabbix-dialog[open] [data-zabbix-form]");
+      return !!form && form.elements.sourceName.value === "" && form.elements.secret.value === "";
+    })()`, "Reopening Zabbix should start with a blank form");
+  }
   const authCards = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     const form = document.querySelector("[data-zabbix-form]");
     const password = form.querySelector('[name="method"][value="password"]');
