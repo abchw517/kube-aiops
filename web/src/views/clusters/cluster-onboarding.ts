@@ -75,7 +75,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
         <option value="shared">共用集群</option>
         <option value="dedicated"${item?.clusterType === "dedicated" ? " selected" : ""}>独立业务集群</option>
       </select></label>`}</div></fieldset>
-      ${local ? "" : `<label class="cluster-switch"><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""}> 启用实例</span></label>`}
+      ${local ? "" : `<label class="cluster-switch"><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""}><span>启用实例</span></label>`}
       ${local ? "<p>本地采集使用部署内的服务账号。</p>" : mode === "push" ? "<p>保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。</p>" : ""}
       </section>
       ${mode === "pull" ? `<section ${section("connect")}>
@@ -91,7 +91,7 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
         <details class="cluster-observability"><summary>观测证据源</summary><div class="cluster-form-grid">
           ${configurationInput("prometheusURL")}${configurationInput("victoriaLogsURL")}${configurationInput("alertmanagerURL")}
         </div></details>
-        ${mode === "pull" ? `<label class="cluster-switch"><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""}> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
+        ${mode === "pull" ? `<label class="cluster-switch"><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""}><span>启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
       </section>`}
       <textarea rows="3" readonly hidden aria-label="上报凭据" data-report-token></textarea>
       </div></div>

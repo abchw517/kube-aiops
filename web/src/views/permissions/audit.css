@@ -19,8 +19,8 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #f6f8fc;
+  border-radius: var(--section-radius);
+  background: var(--surface-soft);
 }
 .audit-retention-value strong { font-size: 1.25rem; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .system-management .audit-records { padding: 0; }
@@ -34,7 +34,7 @@
   min-height: 42px;
   padding: 6px 9px;
   border: 1px solid var(--control-line);
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   background: var(--surface);
   color: var(--ink);
   font-weight: 400;
@@ -82,9 +82,9 @@
   max-height: calc(100dvh - 36px);
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
-  box-shadow: 0 14px 42px #142b3c26;
+  box-shadow: var(--dialog-shadow);
   color: var(--ink);
 }
 .audit-dialog::backdrop { background: #10233588; }

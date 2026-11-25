@@ -33,7 +33,7 @@ const option = (id: string, name: string) => `<option value="${h(id)}">${h(name)
 export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: ZabbixSource) => void, onConflict: () => void) {
   let current: Wizard | undefined;
   let saving = false;
-  const guard = bindDirtyDialog(dialog, '[data-zabbix-action="close"]', () => saving);
+  const guard = bindDirtyDialog(dialog, '[data-zabbix-action="close"]', () => saving, { confirmOnButtonClose: false });
 
   function open(mode: Mode, source?: ZabbixSource) {
     guard.clean();
@@ -309,7 +309,11 @@ export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: Za
     event.preventDefault();
     if (current && event.target instanceof HTMLFormElement) void save(event.target, current);
   });
-  dialog.addEventListener("close", () => { current = undefined; dialog.replaceChildren(); });
+  dialog.addEventListener("close", () => {
+    if (dialog.open) return;
+    current = undefined;
+    dialog.replaceChildren();
+  });
   dialog.addEventListener("input", event => {
     const field = event.target;
     const wizard = current;

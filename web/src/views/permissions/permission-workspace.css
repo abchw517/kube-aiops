@@ -1,11 +1,11 @@
 .access-workspace-tabs { margin-bottom: 12px; }
 .role-access-workspace { display: grid; grid-template-columns: minmax(150px, 185px) minmax(0, 1fr); gap: 13px; align-items: start; }
-.role-picker { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.role-picker { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--section-radius); }
 .role-picker-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
 .role-picker-heading h2 { margin: 0; font-size: 16px; }
 .role-picker ul { list-style: none; padding: 0; margin: 8px 0 0; }
 .role-picker li:not([hidden]) { display: flex; align-items: center; gap: 4px; }
-.role-picker-item { flex: 1; min-width: 0; padding: 7px; border: 1px solid transparent; border-radius: 5px; color: var(--ink); background: transparent; text-align: start; overflow-wrap: anywhere; cursor: pointer; }
+.role-picker-item { flex: 1; min-width: 0; padding: 7px; border: 1px solid transparent; border-radius: var(--control-radius); color: var(--ink); background: transparent; text-align: start; overflow-wrap: anywhere; cursor: pointer; }
 .role-picker-item[aria-current=true] { border-color: #b4ccec; background: var(--accent-soft); color: var(--blue-hover); font-weight: 700; }
 .role-picker-item small { display: block; color: var(--muted); }
 .role-remove-link { border: 0; background: transparent; color: var(--red); font-size: 12px; cursor: pointer; }
@@ -25,7 +25,7 @@
 .permission-catalog[data-pc-edit=true] .permission-catalog-detail { position: static; }
 .permission-list-group { min-width: 0; padding: 8px 11px; border-top: 1px solid var(--line); }
 .permission-list-group > header { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; }
-.permission-list-group h3 { margin: 0; color: #3a536f; font-size: .82rem; }
+.permission-list-group h3 { margin: 0; color: #3a536f; font-size: var(--text-label); }
 .permission-list-page h4 { margin: 6px 0 0; padding: 4px 6px; border-radius: 4px; background: #edf4fc; }
 .permission-list-page ul { margin: 0; padding: 0; list-style: none; }
 .permission-list-action { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 4px 7px; padding: 5px 3px; border-bottom: 1px solid #eaf0f7; }

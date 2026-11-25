@@ -217,8 +217,8 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
     ? `<p class="overview-chart-note">Alertmanager 从 ${new Date(Math.min(...alertCoverage) * 1000).toLocaleString("zh-CN")} 起有平台采集记录。</p>` : "");
   const html = `<section class="unified-overview" aria-label="诊断概况">
     ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(counts, query, severity)}
-    <div class="panel overview-analytics">
-      <section class="overview-trend" data-overview-trend aria-labelledby="overview-trend-title">${renderWindow(days)}</section>
+    <div class="overview-analytics">
+      <section class="panel overview-trend" data-overview-trend aria-labelledby="overview-trend-title">${renderWindow(days)}</section>
       ${renderDistribution(counts, query, severity, incomplete)}
     </div>
     ${renderRecent(data.recent, query, canReadIncidents, incomplete, hasData)}
@@ -235,27 +235,32 @@ function renderMetrics(data: Overview | undefined, query: URLSearchParams, sever
     ...levels.map(([level, label]): [Severity, string, number | undefined] => [level, label, data?.counts[level]])];
   return `<div class="overview-metrics" aria-label="诊断指标">${metrics.map(([level, label, count]) => {
     const classes = `panel overview-metric metric-${level || "total"}`;
+    const icon = level ? { critical: "!", warning: "△", info: "i" }[level] : "▤";
+    const body = `<span class="overview-metric-label"><span aria-hidden="true">${icon}</span>${label}</span><strong>${count ?? "—"}</strong>`;
     return data ? `<a class="${classes}" href="${severityHref(query, level, severity)}"
-      ${(severity ?? "") === level ? 'aria-current="true"' : ""}><span>${label}</span><strong>${count}</strong></a>` :
-      `<div class="${classes}"><span>${label}</span><strong>—</strong></div>`;
+      ${(severity ?? "") === level ? 'aria-current="true"' : ""}>${body}</a>` : `<div class="${classes}">${body}</div>`;
   }).join("")}</div>`;
 }
 
 function renderDistribution(data: Overview | undefined, query: URLSearchParams, severity: Severity | undefined, incomplete: boolean) {
   const clearLevel = severity ? `<a href="${severityHref(query, severity, severity)}">查看全部级别</a>` : "";
-  return `<section class="overview-distribution-panel" aria-labelledby="overview-distribution-title">
+  const percent = (count: number) => data?.total ? count / data.total * 100 : 0;
+  const critical = data?.counts.critical ?? 0;
+  const warnings = critical + (data?.counts.warning ?? 0);
+  const mapped = warnings + (data?.counts.info ?? 0);
+  return `<section class="panel overview-distribution-panel" aria-labelledby="overview-distribution-title">
     <header class="overview-heading"><div><h2 id="overview-distribution-title">严重度分布</h2>
     <p>${data ? `${incomplete ? "已获取记录" : "当前筛选范围"} · ${data.total} 条` : "暂不可用"}</p></div></header>
+    <div class="overview-distribution-body">
+    ${data ? `<div class="overview-ring" aria-hidden="true" data-overview-ring="${percent(critical)} ${percent(warnings)} ${percent(mapped)}"><div><strong>${data.total}</strong><small>诊断记录</small></div></div>` : ""}
     <ul class="overview-distribution">${levels.map(([level, label]) => {
       const count = data?.counts[level];
-      const percent = data?.total ? (count ?? 0) / data.total * 100 : 0;
-      const row = `<span class="overview-distribution-row"><span>${label}</span>
-        <span><strong>${count ?? "—"}</strong><small>${data?.total ? `${percent.toFixed(1)}%` : "—"}</small></span></span>
-        <span class="overview-progress" aria-hidden="true"><span data-overview-progress-width="${percent}"></span></span>`;
+      const row = `<span class="overview-distribution-row"><span class="overview-distribution-label">${label}</span>
+        <span><strong>${count ?? "—"}</strong><small>${data?.total ? `${percent(count ?? 0).toFixed(1)}%` : "—"}</small></span></span>`;
       return `<li class="overview-${level}">${data ? `<a href="${severityHref(query, level, severity)}"
         ${severity === level ? 'aria-current="true"' : ""}>${row}</a>` : row}</li>`;
-    }).join("")}</ul>
-    ${data && data.total > data.counts.critical + data.counts.warning + data.counts.info ? `<p class="overview-chart-note">未映射级别 · ${data.total - data.counts.critical - data.counts.warning - data.counts.info} 条</p>` : ""}
+    }).join("")}</ul></div>
+    ${data && data.total > mapped ? `<p class="overview-chart-note">未映射级别 · ${data.total - mapped} 条</p>` : ""}
     ${data ? `<p class="overview-distribution-foot"><span>点击级别筛选总览</span>${clearLevel}</p>` : ""}
   </section>`;
 }
@@ -333,8 +338,13 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
   const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
   const overview = root.querySelector<HTMLElement>(".unified-overview");
   if (!form || !chart || !overview) return;
-  for (const bar of overview.querySelectorAll<HTMLElement>("[data-overview-progress-width]")) {
-    bar.style.width = `${bar.dataset.overviewProgressWidth}%`;
+  const ring = overview.querySelector<HTMLElement>("[data-overview-ring]");
+  if (ring) {
+    // Set the stops through CSSOM so they also render under the Portal CSP.
+    const [critical, warning, mapped] = (ring.dataset.overviewRing ?? "0 0 0").split(" ");
+    ring.style.setProperty("--overview-ring-critical", `${critical}%`);
+    ring.style.setProperty("--overview-ring-warning", `${warning}%`);
+    ring.style.setProperty("--overview-ring-mapped", `${mapped}%`);
   }
   form.addEventListener("submit", (event) => {
     event.preventDefault();

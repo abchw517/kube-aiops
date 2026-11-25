@@ -14,8 +14,8 @@
   border: 0;
 }
 .filters legend { margin-bottom: 6px; padding: 0; color: var(--ink); font-size: .875rem; font-weight: 700; }
-.filters label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: .8125rem; }
-.filters select { width: 100%; min-height: 42px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 6px; }
+.filters label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: var(--text-label); }
+.filters select { width: 100%; min-height: 42px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); }
 .filters .button { justify-self: end; min-width: 0; }
 .filters .evidence-notice { margin: 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .summary-grid {
@@ -327,13 +327,13 @@
   max-height: calc(100dvh - 24px);
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 20px 64px rgb(15 23 42 / 23%);
+  box-shadow: var(--dialog-shadow);
 }
 .zabbix-dialog[data-mode="add"] { width: min(1048px, calc(100vw - 24px)); }
-.zabbix-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.zabbix-dialog::backdrop { background: rgb(26 38 79 / 42%); }
 .zabbix-dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: calc(100dvh - 28px); }
 .zabbix-dialog-head, .zabbix-dialog-footer {
   display: flex;
@@ -348,11 +348,11 @@
 .zabbix-dialog-head p, .zabbix-section-head p { margin: 4px 0 0; color: var(--muted); }
 .zabbix-dialog-footer p { margin: 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .zabbix-dialog-actions { display: flex; flex: none; gap: 8px; }
-.zabbix-close { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 24px; cursor: pointer; }
+.zabbix-close { width: 40px; height: 40px; flex: none; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--muted); background: var(--surface-soft); font-size: 24px; cursor: pointer; }
 .zabbix-close:hover { background: var(--accent-soft); }
 .zabbix-setup-grid { display: grid; align-items: start; gap: 16px; min-height: 0; padding: 17px 22px; overflow: auto; }
 .zabbix-setup-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.zabbix-setup-grid > section { display: grid; min-width: 0; gap: 10px; border: 1px solid var(--line); border-radius: 11px; padding: 15px; }
+.zabbix-setup-grid > section { display: grid; min-width: 0; gap: 10px; border: 1px solid var(--line); border-radius: var(--section-radius); padding: 15px; }
 .zabbix-setup-grid label:not([hidden]) { display: grid; min-width: 0; gap: 5px; font-weight: 600; }
 .zabbix-setup-grid :is(input:not([type="radio"], [type="checkbox"]), select) {
   box-sizing: border-box;
@@ -361,7 +361,7 @@
   min-height: 42px;
   padding: 8px 11px;
   border: 1px solid var(--control-line);
-  border-radius: 7px;
+  border-radius: var(--control-radius);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
@@ -371,8 +371,8 @@
 .zabbix-hint { margin: -4px 0 2px; color: var(--muted); font-size: 12px; }
 .zabbix-auth-options, .zabbix-credentials-password { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .zabbix-auth-options { min-width: 0; margin: 0; padding: 0; border: 0; }
-.zabbix-auth-options label { position: relative; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-.zabbix-auth-options label > input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.zabbix-auth-options label:not([hidden]) { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--control-radius); cursor: pointer; }
+.zabbix-auth-options label > input, .zabbix-group-list input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
 .zabbix-auth-options label:has(:checked) { border-color: var(--blue); background: var(--accent-soft); color: var(--blue); }
 .zabbix-auth-options label:has(:focus-visible) { outline: 2px solid var(--blue); outline-offset: 2px; }
 .zabbix-auth-options label strong, .zabbix-auth-options label small { display: block; }
@@ -381,13 +381,12 @@
 .zabbix-test-feedback:empty { display: none; }
 .zabbix-test-feedback[data-state="error"] { background: #fff2f2; color: #922420; }
 .zabbix-test-feedback[data-state="success"] { background: #edf8ef; color: #205c34; }
-.zabbix-scope-wait { display: grid; min-height: 132px; align-items: center; margin: 0; padding: 14px; border-radius: 8px; background: #f5f7fa; color: var(--muted); text-align: center; }
+.zabbix-scope-wait { display: grid; min-height: 132px; align-items: center; margin: 0; padding: 14px; border-radius: var(--control-radius); background: var(--surface-soft); color: var(--muted); text-align: center; }
 .zabbix-groups-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 12px; }
 .zabbix-groups-head p { margin: 0; color: var(--muted); font-size: 13px; }
 [data-zabbix-scope] > label { margin-top: 8px; }
 .zabbix-group-list { display: grid; gap: 6px; max-height: 180px; overflow: auto; margin-block: 8px; }
 .zabbix-group-list label:not([hidden]) { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-weight: 400; }
-.zabbix-group-list input { width: auto; margin: 0; }
 .zabbix-preview { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (max-width: 760px) {
   .zabbix-setup-columns { grid-template-columns: minmax(0, 1fr); }

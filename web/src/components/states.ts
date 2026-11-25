@@ -21,14 +21,15 @@ export function emptyState(): string {
 export function authenticationRequiredState(message = ""): string {
   return `
     <section class="state-card" aria-labelledby="login-heading" data-testid="authentication-required-state">
-      <h1 id="login-heading" tabindex="-1">需要身份认证</h1>
+      <h1 id="login-heading" tabindex="-1">登录控制台</h1>
+      <p class="login-description">此工作区需要身份认证。可使用本地账号或 LDAP 账号登录。</p>
       ${message ? `<p>${escapeHtml(message)}</p>` : ""}
       <form class="login-form" data-login>
         <label>用户名<input name="username" autocomplete="username" spellcheck="false" required maxlength="256"></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+        <label class="login-provider"><input type="checkbox" name="provider" value="ldap"> LDAP / Active Directory 登录</label>
         <p role="status" data-login-status></p>
         <button class="button" type="submit">登录</button>
-        <label class="login-provider"><input type="checkbox" name="provider" value="ldap"> LDAP / Active Directory 登录</label>
       </form>
     </section>`;
 }
