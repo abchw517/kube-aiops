@@ -22,7 +22,7 @@ test("unified diagnostics deduplicates an explicit reference only within its clu
   const findings = [finding("shared"), finding("shared", { cluster: "prod" }), finding("other")];
   const all = aggregateDiagnostics(events, findings, undefined, now);
   assert.deepEqual(all.counts, { critical: 2, warning: 2, info: 0 });
-  assert.deepEqual(aggregateDiagnostics(events, findings, "warning", now).recent.map(({ cluster, id }) => [cluster, id]),
+  assert.deepEqual(aggregateDiagnostics(events, findings, "warning", now).records.map(({ cluster, id }) => [cluster, id]),
     [["prod", "shared"], ["test", "other"]]);
   assert.equal(overviewLevel("P1"), "critical");
 });
@@ -33,11 +33,11 @@ test("visible merge targets keep the representative and the trend counts only da
     finding("undated", { createdAt: "" }), finding("today"), finding("last", { createdAt: "2026-11-17T16:00:00Z" }),
     finding("outside", { createdAt: "2026-11-30T00:00:00Z" })], undefined, now);
   assert.equal(result.total, 6);
-  assert.equal(result.recent.length, 5);
+  assert.equal(result.records.length, 6);
   assert.equal(result.undated, 1);
   assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1, zabbix: 0, alertmanager: 0 });
   assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 1, zabbix: 0, alertmanager: 0 });
-  assert.equal(result.recent.some(({ id }) => id === "child" || id === "linked"), false);
+  assert.equal(result.records.some(({ id }) => id === "child" || id === "linked"), false);
   assert.equal(aggregateDiagnostics([events[0]], [], undefined, now).total, 1);
 });
 
@@ -60,7 +60,7 @@ test("widening the trend window does not alter diagnostic counts or the recent q
   const fortnight = aggregateDiagnostics([], rows, undefined, now, 14);
   const month = aggregateDiagnostics([], rows, undefined, now, 30);
   assert.deepEqual(week.counts, fortnight.counts);
-  assert.deepEqual(week.recent, month.recent);
+  assert.deepEqual(week.records, month.records);
   assert.equal(week.daily.some((day) => day.finding > 0), false);
   assert.equal(fortnight.daily.find((day) => day.date === "2026-11-16")?.finding, 3);
   assert.equal(month.daily.length, 30);
@@ -81,7 +81,7 @@ test("Zabbix rows share totals and daily buckets with the other sources", () => 
   assert.equal(result.counts.critical, 2);
   assert.equal(result.daily.length, 14);
   assert.equal(result.daily.at(-1)?.zabbix, 1);
-  assert.equal(result.recent[0]?.problem?.hosts[0]?.name, "Win-01");
+  assert.equal(result.records[0]?.problem?.hosts[0]?.name, "Win-01");
 });
 
 test("legacy trend windows and Zabbix filters survive metric clicks and detail round trips", () => {

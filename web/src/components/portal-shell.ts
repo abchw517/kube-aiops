@@ -28,6 +28,7 @@ export function renderPortalShell(content: string, state: PortalShellState): str
         aria-expanded="false" aria-controls="portal-sidebar">栏目</button>` : ""}
     </header>
     <div class="portal-layout${showSidebar ? "" : " portal-layout-single"}${state.signedOut ? " portal-signed-out" : ""}">
+      ${state.signedOut ? '<div class="login-scene" aria-hidden="true"><canvas></canvas></div>' : ""}
       ${showSidebar ? `<nav class="portal-sidebar" id="portal-sidebar" aria-label="模块栏目">
         <h2>${moduleLabel}</h2>${groups.map(({ label, links }) => `<p>${label}</p>${links.map((link) =>
           `<a href="${link.href}"${link.active ? ' aria-current="page"' : ""}>${link.label}</a>`).join("")}`).join("")}

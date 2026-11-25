@@ -154,7 +154,8 @@ createServer(async (request, response) => {
     return json(response, 401, { error: { code: "UNAUTHORIZED" } });
   }
   const wikiID = "a".repeat(64);
-  const wikiDoc = {knowledgeId: wikiID, title: "镜像拉取排障", environment: "测试", business: "运维", documentType: "排障手册"};
+  const wikiDoc = {knowledgeId: wikiID, title: "镜像拉取排障", environment: "测试", business: "运维", documentType: "排障手册",
+    revision: 1, matchReason: "命中 ImagePullBackOff", metadata: { applicability: "适用于 ImagePullBackOff", team: "平台运维" }};
   const candidateID = "b".repeat(64);
   const syncRun = {id: "fixture-run", status: "partial", trigger: "manual", started: 1795150900,
     saved: 1, skipped: 0, failed: 1, missing: 0};

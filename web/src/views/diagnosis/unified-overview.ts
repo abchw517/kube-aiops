@@ -2,7 +2,8 @@ import { createOverviewClient } from "../../api/client.ts";
 import { ApiError, type Cluster, type Finding, type Incident, type Severity, type ZabbixHealth, type ZabbixProblems } from "../../api/generated.ts";
 import { escapeHtml } from "../../components/html.ts";
 import { diagnosticListPaths } from "../../domain/diagnostic-routes.ts";
-import { aggregateDiagnostics, diagnosticLevels, incidentLevel, overviewDays, overviewLevel, overviewSearch, type OverviewDays } from "../../domain/unified-diagnostics.ts";
+import { aggregateDiagnostics, diagnosticLevels, incidentLevel, maxOverviewPageSize, overviewDays, overviewLevel, overviewPageSize, overviewPageSizes,
+  overviewRecordPage, overviewSearch, type OverviewDays } from "../../domain/unified-diagnostics.ts";
 import { incidentHref, incidentStatusLabels } from "./incident-filters.ts";
 import { bindOverviewTrend, renderOverviewTrend, type Trend } from "./unified-trend.ts";
 import { zabbixHealth } from "../resources/datasource-rows.ts";
@@ -59,7 +60,7 @@ function overviewHref(query: URLSearchParams, changes: Record<string, string>): 
 }
 
 function clearScope(query: URLSearchParams): string {
-  return overviewHref(query, { clusterId: "", severity: "", source: "", environmentId: "", businessId: "", recent: "", alertRecent: "" });
+  return overviewHref(query, { clusterId: "", severity: "", recentPage: "", source: "", environmentId: "", businessId: "", recent: "", alertRecent: "" });
 }
 
 function renderScope(clusters: Cluster[], query: URLSearchParams, severity: Severity | undefined, hasZabbix: boolean, sourceScopes: ZabbixHealth[]) {
@@ -94,6 +95,7 @@ function renderScope(clusters: Cluster[], query: URLSearchParams, severity: Seve
       ${hasZabbix ? `<label>Zabbix 状态<select name="recent">${choices([["", "当前记录"], ["true", "含最近恢复"]], query.get("recent") ?? "")}</select></label>` : ""}
       ${hasZabbix && query.get("source") === "alertmanager" ? `<label>告警状态<select name="alertRecent">${choices([["", "活动告警"], ["true", "包含非活动告警"]], query.get("alertRecent") ?? "")}</select></label>` : ""}
       <input type="hidden" name="trendDays" value="${overviewDays(query.get("trendDays"))}">
+      <input type="hidden" name="recentPageSize" value="${query.get("recentPageSize") ?? overviewPageSizes[0]}">
       <div class="overview-filter-actions"><button class="button" type="submit">应用筛选</button>
       <a class="overview-text-link" href="${clearScope(query)}">清除筛选</a></div>
     </form>
@@ -215,19 +217,20 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   const renderWindow = (days: OverviewDays) => renderOverviewTrend(trend, days,
     window => overviewHref(query, { trendDays: String(window) })) + (alertCoverage.length
     ? `<p class="overview-chart-note">Alertmanager 从 ${new Date(Math.min(...alertCoverage) * 1000).toLocaleString("zh-CN")} 起有平台采集记录。</p>` : "");
+  const renderRecords = () => renderRecent(data.records, query, canReadIncidents, incomplete, hasData);
   const html = `<section class="unified-overview" aria-label="诊断概况">
     ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(counts, query, severity)}
     <div class="overview-analytics">
       <section class="panel overview-trend" data-overview-trend aria-labelledby="overview-trend-title">${renderWindow(days)}</section>
       ${renderDistribution(counts, query, severity, incomplete)}
     </div>
-    ${renderRecent(data.recent, query, canReadIncidents, incomplete, hasData)}
+    <div data-overview-record-page>${renderRecords()}</div>
   </section>`;
-  return { html, bind: (root: HTMLElement) => bindUnifiedOverview(root, trend, query, renderWindow) };
+  return { html, bind: (root: HTMLElement) => bindUnifiedOverview(root, trend, query, renderWindow, renderRecords) };
 }
 
 function severityHref(query: URLSearchParams, level: Severity | "", severity: Severity | undefined): string {
-  return overviewHref(query, { severity: severity === level ? "" : level });
+  return overviewHref(query, { severity: severity === level ? "" : level, recentPage: "" });
 }
 
 function renderMetrics(data: Overview | undefined, query: URLSearchParams, severity: Severity | undefined) {
@@ -265,9 +268,9 @@ function renderDistribution(data: Overview | undefined, query: URLSearchParams, 
   </section>`;
 }
 
-function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean) {
+function renderRecent(rows: Overview["records"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean) {
   const eventQuery = new URLSearchParams(query);
-  for (const key of ["trendDays", "source", "recent", "alertRecent"]) eventQuery.delete(key);
+  for (const key of ["trendDays", "source", "recent", "alertRecent", "recentPage", "recentPageSize"]) eventQuery.delete(key);
   const findingsQuery = new URLSearchParams();
   const cluster = query.get("clusterId");
   const severity = overviewLevel(query.get("severity"));
@@ -277,7 +280,8 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
     const entry = Object.entries(incidentLevel).find(([, level]) => level === severity);
     if (entry) eventQuery.set("severity", entry[0]);
   }
-  const items = rows.map((row) => {
+  const { page, pages, size, start, end } = overviewRecordPage(query, rows.length);
+  const items = rows.slice(start, end).map((row) => {
     const at = row.time === undefined ? "—" : `<time datetime="${escapeHtml(row.observed)}">${escapeHtml(observedTime.format(row.time))}</time>`;
     const level = `<span class="overview-badge overview-${row.severity}">${row.severity ? diagnosticLevels[row.severity] : "未映射"}</span>`;
     if (row.problem) return { ...renderZabbixProblem(row.problem), at, level };
@@ -299,7 +303,7 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
     };
   });
   return `<section class="panel overview-records" aria-labelledby="overview-recent-title"><header class="overview-heading overview-record-heading">
-    <div><h2 id="overview-recent-title" tabindex="-1">最近诊断</h2><p>按首次发现时间倒序，最多 5 条 · UTC+8</p></div><div class="overview-actions">
+    <div><h2 id="overview-recent-title" tabindex="-1">最近诊断</h2><p>按首次发现时间倒序 · UTC+8</p></div><div class="overview-actions">
     <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.events, canReadIncidents ? eventQuery : findingsQuery))}">查看故障事件</a>
     <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.findings, findingsQuery))}">查看原有诊断结果</a></div></header>
     ${items.length ? `<div class="overview-table-wrap unified-recent" tabindex="0" role="region" aria-label="最近诊断记录"><table>
@@ -309,10 +313,34 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
       ${item.level}<span>${item.source}</span><span>${item.instance}</span>${item.status === "—" ? "" : `<span>${item.status}</span>`}<span>${item.at}</span>
       </div></li>`).join("")}</ul>`
     : `<div class="overview-empty"><strong>${!available ? "最近诊断暂不可用" : incomplete ? "当前范围尚未取得诊断记录" : "当前范围暂无诊断记录"}</strong>${available ? `<a href="${clearScope(query)}">清除筛选</a>` : ""}</div>`}
+    ${items.length ? renderRecordPager(page, pages, size, start, end, rows.length, incomplete) : ""}
   </section>`;
 }
 
-function renderZabbixProblem(problem: NonNullable<Overview["recent"][number]["problem"]>) {
+function renderRecordPager(page: number, pages: number, size: number, start: number, end: number, total: number, incomplete: boolean): string {
+  const choices = [...new Set<number>([...overviewPageSizes, size])].sort((a, b) => a - b);
+  return `<footer class="audit-list-footer overview-record-footer">
+    <span class="muted">显示第 ${start + 1}–${end} 条 · ${incomplete ? "已获取" : "共"} ${total} 条</span>
+    <nav class="audit-pagination" aria-label="最近诊断分页">
+      <button class="button secondary" type="button" aria-label="上一页" data-overview-page="${page - 1}"${page <= 1 ? " disabled" : ""}>‹</button>
+      <span class="audit-page-number">第 ${page} / ${pages} 页</span>
+      <button class="button secondary" type="button" aria-label="下一页" data-overview-page="${page + 1}"${page >= pages ? " disabled" : ""}>›</button>
+      <select data-overview-limit aria-label="每页条数" aria-controls="overview-custom-limit">${choices.map(count =>
+        `<option value="${count}"${count === size ? " selected" : ""}>${count} 条/页</option>`).join("")}
+        <option value="custom">自定义…</option></select>
+    </nav>
+    <form class="audit-limit-editor" id="overview-custom-limit" hidden novalidate>
+      <label>自定义每页条数<input name="limit" type="number" min="1" max="${maxOverviewPageSize}" step="1" required
+        aria-describedby="overview-limit-hint overview-limit-error"></label>
+      <small id="overview-limit-hint">1–${maxOverviewPageSize} 条</small>
+      <button class="button" type="submit">应用</button>
+      <button class="button secondary" type="button" data-overview-cancel-limit>取消</button>
+      <p class="overview-limit-error" id="overview-limit-error" role="alert"></p>
+    </form>
+  </footer>`;
+}
+
+function renderZabbixProblem(problem: NonNullable<Overview["records"][number]["problem"]>) {
   const start = Date.parse(problem.startedAt);
   const end = problem.recoveredAt ? Date.parse(problem.recoveredAt) : Date.now();
   const duration = Number.isFinite(start) && Number.isFinite(end) ? ` · 持续 ${Math.max(0, Math.floor((end - start) / 60_000))} 分钟` : "";
@@ -333,7 +361,7 @@ function renderZabbixProblem(problem: NonNullable<Overview["recent"][number]["pr
 }
 
 function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchParams,
-  renderWindow: (days: OverviewDays) => string): void {
+  renderWindow: (days: OverviewDays) => string, renderRecords: () => string): void {
   const form = root.querySelector<HTMLFormElement>("[data-unified-filters]");
   const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
   const overview = root.querySelector<HTMLElement>(".unified-overview");
@@ -359,6 +387,7 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
     heading?.focus({ preventScroll: true });
     heading?.scrollIntoView({ block: "start" });
   });
+  bindOverviewRecords(overview, trend.data.total, query, renderRecords);
   bindOverviewTrend(chart, trend, overviewDays(query.get("trendDays")));
   chart.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -373,6 +402,103 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
     chart.innerHTML = renderWindow(days);
     bindOverviewTrend(chart, trend, days);
     chart.querySelector<HTMLElement>(`[data-overview-window="${days}"]`)?.focus({ preventScroll: true });
+  });
+}
+
+function bindOverviewRecords(root: HTMLElement, total: number, query: URLSearchParams, renderRecords: () => string): void {
+  const section = root.querySelector<HTMLElement>("[data-overview-record-page]");
+  if (!section) return;
+  const current = () => overviewRecordPage(query, total);
+  const setPage = (page: number) => {
+    if (page > 1) query.set("recentPage", String(page));
+    else query.delete("recentPage");
+  };
+  const address = () => href(diagnosticListPaths.overview, overviewSearch(query));
+  if (Number(query.get("recentPage") ?? 1) !== current().page) {
+    setPage(current().page);
+    history.replaceState(history.state, "", address());
+  }
+
+  function showPage(page: number, size: number, focus: string) {
+    setPage(page);
+    if (size === overviewPageSizes[0]) query.delete("recentPageSize");
+    else query.set("recentPageSize", String(size));
+    const nextAddress = address();
+    if (window.location.hash !== nextAddress) history.pushState(history.state, "", nextAddress);
+    const field = root.querySelector<HTMLInputElement>('[name="recentPageSize"]');
+    if (field) field.value = String(size);
+    for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href^="#/diagnostics"]')) {
+      const [path, raw] = link.getAttribute("href")?.split("?", 2) ?? [];
+      if (path !== diagnosticListPaths.overview) continue;
+      const target = new URLSearchParams(raw);
+      if (link.hasAttribute("data-overview-window") && page > 1) target.set("recentPage", String(page));
+      else target.delete("recentPage");
+      target.set("recentPageSize", String(size));
+      link.setAttribute("href", href(path, overviewSearch(target)));
+    }
+    if (!section) return;
+    section.innerHTML = renderRecords();
+    const control = section.querySelector<HTMLElement>(focus) ??
+      section.querySelector<HTMLElement>("[data-overview-page]:not(:disabled)") ??
+      section.querySelector<HTMLElement>("#overview-recent-title");
+    control?.focus({ preventScroll: true });
+  }
+
+  const cancelLimit = () => {
+    const select = section.querySelector<HTMLSelectElement>("[data-overview-limit]");
+    const form = section.querySelector<HTMLFormElement>("#overview-custom-limit");
+    if (form) form.hidden = true;
+    if (select) {
+      select.value = String(current().size);
+      select.focus();
+    }
+  };
+  section.addEventListener("change", event => {
+    const select = event.target;
+    if (!(select instanceof HTMLSelectElement) || !select.hasAttribute("data-overview-limit")) return;
+    const size = overviewPageSize(select.value);
+    if (size) {
+      showPage(1, size, "[data-overview-limit]");
+      return;
+    }
+    const form = section.querySelector<HTMLFormElement>("#overview-custom-limit");
+    const input = form?.querySelector<HTMLInputElement>('[name="limit"]');
+    if (!form || !input) return;
+    form.hidden = false;
+    input.value = String(current().size);
+    input.removeAttribute("aria-invalid");
+    const error = form.querySelector("#overview-limit-error");
+    if (error) error.textContent = "";
+    input.select();
+    input.focus();
+  });
+  section.addEventListener("click", event => {
+    if (!(event.target instanceof HTMLButtonElement)) return;
+    if (event.target.hasAttribute("data-overview-cancel-limit")) cancelLimit();
+    const page = Number(event.target.dataset.overviewPage);
+    if (page >= 1 && page <= current().pages && !event.target.disabled) {
+      const target = page + (page > current().page ? 1 : -1);
+      showPage(page, current().size, `[data-overview-page="${target}"]:not(:disabled)`);
+    }
+  });
+  section.addEventListener("keydown", event => {
+    if (event.key === "Escape" && event.target instanceof Element && event.target.closest("#overview-custom-limit")) {
+      event.preventDefault();
+      cancelLimit();
+    }
+  });
+  section.addEventListener("submit", event => {
+    if (!(event.target instanceof HTMLFormElement) || event.target.id !== "overview-custom-limit") return;
+    event.preventDefault();
+    const input = event.target.querySelector<HTMLInputElement>('[name="limit"]');
+    const size = input && overviewPageSize(input.value);
+    if (size) showPage(1, size, "[data-overview-limit]");
+    else {
+      const error = event.target.querySelector("#overview-limit-error");
+      if (error) error.textContent = `请输入 1–${maxOverviewPageSize} 之间的整数。`;
+      input?.setAttribute("aria-invalid", "true");
+      input?.focus();
+    }
   });
 }
 

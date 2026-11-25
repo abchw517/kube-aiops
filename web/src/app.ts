@@ -22,6 +22,7 @@ import { bindAudit, loadAudit } from "./views/permissions/audit.ts";
 import { apiClient } from "./api/client.ts";
 import { diagnosticListPaths, diagnosticListView } from "./domain/diagnostic-routes.ts";
 import { renderPortalShell } from "./components/portal-shell.ts";
+import { mountLoginScene } from "./components/login-scene.ts";
 import {
   authenticationConfigError,
   authenticationRequiredState,
@@ -85,6 +86,7 @@ export class PortalApp {
   private canChangePassword = false;
   private superAdministrator = false;
   private showLogout = !demoMode;
+  private stopLoginScene?: () => void;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -600,6 +602,7 @@ export class PortalApp {
 
   /** 更新统一外框，并恢复仍然存在的全局导航焦点。 */
   private renderShell(content: string, signedOut = false, contentOwnsHeading = false): void {
+    this.stopLoginScene?.();
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
       active.closest(".topbar, .portal-sidebar, .skip-link") ? active : null;
@@ -618,6 +621,7 @@ export class PortalApp {
       contentOwnsHeading,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
+    this.stopLoginScene = signedOut ? mountLoginScene(this.root) : undefined;
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     if (activeLink) {
       const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .portal-sidebar a, .skip-link"));
