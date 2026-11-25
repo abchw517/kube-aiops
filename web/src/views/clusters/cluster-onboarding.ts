@@ -1,10 +1,11 @@
 import { renderNamespaceOwnership } from "./namespace-ownership.ts";
 import { escapeHtml } from "../../components/html.ts";
 
-const endpoint = "/api/v1/admin/cluster-onboarding";
+import { type ClusterEntry as Entry, clusterOnboardingEndpoint as endpoint, collectionStatus, renderCollection, renderCollectionRecheck } from "./cluster-records.ts";
+import { renderClusterDetail, renderClusterWorkspace, refreshClusterWorkspace } from "./cluster-workspace.ts";
+import { bindDirtyDialog, restoreResourceFocus } from "../resources/resource-workspace.ts";
 const route = "#/resources/clusters";
 import { clusterManagementTitle } from "../../domain/resource-routes.ts";
-const nodeValidationFailed = "已接入 · 节点校验失败";
 const fields = [
   ["id", "实例 ID", true], ["name", "实例名称", true],
   ["environment", "环境", true], ["business", "业务线", true], ["group", "集群名称", true],
@@ -13,169 +14,14 @@ const fields = [
   ["victoriaLogsURL", "VictoriaLogs 地址", false], ["alertmanagerURL", "Alertmanager 地址", false],
 ] as const;
 
-type Entry = Record<string, string | boolean | number | undefined> & {
-  id: string;
-  name: string;
-  mode: string;
-  enabled: boolean;
-  deleted?: boolean;
-  credentialKind?: string;
-  reportedAt: number;
-  firstCollectedAt: number;
-  validatedAt: number;
-  checkedAt: number;
-  collection?: {
-    nodes?: { name: string; ready: string }[];
-    namespaces?: { name: string }[];
-    nodeSampleAt?: number;
-    nodeFailures?: number;
-    nodeError?: string;
-    namespaceError?: boolean;
-    findingError?: boolean;
-    findingCount?: number;
-    workloadFinding?: boolean;
-  };
-};
-
-function collectionStatus(item: Entry): string {
-  if (item.deleted) return "已删除";
-  if (item.mode === "pull" && !item.credentialKind) return "待补录凭据";
-  if (!item.enabled) return "已停用";
-  if (item.mode === "push") {
-    if (!item.reportedAt) return "等待首次上报";
-    if (Date.now() / 1000 - item.reportedAt > 180) return "采集离线";
-    return item.firstCollectedAt ? "已接入" : "上报在线，等待首次诊断";
-  }
-  const timedOut = item.validatedAt > 0 && Date.now() / 1000 - item.validatedAt >= 300;
-  if (!item.firstCollectedAt) {
-    if (!item.validatedAt && item.checkedAt) return "待接入";
-    return timedOut ? "首次采集超时" : "等待首次采集";
-  }
-  if ((item.collection?.nodeFailures ?? 0) >= 2 && item.collection?.nodeSampleAt) return "已接入 · 节点数据已过期";
-  // 历史节点快照仍可查阅，但最新校验失败时不能用它判断当前健康。
-  if (item.collection?.nodeError) return nodeValidationFailed;
-  if (item.collection?.nodes?.some((node) => node.ready === "False")) return "已接入 · 集群异常";
-  if (item.collection?.nodes?.some((node) => node.ready === "Unknown")) return "已接入 · 节点状态未知";
-  if (item.collection?.nodes?.length) return "已接入 · 当前集群正常";
-  return timedOut ? "已接入 · 集群状态信息采集异常" : "已接入 · 等待节点数据";
-}
-
-function displayTime(seconds: number): string {
-  return escapeHtml(new Date(seconds * 1000).toLocaleString());
-}
-
-/** 本地及已保存凭据的外部直连实例支持重新校验。 */
-function canRecheckCollection(item: Entry): boolean {
-  return item.enabled && (item.mode === "local" || (item.mode === "pull" && Boolean(item.credentialKind)));
-}
-
-/** 在采集详情和独立编辑页复用重新校验表单。 */
-function renderCollectionRecheck(item: Entry): string {
-  return canRecheckCollection(item) ? `<form data-collection-check="${escapeHtml(item.id)}">
-    <button type="submit" class="button secondary">重新校验</button><p role="status"></p></form>` : "";
-}
-
-function renderCollection(item: Entry): string {
-  const data = item.collection;
-  const isHistorical = Boolean(data?.nodeError && data.nodes?.length);
-  const nodeHeading = isHistorical ? "历史节点快照" : "节点状态";
-  return `<div class="collection-details">
-    <p>${item.firstCollectedAt ? `首次采集成功 ${displayTime(item.firstCollectedAt)}` : "尚未收到有效采集数据"}</p>
-    ${item.reportedAt ? `<p>最近上报 ${displayTime(item.reportedAt)}</p>` : ""}
-    ${item.checkedAt ? `<p>最近检查 ${displayTime(item.checkedAt)}</p>` : ""}
-    ${data?.nodeError ? `<p role="status">${escapeHtml(data.nodeError)}</p>` : ""}
-    ${data?.nodeSampleAt ? `<p>${isHistorical ? "上次成功采样时间" : "节点更新时间"} ${displayTime(data.nodeSampleAt)}</p>` : ""}
-    ${(data?.nodeFailures ?? 0) >= 2 && data?.nodeSampleAt ? '<p role="status">节点数据已过期</p>' : ""}
-    <h3>${nodeHeading}</h3>
-    ${data?.nodes?.length ? `<ul aria-label="${nodeHeading}">${data.nodes.map((node) =>
-      `<li>${escapeHtml(node.name)} · <strong>${node.ready === "True" ? "Ready" : node.ready === "False" ? "NotReady" : "Unknown"}</strong></li>`).join("")}</ul>` : "<p>尚未收到节点数据。</p>"}
-    <h3>命名空间</h3>
-    ${data?.namespaceError ? "<p>命名空间采集异常</p>" : data?.namespaces?.length ?
-      `<p>${data.namespaces.map(({ name }) => escapeHtml(name)).join("、")}</p>` : "<p>暂无数据。</p>"}
-    <h3>诊断采集</h3>
-    ${data?.findingError ? "<p>诊断采集异常，请检查 K8sGPT 安装和 Result 读取权限</p>" :
-      data?.findingCount ? "<p>已收到 K8sGPT 诊断</p>" : "<p>尚未收到诊断。</p>"}
-    ${!data?.findingError && data?.workloadFinding ? "<p>发现工作负载故障</p>" : ""}
-  </div>`;
-}
-
 export async function renderOnboarding(id?: string, modal = false, editable = true): Promise<string> {
   if (id && !editable) return '<p role="alert">当前账号只能查看集群接入状态。</p>';
   if (id?.startsWith("ownership-")) {
     const body = await renderNamespaceOwnership(decodeURIComponent(id.slice(10)), modal);
     return modal ? clusterDialog("命名空间归属", body, false) : `<h2>命名空间归属</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}`;
   }
-  const response = await fetch(endpoint);
-  if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) {
-    throw new Error("directory unavailable");
-  }
-  const items = await response.json() as Entry[];
-  if (!id) {
-    const rows = items.map((item) => ({ item, status: collectionStatus(item) }));
-    const states = [...new Set(rows.map(({ status }) => status))];
-    const environmentGroups = new Map<string, Entry[]>();
-    for (const item of items) {
-      const environment = String(item.environment || "未设置环境");
-      const group = environmentGroups.get(environment) ?? [];
-      group.push(item);
-      environmentGroups.set(environment, group);
-    }
-    const clusterLabel = (item: Entry) => escapeHtml(item.group || item.name);
-    return `<div class="resource-workspace" data-resource-workspace>
-      <aside class="panel resource-scope" aria-labelledby="resource-scope-title">
-        <h2 id="resource-scope-title">资源范围</h2>
-        <input type="search" data-scope-search aria-label="搜索范围" placeholder="搜索环境或集群">
-        <button type="button" data-cluster-scope="all" aria-current="true">全部集群</button>
-        ${[...environmentGroups].map(([environment, group]) => `<details open data-resource-environment>
-          <summary data-cluster-scope="environment" data-scope-value="${escapeHtml(environment)}">${escapeHtml(environment)}</summary>
-          ${group.map((item) => `<button type="button" data-cluster-scope="cluster" data-scope-value="${escapeHtml(item.id)}">${clusterLabel(item)}</button>`).join("")}
-        </details>`).join("")}
-      </aside>
-      <div class="panel catalog-section">
-      <div class="cluster-heading"><div><h2 id="cluster-list-title">${clusterManagementTitle}</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="catalog-actions">
-        ${editable ? '<button type="button" class="button secondary" data-cluster-editor="push">采集上报</button><button type="button" class="button" data-cluster-editor="pull">＋ 新增集群</button>' : ""}
-      </div></div>
-      <nav class="resource-view-tabs" aria-label="资源视图">
-        <button type="button" data-resource-tab="clusters" aria-pressed="true">集群列表</button>
-        <button type="button" data-resource-tab="namespaces" aria-pressed="false">命名空间</button>
-      </nav>
-      <div class="cluster-filters">
-        <label>搜索资源<input type="search" name="query" autocomplete="off" data-cluster-filter="query" placeholder="搜索集群或命名空间"></label>
-        <label>采集状态<select data-cluster-filter="status"><option value="">全部状态</option>
-          ${states.map((state) => `<option>${escapeHtml(state)}</option>`).join("")}</select></label>
-      </div>
-      <div class="catalog-table-wrap" data-resource-table="clusters" role="region" aria-labelledby="cluster-list-title" tabindex="0"><table class="catalog-table cluster-table">
-        <thead><tr><th scope="col">集群</th><th scope="col">环境 / 业务线</th><th scope="col">集群类型</th><th scope="col">采集状态</th><th scope="col">操作</th></tr></thead>
-        <tbody>${rows.map(({ item, status }) => `<tr data-cluster-row data-cluster="${escapeHtml(item.id)}" data-environment="${escapeHtml(item.environment || "未设置环境")}" data-status="${escapeHtml(status)}">
-          <td><strong>${escapeHtml(item.group || item.name)}</strong> <code>${escapeHtml(item.id)}</code>
-            <div>${item.mode === "local" ? "本地自动采集" : item.mode === "pull" ? "外部直连" : "采集上报"}</div></td>
-          <td>${escapeHtml([item.environment, item.business].filter(Boolean).join(" / ") || "待补齐")}</td>
-          <td>${item.clusterType === "dedicated" ? "独立业务集群" : "共用集群"}</td>
-          <td><span class="cluster-status${status === nodeValidationFailed ? " cluster-status-warning" : ""}">${status}</span></td>
-          <td><div class="catalog-actions">
-          ${item.deleted ? (editable ? maintenanceButton(item, "reconnect", "重新连接") : "已删除") : `
-            <button type="button" class="button secondary" data-cluster-details>采集详情</button>
-            <template data-collection-template><p>${escapeHtml(item.group || item.name)} · ${status}</p>${renderCollection(item)}${editable ? renderCollectionRecheck(item) : ""}</template>
-            ${editable ? `${editorButton(item, "edit", item.mode === "local" ? "编辑归属" : item.mode === "pull" && !item.credentialKind ? "补录凭据" : "编辑配置")}
-            ${item.enabled && (item.mode !== "pull" || item.credentialKind) ? editorButton(item, "ownership", "命名空间归属") : ""}
-            ${canRecheckCollection(item) ? maintenanceButton(item, "recheck", "重新校验") : ""}
-            ${item.mode === "push" ? maintenanceButton(item, "rotate-token", "轮换上报凭据") : ""}
-            ${item.mode === "pull" && item.credentialKind ? editorButton(item, "rotate", "轮换直连凭据") : ""}
-            ${maintenanceButton(item, "delete", "删除")}` : ""}`}
-          </div></td></tr>`).join("")}
-          <tr data-cluster-empty${items.length ? " hidden" : ""}><td colspan="5" class="catalog-empty">暂无符合条件的集群。</td></tr></tbody>
-      </table></div>
-      <div class="catalog-table-wrap" data-resource-table="namespaces" hidden role="region" aria-label="命名空间列表" tabindex="0"><table class="catalog-table">
-        <thead><tr><th scope="col">命名空间</th><th scope="col">集群</th><th scope="col">环境</th></tr></thead>
-        <tbody>${items.flatMap((item) => (item.deleted || item.collection?.namespaceError ? [] : item.collection?.namespaces ?? [])
-          .map(({ name }) => `<tr data-namespace-row data-cluster="${escapeHtml(item.id)}" data-environment="${escapeHtml(item.environment || "未设置环境")}">
-            <td>${escapeHtml(name)}</td><td>${clusterLabel(item)}</td><td>${escapeHtml(item.environment || "未设置环境")}</td></tr>`)).join("")}
-          <tr data-namespace-empty hidden><td colspan="3" class="catalog-empty">暂无符合条件的命名空间。</td></tr></tbody>
-      </table></div>
-      <div class="catalog-bottom"><span data-cluster-count aria-live="polite">共 ${items.length} 个集群</span></div>
-      <dialog class="catalog-dialog" data-cluster-dialog aria-labelledby="cluster-dialog-title"></dialog>
-    </div></div>`;
-  }
+  const items = await readClusterDirectory();
+  if (!id) return renderClusterWorkspace(items, editable);
   const rotating = id.startsWith("rotate-");
   const editing = rotating || id.startsWith("edit-");
   const item = editing ? items.find((entry) => entry.id === decodeURIComponent(id.slice(rotating ? 7 : 5))) : undefined;
@@ -191,9 +37,24 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
   const locked = Boolean(item?.firstCollectedAt && item.environment);
   const local = mode === "local";
   const startsWithKubeconfig = mode === "pull" && !item?.credentialKind && !rotating;
-  const title = rotating ? "轮换直连凭据" : local ? "编辑归属" : editing ? "编辑配置" : mode === "pull" ? "新增集群" : "采集上报";
-  const body = `<form class="login-form identity-form cluster-editor" data-onboarding-mode="${mode}" data-editing="${editing}" data-rotating="${rotating}">
-      <p>${local ? "本地自动采集" : mode === "pull" ? "外部直连" : "采集上报"}</p>
+  const title = rotating ? "轮换直连凭据" : local ? "编辑归属" : editing && startsWithKubeconfig ? "补录直连凭据"
+    : editing ? "编辑集群配置" : mode === "pull" ? "新增外部直连集群" : "采集上报";
+  const start = rotating || (editing && startsWithKubeconfig) ? "connect" : "basic";
+  const section = (step: string) => `class="cluster-editor-pane" data-editor-pane="${step}"${start === step ? "" : " hidden"}`;
+  const configurationInput = (key: typeof fields[number][0]) => {
+    const label = fields.find(([name]) => name === key)?.[1];
+    return `<label>${label}<input name="${key}" value="${escapeHtml(item?.[key])}"
+      ${key === "apiURL" && startsWithKubeconfig ? "disabled" : ["apiURL", "engineNamespace", "engineName"].includes(key) ? "required" : ""}></label>`;
+  };
+  const body = `<form novalidate class="login-form identity-form cluster-editor" data-onboarding-mode="${mode}" data-editing="${editing}" data-rotating="${rotating}">
+      <div class="cluster-form-shell">
+      ${local || rotating ? "" : `<nav class="cluster-editor-steps resource-view-tabs" aria-label="配置分区">
+        <button type="button" data-editor-step="basic" aria-pressed="${start === "basic"}">基本信息</button>
+        ${mode === "pull" ? `<button type="button" data-editor-step="connect" aria-pressed="${start === "connect"}">连接与凭据</button>` : ""}
+        <button type="button" data-editor-step="observe" aria-pressed="false">观测与诊断</button>
+      </nav>`}
+      <div class="cluster-form-content">
+      <section ${section("basic")}>
       <fieldset><legend>名称与归属</legend><div class="cluster-form-grid">
       ${fields.filter(([, , base]) => base).map(([name,label,base]) => {
         const current = String(item?.[name] ?? "");
@@ -214,26 +75,34 @@ export async function renderOnboarding(id?: string, modal = false, editable = tr
         <option value="shared">共用集群</option>
         <option value="dedicated"${item?.clusterType === "dedicated" ? " selected" : ""}>独立业务集群</option>
       </select></label>`}</div></fieldset>
-      ${local ? "" : `<fieldset><legend>连接与观测配置</legend><div class="cluster-form-grid">
-        ${fields.filter(([key, , base]) => !base && (mode === "pull" || !["apiURL", "engineNamespace", "engineName"].includes(key)))
-          .map(([key, label]) => `<label>${label}<input name="${key}" value="${escapeHtml(item?.[key])}"
-          ${key === "apiURL" && startsWithKubeconfig ? "disabled" : ["apiURL", "engineNamespace", "engineName"].includes(key) ? "required" : ""}></label>`).join("")}
-      </div></fieldset>`}
-      ${mode === "pull" ? credentialFields(item?.credentialKind, rotating) : ""}
-      ${mode === "pull" ? `<label><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""} style="width:auto"> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
-      ${local ? "" : `<label><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""} style="width:auto"> 启用实例</span></label>`}
-      <p>${local ? "本地采集使用部署内的服务账号。" : mode === "pull" ? "直连凭据加密保存在 SQLite 中。轮换凭据通过节点读取校验后才会生效。" :
-        "保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。"} </p>
-      ${mode === "pull" && !rotating ? "<p>测试连接临时使用本次填写的凭据。</p>" : ""}
-      <p role="status"></p>
+      ${local ? "" : `<label class="cluster-switch"><span><input type="checkbox" name="enabled"${item?.enabled !== false ? " checked" : ""}> 启用实例</span></label>`}
+      ${local ? "<p>本地采集使用部署内的服务账号。</p>" : mode === "push" ? "<p>保存后会显示一次上报凭据。采集端提交快照后显示在线，收到真实诊断后锁定环境。</p>" : ""}
+      </section>
+      ${mode === "pull" ? `<section ${section("connect")}>
+        <fieldset><legend>Kubernetes API</legend>${configurationInput("apiURL")}
+          <p data-api-url-hint>${startsWithKubeconfig ? "API 地址由 kubeconfig 提供。" : "测试连接验证 Kubernetes API 和节点读取权限。"}</p></fieldset>
+        ${credentialFields(item?.credentialKind, rotating)}
+        <p>直连凭据加密保存在 SQLite 中。轮换凭据通过节点读取校验后才会生效。</p>
+      </section>` : ""}
+      ${local ? "" : `<section ${section("observe")}>
+        ${mode === "pull" ? `<fieldset><legend>诊断 Engine</legend><div class="cluster-form-grid">
+          ${configurationInput("engineNamespace")}${configurationInput("engineName")}
+        </div></fieldset>` : ""}
+        <details class="cluster-observability"><summary>观测证据源</summary><div class="cluster-form-grid">
+          ${configurationInput("prometheusURL")}${configurationInput("victoriaLogsURL")}${configurationInput("alertmanagerURL")}
+        </div></details>
+        ${mode === "pull" ? `<label class="cluster-switch"><span><input type="checkbox" name="aiEnabled"${item?.aiEnabled === true ? " checked" : ""}> 启用 AI 复核（读取目标 Engine Secret）</span></label>` : ""}
+      </section>`}
       <textarea rows="3" readonly hidden aria-label="上报凭据" data-report-token></textarea>
-      <div class="cluster-editor-actions">
+      </div></div>
+      <footer class="cluster-form-footer"><p role="status"></p><div class="cluster-editor-actions">
         ${modal ? '<button type="button" class="button secondary" data-cluster-close>取消</button>' : ""}
         ${mode === "pull" && !rotating ? '<button type="submit" value="test" class="button secondary">测试连接</button>' : ""}
-        <button type="submit" class="button">${rotating ? "校验并轮换" : local ? "保存归属" : "保存"}</button>
-      </div>
+        <button type="submit" class="button">${rotating ? "校验并轮换" : local ? "保存归属" : "保存配置"}</button>
+      </div></footer>
     </form>`;
-  if (modal) return clusterDialog(title, body, false);
+  const summary = [item?.group || item?.name, item?.id, local ? "本地自动采集" : mode === "push" ? "采集上报" : "外部直连"].filter(Boolean).join(" · ");
+  if (modal) return clusterDialog(title, body, false, summary, true);
   return `<h2>${title}</h2><a href="${route}">返回${clusterManagementTitle}</a>${body}
 
     ${item ? `<section><h3>${collectionStatus(item)}</h3>${renderCollection(item)}</section>` : ""}
@@ -267,10 +136,13 @@ export function updateClusterCredential(event: Event): void {
   for (const piece of select.form.querySelectorAll<HTMLElement>("[data-credential-piece]")) {
     const field = piece.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea");
     if (!field) continue;
+    field.value = "";
     piece.hidden = !visible.includes(piece.dataset.credentialPiece ?? "");
     field.disabled = piece.hidden;
     field.required = !piece.hidden;
   }
+  const hint = select.form.querySelector("[data-api-url-hint]");
+  if (hint) hint.textContent = select.value === "kubeconfig" ? "API 地址由 kubeconfig 提供。" : "测试连接验证 Kubernetes API 和节点读取权限。";
   const url = select.form.querySelector<HTMLInputElement>('[name="apiURL"]');
   if (url) {
     url.disabled = select.value === "kubeconfig";
@@ -284,6 +156,16 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean, 
   const buttons = [...form.querySelectorAll<HTMLButtonElement>('button[type="submit"]')];
   if (!status || !token || buttons.some((button) => button.disabled)) return;
   const dialog = form.closest("dialog");
+  const workspace = form.closest<HTMLElement>("[data-resource-workspace]");
+  const invalid = form.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input:invalid, select:invalid, textarea:invalid");
+  if (invalid) {
+    const pane = invalid.closest<HTMLElement>("[data-editor-pane]")?.dataset.editorPane;
+    if (pane) showEditorPane(form, pane);
+    const details = invalid.closest("details");
+    if (details) details.open = true;
+    invalid.reportValidity();
+    return;
+  }
   const data = new FormData(form);
   const values = Object.fromEntries(fields.map(([key]) => [key, String(data.get(key) ?? "").trim()]));
   const credentialKind = data.get("credentialKind");
@@ -296,6 +178,8 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean, 
     privateKey: data.get("credentialPrivateKey") ?? "", kubeconfig: data.get("credentialKubeconfig") ?? "" } : undefined;
   for (const button of buttons) button.disabled = true;
   dialog?.setAttribute("aria-busy", "true");
+  const body = form.querySelector<HTMLElement>(".cluster-form-shell");
+  if (body) body.inert = true;
   status.textContent = testing ? "正在测试连接…" : "正在保存…";
   let keepDisabled = false;
   try {
@@ -323,16 +207,22 @@ export async function submitOnboarding(form: HTMLFormElement, testing: boolean, 
       if (close) {
         close.textContent = "完成";
       }
-      if (dialog) dialog.onclose = () => { if (form.isConnected && ["#/resources", route].includes(window.location.hash)) reload(); };
+      if (dialog) {
+        dialogGuards.get(dialog)?.clean();
+        dialog.addEventListener("close", () => void refreshAfterMutation(workspace, reload), { once: true });
+      }
+      for (const pane of form.querySelectorAll<HTMLElement>("[data-editor-pane], .cluster-editor-steps")) pane.hidden = true;
     } else if (dialog) {
+      await refreshAfterMutation(workspace, reload);
       dialog.close();
-      if (form.isConnected && ["#/resources", route].includes(window.location.hash)) reload();
     } else {
       window.location.hash = route;
     }
   } catch {
     status.textContent = "集群接入请求失败。";
   } finally {
+    if (body) body.inert = false;
+    if (keepDisabled) token.focus();
     dialog?.removeAttribute("aria-busy");
     for (const button of buttons) button.disabled = keepDisabled;
   }
@@ -347,80 +237,22 @@ export async function recheckCollection(form: HTMLFormElement, reload: () => voi
   try {
     const response = await fetch(`${endpoint}?action=recheck&id=${encodeURIComponent(form.dataset.collectionCheck ?? "")}`, { method: "POST" });
     if (!response.ok) throw new Error();
-    reload();
+    const drawer = form.closest<HTMLDialogElement>("[data-cluster-drawer]");
+    const workspace = drawer?.closest<HTMLElement>("[data-resource-workspace]");
+    if (!drawer || !workspace) { reload(); return; }
+    const items = await readClusterDirectory();
+    if (!workspace.isConnected) return;
+    refreshClusterWorkspace(workspace, items);
+    if (!drawer.open || drawer.dataset.clusterId !== form.dataset.collectionCheck) return;
+    const item = items.find(entry => entry.id === drawer.dataset.clusterId);
+    if (!item) { drawer.close(); return; }
+    drawer.innerHTML = renderClusterDetail(item, workspace.dataset.editable === "true");
+    const next = drawer.querySelector<HTMLElement>("[data-collection-check] button, h2");
+    next?.focus();
   } catch {
     status.textContent = "重新校验失败，请稍后重试。";
     button.disabled = false;
   }
-}
-
-function maintenanceButton(item: Entry, action: string, label: string): string {
-  return `<button type="button" class="button secondary${action === "delete" ? " catalog-danger" : ""}"
-    data-cluster-action="${action}" data-id="${escapeHtml(item.id)}" data-label="${escapeHtml(item.group || item.name)}">${label}</button>`;
-}
-
-export function filterClusterRows(event: Event): void {
-  const target = event.target;
-  if (!(target instanceof HTMLElement) || !target.matches("[data-cluster-filter], [data-scope-search]")) return;
-  const workspace = target.closest<HTMLElement>("[data-resource-workspace]");
-  if (!workspace) return;
-  if (target instanceof HTMLInputElement && target.hasAttribute("data-scope-search")) {
-    const query = target.value.trim().toLowerCase();
-    for (const group of workspace.querySelectorAll<HTMLDetailsElement>("[data-resource-environment]")) {
-      const match = Boolean(group.textContent?.toLowerCase().includes(query));
-      group.hidden = !match;
-      if (query && match) group.open = true;
-    }
-    return;
-  }
-  filterResourceRows(workspace);
-}
-
-/** 在切换资源范围或视图时同步列表结果。 */
-export function handleResourceWorkspaceClick(event: Event): void {
-  if (!(event.target instanceof Element)) return;
-  const control = event.target.closest<HTMLElement>("[data-cluster-scope], [data-resource-tab]");
-  const workspace = control?.closest<HTMLElement>("[data-resource-workspace]");
-  if (!control || !workspace) return;
-  if (control.hasAttribute("data-cluster-scope")) {
-    const previous = workspace.querySelector("[data-cluster-scope][aria-current=true]");
-    const environment = control.closest<HTMLDetailsElement>("[data-resource-environment]");
-    if (control.matches("summary") && previous !== control && environment) {
-      event.preventDefault();
-      environment.open = true;
-    }
-    previous?.removeAttribute("aria-current");
-    control.setAttribute("aria-current", "true");
-  } else {
-    workspace.querySelector("[data-resource-tab][aria-pressed=true]")?.setAttribute("aria-pressed", "false");
-    control.setAttribute("aria-pressed", "true");
-  }
-  filterResourceRows(workspace);
-}
-
-/** 两种列表共用范围与关键词，采集状态仅作用于集群。 */
-function filterResourceRows(section: HTMLElement): void {
-  const search = section.querySelector<HTMLInputElement>('[data-cluster-filter="query"]')?.value.trim().toLowerCase() ?? "";
-  const status = section.querySelector<HTMLSelectElement>('[data-cluster-filter="status"]');
-  const scopes = section.querySelector<HTMLElement>("[data-cluster-scope][aria-current=true]")?.dataset;
-  const namespaces = Boolean(section.querySelector('[data-resource-tab="namespaces"][aria-pressed=true]'));
-  const rowSelector = namespaces ? "[data-namespace-row]" : "[data-cluster-row]";
-  for (const table of section.querySelectorAll<HTMLElement>("[data-resource-table]")) {
-    table.hidden = table.dataset.resourceTable !== (namespaces ? "namespaces" : "clusters");
-  }
-  if (status) status.disabled = namespaces;
-  let visible = 0;
-  for (const row of section.querySelectorAll<HTMLTableRowElement>(rowSelector)) {
-    const matchesScope = scopes?.clusterScope === "environment" ? scopes.scopeValue === row.dataset.environment :
-      scopes?.clusterScope === "cluster" ? scopes.scopeValue === row.dataset.cluster : true;
-    row.hidden = !matchesScope || Boolean(!namespaces && status?.value && status.value !== row.dataset.status) ||
-      !row.textContent?.toLowerCase().includes(search);
-    if (!row.hidden) visible++;
-  }
-  const empty = section.querySelector<HTMLTableRowElement>(namespaces ? "[data-namespace-empty]" : "[data-cluster-empty]");
-  if (empty) empty.hidden = visible > 0;
-  const count = section.querySelector("[data-cluster-count]");
-  if (count) count.textContent = `共 ${visible} 个${namespaces ? "命名空间" : "集群"}`;
 }
 
 const maintenance: Record<string, { title: string; description: string }> = {
@@ -430,40 +262,75 @@ const maintenance: Record<string, { title: string; description: string }> = {
   recheck: { title: "重新校验", description: "使用当前连接配置检查节点读取权限，并更新最近校验结果。" },
 };
 
-function editorButton(item: Entry, action: string, label: string): string {
-  return `<button type="button" class="button secondary" data-cluster-editor="${action}-${encodeURIComponent(item.id)}">${label}</button>`;
+async function readClusterDirectory(): Promise<Entry[]> {
+  const response = await fetch(endpoint);
+  if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) throw new Error("directory unavailable");
+  return await response.json() as Entry[];
 }
 
-function clusterDialog(title: string, body: string, showClose = true): string {
-  return `<header><h2 id="cluster-dialog-title" tabindex="-1">${title}</h2></header>
-    <div class="catalog-dialog-body">${body}</div>${showClose ? '<footer><button type="button" class="button secondary" data-cluster-close>关闭</button></footer>' : ""}`;
+function onClusterList(): boolean {
+  return ["#/resources", route].includes(window.location.hash.split("?")[0] ?? "");
+}
+
+function showEditorPane(form: HTMLFormElement, pane: string): void {
+  for (const node of form.querySelectorAll<HTMLElement>("[data-editor-pane]")) node.hidden = node.dataset.editorPane !== pane;
+  for (const button of form.querySelectorAll("[data-editor-step]")) button.setAttribute("aria-pressed", String(button.getAttribute("data-editor-step") === pane));
+}
+
+function clusterDialog(title: string, body: string, showClose = true, summary = "", editor = false): string {
+  return `<header class="resource-overlay-head"><div><h2 id="cluster-dialog-title" tabindex="-1">${title}</h2>${summary ? `<p>${escapeHtml(summary)}</p>` : ""}</div>
+    <button type="button" class="zabbix-close" aria-label="关闭" data-cluster-close>×</button></header>
+    <div class="catalog-dialog-body${editor ? " cluster-editor-container" : ""}">${body}</div>
+    ${showClose ? '<footer><button type="button" class="button secondary" data-cluster-close>关闭</button></footer>' : ""}`;
+}
+
+const dialogGuards = new WeakMap<HTMLDialogElement, ReturnType<typeof bindDirtyDialog>>();
+function guardDialog(dialog: HTMLDialogElement): void {
+  if (!dialogGuards.has(dialog)) {
+    dialogGuards.set(dialog, bindDirtyDialog(dialog, "[data-cluster-close]", () => dialog.hasAttribute("aria-busy")));
+    dialog.addEventListener("close", () => {
+      if (dialog.open) return;
+      dialog.replaceChildren();
+      dialogGuards.get(dialog)?.clean();
+    });
+  }
 }
 
 export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<void> {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  const section = target.closest(".catalog-section");
+  const section = target.closest<HTMLElement>("[data-resource-workspace]");
   const dialog = section?.querySelector<HTMLDialogElement>("[data-cluster-dialog]");
-  if (!dialog) return;
-  if (target.closest("[data-cluster-close]")) {
-    if (!dialog.hasAttribute("aria-busy")) dialog.close();
-    return;
-  }
-  if (dialog.open) return;
-  dialog.onclose = null;
-  dialog.oncancel = (e) => { if (dialog.hasAttribute("aria-busy")) e.preventDefault(); };
-  const details = target.closest("[data-cluster-details]")?.parentElement?.querySelector<HTMLTemplateElement>("[data-collection-template]");
-  if (details) {
-    dialog.classList.add("cluster-dialog-wide");
-    dialog.innerHTML = clusterDialog("采集详情", details.innerHTML);
+  const editor = target.closest<HTMLButtonElement>("[data-cluster-editor]");
+  const button = target.closest<HTMLButtonElement>("[data-cluster-action]");
+  const step = target.closest<HTMLButtonElement>("[data-editor-step]");
+  if (step?.form && step.dataset.editorStep) { showEditorPane(step.form, step.dataset.editorStep); return; }
+  if (!dialog || !section || section.dataset.editable !== "true" || (!editor && !button)) return;
+  const adding = editor?.dataset.clusterEditor === "choose";
+  const fromPicker = dialog.open && editor?.hasAttribute("data-from-chooser");
+  if (dialog.open && !fromPicker) return;
+  guardDialog(dialog);
+  const menu = target.closest<HTMLDetailsElement>(".resource-row-menu");
+  const origin = menu?.querySelector<HTMLElement>("summary") ?? editor ?? button;
+  if (menu) menu.open = false;
+  const cluster = target.closest<HTMLElement>("[data-cluster-row], [data-cluster-drawer]");
+  const clusterId = cluster?.dataset.cluster || cluster?.dataset.clusterId;
+  if (!fromPicker) dialog.onclose = () => restoreResourceFocus(origin,
+    section.querySelector(`[data-cluster-row]:not([hidden]) [data-cluster-details="${CSS.escape(clusterId ?? "")}"]`) ??
+    section.querySelector("[data-cluster-filter=query]"));
+  if (adding) {
+    dialog.classList.remove("cluster-dialog-wide");
+    dialog.innerHTML = clusterDialog("接入集群", `<div class="resource-picker">
+      <button type="button" class="button secondary" data-cluster-editor="pull" data-from-chooser><strong>外部直连</strong><small>平台可直接访问目标集群的 Kubernetes API。</small></button>
+      <button type="button" class="button secondary" data-cluster-editor="push" data-from-chooser><strong>采集上报</strong><small>采集端主动向平台上报诊断快照。</small></button></div>
+      <p class="muted">本地自动采集实例由平台发现。</p>`);
     dialog.showModal();
     return;
   }
-  const editor = target.closest<HTMLButtonElement>("[data-cluster-editor]");
   if (editor) {
     dialog.classList.add("cluster-dialog-wide");
     dialog.innerHTML = clusterDialog(escapeHtml(editor.textContent ?? clusterManagementTitle), '<p role="status">正在加载…</p>');
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     const loading = dialog.firstElementChild;
     try {
       const body = await renderOnboarding(editor.dataset.clusterEditor, true);
@@ -472,20 +339,17 @@ export async function handleClusterMaintenanceClick(event: MouseEvent): Promise<
         dialog.querySelector<HTMLElement>("h2")?.focus();
       }
     } catch {
-      if (dialog.open && dialog.firstElementChild === loading) {
-        dialog.innerHTML = clusterDialog(clusterManagementTitle, '<p role="alert">无法加载集群配置，请重试。</p>');
-      }
+      if (dialog.open && dialog.firstElementChild === loading) dialog.innerHTML = clusterDialog(clusterManagementTitle, '<p role="alert">无法加载集群配置，请重试。</p>');
     }
     return;
   }
   dialog.classList.remove("cluster-dialog-wide");
-  const button = target.closest<HTMLButtonElement>("[data-cluster-action]");
   const action = button?.dataset.clusterAction ?? "";
   const content = maintenance[action];
   if (!button || !content) return;
   dialog.innerHTML = `<form data-cluster-maintenance="${action}" data-id="${escapeHtml(button.dataset.id)}">
     <header><h2 id="cluster-dialog-title">${content.title}</h2></header>
-    <div class="catalog-dialog-body"><p>${escapeHtml(button.dataset.label)}</p><p>${content.description}</p>
+    <div class="catalog-dialog-body"><p>${escapeHtml(button.dataset.label)} · <code>${escapeHtml(button.dataset.id)}</code></p><p>${content.description}</p>
       <p role="status" aria-live="polite"></p>
       <textarea aria-label="新上报凭据" readonly hidden data-cluster-token></textarea></div>
     <footer><button type="button" class="button secondary" data-cluster-close>取消</button>
@@ -520,13 +384,29 @@ export async function submitClusterMaintenance(form: HTMLFormElement, reload: ()
       if (close) close.textContent = "关闭";
       submit.hidden = true;
     } else {
+      await refreshAfterMutation(form.closest<HTMLElement>("[data-resource-workspace]"), reload);
       dialog.close();
-      reload();
     }
   } catch {
     status.textContent = "请求失败，请检查连接。";
   } finally {
     submit.disabled = submit.hidden;
     dialog.removeAttribute("aria-busy");
+  }
+}
+
+async function refreshAfterMutation(workspace: HTMLElement | null, reload: () => void): Promise<void> {
+  if (!workspace?.isConnected || !onClusterList()) return;
+  try {
+    const items = await readClusterDirectory();
+    if (!workspace.isConnected) return;
+    refreshClusterWorkspace(workspace, items);
+    const drawer = workspace.querySelector<HTMLDialogElement>("[data-cluster-drawer][open]");
+    if (!drawer) return;
+    const item = items.find(entry => entry.id === drawer.dataset.clusterId);
+    if (item) drawer.innerHTML = renderClusterDetail(item, workspace.dataset.editable === "true");
+    else drawer.close();
+  } catch {
+    if (workspace.isConnected) reload();
   }
 }

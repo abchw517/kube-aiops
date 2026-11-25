@@ -1,13 +1,13 @@
-import { bindObservabilitySources, renderObservabilityDashboardLinks } from "./views/diagnosis/observability-sources.ts";
+import { renderObservabilityDashboardLinks } from "./views/diagnosis/observability-sources.ts";
 import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
-import { bindZabbixSources } from "./views/diagnosis/zabbix-sources.ts";
 import { loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
 import { bindPermissionCatalog, loadPermissionCatalog, renderPermissionCatalog } from "./views/permissions/permission-catalog.ts";
 import { bindPortalForms } from "./portal-forms.ts";
 import { bindDefaultRoleWorkspace, filterAccounts, handlePlatformClick, updateScopeOptions } from "./views/permissions/platform-admin.ts";
+import { bindClusterWorkspace } from "./views/clusters/cluster-workspace.ts";
 import { handleResourceCatalogClick, renderResourceManagement } from "./views/resources/resource-management.ts";
 import { bindWiki, renderWiki, type WikiAccess } from "./views/wiki/wiki.ts";
-import { filterClusterRows, handleClusterMaintenanceClick, handleResourceWorkspaceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
+import { handleClusterMaintenanceClick, updateClusterCredential } from "./views/clusters/cluster-onboarding.ts";
 import { changeNamespaceOwnership } from "./views/clusters/namespace-ownership.ts";
 import {
   ApiError,
@@ -50,7 +50,8 @@ import { bindIncidentWorkspace, incidentError, loadIncidentWorkspace } from "./v
 import { incidentEvents, incidentPrefix } from "./views/diagnosis/incident-filters.ts";
 import { bindRcaPage, loadRcaPage } from "./views/diagnosis/incident-rca.ts";
 import { bindTopologyPage, loadTopologyPage } from "./views/diagnosis/incident-topology.ts";
-import { bindDatasourcesPage, bindPoliciesPage, loadDatasourcesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
+import { bindPoliciesPage, loadPoliciesPage, policiesPath } from "./views/diagnosis/diagnostic-settings.ts";
+import { bindDatasourcesWorkspace, loadDatasourcesPage } from "./views/resources/datasource-management.ts";
 import { bindIncidentDetail, loadIncidentDetail } from "./views/diagnosis/incident-detail.ts";
 import { bindFindingReview } from "./views/diagnosis/finding-review.ts";
 import { renderFindingDetail } from "./views/diagnosis/finding-detail.ts";
@@ -90,7 +91,6 @@ export class PortalApp {
     window.addEventListener("hashchange", () => void this.route());
     this.root.addEventListener("click", (event) => {
       handleResourceCatalogClick(event);
-      handleResourceWorkspaceClick(event);
       void handleClusterMaintenanceClick(event);
       handlePlatformClick(event);
       this.handleClick(event);
@@ -120,9 +120,12 @@ export class PortalApp {
       const form = target.closest<HTMLFormElement>('form[data-identity-resource="ldap"]');
       if (form) invalidateLDAPDraft(form, target);
     };
-    this.root.addEventListener("input", filterClusterRows);
-    this.root.addEventListener("change", filterClusterRows);
     this.root.addEventListener("change", updateClusterCredential);
+    this.root.addEventListener("input", (event) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      const status = event.target.closest(".cluster-editor")?.querySelector('[role="status"]');
+      if (status) status.textContent = "有未保存的修改。";
+    });
     this.root.addEventListener("change", changeNamespaceOwnership);
     this.root.addEventListener("input", updateLDAP);
     this.root.addEventListener("input", filterAccounts);
@@ -233,7 +236,11 @@ export class PortalApp {
         this.renderShell(loadingState("正在加载资源管理。"));
         try {
           const body = await renderResourceManagement(hash, this.resourceAccess, this.identityAdmin);
-          if (generation === this.renderGeneration) this.renderShell(body);
+          if (generation === this.renderGeneration) {
+            const clusterList = path === "#/resources/clusters" || (path === "#/resources" && this.resourceAccess.clusters);
+            this.renderShell(body, false, clusterList);
+            bindClusterWorkspace(this.root);
+          }
         } catch {
           if (generation === this.renderGeneration) this.renderShell(errorState("无法加载资源管理。"));
         }
@@ -399,12 +406,12 @@ export class PortalApp {
     try {
       const refresh = () => void this.route();
       if (datasources) {
-        const page = await loadDatasourcesPage(hash, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
+        const page = await loadDatasourcesPage(hash, this.diagnosticSettings.datasourceWrite);
         if (generation !== this.renderGeneration) return;
-        this.renderShell(page.html);
-        bindDatasourcesPage(this.root, page.items, refresh, this.incidentCreate);
-        bindObservabilitySources(this.root, page.observability, refresh);
-        bindZabbixSources(this.root, page.zabbix, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
+        this.renderShell(page.html, false, true);
+        bindDatasourcesWorkspace(this.root, page, {
+          write: this.diagnosticSettings.datasourceWrite, test: this.diagnosticSettings.datasourceTest, createIncident: this.incidentCreate,
+        });
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);
         if (generation !== this.renderGeneration) return;
@@ -583,7 +590,7 @@ export class PortalApp {
   }
 
   /** 更新统一外框，并恢复仍然存在的全局导航焦点。 */
-  private renderShell(content: string, signedOut = false): void {
+  private renderShell(content: string, signedOut = false, contentOwnsHeading = false): void {
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
       active.closest(".topbar, .portal-sidebar, .skip-link") ? active : null;
@@ -599,6 +606,7 @@ export class PortalApp {
       canChangePassword: this.canChangePassword,
       showLogout: this.showLogout,
       signedOut,
+      contentOwnsHeading,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });

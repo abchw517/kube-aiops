@@ -1,13 +1,8 @@
 import { apiClient } from "../../api/client.ts";
 import { ApiError, type ZabbixCredential, type ZabbixGroup, type ZabbixScope, type ZabbixScopeChoice, type ZabbixSource } from "../../api/generated.ts";
-import { escapeHtml as h, formatTimestamp } from "../../components/html.ts";
-import { diagnosticListPaths } from "../../domain/diagnostic-routes.ts";
+import { escapeHtml as h } from "../../components/html.ts";
+import { bindDirtyDialog } from "../resources/resource-workspace.ts";
 import { diagnosticLevels } from "../../domain/unified-diagnostics.ts";
-
-export const zabbixHealth: Record<string, string> = {
-  pending: "等待首次同步", syncing: "正在同步", available: "同步正常", stale: "数据已过期",
-  unavailable: "首次同步失败", restricted: "采集权限不可用", paused: "已暂停",
-};
 
 export function zabbixError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -16,50 +11,6 @@ export function zabbixError(error: unknown): string {
     if (body?.error?.message) return body.error.message;
   }
   return "暂时无法完成 Zabbix 操作，请重试。";
-}
-
-function sourceCards(items: ZabbixSource[], canWrite: boolean, canTest: boolean): string {
-  if (!items.length) return "<p>当前范围尚未接入 Zabbix 数据源。</p>";
-  return items.map(source => {
-    const query = new URLSearchParams({ source: "zabbix", ...source.scope });
-    const scopeLabel = `${source.environmentName ?? source.scope.environmentId} / ${source.businessName ?? source.scope.businessId}`;
-    const counts = source.hostCount === undefined ? "暂无可用数据" : `${source.hostCount} 台主机 · ${source.problemCount ?? 0} 条活跃问题`;
-    return `<article class="panel zabbix-source-card" data-zabbix-source="${h(source.id)}">
-      <header class="diagnostic-toolbar"><h3>${h(source.name || `Zabbix · ${scopeLabel}`)}</h3>
-        <span>${h(zabbixHealth[source.health] ?? source.health)}</span></header>
-      ${source.name ? `<p class="zabbix-source-scope">${h(scopeLabel)}</p>` : ""}
-      <p>${h(source.groups.map(group => group.name).join("、"))}</p><p>${h(counts)}</p>
-      <p>上次成功同步 ${formatTimestamp(source.syncedAt)}</p>
-      <div class="catalog-actions"><a class="button secondary" href="${diagnosticListPaths.overview}?${h(query.toString())}">查看诊断总览</a>
-        ${canTest && source.enabled ? `<button type="button" class="button secondary" data-zabbix-action="sync" ${source.health === "syncing" ? "disabled" : ""}>${source.health === "unavailable" || source.health === "stale" ? "重试同步" : "立即同步"}</button>` : ""}</div>
-      <details data-zabbix-details><summary>管理数据源</summary>
-        <p>${h(source.endpoint)}</p><p>${source.authMethod === "password" ? "账号密码" : "API Token"} · 版本 ${h(source.upstreamVersion)} · 每分钟同步</p>
-        <p>上次尝试 ${formatTimestamp(source.checkedAt)}</p>
-        <div class="catalog-actions">
-        ${canWrite && canTest ? '<button type="button" class="button secondary" data-zabbix-action="scope">调整主机组</button><button type="button" class="button secondary" data-zabbix-action="rotate">更换凭据</button>' : ""}
-        ${canWrite ? `<button type="button" class="button secondary" data-zabbix-action="toggle">${source.enabled ? "暂停采集" : "恢复采集"}</button>` : ""}</div>
-      </details>
-    </article>`;
-  }).join("");
-}
-
-export async function loadZabbixSources(canWrite: boolean, canTest: boolean) {
-  let items: ZabbixSource[] = [];
-  let failure = "";
-  try {
-    items = (await apiClient.listZabbixSources()).items;
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) throw error;
-    failure = zabbixError(error);
-  }
-  return { items, html: `<section class="panel incident-header zabbix-sources" data-zabbix-panel>
-    <header class="diagnostic-toolbar"><h2><button type="button" class="zabbix-panel-toggle" aria-expanded="true"
-      aria-controls="zabbix-source-content" data-zabbix-action="collapse">Zabbix 数据源</button></h2>
-      ${canWrite && canTest ? '<button type="button" class="button" data-zabbix-action="add">接入 Zabbix</button>' : ""}</header>
-    <div id="zabbix-source-content">
-      <p role="status" data-zabbix-message>${h(failure)}</p><div data-zabbix-list>${failure ? "" : sourceCards(items, canWrite, canTest)}</div>
-    </div>
-    <dialog class="zabbix-dialog" aria-labelledby="zabbix-dialog-title"></dialog></section>` };
 }
 
 const scopeWaiting = '<p class="zabbix-scope-wait">测试连接成功后，可选择主机组并预览问题。</p>';
@@ -79,55 +30,13 @@ type Wizard = {
 const value = (form: HTMLFormElement, name: string) => String(new FormData(form).get(name) ?? "");
 const option = (id: string, name: string) => `<option value="${h(id)}">${h(name)}</option>`;
 
-export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], canWrite: boolean, canTest: boolean) {
-  const panel = root.querySelector<HTMLElement>("[data-zabbix-panel]");
-  const dialog = panel?.querySelector<HTMLDialogElement>("dialog");
-  const list = panel?.querySelector<HTMLElement>("[data-zabbix-list]");
-  const notice = panel?.querySelector<HTMLElement>("[data-zabbix-message]");
-  const content = panel?.querySelector<HTMLElement>("#zabbix-source-content");
-  const toggle = panel?.querySelector<HTMLButtonElement>('[data-zabbix-action="collapse"]');
-  if (!panel || !dialog || !list || !notice || !content || !toggle) return;
-  const setPanelOpen = (open: boolean) => {
-    content.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-  };
-  let sources = initial;
+export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: ZabbixSource) => void, onConflict: () => void) {
   let current: Wizard | undefined;
-  let pullRevision = 0;
-  let poll: number | undefined;
   let saving = false;
-
-  function paint() {
-    if (!list?.isConnected) return;
-    const open = new Set([...list.querySelectorAll<HTMLElement>("[data-zabbix-details][open]")].map(el => el.closest<HTMLElement>("[data-zabbix-source]")?.dataset.zabbixSource));
-    const focus = document.activeElement instanceof HTMLButtonElement && list.contains(document.activeElement)
-      ? { action: document.activeElement.dataset.zabbixAction, id: document.activeElement.closest<HTMLElement>("[data-zabbix-source]")?.dataset.zabbixSource } : undefined;
-    list.innerHTML = sourceCards(sources, canWrite, canTest);
-    for (const node of list.querySelectorAll<HTMLDetailsElement>("[data-zabbix-details]")) {
-      node.open = open.has(node.closest<HTMLElement>("[data-zabbix-source]")?.dataset.zabbixSource);
-    }
-    if (focus) list.querySelector<HTMLButtonElement>(`[data-zabbix-source="${CSS.escape(focus.id ?? "")}"] [data-zabbix-action="${CSS.escape(focus.action ?? "")}"]:not(:disabled)`)?.focus();
-  }
-
-  function refresh(remaining = 35) {
-    clearTimeout(poll);
-    if (!list?.isConnected || remaining <= 0) return;
-    const revision = ++pullRevision;
-    poll = window.setTimeout(async () => {
-      try {
-        const next = await apiClient.listZabbixSources();
-        if (!list.isConnected || revision !== pullRevision) return;
-        sources = next.items;
-        paint();
-        if (remaining > 32 || sources.some(source => source.health === "pending" || source.health === "syncing")) refresh(remaining - 1);
-      } catch (error) {
-        if (list.isConnected && notice) notice.textContent = zabbixError(error);
-      }
-    }, 2_000);
-  }
+  const guard = bindDirtyDialog(dialog, '[data-zabbix-action="close"]', () => saving);
 
   function open(mode: Mode, source?: ZabbixSource) {
-    if (!dialog) return;
+    guard.clean();
     const wizard: Wizard = { mode, source, revision: 0, previewRevision: 0, groups: [],
       selected: new Set(source?.groups.map(group => group.groupid)), scopes: [], previewOK: false };
     current = wizard;
@@ -164,7 +73,6 @@ export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], ca
           <label data-zabbix-account hidden>账号<input name="username" autocomplete="off" maxlength="255" placeholder="输入 Zabbix 账号"></label>
           <label><span data-zabbix-secret-label>API Token</span><input type="password" name="secret" autocomplete="new-password" maxlength="4096"></label>
         </div>
-        <div><button type="button" class="button" data-zabbix-action="test">测试连接</button></div>
         <p class="zabbix-test-feedback" role="status" aria-live="polite" data-zabbix-test></p>
       </section>` : ""}
       ${mode !== "rotate" ? `<section aria-label="采集范围">
@@ -176,6 +84,7 @@ export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], ca
         <p role="status" data-zabbix-save-result>${mode === "scope" ? "请选择主机组" : "先测试连接"}</p>
         <div class="zabbix-dialog-actions">
           <button type="button" class="button secondary" data-zabbix-action="close">取消</button>
+          ${mode !== "scope" ? '<button type="button" class="button secondary" data-zabbix-action="test">测试连接</button>' : ""}
           <button type="submit" class="button" disabled data-zabbix-save>${mode === "add" ? "保存并启用" : mode === "scope" ? "保存并重新同步" : "保存新凭据"}</button>
         </div>
       </footer>
@@ -358,6 +267,10 @@ export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], ca
   async function save(form: HTMLFormElement, wizard: Wizard) {
     if (saving || form.querySelector<HTMLButtonElement>("[data-zabbix-save]")?.disabled) return;
     saving = true;
+    const controls = form.querySelector<HTMLElement>(".zabbix-setup-grid");
+    if (controls) controls.inert = true;
+    const testAction = form.querySelector<HTMLButtonElement>('[data-zabbix-action="test"]');
+    if (testAction) testAction.disabled = true;
     updateSave(form, wizard);
     setText(form, "[data-zabbix-save-result]", "正在验证采集范围并保存…");
     try {
@@ -368,60 +281,34 @@ export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], ca
         : await apiClient.createZabbixSource({ body: { name: value(form, "sourceName").trim(), draft: wizard.draft,
           scope: selectedScope(form, wizard), groupIds } });
       if (current !== wizard) return;
-      sources = [...sources.filter(source => source.id !== updated.id), updated];
-      if (wizard.mode === "add") setPanelOpen(true);
-      dialog?.close();
-      paint();
-      refresh();
-      if (notice) notice.textContent = updated.enabled ? "已保存配置，正在等待后台同步。" : "已保存配置。";
+      guard.clean();
+      dialog.close();
+      onSaved(updated);
     } catch (error) {
       if (current === wizard) {
         setText(form, "[data-zabbix-save-result]", zabbixError(error));
-        if (error instanceof ApiError && error.status === 412 && notice) {
-          notice.textContent = "配置有并发变更，关闭窗口后刷新数据源再试。";
-          refresh(1);
-        }
+        if (error instanceof ApiError && error.status === 412) onConflict();
       }
     } finally {
       saving = false;
+      if (controls) controls.inert = false;
+      if (testAction) testAction.disabled = false;
       if (current === wizard) updateSave(form, wizard);
     }
   }
 
-  panel.addEventListener("click", async event => {
+  dialog.addEventListener("click", async event => {
     const button = event.target instanceof HTMLElement ? event.target.closest<HTMLButtonElement>("button[data-zabbix-action]") : null;
-    if (!button) return;
-    const source = sources.find(item => item.id === button.closest<HTMLElement>("[data-zabbix-source]")?.dataset.zabbixSource);
+    if (!button?.form || !current) return;
     const action = button.dataset.zabbixAction;
-    if (action === "collapse") { setPanelOpen(content.hidden); return; }
-    if (action === "add") { open("add"); return; }
-    if (action === "retry-scopes" && current?.mode === "add" && button.form) { await loadScopeOptions(button.form, current); return; }
-    if ((action === "rotate" || action === "scope") && source) { open(action, source); return; }
-    if (action === "close") { if (!saving) dialog.close(); return; }
-    if (action === "test" && current && button.form) { await test(button.form, current, button); return; }
-    if (!source) return;
-    button.disabled = true;
-    try {
-      if (action === "sync") {
-        await apiClient.syncZabbixSource({ sourceId: source.id });
-        if (notice) notice.textContent = "已提交同步任务。";
-      } else if (action === "toggle") {
-        const next = await apiClient.updateZabbixSource({ sourceId: source.id, "If-Match": `"${source.version}"`, body: { enabled: !source.enabled } });
-        sources = sources.map(item => item.id === next.id ? next : item);
-        paint();
-      }
-      refresh();
-    } catch (error) {
-      if (notice) notice.textContent = zabbixError(error);
-      if (error instanceof ApiError && error.status === 412) refresh(1);
-    } finally { button.disabled = false; }
+    if (action === "retry-scopes" && current.mode === "add") await loadScopeOptions(button.form, current);
+    if (action === "test") await test(button.form, current, button);
   });
 
   dialog.addEventListener("submit", event => {
     event.preventDefault();
     if (current && event.target instanceof HTMLFormElement) void save(event.target, current);
   });
-  dialog.addEventListener("cancel", event => { if (saving) event.preventDefault(); });
   dialog.addEventListener("close", () => { current = undefined; dialog.replaceChildren(); });
   dialog.addEventListener("input", event => {
     const field = event.target;
@@ -460,5 +347,5 @@ export function bindZabbixSources(root: HTMLElement, initial: ZabbixSource[], ca
     } else if (field.name !== "businessId") return;
     schedulePreview(form, wizard);
   });
-  if (sources.some(source => source.health === "pending" || source.health === "syncing")) refresh();
+  return open;
 }

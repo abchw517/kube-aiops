@@ -70,6 +70,7 @@ let rcaFixture;
 let datasourceFixture;
 let zabbixSourceFixture;
 let observabilityFixture;
+let observabilityUnavailable = false;
 let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
@@ -99,6 +100,10 @@ const catalogs = {
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (url.pathname === "/test/observability-unavailable") {
+    observabilityUnavailable = url.searchParams.get("enabled") === "1";
+    return response.writeHead(204).end();
+  }
   if (url.pathname === "/test/admin-session") {
     adminSession = true;
     fixtureSuperAdministrator = url.searchParams.get("super") !== "false";
@@ -722,7 +727,10 @@ async function incidents(request, response, url) {
           environmentName: "生产", businessName: "运维" }] : [], truncated: false });
     }
   }
-  if (path === "/observability/sources" && method === "GET") return json(response, 200, {items: observabilityFixture ? [observabilityFixture] : [], legacy: []});
+  if (path === "/observability/sources" && method === "GET") {
+    if (observabilityUnavailable) return json(response, 503, { error: { message: "观测数据源暂时无法读取。" } });
+    return json(response, 200, { items: observabilityFixture ? [observabilityFixture] : [], legacy: [] });
+  }
   if (["/observability/probe", "/observability/sources"].includes(path) && method === "POST") {
     const body = await readIncidentBody(request);
     if (body.kind !== "alertmanager" || body.scope?.environmentId !== "testing" || body.scope?.businessId !== "test" ||

@@ -5,7 +5,7 @@ import { diagnosticListPaths } from "../../domain/diagnostic-routes.ts";
 import { aggregateDiagnostics, diagnosticLevels, incidentLevel, overviewDays, overviewLevel, overviewSearch, type OverviewDays } from "../../domain/unified-diagnostics.ts";
 import { incidentHref, incidentStatusLabels } from "./incident-filters.ts";
 import { bindOverviewTrend, renderOverviewTrend, type Trend } from "./unified-trend.ts";
-import { zabbixHealth } from "./zabbix-sources.ts";
+import { zabbixHealth } from "../resources/datasource-rows.ts";
 
 const maxPages = 20;
 const levels = Object.entries(diagnosticLevels) as [Severity, string][];

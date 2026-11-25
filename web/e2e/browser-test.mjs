@@ -437,40 +437,46 @@ try {
         !clusterLabels.result.value.every(label => label === "Kubernetes 集群管理")) {
       throw new Error("Cluster navigation, page title and list heading must all say Kubernetes 集群管理");
     }
-    await assertText(cdp, (text) => text.includes("已接入 · 集群异常") && text.includes("新增集群"), "Cluster table did not render the persisted node status");
+    await assertText(cdp, (text) => text.includes("有 NotReady 节点") && text.includes("接入集群"), "Cluster table did not separate node status from collection");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 720, deviceScaleFactor: 1, mobile: true });
+    await assertDOM(cdp, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`, "Cluster rows overflowed at 390 px");
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     const environmentScopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      const field = document.querySelector('[data-cluster-filter="environment"]');
+      const change = (value) => { field.value = value; field.dispatchEvent(new Event("change", { bubbles: true })); };
       const rows = [...document.querySelectorAll("[data-cluster-row]")];
-      const environments = [...document.querySelectorAll('summary[data-cluster-scope="environment"]')];
-      return environments.length >= 2 && environments.every(scope => {
-        const group = scope.parentElement;
-        const matches = rows.filter(row => row.dataset.environment === scope.dataset.scopeValue);
-        group.open = false;
-        scope.click();
-        return scope.getAttribute("aria-current") === "true" && group.open &&
-          [...group.querySelectorAll("button")].every(button => button.dataset.clusterScope === "cluster") &&
-          rows.every(row => row.hidden === !matches.includes(row)) &&
-          document.querySelector("[data-cluster-count]").textContent === "共 " + matches.length + " 个集群";
+      const environments = [...field.options].filter(item => item.value);
+      const works = environments.length >= 2 && environments.every(option => {
+        change(option.value);
+        const matches = rows.filter(row => row.dataset.environment === option.value);
+        return rows.every(row => row.hidden === !matches.includes(row)) &&
+          document.querySelector("[data-cluster-count]").textContent === "显示 " + matches.length + " / " + matches.length + " 个集群";
       });
+      change("研发");
+      document.querySelector('[data-resource-metric="issue"]').click();
+      const issueMatches = rows.filter(row => !row.hidden).every(row => row.dataset.category === "issue");
+      return works && issueMatches;
     })()` });
-    if (!environmentScopes.result?.value) throw new Error("Environment headings did not directly scope the cluster list");
+    if (!environmentScopes.result?.value) throw new Error("Environment and issue filters did not scope cluster results");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
-      document.querySelector('[data-cluster-scope="cluster"][data-scope-value="dev-k8s"]').click();
       document.querySelector('[data-resource-tab="namespaces"]').click();
+      const cluster = document.querySelector('[data-cluster-filter="cluster"]');
+      cluster.value = "dev-k8s";
+      cluster.dispatchEvent(new Event("change", { bubbles: true }));
     })()` });
-    await assertText(cdp, (text) => text.includes("dev-app") && text.includes("共 1 个命名空间") &&
-      !text.includes("本地可恢复集群 ·"), "Namespace view did not follow the selected cluster");
+    await assertText(cdp, (text) => text.includes("dev-app") && text.includes("显示 1 个命名空间") &&
+      !text.includes("本地可恢复集群"), "Namespace view did not follow the selected cluster");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-resource-tab="clusters"]').click();
-      document.querySelector('[data-cluster-scope="all"]').click();
+      document.querySelector('[data-cluster-clear]').click();
+      document.querySelector('[data-cluster-details="dev-k8s"]').click();
     })()` });
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-cluster-details]").click()' });
     await assertText(cdp, (text) => text.includes("test-worker · NotReady") && text.includes("dev-app"), "Collection details omitted nodes or namespaces");
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-cluster-close]").click()' });
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-action="recheck"][data-id="local"]')
-      .closest("tr").querySelector("[data-cluster-details]").click()` });
-    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(\'dialog[open] [data-collection-check="local"]\').requestSubmit()' });
-    await assertText(cdp, (text) => text.includes("本地可恢复集群") && text.includes("待接入") && !text.includes("尚未收到有效采集数据"),
-      "Local cluster could not refresh collection from details");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-resource-close]").click()' });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-details="local"]').click()` });
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-collection-check="local"]').requestSubmit()` });
+    await assertText(cdp, (text) => text.includes("本地可恢复集群") && text.includes("待接入"), "Local cluster could not refresh collection without closing details");
+    await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("dialog[open] [data-resource-close]").click()' });
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="ownership-dev-k8s"]').click()` });
     await assertText(cdp, (text) => text.includes("请选择业务线后勾选命名空间。") && text.includes("保存归属"),
       "Namespace ownership did not start with business-line selection");
@@ -529,22 +535,22 @@ try {
       search.value = "本地可恢复集群";
       search.dispatchEvent(new Event("input", { bubbles: true }));
     })()` });
-    await assertText(cdp, (text) => text.includes("共 1 个集群") && !text.includes("dev-k8s"), "Cluster search did not filter the directory");
+    await assertText(cdp, (text) => text.includes("显示 1 / 1 个集群") && !text.includes("dev-k8s"), "Cluster search did not filter the directory");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-action="delete"][data-id="local"]').click()` });
     await assertText(cdp, (text) => text.includes("删除集群连接") && text.includes("清理 kube-aiops"), "Cluster deletion confirmation did not render");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open] [data-cluster-close]').click()` });
-    await assertText(cdp, (text) => text.includes("本地可恢复集群") && !text.includes("已删除"), "Canceling deletion changed the local connection");
+    await assertText(cdp, (text) => text.includes("本地可恢复集群") && text.includes("待接入"), "Canceling deletion changed the local connection");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-cluster-action="delete"][data-id="local"]').click();
       document.querySelector('dialog[open] button[type="submit"]').click();
     })()` });
-    await assertText(cdp, (text) => text.includes("已删除") && text.includes("重新连接"), "Deleted local connection did not expose reconnect");
+    await assertDOM(cdp, `!!document.querySelector('[data-cluster-row][data-category="removed"] [data-cluster-action="reconnect"]')`, "Deleted local connection did not expose reconnect");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
       document.querySelector('[data-cluster-action="reconnect"][data-id="local"]').click();
       document.querySelector('dialog[open] button[type="submit"]').click();
     })()` });
-    await assertText(cdp, (text) => text.includes("本地可恢复集群") && !text.includes("重新连接"), "Reconnect did not restore the local row");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="edit-dev-k8s"]').click()` });
+    await assertDOM(cdp, `!!document.querySelector('[data-cluster-row][data-cluster="local"]:not([data-category="removed"])')`, "Reconnect did not restore the local row");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector("[data-cluster-clear]").click(); document.querySelector('[data-cluster-editor="edit-dev-k8s"]').click();` });
     await assertText(cdp, (text) => text.includes("环境已锁定") && text.includes("取消"), "Cluster editor did not display the locked environment");
     const lockedEnvironment = await cdp.send("Runtime.evaluate", {
       expression: 'document.querySelector("dialog[open] [data-onboarding-mode] input[name=environment]").readOnly', returnByValue: true,
@@ -1101,9 +1107,9 @@ try {
       (text) => text.includes("审计保留策略") && text.includes("local:guest") && !text.includes("编辑保留策略"), "Ordinary administrators should only read audit retention");
     await fetch("http://127.0.0.1:4173/test/admin-session");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/clusters",
-      (text) => text.includes("Kubernetes 集群管理") && text.includes("采集上报"), "Legacy cluster route did not lead to resource management");
-    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="push"]').click()` });
-    await assertText(cdp, (text) => text.includes("采集上报") && text.includes("实例 ID"), "Collector enrollment dialog did not render");
+      (text) => text.includes("Kubernetes 集群管理") && text.includes("接入集群"), "Legacy cluster route did not lead to resource management");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-cluster-editor="choose"]').click(); document.querySelector('[data-cluster-editor="push"]').click();` });
+    await assertDOM(cdp, `!!document.querySelector('dialog[open] form[data-onboarding-mode="push"]')`, "Collector enrollment dialog did not render");
     await cdp.send("Runtime.evaluate", {
       expression: `(() => {
         const form = document.querySelector("[data-onboarding-mode]");
@@ -1632,22 +1638,21 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-topology-node="asset:host-fixture"]').click()` });
   await assertText(cdp, (text) => text.includes("部署记录核对") && text.includes("已确认"), "Topology node details did not show link provenance");
 
-  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("接入 Zabbix") && text.includes("暂无资产数据源"), "Datasource page did not load");
+  await assertPage(cdp, `${origin}/#/diagnostics/datasources?continue=fixture`, (text) => text.includes("监控与诊断") && text.includes("暂无资产数据源"), "Datasource page did not load");
   const sourceRoute = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
     location.hash === "#/resources/datasources?continue=fixture" &&
     document.querySelector(".portal-sidebar [aria-current=page]").textContent === "数据源管理"
   ` });
   if (!sourceRoute.result?.value) throw new Error("Datasource alias lost its cursor or resource navigation");
-  const cloudOptions = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-    const form = document.querySelector("[data-datasource-form]");
-    form.closest("details").open = true;
-    return Array.from(form.elements.kind.options, option => option.value).join(",") === "aliyun-ecs,tencent-cvm" &&
-      form.elements.kind.value === "aliyun-ecs" && !!form.elements.region && !form.elements.endpoint;
-  })()` });
-  if (!cloudOptions.result?.value) throw new Error("The asset creation form must offer only cloud providers");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-source-add]').click()` });
+  const cloudOptions = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `
+    [...document.querySelectorAll('[data-source-picker] [data-source-kind]')].map(option => option.dataset.sourceKind).join(",") === "aliyun-ecs,tencent-cvm"
+  ` });
+  if (!cloudOptions.result?.value) throw new Error("The asset creation picker must offer only cloud providers");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
+    document.querySelector('[data-source-kind="tencent-cvm"]').click();
+    document.querySelector('[data-source-next]').click();
     const form = document.querySelector("[data-datasource-form]");
-    form.elements.kind.value = "tencent-cvm";
     form.elements.name.value = "云资产数据源 fixture";
     form.elements.region.value = "ap-guangzhou";
     form.elements.assetIds.value = "10010";
@@ -1657,20 +1662,21 @@ async function assertRemainingDiagnosticPages(cdp) {
     form.requestSubmit();
   })()` });
   await assertText(cdp, (text) => text.includes("云资产数据源 fixture") && text.includes("测试并同步"), "Datasource was not created");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-datasource-test]").requestSubmit()' });
-  await assertText(cdp, (text) => text.includes("已读取配置资产"), "Datasource health did not update");
-  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });
-  await assertText(cdp, (text) => text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource inventory was not shown");
-
-  const emptyPanel = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-    const toggle = document.querySelector('[data-zabbix-action="collapse"]');
-    const add = document.querySelector('[data-zabbix-action="add"]');
-    toggle.click();
-    return toggle.textContent.trim() === "Zabbix 数据源" && toggle.getAttribute("aria-expanded") === "false" &&
-      document.getElementById(toggle.getAttribute("aria-controls")).hidden && !!add.getClientRects().length;
-  })()` });
-  if (!emptyPanel.result?.value) throw new Error("Collapsed Zabbix section should retain the add action");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-zabbix-action="add"]').click()` });
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 720, deviceScaleFactor: 1, mobile: true });
+  await assertDOM(cdp, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`, "Datasource rows overflowed at 390 px");
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-source-action="run"]').click()` });
+  await assertText(cdp, (text) => text.includes("已返回测试与同步结果"), "Datasource health did not update");
+  await cdp.send("Runtime.evaluate", { expression: `
+    document.querySelector('[data-source-action="detail"]').click();
+    document.querySelector("[data-source-inventory]").open = true;` });
+  await assertText(cdp, (text) => text.includes("已读取配置资产") && text.includes("已同步主机") && text.includes("fixture-asset"), "Datasource health and inventory were not shown");
+  await cdp.send("Runtime.evaluate", { expression: `
+    document.querySelector('[data-source-detail] [data-resource-close]').click();
+    document.querySelector('[data-source-tab="monitor"]').click();
+    document.querySelector('.resource-page-head [data-source-add]').click();
+    document.querySelector('[data-source-kind="zabbix"]').click();
+    document.querySelector('[data-source-next]').click();` });
   for (const width of [1100, 390]) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
     const layout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
@@ -1762,10 +1768,26 @@ async function assertRemainingDiagnosticPages(cdp) {
   })()` });
   if (!nameRequired.result?.value) throw new Error("Zabbix datasource name did not gate saving");
   await assertText(cdp, text => text.includes("生产运维 Zabbix") && text.includes("生产 / 运维") && text.includes("同步正常"), "Zabbix source could not be saved");
+  await fetch(`${origin}/test/observability-unavailable?enabled=1`);
+  await assertPage(cdp, `${origin}/#/resources/datasources?view=monitor&scenario=partial`,
+    text => text.includes("已加载来源") && text.includes("生产运维 Zabbix") && text.includes("重试加载"), "One failed connector excluded healthy sources");
+  await fetch(`${origin}/test/observability-unavailable?enabled=0`);
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-source-retry="observability"]').click()` });
+  await assertText(cdp, text => text.includes("生产运维 Zabbix") && !text.includes("已加载来源"), "Failed connector did not recover in place");
   await assertPage(cdp, "about:blank", text => text === "", "Could not unload the datasource page");
   await assertPage(cdp, `${origin}/#/resources/datasources`,
     text => text.includes("生产运维 Zabbix") && text.includes("同步正常"), "Zabbix source name did not survive reloading");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
+  const groupCollapse = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+    document.querySelector('[data-source-filter="grouped"]').click();
+    const toggle = () => document.querySelector('[data-source-group="monitor:zabbix"]');
+    toggle().click();
+    const closed = toggle().getAttribute("aria-expanded") === "false" && !document.querySelector('[data-source-row="zabbix:zabbix-fixture"]');
+    toggle().click();
+    document.querySelector('[data-source-action="detail"][data-source-key="zabbix:zabbix-fixture"]').click();
+    document.querySelector('[data-source-detail] a').click();
+    return closed;
+  })()` });
+  if (!groupCollapse.result?.value) throw new Error("Zabbix type group did not collapse or reopen");
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
   for (const days of [7, 14, 30]) {
@@ -1792,11 +1814,14 @@ async function assertRemainingDiagnosticPages(cdp) {
     }
   }
 
-  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("接入 Alertmanager"), "Observability type sections did not load");
-  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-obs-add="alertmanager"]').click()` });
+  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("新增数据源"), "Datasource workspace did not load");
+  await cdp.send("Runtime.evaluate", { expression: `
+    document.querySelector('.resource-page-head [data-source-add]').click();
+    document.querySelector('[data-source-kind="alertmanager"]').click();
+    document.querySelector('[data-source-next]').click();` });
   await assertText(cdp, text => text.includes("选择环境") && text.includes("多集群共享"), "Observability scope options were not available");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
-    const f = document.querySelector("[data-observability] dialog form");
+    const f = document.querySelector("[data-observability-editor] form");
     const set = (name, value) => { const field = f.elements[name]; field.value = value; field.dispatchEvent(new Event("input",{bubbles:true})); };
     set("environment","testing");
     set("business","test");
@@ -2174,6 +2199,15 @@ async function assertText(cdp, predicate, failureMessage) {
     await sleep(100);
   }
   throw new Error(`${failureMessage}. Final page text:\n${latestText}`);
+}
+
+async function assertDOM(cdp, expression, failureMessage) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const response = await cdp.send("Runtime.evaluate", { expression, returnByValue: true });
+    if (response.result?.value === true) return;
+    await sleep(100);
+  }
+  throw new Error(failureMessage);
 }
 
 function sleep(milliseconds) {

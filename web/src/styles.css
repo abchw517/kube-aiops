@@ -275,14 +275,6 @@ tbody tr:hover { background: #f5f8fd; }
 
 .system-management [hidden] { display: none; }
 
-.cluster-heading, .cluster-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.cluster-heading { justify-content: space-between; }
-.cluster-filters label, .cluster-form-grid label { display: grid; gap: 6px; min-width: 0; }
-.cluster-filters label:first-child { flex: 1 1 17rem; max-width: 28rem; }
-.cluster-filters :is(input, select) { min-width: 0; }
-.cluster-filters input, .cluster-filters select { padding: 8px 10px; font: inherit; color: inherit; background: #fff; border: 1px solid #aebed0; border-radius: 6px; }
-.cluster-status { display: inline-block; background: #edf7f6; color: #076660; padding: 4px 8px; border-radius: 5px; }
-.cluster-status-warning { background: #fff2d8; color: #895200; }
 .cluster-editor fieldset { margin: 0; border: 1px solid var(--line); border-radius: 7px; padding: 12px; min-width: 0; }
 .cluster-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 12px; }
 .catalog-dialog [data-cluster-token] { width: 100%; min-height: 5rem; }
@@ -291,8 +283,8 @@ tbody tr:hover { background: #f5f8fd; }
 .cluster-editor [data-credential-piece][hidden] { display: none; }
 .cluster-editor textarea { min-width: 0; border: 1px solid #aebed0; border-radius: 6px; }
 
-.catalog-section .cluster-heading h2, .platform-heading h2 { margin: 0 0 5px; }
-.cluster-heading p, .platform-heading p { margin: 0; color: var(--muted); }
+.platform-heading h2 { margin: 0 0 5px; }
+.platform-heading p { margin: 0; color: var(--muted); }
 .cluster-dialog-wide { width: min(760px, calc(100% - 24px)); }
 .cluster-dialog-wide .cluster-editor { margin: 0; max-width: none; }
 .cluster-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -428,10 +420,6 @@ tbody tr:hover { background: #f5f8fd; }
 }
 
 
-.cluster-table { min-width: 720px; }
-.cluster-table th, .cluster-status { white-space: nowrap; }
-.cluster-table td:first-child { min-width: 120px; }
-.cluster-table td .catalog-actions { min-width: 210px; }
 .system-editor-body h3, .system-editor-body > [role="status"] { margin: 0; }
 .system-editor-body > [data-scope-add] { justify-self: start; }
 
