@@ -1,7 +1,7 @@
 /* 会话与 LDAP 卡片共用控制台设计变量。 */
 .auth-config { display: grid; align-content: start; gap: 16px; }
-.auth-session-card, .auth-ldap-card { min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
-.auth-session-summary { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 16px; list-style: none; cursor: pointer; font-weight: 700; }
+.auth-session-card, .auth-ldap-card { min-width: 0; border: 1px solid var(--line); border-radius: var(--panel-radius); background: var(--surface); box-shadow: var(--panel-shadow); }
+.auth-session-summary { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 16px; border-radius: var(--panel-radius); list-style: none; cursor: pointer; font-weight: 700; }
 .auth-session-summary::-webkit-details-marker { display: none; }
 .auth-session-summary:focus-visible { outline-offset: -3px; }
 .auth-session-summary:hover { background: #f5f9ff; }
@@ -17,7 +17,7 @@
 .auth-session-scope p, .auth-session-settings p { margin: 0; }
 .auth-session-settings label { display: block; margin-bottom: 5px; font-weight: 650; }
 .auth-policy-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.auth-policy-controls input { width: 85px; min-height: 34px; padding: 5px 10px; border: 1px solid #b8c6d7; border-radius: 5px; color: var(--ink); background: white; }
+.auth-policy-controls input { width: 85px; min-height: 34px; padding: 5px 10px; border: 1px solid #b8c6d7; border-radius: var(--control-radius); color: var(--ink); background: var(--surface); }
 .auth-policy-controls input[aria-invalid="true"] { border-color: #af3546; }
 .auth-policy-controls .button { min-height: 34px; padding: 5px 10px; border-radius: 5px; background: var(--blue); }
 .auth-policy-controls .button:hover:not(:disabled) { background: #005ab3; }
@@ -32,11 +32,11 @@
 .auth-ldap-content { padding: 16px; }
 .auth-ldap-content > [data-ldap-issue] { margin: 0 0 14px; color: #af3546; }
 .auth-ldap-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; gap: 16px; }
-.auth-ldap-section { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 7px; }
+.auth-ldap-section { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--section-radius); }
 .auth-ldap-section h2 { margin: 0 0 2px; font-size: 1rem; }
 .auth-ldap-section small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
 .auth-ldap-field { display: grid; min-width: 0; gap: 5px; font-weight: 650; }
-.auth-ldap-field :is(input, select) { width: 100%; min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid #aebed0; border-radius: 5px; color: var(--ink); background: white; font: inherit; font-weight: 400; }
+.auth-ldap-field :is(input, select) { width: 100%; min-width: 0; min-height: 42px; padding: 6px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: white; font: inherit; font-weight: 400; }
 .auth-ldap-plain { display: flex; align-items: center; gap: 8px; }
 .auth-ldap-plain input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--blue); }
 .auth-ldap-advanced { min-width: 0; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }

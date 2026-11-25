@@ -428,6 +428,15 @@ try {
     await assertText(cdp, (text) => text.includes("本次重试已记录"), "Failed page could not be retried");
     await assertPage(cdp, "http://127.0.0.1:4173/#/resources",
       (text) => text.includes("资源管理") && text.includes("Kubernetes 集群管理") && text.includes("环境管理"), "Resource navigation did not default to cluster onboarding");
+    await assertDOM(cdp, `(() => {
+      const shell = getComputedStyle(document.querySelector(".portal-console"));
+      const nav = getComputedStyle(document.querySelector('.workspace-nav [aria-current]'));
+      const card = getComputedStyle(document.querySelector(".resource-list-panel"));
+      const input = getComputedStyle(document.querySelector('.resource-filters input[type="search"]'));
+      return parseFloat(shell.fontSize) === 16 && parseFloat(nav.borderTopLeftRadius) >= 10 &&
+        parseFloat(card.borderTopLeftRadius) === 20 && parseFloat(input.fontSize) === 15 &&
+        parseFloat(input.borderTopLeftRadius) === 12;
+    })()`, "Resource workspace does not use the shared type and corner scales");
     const clusterLabels = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `[
       document.querySelector('.portal-sidebar a[aria-current="page"]')?.textContent,
       document.querySelector("main h1")?.textContent,
@@ -857,7 +866,7 @@ try {
     await assertText(cdp, (text) => text.includes("分配用户组或角色") && text.includes("授权对象"), "Account assignment did not open from associations");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
       (text) => text.includes("LDAP 连接配置") && text.includes("30 分钟"), "Authentication summaries did not render");
-    await assertAuthenticationLayout(cdp, 1440, 208);
+    await assertAuthenticationLayout(cdp, 1440, 232);
     await assertAuthenticationLayout(cdp, 390, 0);
     await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -1576,22 +1585,22 @@ async function assertIncidentLifecycle(cdp) {
   const trendLayout = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     const analytics = document.querySelector(".overview-analytics");
     const records = document.querySelector(".overview-records");
-    const warning = document.querySelector(".overview-distribution .overview-warning .overview-progress");
-    const critical = document.querySelector(".overview-distribution .overview-critical .overview-progress");
-    const criticalShare = critical.firstElementChild.getBoundingClientRect().width / critical.getBoundingClientRect().width;
-    const warningShare = warning.firstElementChild.getBoundingClientRect().width / warning.getBoundingClientRect().width;
+    const ring = getComputedStyle(document.querySelector(".overview-ring"));
+    const criticalShare = parseFloat(ring.getPropertyValue("--overview-ring-critical")) / 100;
+    const warningShare = parseFloat(ring.getPropertyValue("--overview-ring-warning")) / 100 - criticalShare;
     window.overviewRecordsBeforeWindowChange = records;
     document.querySelector("[data-overview-jump]").click();
     return {
       emptyPlot: document.querySelector(".overview-plot") === null,
       focus: document.activeElement.id,
       beforeRecords: analytics.getBoundingClientRect().bottom <= records.getBoundingClientRect().top,
+      ringRendered: ring.backgroundImage.startsWith("conic-gradient"),
       criticalShare,
       warningShare,
     };
   })()` });
   const layout = trendLayout.result?.value;
-  if (!layout?.emptyPlot || layout.focus !== "overview-recent-title" || !layout.beforeRecords ||
+  if (!layout?.emptyPlot || !layout.ringRendered || layout.focus !== "overview-recent-title" || !layout.beforeRecords ||
       Math.abs(layout.criticalShare - 1 / 3) > .01 || Math.abs(layout.warningShare - 1 / 3) > .01) {
     throw new Error(`Overview layout or severity widths: ${JSON.stringify(layout ?? trendLayout.exceptionDetails)}`);
   }
@@ -1620,10 +1629,12 @@ async function assertIncidentLifecycle(cdp) {
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-distribution .overview-critical a").click()' });
   await assertText(cdp, text => text.includes("查看全部级别") && !text.includes("测试集群容量建议"), "Severity distribution did not apply the page filter");
   const filteredDistribution = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
-    const rails = [...document.querySelectorAll(".overview-distribution .overview-progress")];
-    return rails.map(rail => Math.round(100 * rail.firstElementChild.getBoundingClientRect().width / rail.getBoundingClientRect().width));
+    const ring = getComputedStyle(document.querySelector(".overview-ring"));
+    const stops = ["critical", "warning", "mapped"].map(name => parseFloat(ring.getPropertyValue("--overview-ring-" + name)));
+    const labels = [...document.querySelectorAll(".overview-distribution-row small")].map(label => parseFloat(label.textContent));
+    return stops.every(stop => stop === 100) && labels.join(",") === "100,0,0";
   })()` });
-  if (filteredDistribution.result?.value?.join(",") !== "100,0,0") throw new Error("Filtered severity proportions are incorrect");
+  if (!filteredDistribution.result?.value) throw new Error("Filtered severity proportions are incorrect");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".overview-distribution .overview-critical a").click()' });
   await assertText(cdp, text => text.includes("测试集群容量建议") && !text.includes("查看全部级别"), "Selected severity did not clear the filter");
   await assertIncidentDashboard(cdp);
@@ -1702,7 +1713,7 @@ async function assertIncidentDashboard(cdp) {
     const desktop = width > 850;
     if (!layout?.scopeVisible || layout.pageOverflow || layout.tableVisible !== desktop ||
         layout.cardsVisible === desktop || layout.stacked === desktop ||
-        (!desktop && !layout.plotScrolls) || (desktop && layout.recordsHeadingBottom >= height)) {
+        layout.plotScrolls === desktop || (desktop && layout.recordsHeadingBottom >= height)) {
       throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
     }
   }
@@ -1797,6 +1808,7 @@ async function assertRemainingDiagnosticPages(cdp) {
       return dialog.querySelector('[name="method"]:checked').value === "token" &&
         !!dialog.querySelector(".zabbix-scope-wait") && dialog.querySelector("[data-zabbix-save]").disabled &&
         left.contains(dialog.querySelector('[name="environmentId"]')) && left.contains(dialog.querySelector('[name="sourceName"]')) &&
+        parseFloat(getComputedStyle(dialog).borderTopLeftRadius) === 24 &&
         panel.left >= 0 && panel.right <= innerWidth && footer.bottom <= innerHeight &&
         (innerWidth > 760 ? left.offsetTop === right.offsetTop : left.offsetTop < right.offsetTop);
     })()` });

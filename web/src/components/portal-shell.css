@@ -1,8 +1,8 @@
 /* 外框定义模块导航、侧栏和工作区的共同布局。 */
 .portal-console {
-  --sidebar-width: 208px;
+  --sidebar-width: 232px;
   min-height: 100dvh;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.55;
 }
 .topbar {
@@ -10,41 +10,46 @@
   top: 0;
   z-index: 5;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 12px;
   min-height: var(--topbar-height);
-  background: var(--nav);
-  color: white;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 10px; width: var(--sidebar-width); flex: none; padding-inline: 20px; color: white; }
+.brand { display: flex; align-items: center; gap: 10px; width: var(--sidebar-width); flex: none; padding-inline: 24px; color: var(--ink); }
 .brand:hover { text-decoration: none; }
-.brand-name { font-size: 17px; font-weight: 700; }
+.brand-name { font-size: 1.125rem; font-weight: 750; white-space: nowrap; }
 .brand-mark {
   display: grid;
-  width: 28px;
+  width: 36px;
+  flex: none;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid #73bafa;
-  border-radius: 7px;
-  background: #0c4d84;
-  font-size: 16px;
+  border-radius: var(--control-radius);
+  background: linear-gradient(145deg, #6466dc, var(--blue));
+  color: white;
+  box-shadow: 0 3px 10px rgb(72 75 194 / 20%);
+  font-size: var(--text-body);
   font-weight: 750;
 }
-.workspace-nav { display: flex; min-width: 0; overflow-x: auto; }
+.workspace-nav { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 3px; overflow-x: auto; }
 .workspace-nav a {
   display: flex;
   align-items: center;
-  padding-inline: 17px;
-  border-bottom: 2px solid transparent;
-  color: #d7dfed;
+  min-height: 42px;
+  padding-inline: 14px;
+  border-radius: var(--control-radius);
+  color: var(--muted);
+  font-size: var(--text-control);
+  font-weight: 650;
   white-space: nowrap;
 }
-.workspace-nav a:hover, .workspace-nav a[aria-current] { background: #303848; color: white; text-decoration: none; }
-.workspace-nav a[aria-current] { border-color: #69b3fc; }
+.workspace-nav a:hover { background: var(--surface-soft); color: var(--ink); text-decoration: none; }
+.workspace-nav a[aria-current] { background: var(--accent-soft); color: var(--blue-hover); }
 .portal-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-inline-start: auto; padding-inline-end: 20px; }
-.topbar .button.secondary { min-height: 32px; padding: 3px 8px; border-color: #647798; background: #303848; color: white; font-size: 12px; }
-.topbar .button.secondary:hover:not(:disabled) { background: #3b4960; }
-.topbar :focus-visible { outline-color: #8bc5ff; outline-offset: -3px; }
+.topbar .button.secondary { min-height: 36px; padding: 4px 11px; font-size: var(--text-label); white-space: nowrap; }
+.topbar :focus-visible { outline-offset: -3px; }
 .portal-menu-toggle { display: none; }
 
 .portal-layout { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: calc(100dvh - var(--topbar-height)); }
@@ -55,37 +60,42 @@
   align-self: start;
   height: calc(100dvh - var(--topbar-height));
   overflow: auto;
-  background: var(--surface);
+  background: var(--rail);
   border-inline-end: 1px solid var(--line);
-  padding-block: 18px;
+  padding: 23px 12px;
 }
-.portal-sidebar h2 { margin: 0 18px 19px; font-size: 16px; }
-.portal-sidebar p { margin: 18px 18px 5px; color: var(--muted); font-size: 12px; }
+.portal-sidebar h2 { margin: 0 10px 19px; font-size: 1.0625rem; }
+.portal-sidebar p { margin: 18px 10px 6px; color: var(--muted); font-size: var(--text-meta); }
 .portal-sidebar p:first-of-type { margin-top: 0; }
 .portal-sidebar a {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 39px;
-  padding: 7px 14px 7px 16px;
-  border-inline-start: 3px solid transparent;
-  color: var(--ink);
+  min-height: 43px;
+  margin-block: 2px;
+  padding: 7px 10px;
+  border-radius: var(--control-radius);
+  color: var(--muted);
+  font-size: var(--text-control);
 }
-.portal-sidebar a::before { content: ""; width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 2px; }
-.portal-sidebar a:hover { background: #f3f7fd; text-decoration: none; }
-.portal-sidebar [aria-current] { background: var(--accent-soft); border-color: var(--blue); color: var(--blue); font-weight: 700; }
+.portal-sidebar a::before { content: ""; width: 7px; height: 7px; flex: none; border: 1px solid currentColor; border-radius: 50%; }
+.portal-sidebar a:hover { background: var(--surface-soft); text-decoration: none; }
+.portal-sidebar [aria-current] { background: var(--accent-soft); color: var(--blue-hover); font-weight: 700; }
 .portal-sidebar [aria-current]::before { background: currentColor; }
 .portal-sidebar a:focus-visible { outline-offset: -3px; }
-.page-shell { width: 100%; min-width: 0; padding: 18px 20px 30px; }
+.page-shell { width: 100%; min-width: 0; max-width: 1640px; margin-inline: auto; padding: 21px clamp(18px, 2.4vw, 38px) 40px; }
 .page-intro { display: grid; gap: 4px; margin-bottom: 18px; }
 .page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-.page-intro h1 { margin: 0; font-size: 26px; line-height: 1.25; }
-.page-intro nav { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
+.page-intro h1 { margin: 0; font-size: var(--text-title); line-height: 1.22; }
+.page-intro nav { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: var(--text-meta); }
 .page-intro nav [aria-current] { color: var(--ink); }
-.demo-notice { margin: 0; padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--blue); font-size: 12px; }
-.portal-signed-out .page-shell { max-width: 480px; margin-inline: auto; padding-top: clamp(28px, 9vh, 88px); }
-.portal-signed-out .state-card { display: block; padding: clamp(20px, 5vw, 32px); text-align: left; }
-.portal-signed-out .state-card h1 { font-size: 1.5rem; line-height: 1.25; }
+.demo-notice { margin: 0; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--blue); font-size: var(--text-meta); }
+.portal-signed-out { background: radial-gradient(ellipse at 50% 25%, var(--accent-soft), var(--bg) 64%); }
+.portal-signed-out .page-shell { max-width: 480px; padding-top: clamp(28px, 9vh, 88px); }
+.portal-signed-out .state-card { display: block; padding: clamp(20px, 5vw, 32px); border-radius: var(--dialog-radius); text-align: left; }
+.portal-signed-out .state-card h1 { font-size: var(--text-title); line-height: 1.25; }
+.portal-signed-out .login-description { margin-top: 7px; color: var(--muted); font-size: var(--text-control); }
+.portal-signed-out [data-login-status]:empty { display: none; }
 .portal-signed-out .login-form { max-width: none; }
 .skip-link {
   position: fixed;
@@ -100,22 +110,21 @@
 .skip-link:focus { transform: none; }
 
 @media (max-width: 910px) {
-  .portal-console { --sidebar-width: 164px; }
+  .portal-console { --sidebar-width: 182px; }
   .workspace-nav a { padding-inline: 10px; }
   .page-shell { padding-inline: 14px; }
 }
 @media (max-width: 680px) {
-  .portal-console { --topbar-height: 96px; }
+  .portal-console { --topbar-height: 100px; }
   .topbar { flex-wrap: wrap; align-content: start; gap: 0; }
   .topbar:not(:has(.workspace-nav)) { min-height: 48px; }
   .topbar .brand { min-height: 48px; width: auto; padding-inline: 12px; }
   .portal-actions { padding-inline-end: 8px; }
   .workspace-nav { order: 3; width: 100%; min-height: 48px; padding-inline: 5px; }
-  .portal-menu-toggle { display: inline-flex; align-self: center; min-height: 32px; margin-inline-end: 11px; padding: 3px 8px; border: 1px solid #8797b0; border-radius: 4px; background: transparent; color: white; cursor: pointer; }
+  .portal-menu-toggle { display: inline-flex; align-self: center; min-height: 36px; margin-inline-end: 9px; padding: 3px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--surface); color: var(--ink); font-size: var(--text-label); cursor: pointer; }
   .portal-layout { display: block; }
   .portal-sidebar { display: none; position: static; height: auto; padding-block: 11px; border-bottom: 1px solid var(--line); }
   .portal-layout.menu-open .portal-sidebar { display: block; }
   .portal-sidebar h2 { margin-bottom: 8px; }
-  .page-shell { padding: 12px 10px 22px; }
-  .page-intro h1 { font-size: 22px; }
+  .page-shell { padding: 14px 12px 24px; }
 }
