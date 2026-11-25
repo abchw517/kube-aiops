@@ -10,6 +10,18 @@
 | 系统管理 | 用户、用户组、角色、权限、LDAP/AD、会话策略、密码和审计 | [文档](system-management/design.md) | [原型](system-management/prototype.html) |
 | 资源管理 | 环境与业务线、Kubernetes 集群与命名空间、监控诊断及资产数据源 | [文档](resource-management/design.md) | [原型](resource-management/prototype.html) |
 
+## 打开与交付原型
+
+浏览仓库目录时，原型入口和场景 HTML 之间使用相对路径。克隆仓库或解压 GitHub 下载的完整仓库后，用浏览器打开各模块的 `prototype.html`。GitHub 源码页面用于查看文件内容。
+
+单独交付或分享原型时，从仓库根目录运行以下命令，生成五份可下载的独立 HTML。每个文件包含该模块入口和全部场景，还可以在「查看实现依据」中打开相关应用源代码。
+
+```bash
+python3 scripts/package-prototypes.py /tmp/kube-aiops-prototypes
+```
+
+下载生成的任意一份 HTML，用启用 JavaScript 的浏览器直接打开。验收时逐个切换该模块的场景，并检查原型间跳转、详情、弹窗等主操作。可用 `--source-ref <已发布的提交 SHA>` 固定原型里的代码依据。原型内的账号、诊断、配置和写入结果均为演示数据。
+
 ## 更新规则
 
 产品设计交付维护在以上五个目录。子功能、改版和版本迭代一律原地更新归属模块的现有章节和 HTML。跨模块需求按职责修改涉及模块的对应章节，相互引用。数据源配置归资源管理，诊断侧的查询、统计和展示归诊断控制台。登录页面归前端 UI，认证与会话规则归系统管理。
