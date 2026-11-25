@@ -10,7 +10,8 @@ import { loadZabbixSources } from "./zabbix-sources.ts";
 
 export const policiesPath = "#/diagnostics/policies";
 
-const providers: Record<DatasourceConfig["kind"], string> = { zabbix: "Zabbix", "aliyun-ecs": "阿里云 ECS", "tencent-cvm": "腾讯云 CVM" };
+const cloudProviders = { "aliyun-ecs": "阿里云 ECS", "tencent-cvm": "腾讯云 CVM" };
+const providers: Record<DatasourceConfig["kind"], string> = { zabbix: "Zabbix", ...cloudProviders };
 const health: Record<string, string> = {
   untested: "待验证", available: "可用", partial: "部分可用", unavailable: "不可用",
   timeout: "超时", unauthorized: "上游拒绝授权", credentials_unavailable: "凭据不可用", configuration_error: "配置错误",
@@ -58,9 +59,10 @@ function datasourceForm(d?: DiagnosticDatasource): string {
   return `<form data-datasource-form="${escapeHtml(d?.id ?? "")}">
     <div class="incident-form-grid">
       <label>名称<input name="name" value="${escapeHtml(d?.name)}" required maxlength="60"></label>
-      ${d ? `<p>类型 · ${providers[d.config.kind]}</p>` : `<label>类型<select name="kind">${options({ ...providers, zabbix: "Zabbix 主机资产（文件凭据）" }, "aliyun-ecs")}</select></label>`}
-      <label data-zabbix-option>Zabbix API 地址<input name="endpoint" type="url" value="${escapeHtml(d?.config.endpoint)}" placeholder="https://zabbix.example/api_jsonrpc.php"></label>
-      <label data-cloud-option>云地域<input name="region" value="${escapeHtml(d?.config.region)}" placeholder="cn-hangzhou"></label>
+      ${d ? `<p>类型 · ${providers[d.config.kind]}</p>` : `<label>类型<select name="kind">${options(cloudProviders, "aliyun-ecs")}</select></label>`}
+      ${d?.config.kind === "zabbix"
+        ? `<label>Zabbix API 地址<input name="endpoint" type="url" value="${escapeHtml(d.config.endpoint)}" placeholder="https://zabbix.example/api_jsonrpc.php"></label>`
+        : `<label>云地域<input name="region" value="${escapeHtml(d?.config.region)}" placeholder="cn-hangzhou"></label>`}
       <label class="incident-form-wide">资产原生 ID（逗号分隔）<input name="assetIds" required value="${escapeHtml(d?.config.assetIds.join(","))}"></label>
       <label>凭据文件引用<input name="credentialRef" maxlength="128"${d ? ' placeholder="留空沿用原配置"' : " required"}></label>
       <label>推送凭据文件引用<input name="ingressRef" maxlength="128"${d ? ' placeholder="留空沿用原配置"' : ""}></label>
@@ -101,23 +103,14 @@ export async function loadDatasourcesPage(hash: string, canWrite: boolean, canTe
 export function bindDatasourcesPage(root: HTMLElement, items: DiagnosticDatasource[], refresh: () => void, canCreateIncident: boolean): void {
   for (const form of root.querySelectorAll<HTMLFormElement>("[data-datasource-form]")) {
     const row = items.find(({ id }) => id === form.dataset.datasourceForm);
-    const kindField = form.querySelector<HTMLSelectElement>('select[name="kind"]');
-    const kind = () => row?.config.kind ?? ((kindField?.value ?? "zabbix") as DatasourceConfig["kind"]);
-    const updateFields = () => {
-      const zabbix = form.querySelector<HTMLElement>("[data-zabbix-option]");
-      const cloud = form.querySelector<HTMLElement>("[data-cloud-option]");
-      if (zabbix) zabbix.hidden = kind() !== "zabbix";
-      if (cloud) cloud.hidden = kind() === "zabbix";
-    };
-    updateFields();
-    kindField?.addEventListener("change", updateFields);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       await submit(form, async (fields) => {
+        const kind = row?.config.kind ?? (field(fields, "kind") === "tencent-cvm" ? "tencent-cvm" : "aliyun-ecs");
         const body: DatasourceInput = {
           name: field(fields, "name"), scope: row?.scope ?? scopeFrom(fields),
-          config: { kind: kind(), endpoint: kind() === "zabbix" ? field(fields, "endpoint") : undefined,
-            region: kind() === "zabbix" ? undefined : field(fields, "region"),
+          config: { kind, endpoint: kind === "zabbix" ? field(fields, "endpoint") : undefined,
+            region: kind === "zabbix" ? undefined : field(fields, "region"),
             assetIds: field(fields, "assetIds").split(",").map((id) => id.trim()).filter(Boolean) },
           enabled: fields.has("enabled"), credentialRef: field(fields, "credentialRef") || undefined,
           ingressRef: fields.has("clearIngress") ? "" : field(fields, "ingressRef") || undefined,

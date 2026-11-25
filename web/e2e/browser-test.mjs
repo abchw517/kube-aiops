@@ -1638,20 +1638,25 @@ async function assertRemainingDiagnosticPages(cdp) {
     document.querySelector(".portal-sidebar [aria-current=page]").textContent === "数据源管理"
   ` });
   if (!sourceRoute.result?.value) throw new Error("Datasource alias lost its cursor or resource navigation");
-  await cdp.send("Runtime.evaluate", { expression: `(() => {
+  const cloudOptions = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     const form = document.querySelector("[data-datasource-form]");
     form.closest("details").open = true;
-    form.elements.kind.value = "zabbix";
-    form.elements.kind.dispatchEvent(new Event("change", { bubbles: true }));
-    form.elements.name.value = "监控数据源 fixture";
-    form.elements.endpoint.value = "https://zabbix.example/api_jsonrpc.php";
+    return Array.from(form.elements.kind.options, option => option.value).join(",") === "aliyun-ecs,tencent-cvm" &&
+      form.elements.kind.value === "aliyun-ecs" && !!form.elements.region && !form.elements.endpoint;
+  })()` });
+  if (!cloudOptions.result?.value) throw new Error("The asset creation form must offer only cloud providers");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const form = document.querySelector("[data-datasource-form]");
+    form.elements.kind.value = "tencent-cvm";
+    form.elements.name.value = "云资产数据源 fixture";
+    form.elements.region.value = "ap-guangzhou";
     form.elements.assetIds.value = "10010";
     form.elements.credentialRef.value = "fixture-inventory.json";
     form.elements.clusterId.value = "local";
     form.elements.namespace.value = "default";
     form.requestSubmit();
   })()` });
-  await assertText(cdp, (text) => text.includes("监控数据源 fixture") && text.includes("测试并同步"), "Datasource was not created");
+  await assertText(cdp, (text) => text.includes("云资产数据源 fixture") && text.includes("测试并同步"), "Datasource was not created");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-datasource-test]").requestSubmit()' });
   await assertText(cdp, (text) => text.includes("已读取配置资产"), "Datasource health did not update");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-inventory]").open = true' });

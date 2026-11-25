@@ -745,7 +745,10 @@ async function incidents(request, response, url) {
   if (path === "/datasources") {
     if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
     const body = await readIncidentBody(request);
-    if (!body.credentialRef || !body.config.assetIds.includes("10010")) return json(response, 400, {});
+    if (!body.credentialRef || !body.config.assetIds.includes("10010") ||
+        body.config.kind !== "tencent-cvm" || body.config.region !== "ap-guangzhou" || body.config.endpoint) {
+      return json(response, 400, {});
+    }
     datasourceFixture = { id: "fixture-ds", name: body.name, scope: incidentFixture.scope, config: body.config,
       version: 1, enabled: true, health: "untested", credentialConfigured: true, ingressConfigured: false };
     return json(response, 201, datasourceFixture);

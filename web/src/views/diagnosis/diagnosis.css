@@ -243,7 +243,6 @@
 .topology-node[aria-pressed="true"] { border-color: currentColor; }
 .topology-node span { font-size: 0.875rem; }
 [data-datasource-form], [data-policy-form] { margin-block-start: 16px; }
-[data-datasource-form] [hidden] { display: none; }
 @media (max-width: 680px) { .topology-layout { grid-template-columns: 1fr; } }
 
 /* 总览以指标、图表和近期事件构成统一工作区。 */
