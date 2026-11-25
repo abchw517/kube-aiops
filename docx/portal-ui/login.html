@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>kube-aiops · 登录页背景原型</title>
+<style>
+:root {
+  --ink: #18243a;
+  --muted: #526078;
+  --accent: #484bc2;
+  --accent-strong: #373a9e;
+  --field: #a5b1c9;
+  --white: #fff;
+  --header-height: 65px;
+  font: 100%/1.55 Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  color: var(--ink);
+  background: #f2f5fb;
+  font-synthesis: none;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+button, input { font: inherit; }
+:focus-visible { outline: 3px solid #6d69e6; outline-offset: 2px; }
+.topbar {
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px clamp(16px, 2.1vw, 34px);
+  background: #ffffffed;
+  border-bottom: 1px solid #dee5f3;
+}
+.brand { display: inline-flex; align-items: center; gap: 11px; font-size: 1.125rem; font-weight: 760; white-space: nowrap; letter-spacing: -.02em; }
+.brand-mark {
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: white;
+  background: linear-gradient(145deg, #6568de, #4344b6);
+  font-size: 1rem;
+  box-shadow: 0 3px 10px #4344b62d;
+}
+.prototype-label { color: var(--muted); font-size: .8125rem; text-align: end; }
+.workspace {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: calc(100svh - var(--header-height));
+  padding: clamp(32px, 7vh, 86px) 18px clamp(44px, 15vh, 148px);
+  background: radial-gradient(ellipse at 53% 40%, #fbfaff 0%, #f2f2fd00 54%),
+    radial-gradient(ellipse at 7% 78%, #d8e9ff 0%, #e0e8ff00 51%),
+    radial-gradient(ellipse at 98% 30%, #e0dbfb 0%, #e9e5ff00 55%),
+    linear-gradient(130deg, #f5f7ff 10%, #e9effc 65%, #e8f6ff 100%);
+}
+.scene {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.scene::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: .52;
+  background: radial-gradient(circle at 1px 1px, #7489c176 1px, transparent 1.35px) 0 0 / 26px 26px;
+  mask-image: radial-gradient(ellipse at 51% 37%, transparent 0 26%, #0007 55%, #000 92%);
+}
+.scene canvas { display: block; width: 100%; height: 100%; }
+.login {
+  width: min(100%, 426px);
+  padding: clamp(23px, 5vw, 35px);
+  background: #fff;
+  border: 1px solid #dce3f1;
+  border-radius: 25px;
+  box-shadow: 0 22px 70px rgb(74 68 140 / 13%), 0 4px 15px rgb(52 73 115 / 5%);
+}
+.login h1 { margin: 0; font-size: clamp(1.625rem, 4vw, 1.95rem); letter-spacing: -.025em; line-height: 1.22; text-align: center; }
+.explainer { margin: 8px 0 22px; color: var(--muted); font-size: .9375rem; text-align: center; }
+form { display: grid; gap: 13px; }
+.field { display: grid; gap: 5px; font-size: .9375rem; font-weight: 650; }
+.field input {
+  min-width: 0;
+  width: 100%;
+  min-height: 45px;
+  padding: 8px 11px;
+  border: 1px solid var(--field);
+  border-radius: 12px;
+  background: #fbfcff;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 480;
+}
+.field input::placeholder { color: #65728a; }
+.field input[aria-invalid="true"] { border-color: #a52b4a; }
+.provider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: .9375rem;
+  cursor: pointer;
+}
+.provider input { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
+.submit {
+  min-height: 45px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 690;
+  box-shadow: 0 4px 12px rgb(72 75 194 / 16%);
+  cursor: pointer;
+}
+.submit:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
+.feedback {
+  margin: 0;
+  border-radius: 11px;
+  padding: 8px 10px;
+  background: #eaf5f0;
+  color: #216456;
+  font-size: .875rem;
+}
+.feedback:empty { display: none; }
+.feedback[data-state="error"] { background: #fcecf0; color: #952943; }
+@media (max-width: 600px) {
+  :root { --header-height: 59px; }
+  .brand { gap: 8px; font-size: 1.0625rem; }
+  .brand-mark { width: 34px; height: 34px; }
+  .workspace { padding: clamp(26px, 7vh, 50px) 16px clamp(38px, 12vh, 78px); }
+  .scene { opacity: .85; }
+  .scene::before { background-size: 21px 21px; }
+  .login { border-radius: 22px; }
+}
+@media (forced-colors: active) {
+  .scene { display: none; }
+  .workspace, .login { background: Canvas; border-color: CanvasText; }
+  .submit { border: 1px solid ButtonText; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">K</span><span>kube-aiops</span></div>
+  <span class="prototype-label">登录页 · 交互原型</span>
+</header>
+<main class="workspace">
+  <div class="scene" aria-hidden="true"><canvas></canvas></div>
+  <section class="login" aria-labelledby="login-heading">
+    <h1 id="login-heading">登录控制台</h1>
+    <p class="explainer">使用本地账号或 LDAP 账号登录。</p>
+    <form id="demo-login" autocomplete="off" novalidate>
+      <label class="field">用户名
+        <input name="username" required maxlength="256" placeholder="输入演示用户名" spellcheck="false">
+      </label>
+      <label class="field">密码
+        <input name="password" required maxlength="1024" type="password" placeholder="输入演示密码" autocomplete="off">
+      </label>
+      <label class="provider"><input name="provider" type="checkbox"><span>LDAP / Active Directory 登录</span></label>
+      <p class="feedback" role="status" aria-live="polite"></p>
+      <button class="submit" type="submit">登录</button>
+    </form>
+  </section>
+</main>
+<script>
+'use strict';
+
+const canvas = document.querySelector('canvas');
+const ink = canvas.getContext('2d');
+
+function paintBackground() {
+  if (!ink) return;
+  const { width, height } = canvas.getBoundingClientRect();
+  if (!width || !height) return;
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  ink.setTransform(scale, 0, 0, scale, 0, 0);
+  const light = ink.createLinearGradient(0, height, width, height * .15);
+  light.addColorStop(0, 'rgba(71,112,214,.34)');
+  light.addColorStop(.31, 'rgba(119,111,220,.19)');
+  light.addColorStop(.5, 'rgba(127,137,226,.08)');
+  light.addColorStop(.75, 'rgba(96,118,215,.28)');
+  light.addColorStop(1, 'rgba(52,119,185,.38)');
+  ink.strokeStyle = light;
+  ink.lineWidth = .85;
+
+  // Two sets of parallel curves leave the form in a clear, quiet part of the scene.
+  const wide = width >= 650;
+  const lanes = wide ? 21 : 13;
+  for (let i = 0; i < lanes; i += 1) {
+    const t = i / (lanes - 1);
+    ink.beginPath();
+    ink.moveTo(-width * .08, height * (.59 + .21 * t));
+    ink.bezierCurveTo(width * .10, height * (.52 + .28 * t), width * .16, height * (.89 + .13 * t), width * .41, height * (.88 + .17 * t));
+    ink.bezierCurveTo(width * .58, height * (.86 + .16 * t), width * .70, height * (.63 + .21 * t), width * 1.06, height * (.45 + .23 * t));
+    ink.stroke();
+  }
+
+  function translateTrail(points, alpha) {
+    ink.strokeStyle = 'rgba(105,112,194,' + alpha + ')';
+    ink.lineWidth = 1;
+    ink.beginPath();
+    for (const [i, [x, y]] of points.entries()) {
+      if (i === 0) ink.moveTo(x * width, y * height);
+      else ink.lineTo(x * width, y * height);
+    }
+    ink.stroke();
+  }
+
+  if (wide) {
+    const traces = [
+      [[-.01,.29],[.11,.29],[.148,.35],[.223,.35],[.257,.407]],
+      [[.065,.44],[.155,.44],[.187,.49],[.259,.49]],
+      [[.722,.25],[.756,.202],[.843,.202],[.875,.156],[1.01,.156]],
+      [[.788,.331],[.844,.331],[.876,.285],[.955,.285],[1.01,.343]],
+    ];
+    for (const trace of traces) translateTrail(trace, .21);
+    for (const [x, y, size] of [[.11,.29,3],[.223,.35,3],[.257,.407,4],[.065,.44,4],[.187,.49,3],[.722,.25,3],[.843,.202,4],[.875,.156,3],[.788,.331,4],[.955,.285,3],[.134,.663,3],[.246,.812,4],[.732,.754,4],[.907,.617,3]]) {
+      const px = x * width;
+      const py = y * height;
+      ink.fillStyle = 'rgba(121,125,221,.15)';
+      ink.beginPath();
+      ink.arc(px, py, size + 4, 0, Math.PI * 2);
+      ink.fill();
+      ink.fillStyle = '#fafaff';
+      ink.strokeStyle = 'rgba(83,98,204,.57)';
+      ink.beginPath();
+      ink.arc(px, py, size, 0, Math.PI * 2);
+      ink.fill();
+      ink.stroke();
+    }
+  }
+}
+
+new ResizeObserver(paintBackground).observe(canvas);
+const form = document.getElementById('demo-login');
+const feedback = form.querySelector('.feedback');
+form.addEventListener('input', event => {
+  event.target.removeAttribute('aria-invalid');
+  feedback.textContent = '';
+});
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  const user = form.elements.username;
+  const secret = form.elements.password;
+  const invalid = [user, secret].filter(field => !field.value.trim());
+  for (const input of [user, secret]) {
+    if (invalid.includes(input)) input.setAttribute('aria-invalid','true');
+    else input.removeAttribute('aria-invalid');
+  }
+  if (invalid.length) {
+    feedback.dataset.state = 'error';
+    feedback.textContent = invalid[0] === user ? '请输入演示用户名。' : '请输入演示密码。';
+    invalid[0].focus();
+    return;
+  }
+  feedback.dataset.state = 'success';
+  feedback.textContent = '已完成' + (form.elements.provider.checked ? ' LDAP ' : '本地账号') + '登录演示。';
+  secret.value = '';
+});
+</script>
+</body>
+</html>

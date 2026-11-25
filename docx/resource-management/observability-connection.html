@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>数据源管理 · kube-aiops</title>
+<style>
+:root{--ink:#162940;--text:#334a65;--muted:#60738b;--line:#dbe5f0;--canvas:#edf2f8;--white:#fff;--blue:#175eb7;--wash:#ebf4ff;--green:#166b51;--orange:#8c510d;--nav:#182b41;font:14px system-ui,"Microsoft YaHei","Noto Sans CJK SC",sans-serif;color:var(--ink);background:var(--canvas)}
+*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.52;cursor:not-allowed}h1,h2,h3,p{margin:0}[hidden]{display:none!important}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #2476d5;outline-offset:2px}button{touch-action:manipulation}small{color:var(--muted)}
+.top{height:56px;display:flex;align-items:center;gap:24px;padding:0 23px;background:var(--nav);color:#d5e0ef;white-space:nowrap}.brand{display:flex;align-items:center;gap:9px;color:white;font-weight:750}.logo{display:grid;place-items:center;width:27px;height:27px;border:1px solid #85a7d7;background:#254d79;border-radius:7px}.nav{display:flex;height:100%;gap:3px}.nav span{display:grid;place-items:center;padding:0 13px}.nav [aria-current]{color:white;background:#28425d;box-shadow:inset 0 -3px #68a5f1}
+main{max-width:1380px;margin:auto;padding:25px clamp(12px,3.5vw,44px) 40px;display:grid;gap:16px}.heading,.section-head,.footer,.row-actions,.filters,.pane-head,.list-top,.card-summary{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.heading{align-items:end}.crumb{color:var(--muted);font-size:12px;margin-bottom:5px}h1{font-size:28px;line-height:1.2}h2{font-size:16px}h3{font-size:15px}.intro{color:var(--muted);margin-top:6px;font-size:13px}.demo-select{color:var(--muted);font-size:12px;display:flex;gap:7px;align-items:center}
+.panel,.provider{border:1px solid var(--line);border-radius:10px;background:var(--white);min-width:0;box-shadow:0 1px 2px #1b34500c}.filters{justify-content:start;padding:11px 13px;gap:8px 13px}.filters label{display:flex;gap:7px;align-items:center;font-size:12px;color:var(--muted)}.filters #summary{margin-left:auto}.button,select,input:not([type=checkbox]){min-height:35px;padding:6px 11px;border:1px solid #c8d7e8;background:#fff;color:var(--ink);border-radius:6px}.button{font-weight:650;font-size:13px;white-space:nowrap}.button:hover:enabled{background:#f3f8ff;border-color:#a9c2df}.button.primary{color:white;background:var(--blue);border-color:var(--blue)}.button.primary:hover:enabled{background:#1252a4}.text-button{padding:6px 2px;border:0;background:transparent;color:var(--blue);font-size:13px;white-space:nowrap}.text-button:hover{text-decoration:underline}
+#providers{display:grid;gap:10px}.provider{--tone:#63579e;--pale:#f1eefb}.zabbix{--tone:#a92c46;--pale:#fcecf0}.prometheus{--tone:#aa451d;--pale:#fff0e9}.victorialogs{--tone:#21658a;--pale:#e9f5fb}.alertmanager{--tone:#9a6207;--pale:#fff3dc}.grafana{--tone:#a05013;--pale:#fff1e4}.section-head{padding:11px 14px;flex-wrap:nowrap}.section-head h2{min-width:0;flex:1}.toggle{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:2px 0;border:0;background:none;color:var(--ink);text-align:left}.toggle::before{content:"";display:block;width:7px;height:7px;border-right:1.7px solid currentColor;border-bottom:1.7px solid currentColor;transform:rotate(-45deg);flex:none}.toggle[aria-expanded=true]::before{transform:rotate(45deg)}.provider-mark{display:grid;place-items:center;width:33px;height:33px;border-radius:8px;background:var(--pale);color:var(--tone);font-size:11px;font-weight:800;letter-spacing:.01em;flex:none}.toggle-title{display:grid;gap:2px;min-width:0;font-weight:730}.toggle-title small{font-weight:450;line-height:1.3}.total{font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap;margin-left:4px}.source-list{border-top:1px solid #e7eef6;padding:11px 14px;display:grid;gap:8px}.source-row{display:grid;grid-template-columns:minmax(140px,1.2fr) minmax(130px,1fr) minmax(120px,1fr) auto;gap:7px 12px;align-items:center;padding:10px 11px;border:1px solid #e2eaf4;border-radius:8px;background:#f8fafd}.source-name{font-weight:700}.cell{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.cell strong{color:var(--ink)}.row-actions{justify-content:end;gap:5px 10px}.status{font-size:11px;color:var(--green);background:#e7f5ed;padding:2px 6px;border-radius:4px;font-weight:650;white-space:nowrap}.status.inactive{color:#586980;background:#e9edf3}.status.warn{color:var(--orange);background:#fff2dd}.rows-empty{padding:7px 4px;color:var(--muted);font-size:13px}.asset{padding:13px 15px;color:var(--text)}.asset summary{cursor:pointer;font-weight:650}.asset p{padding-top:8px;color:var(--muted);font-size:13px}.notice{min-height:1em;color:var(--green);font-size:13px}
+dialog{width:min(1030px,calc(100% - 25px));max-height:calc(100dvh - 30px);padding:0;border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 75px #13273e55;color:var(--ink)}dialog::backdrop{background:#15273d88}.dialog-frame{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 32px)}.dlg-head,.footer{padding:13px 17px;background:white}.dlg-head{border-bottom:1px solid var(--line)}.dlg-head h2{font-size:21px}.footer{border-top:1px solid var(--line)}.footer>span{max-width:58%;font-size:12px;color:var(--muted)}.close{width:32px;min-height:31px;font-size:20px;line-height:1;padding:0}.dlg-main{padding:13px 17px;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}.pane{min-width:0;border:1px solid var(--line);border-radius:8px;padding:13px;display:grid;gap:9px}.pane-head{align-items:start}.pane-head p,.field-help{font-size:12px;color:var(--muted);margin-top:2px}.field-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.pane label:not(.check){display:grid;gap:4px;min-width:0;font-size:12px;color:var(--text);font-weight:650}.pane input:not([type=checkbox]),.pane select{width:100%;min-width:0;font-size:13px;font-weight:450}.pane .button{justify-self:start}.quiet{display:grid;place-items:center;min-height:118px;border-radius:7px;padding:12px;background:#f2f6fb;color:var(--muted);text-align:center;font-size:13px}.preview-box{background:#f2f6fb;border-radius:7px;padding:9px 10px;display:grid;gap:5px;font-size:13px}.preview-box ul{margin:0;padding-left:20px;color:var(--text);font-size:12px}.ok,.error{color:var(--green);font-size:12px}.error{color:#a4383e}.check{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}.picker{display:grid;gap:4px;padding:8px;border:1px solid var(--line);border-radius:7px}.picker summary{cursor:pointer}.explain{padding:9px;border-radius:6px;background:#fff7e8;color:#815117;font-size:12px}
+@media(max-width:920px){.source-row{grid-template-columns:1fr 1fr}.row-actions{justify-content:start}}
+@media(max-width:700px){.top{height:46px;padding:0 10px;gap:10px}.nav span{padding:0 7px}.nav span:not([aria-current]){display:none}main{padding:14px 9px 25px;gap:10px}h1{font-size:23px}.section-head{padding:9px}.toggle{gap:7px}.section-head .button{padding-inline:7px;font-size:12px}.section-head h2{font-size:14px}.total{display:none}.filters #summary{margin:0}.dlg-main{grid-template-columns:minmax(0,1fr);padding:10px}.dlg-head,.footer{padding:10px}.footer>span{max-width:none}.source-row{grid-template-columns:1fr}.source-list{padding:8px}.demo-select{align-self:start}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand"><span class="logo" aria-hidden="true">K</span>kube-aiops</div><nav class="nav" aria-label="平台模块"><span>诊断控制台</span><span aria-current="page">资源管理</span><span>运维知识库</span><span>系统管理</span></nav></header>
+<main>
+<header class="heading"><div><p class="crumb">资源管理 / 数据源管理</p><h1>数据源管理</h1><p class="intro">接入告警、指标、日志和仪表盘，按环境与业务绑定诊断范围。</p></div><label class="demo-select">演示状态<select id="scenario"><option value="normal">正常</option><option value="empty">范围暂无数据</option><option value="denied">上游权限不足</option><option value="timeout">上游超时</option></select></label></header>
+<section class="panel filters" aria-label="数据源筛选">
+<label>环境<select id="environment-filter"><option value="">全部环境</option><option>生产</option><option>测试</option></select></label>
+<label>状态<select id="status-filter"><option value="">全部状态</option><option value="active">已启用</option><option value="paused">已暂停</option><option value="legacy">部署配置</option></select></label>
+<small id="summary"></small>
+</section>
+<section id="providers" aria-label="可观测数据源"></section>
+<details class="panel asset"><summary>资产数据源</summary><p>云平台与主机资产通过现有资产接入流程管理。此原型展示可观测数据源。</p></details>
+<p id="page-status" class="notice" role="status"></p>
+</main>
+<dialog id="dialog" aria-labelledby="dialog-title">
+<form id="wizard" class="dialog-frame">
+<header class="dlg-head"><div class="list-top"><div><h2 id="dialog-title"></h2><p class="intro" id="dialog-caption"></p></div><button type="button" class="button close" data-close aria-label="关闭">×</button></div></header>
+<div class="dlg-main">
+  <section class="pane" aria-labelledby="connection-title">
+    <div class="pane-head"><div><h3 id="connection-title">连接</h3><p>使用平台 API 可访问的地址与只读凭据。</p></div></div>
+    <div class="field-row"><label>名称<input name="name" required maxlength="120"></label><label>环境<select name="environment" required><option value="">请选择环境</option><option>生产</option><option>测试</option></select></label></div>
+    <label>服务地址<input name="endpoint" type="url" required></label><p class="field-help">支持反向代理路径前缀，例如 https://monitor.example.com/prometheus。</p>
+    <label>认证方式<select name="auth"></select></label>
+    <div class="field-row"><label id="user-field" hidden>用户名<input name="username" autocomplete="off"></label><label id="secret-field"><span id="secret-label">Token</span><input name="secret" type="password" autocomplete="new-password"></label></div>
+    <button type="button" class="button primary" id="test">测试连接</button>
+    <p id="test-status" role="status"></p>
+  </section>
+  <section class="pane" aria-labelledby="scope-title">
+    <div class="pane-head"><div><h3 id="scope-title">采集范围</h3><p id="scope-caption"></p></div></div>
+    <div class="quiet" id="wait-scope">测试通过后，选择范围并预览结果。</div>
+    <div id="scope-fields" class="pane" hidden>
+      <div class="field-row"><label>业务<select name="business"></select></label><label>集群实例<select name="cluster"></select></label></div>
+      <div id="provider-fields" class="pane"></div>
+      <button type="button" class="button" id="preview">预览范围</button>
+      <div id="preview-output" role="status"></div>
+    </div>
+  </section>
+</div>
+<footer class="footer"><span id="save-hint" role="status"></span><div class="row-actions"><button type="button" class="button" data-close>取消</button><button class="button primary" id="save">保存并启用</button></div></footer>
+</form>
+</dialog>
+<script>
+"use strict";
+const defs = {
+  zabbix:{name:"Zabbix",mark:"Z",purpose:"主机问题 · 诊断总览",caption:"选择需要同步的主机组。",path:"zabbix",auth:[["bearer","API Token"],["password","账号密码"]]},
+  prometheus:{name:"Prometheus",mark:"P",purpose:"指标 · 诊断证据",caption:"绑定集群，验证 PromQL 能读取范围内的指标。",path:"prometheus"},
+  victorialogs:{name:"VictoriaLogs",mark:"VL",purpose:"日志 · 诊断证据",caption:"绑定集群与租户，预览有界 LogsQL 聚合。",path:"logs"},
+  alertmanager:{name:"Alertmanager",mark:"AM",purpose:"告警同步 · 诊断总览与证据",caption:"只读轮询当前告警，可预览静默和抑制记录。",path:"alertmanager"},
+  grafana:{name:"Grafana",mark:"G",purpose:"仪表盘 · 诊断详情跳转",caption:"选择授权的仪表盘，跳转时携带诊断时间范围。",path:"grafana",auth:[["bearer","Service Account Token"]]}
+};
+const initial=[
+  {id:"z1",key:"zabbix",name:"生产基础设施",environment:"生产",business:"基础平台",cluster:"生产集群 A",state:"active",when:"今日 17:43",sample:"12 条主机问题",endpoint:"https://monitor.example.com/zabbix",auth:"bearer",settings:{hostgroup:"生产云主机"}},
+  {id:"p1",key:"prometheus",name:"生产 Prometheus",environment:"生产",business:"基础平台",cluster:"生产集群 A",state:"legacy",when:"使用部署配置",sample:"指标证据"},
+  {id:"a1",key:"alertmanager",name:"生产告警中心",environment:"生产",business:"支付业务",cluster:"生产集群 A",state:"active",when:"今日 17:45",sample:"8 条活动告警",endpoint:"https://monitor.example.com/alertmanager",auth:"bearer",settings:{mapping:"dedicated"}}
+];
+const byId=id=>document.getElementById(id);
+const form=byId("wizard"),dialog=byId("dialog"),fields=form.elements;
+const setup={生产:{business:["基础平台","支付业务"],cluster:["生产集群 A","生产集群 B"]},测试:{business:["基础平台","支付测试"],cluster:["测试集群 A"]}};
+let items;
+try { items=JSON.parse(localStorage.getItem("kube-aiops-observability-demo")) ?? initial; } catch { items=initial; }
+const expanded=new Set(["alertmanager"]);
+const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const htmlOptions=(values,empty)=>'<option value="">'+empty+'</option>'+values.map(value=>'<option>'+esc(value)+'</option>').join("");
+const labelState={active:"已启用",paused:"已暂停",legacy:"部署配置"};
+function persist(){try{localStorage.setItem("kube-aiops-observability-demo",JSON.stringify(items));}catch{}}
+function renderList(){
+  const env=byId("environment-filter").value,status=byId("status-filter").value;
+  const visible=items.filter(row=>(!env||row.environment===env)&&(!status||row.state===status));
+  byId("summary").textContent=visible.length+" 个数据源";
+  byId("providers").innerHTML=Object.entries(defs).map(([key,def])=>{
+    const rows=visible.filter(row=>row.key===key);
+    return '<section class="provider '+key+'"><header class="section-head"><h2><button type="button" class="toggle" data-toggle="'+key+'" aria-expanded="'+expanded.has(key)+'" aria-controls="list-'+key+'"><span class="provider-mark" aria-hidden="true">'+def.mark+'</span><span class="toggle-title"><span>'+def.name+' 数据源 <span class="total">'+rows.length+' 个</span></span><small>'+def.purpose+'</small></span></button></h2><button type="button" class="button primary" data-add="'+key+'">接入 '+def.name+'</button></header><div class="source-list" id="list-'+key+'"'+(expanded.has(key)?"":" hidden")+'>'+
+      (rows.length?rows.map(row=>'<div class="source-row"><div><div class="card-summary"><span class="source-name">'+esc(row.name)+'</span><span class="status '+(row.state==="active"?"":"inactive")+'">'+labelState[row.state]+'</span></div><div class="cell">'+esc(row.sample)+'</div></div><div class="cell">'+esc(row.environment)+' / '+esc(row.business)+'<br>'+esc(row.cluster)+'</div><div class="cell">'+(row.key==="alertmanager"?"同步":"检查")+' · '+esc(row.when)+'</div><div class="row-actions">'+(row.state==="legacy"?'<small>由部署维护</small>':'<button class="text-button" type="button" data-action="test" data-row="'+row.id+'">'+(row.key==="alertmanager"?"立即同步":"重测")+'</button><button class="text-button" type="button" data-action="edit" data-row="'+row.id+'">编辑</button><button class="text-button" type="button" data-action="pause" data-row="'+row.id+'">'+(row.state==="paused"?"恢复":"暂停")+'</button>')+'</div></div>').join(""):'<p class="rows-empty">'+(env||status?"当前筛选范围无连接。":"尚未接入 "+def.name+"。")+'</p>')+'</div></section>';
+  }).join("");
+}
+let key,editing,tested=false,ready=false;
+const fieldLabel=(label,name,options)=>'<label>'+label+'<select name="'+name+'">'+options.map(([id,text])=>'<option value="'+id+'">'+text+'</option>').join("")+'</select></label>';
+function paintMapping(){
+  const panel=byId("provider-fields");
+  const mode=fields.mapping?.value;
+  const entry=panel.querySelector("[data-labels]");
+  if(entry)entry.hidden=mode!=="shared";
+}
+function providerFields(){
+  if(key==="grafana")return '<div class="picker" aria-label="可见仪表盘"><p class="field-help">选择可链接的仪表盘</p><label class="check"><input type="checkbox" name="dashboard" value="cluster-health"> 集群运行概览</label><label class="check"><input type="checkbox" name="dashboard" value="gateway-slo"> 网关 SLO</label><label class="check"><input type="checkbox" name="dashboard" value="jvm-runtime"> JVM 运行时</label></div>';
+  if(key==="zabbix")return '<label>主机组<select name="hostgroup"><option value="">请选择主机组</option><option>生产云主机</option><option>中间件主机</option></select></label>';
+  return fieldLabel("端点范围","mapping",[["dedicated","此集群专用"],["shared","多集群共享"]])+
+    '<div class="field-row" data-labels hidden><label>上游'+(key==="victorialogs"?"字段":"标签")+'<input name="label" placeholder="cluster"></label><label>精确值<input name="value" placeholder="prod-a"></label></div>'+
+    (key==="victorialogs"?'<div class="field-row"><label>AccountID<input name="account" type="number" min="0" max="4294967295" placeholder="0"></label><label>ProjectID<input name="project" type="number" min="0" max="4294967295" placeholder="0"></label></div>':"")+
+    (key==="alertmanager"?'<div class="explain">采集模式 · API v2 轮询。预览活动告警，默认排除静默和抑制。</div><label class="check"><input name="suppressed" type="checkbox"> 同时预览静默或抑制</label>':"");
+}
+function setScopeOptions(){
+  const options=setup[fields.environment.value];
+  fields.business.innerHTML=htmlOptions(options?.business??[],"请选择业务");
+  fields.cluster.innerHTML=htmlOptions(options?.cluster??[],"请选择集群");
+}
+function authUI(){
+  const basic=["basic","password"].includes(fields.auth.value);
+  byId("user-field").hidden=!basic;
+  byId("secret-field").hidden=fields.auth.value==="none";
+  byId("secret-label").textContent=basic?"密码":key==="grafana"?"Service Account Token":"API Token / Bearer Token";
+}
+function gate(){
+  byId("scope-fields").hidden=!tested;
+  byId("wait-scope").hidden=tested;
+  byId("save").disabled=!ready;
+  byId("save-hint").textContent=ready?"范围预览通过，可以启用。":tested?"请选择范围并预览。":"请先测试连接。";
+}
+function resetPreview(){
+  ready=false;
+  byId("preview-output").replaceChildren();
+  gate();
+}
+function start(provider,row){
+  key=provider; editing=row; tested=false; ready=false;
+  form.reset();
+  const def=defs[key];
+  const settings=row?.settings??{};
+  byId("dialog-title").textContent=(row?"编辑 ":"接入 ")+def.name;
+  byId("dialog-caption").textContent=def.purpose;
+  byId("scope-caption").textContent=def.caption;
+  fields.auth.innerHTML=(def.auth??[["bearer","Bearer Token"],["basic","Basic 认证"],["none","免认证（内网只读）"]]).map(([id,text])=>'<option value="'+id+'">'+text+'</option>').join("");
+  fields.name.value=row?.name??"";
+  fields.name.placeholder="例如 生产 "+def.name;
+  fields.environment.value=row?.environment??"";
+  fields.endpoint.value=row?.endpoint??"";
+  fields.endpoint.placeholder="https://monitor.example.com/"+def.path;
+  fields.secret.placeholder=row?.endpoint?"留空使用已保存凭据":"填写只读凭据";
+  if(row?.auth)fields.auth.value=row.auth;
+  authUI();
+  setScopeOptions();
+  fields.business.value=row?.business??"";
+  fields.cluster.value=row?.cluster??"";
+  byId("provider-fields").innerHTML=providerFields();
+  for(const name of ["mapping","label","value","account","project","hostgroup"])if(fields[name]&&settings[name])fields[name].value=settings[name];
+  if(fields.suppressed)fields.suppressed.checked=Boolean(settings.suppressed);
+  for(const box of form.querySelectorAll('[name="dashboard"]'))box.checked=(settings.dashboards??[]).includes(box.value);
+  paintMapping();
+  byId("test-status").textContent="";
+  resetPreview();
+  dialog.showModal();
+}
+function setResult(node,msg,ok){node.className=ok?"ok":"error";node.textContent=msg;}
+function testConnection(){
+  const output=byId("test-status");
+  let address;
+  try{address=new URL(fields.endpoint.value.trim());}catch{}
+  const reuse=editing?.endpoint&&editing.endpoint===fields.endpoint.value.trim()&&editing.auth===fields.auth.value;
+  const basic=["basic","password"].includes(fields.auth.value);
+  let error=!fields.name.value.trim()||!fields.environment.value?"请填写名称并选择环境。":
+    !address||address.protocol!=="https:"||address.username||address.password||address.search||address.hash?"请填写有效的 HTTPS 服务基地址。":
+    fields.auth.value!=="none"&&(!reuse||fields.secret.value)&&(!fields.secret.value||(basic&&!fields.username.value.trim()))?"请填写完整的只读凭据。":"";
+  const demo=byId("scenario").value;
+  if(!error&&demo==="denied")error="连通上游，但凭据缺少读取权限。请检查只读账号和可见范围。";
+  if(!error&&demo==="timeout")error="连接超时。请核对服务地址及平台 API 的出站网络。";
+  tested=!error;
+  setResult(output,error||"连接通过 · 上游只读接口可访问",tested);
+  resetPreview();
+}
+const examples={
+  zabbix:["3 条主机问题","Windows 可用内存低于阈值","TLS 证书即将到期"],
+  prometheus:["最近 15 分钟 · 24 条 up 时序","up 采样 1 · job / kubelet","up 采样 0 · job / node-exporter"],
+  victorialogs:["最近 15 分钟 · 36 条匹配日志","应用错误聚合 · timeout","应用错误聚合 · connection refused"],
+  alertmanager:["8 条活动告警","PodCrashLooping · 严重","HighErrorRate · 警告"],
+  grafana:["已选择仪表盘","链接携带 from / to，尊重 Grafana 登录权限"]
+};
+const chosenDashboards=()=>[...form.querySelectorAll('[name="dashboard"]:checked')].map(node=>node.value);
+function previewRange(){
+  if(!tested)return;
+  const output=byId("preview-output");
+  const missing=!fields.business.value||!fields.cluster.value?"请选择业务和集群实例。":
+    fields.mapping?.value==="shared"&&(!fields.label.value.trim()||!fields.value.value.trim())?"共享端点须填写上游字段或标签和精确值。":
+    key==="grafana"&&!chosenDashboards().length?"至少选择一个仪表盘。":
+    key==="zabbix"&&!fields.hostgroup.value?"请选择主机组。":"";
+  if(missing){ready=false;setResult(output,missing,false);gate();return;}
+  const empty=byId("scenario").value==="empty"&&key!=="grafana";
+  const [summary,...details]=examples[key];
+  const actual=key==="grafana"?chosenDashboards().length+" 个仪表盘可用":summary;
+  output.className="preview-box";
+  output.innerHTML='<strong>'+esc(empty?"连接正常 · 窗口内 0 条":actual)+'</strong><small>'+esc([fields.environment.value,fields.business.value,fields.cluster.value].join(" / "))+'</small>'+
+    (empty?'<p class="field-help">范围已验证，可保存并等待新记录。</p>':'<ul>'+details.map(item=>'<li>'+esc(item)+'</li>').join("")+
+    (key==="alertmanager"&&fields.suppressed.checked?'<li>另有 2 条静默或抑制，单列展示</li>':"")+'</ul>');
+  ready=true;gate();
+}
+byId("test").addEventListener("click",testConnection);
+byId("preview").addEventListener("click",previewRange);
+form.addEventListener("input",event=>{
+  const name=event.target.name;
+  if(name==="name"){if(!fields.name.value.trim())resetPreview();return;}
+  if(["endpoint","auth","username","secret","environment"].includes(name)){
+    tested=false;byId("test-status").textContent="";
+    if(name==="environment")setScopeOptions();
+    if(name==="auth")authUI();
+  }
+  paintMapping();
+  resetPreview();
+});
+byId("scenario").addEventListener("change",()=>{if(dialog.open){tested=false;byId("test-status").textContent="";resetPreview();}});
+form.addEventListener("submit",event=>{
+  event.preventDefault();if(!ready)return;
+  const settings={};
+  for(const name of ["mapping","label","value","account","project","hostgroup"])if(fields[name]?.value)settings[name]=fields[name].value;
+  if(fields.suppressed)settings.suppressed=fields.suppressed.checked;
+  if(key==="grafana")settings.dashboards=chosenDashboards();
+  const row={id:editing?.id??String(Date.now()),key,name:fields.name.value.trim(),environment:fields.environment.value,business:fields.business.value,cluster:fields.cluster.value,
+    endpoint:fields.endpoint.value.trim(),auth:fields.auth.value,state:"active",when:key==="alertmanager"?"等待首次同步":"刚刚 · 预览通过",sample:key==="alertmanager"?"当前告警将在同步后展示":key==="grafana"?settings.dashboards.length+" 个仪表盘":defs[key].purpose.split(" · ")[0],settings};
+  items=[...items.filter(item=>item.id!==row.id),row];
+  expanded.add(key);byId("environment-filter").value="";byId("status-filter").value="";
+  persist();dialog.close();form.reset();renderList();
+  byId("page-status").textContent="已保存并启用「"+row.name+"」。"+(key==="alertmanager"?"等待首次告警同步。":"");
+  document.querySelector('[data-toggle="'+key+'"]').focus();
+});
+dialog.querySelectorAll("[data-close]").forEach(button=>button.addEventListener("click",()=>dialog.close()));
+dialog.addEventListener("close",()=>{fields.secret.value="";fields.username.value="";});
+byId("providers").addEventListener("click",event=>{
+  const target=event.target.closest("button");
+  if(!target)return;
+  const {toggle,add,action,row:id}=target.dataset;
+  if(toggle){const isOpen=!expanded.has(toggle);if(isOpen)expanded.add(toggle);else expanded.delete(toggle);target.setAttribute("aria-expanded",String(isOpen));byId("list-"+toggle).hidden=!isOpen;return;}
+  if(add){start(add);return;}
+  const row=items.find(item=>item.id===id);
+  if(!row)return;
+  if(action==="edit"){start(row.key,row);return;}
+  if(action==="pause"){
+    row.state=row.state==="paused"?"active":"paused";
+    byId("page-status").textContent=row.state==="paused"?"已暂停「"+row.name+"」。":"已恢复「"+row.name+"」。";
+  }
+  if(action==="test"){
+    if(row.state==="paused"){byId("page-status").textContent="请先恢复「"+row.name+"」。";return;}
+    const demo=byId("scenario").value;
+    if(demo==="denied"||demo==="timeout"){
+      byId("page-status").textContent="本次"+(row.key==="alertmanager"?"同步":"测试")+"失败，保留上次成功结果。";
+      return;
+    }
+    row.when="刚刚 · 成功";
+    if(row.key==="alertmanager")row.sample=demo==="empty"?"0 条活动告警":"8 条活动告警";
+    byId("page-status").textContent="「"+row.name+"」"+(row.key==="alertmanager"?"同步":"测试")+"成功。";
+  }
+  persist();renderList();
+  document.querySelector('[data-row="'+id+'"][data-action="'+action+'"]')?.focus();
+});
+for(const id of ["environment-filter","status-filter"])byId(id).addEventListener("change",renderList);
+renderList();
+</script>
+</body>
+</html>

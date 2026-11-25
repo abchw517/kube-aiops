@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>诊断总览 · kube-aiops</title>
+<style>
+:root{color-scheme:light;--canvas:#edf2f8;--surface:#fff;--ink:#15273e;--muted:#54667e;--subtle:#65768d;--line:#dbe4ef;--blue:#175bb9;--blue-pale:#edf5ff;--incident:#397bd5;--finding:#138678;--zabbix:#8958c8;--critical:#b2294c;--warning:#986005;--info:#117a6d;--plot-height:164px;font-family:system-ui,"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif;background:var(--canvas);color:var(--ink);font-size:14px}
+*{box-sizing:border-box}body{margin:0}button,select{font:inherit}button,a,select,summary{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:default}button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #2874dc;outline-offset:2px}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}h1,h2,p{margin:0}h1{font-size:27px;letter-spacing:-.025em;line-height:1.25}h2{font-size:17px;line-height:1.4}small,.small{font-size:12px;color:var(--muted)}[hidden]{display:none!important}
+.skip{position:fixed;left:12px;top:10px;z-index:5;transform:translateY(-150%);padding:8px;background:white}.skip:focus{transform:none}
+.top{height:56px;display:flex;align-items:center;background:#15263a;color:#d3deeb;gap:24px;padding:0 21px}.brand{display:flex;align-items:center;gap:10px;width:156px;flex:none;color:white;font-weight:750;letter-spacing:.015em}.logo{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;border:1px solid #5282a9;background:#204363;font-size:15px}
+.top-menu{display:flex;align-items:stretch;height:100%;gap:8px;overflow:hidden;white-space:nowrap}.top-menu span{display:flex;align-items:center;padding:0 12px}.top-menu .active{background:#233952;color:white;box-shadow:inset 0 -3px #64a6f2;font-weight:650}
+.shell{display:grid;grid-template-columns:192px minmax(0,1fr);min-height:calc(100vh - 56px)}
+.sidebar{background:#fafcff;border-right:1px solid var(--line);padding:20px 10px}.sidebar h2{padding:0 9px;margin-bottom:18px;font-size:15px}.sidebar p{padding:8px 9px;font-size:11px;color:var(--subtle)}.sidebar span{display:block;padding:9px;margin-bottom:3px;border-radius:6px;font-size:13px}.sidebar span[aria-current]{color:var(--blue);background:#e9f2ff;font-weight:750}.sidebar span[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;vertical-align:2px;border-radius:2px;background:currentColor;margin-right:8px}
+main{width:100%;max-width:1660px;margin:auto;padding:17px 23px 26px;min-width:0;display:grid;gap:13px;align-content:start}
+.page-head,.card-head,.actions,.trend-meta,.chart-footer,.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.trail{color:var(--subtle);font-size:12px;margin-bottom:5px}.page-links{display:flex;align-items:center;flex-wrap:wrap;gap:12px}.demo{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+.panel{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px #192b4710}
+select,.button{min-height:34px;border:1px solid #c9d7e8;border-radius:6px;background:white;color:var(--ink);padding:5px 10px}.button{font-size:13px;font-weight:650;white-space:nowrap}.button:hover{border-color:#8caed4;background:#f5f9ff}.primary{background:var(--blue);color:white;border-color:var(--blue)}.primary:hover{background:#114c9d;color:white}.link-button{border:0;background:transparent;color:var(--blue);padding:7px 0;white-space:nowrap}.link-button:hover{text-decoration:underline}
+.filters{display:grid;grid-template-columns:repeat(6,minmax(91px,1fr)) auto;gap:10px;padding:11px 14px;align-items:end}.filters label{min-width:0;display:grid;gap:5px;font-size:12px;font-weight:650;color:var(--muted)}.filters select{width:100%;min-width:0;font-size:13px;font-weight:450}.filters .actions{justify-content:start;gap:10px}
+.notice{border:1px solid #efd8a9;background:#fff6e6;color:#744b13;border-radius:8px;padding:10px 13px;font-size:13px}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.metric{text-align:left;padding:9px 13px;display:grid;gap:1px;border-left:3px solid var(--tone,var(--blue));color:var(--muted);font-size:12px}.metric[aria-pressed=true]{background:var(--blue-pale);box-shadow:inset 0 0 0 1px #8fb9ed}.metric:hover:not(:disabled){border-color:#8fb9ed}.metric strong{font-size:26px;line-height:1.2;color:var(--tone,var(--blue));font-variant-numeric:tabular-nums}.critical{--tone:var(--critical);--wash:#fcedf1}.warning{--tone:var(--warning);--wash:#fff2da}.info{--tone:var(--info);--wash:#e8f5f2}
+.analytics{container-type:inline-size}.analysis{display:grid;grid-template-columns:minmax(0,1fr) minmax(238px,25%);min-width:0}.trend{padding:14px 16px 12px;min-width:0}.card-head{align-items:flex-start}.caption{margin-top:3px;line-height:1.45;color:var(--muted);font-size:12px}.segment{display:inline-flex;gap:3px;padding:3px;border-radius:8px;background:#edf2f8}.segment button{border:1px solid transparent;color:var(--muted);border-radius:5px;background:transparent;padding:4px 9px;font-size:12px;min-height:27px;white-space:nowrap}.segment button[aria-pressed=true]{border-color:#cfe0f4;background:white;color:var(--blue);font-weight:750}.segment button:hover{color:var(--blue)}
+.trend-meta{margin:12px 0 7px;font-size:12px;color:var(--muted);gap:5px 12px}.trend-meta b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}.legend{display:flex;align-items:center;gap:6px 13px;flex-wrap:wrap}.legend span{white-space:nowrap}.dot{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--series);margin-right:5px}.incident{--series:var(--incident)}.finding{--series:var(--finding)}.zabbix{--series:var(--zabbix)}
+.plot{display:grid;grid-template-columns:31px minmax(0,1fr);gap:6px;min-width:0}.ticks{display:grid;align-content:space-between;text-align:right;height:calc(var(--plot-height) + 6px);padding:0 3px 0 0;font-size:11px;line-height:12px;color:var(--subtle);font-variant-numeric:tabular-nums}.plot-scroll{min-width:0;overflow-x:auto;scrollbar-width:thin;padding-top:6px}.plot-inner{min-width:calc(var(--days) * 21px)}.plot-area{height:var(--plot-height);display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));position:relative;background:repeating-linear-gradient(to bottom,var(--line) 0,var(--line) 1px,transparent 1px,transparent 25%);box-shadow:inset 0 -1px var(--line)}
+.day{position:relative;display:flex;align-items:end;justify-content:center;min-width:0;height:100%;border:0;padding:0 0 1px;background:transparent}.day:hover,.day[aria-pressed=true]{background:#eaf2ffb8}.day:focus-visible{outline-offset:-2px}.day::after{content:"";width:0}.day[aria-pressed=true]::after{position:absolute;height:3px;width:100%;bottom:0;left:0;background:#2475d3}.stack{display:flex;flex-direction:column-reverse;justify-content:flex-start;width:min(58%,28px);height:100%;overflow:hidden}.stack i{display:block;flex:none;background:var(--series);height:var(--height)}.stack i:last-child{border-radius:4px 4px 0 0}.x-axis{display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));padding-top:6px;min-height:23px;text-align:center;font-size:11px;color:var(--subtle);font-variant-numeric:tabular-nums}.x-axis span{white-space:nowrap}.x-axis.dense span:last-child{text-align:right;padding-right:1px}
+.chart-footer{margin-top:7px;padding:7px 10px;border-radius:6px;background:#f2f6fc;font-size:12px;line-height:1.6;color:var(--muted);min-height:34px}.chart-footer b{color:var(--ink)}.chart-footer .legend{color:var(--muted)}.chart-note{margin-top:6px;color:var(--muted);font-size:12px}.chart-empty{min-height:calc(var(--plot-height) + 35px);padding:16px;display:grid;place-content:center;text-align:center;gap:5px;border-radius:7px;background:#f4f7fc;border:1px dashed #cbd9eb}.chart-empty p{font-size:12px;color:var(--muted)}
+.distribution{border-left:1px solid var(--line);padding:14px 15px;min-width:0;background:#f9fbfe;border-radius:0 10px 10px 0;display:grid;align-content:start;gap:14px}.distribution-list{display:grid;gap:11px}.dist-button{border:0;border-radius:5px;display:grid;gap:5px;background:transparent;text-align:left;width:100%;color:var(--ink);padding:2px}.dist-button:hover:not(:disabled),.dist-button[aria-pressed=true]{background:var(--blue-pale)}.dist-row{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:13px}.dist-row b{color:var(--tone);font-variant-numeric:tabular-nums}.dist-row small{margin-left:6px;display:inline-block;min-width:45px;text-align:right;font-variant-numeric:tabular-nums}.rail{display:block;height:6px;background:#e4ebf5;border-radius:5px;overflow:hidden}.rail i{display:block;width:var(--fill);height:100%;background:var(--tone);border-radius:inherit}.distribution-foot{padding-top:9px;border-top:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;gap:7px;color:var(--muted)}
+.section-head{padding:12px 15px 10px}.records{overflow:hidden}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}th,td{padding:8px 12px;border-top:1px solid #e5ecf5;vertical-align:top;text-align:left}th{background:#f4f7fb;color:var(--muted);font-size:12px;font-weight:650}td:first-child{width:46%;padding-inline-start:15px;overflow-wrap:anywhere}th:first-child{padding-inline-start:15px}td:not(:first-child){white-space:nowrap}tbody tr:hover{background:#f8fbff}.badge{display:inline-block;border-radius:4px;padding:1px 6px;background:var(--wash);color:var(--tone);font-size:12px;font-weight:650}.records summary{cursor:pointer;color:#1b57a0;font-weight:580}.row-detail{margin-top:5px;color:var(--muted);font-size:12px}.no-rows{padding:16px;color:var(--muted);font-size:13px;text-align:center}dialog{width:min(640px,calc(100% - 30px));border:1px solid var(--line);border-radius:10px;color:var(--ink);padding:15px 17px}dialog::backdrop{background:#13243970}dialog ul{padding-left:22px}
+@container (max-width:760px){.analysis{grid-template-columns:minmax(0,1fr)}.distribution{border-left:0;border-top:1px solid var(--line);border-radius:0 0 10px 10px}.distribution-list{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.distribution-foot{padding-top:6px}}
+@media(max-width:1180px){.filters{grid-template-columns:repeat(3,minmax(0,1fr)) auto}.filters .actions{grid-row:2;grid-column:4}}
+@media(max-width:960px){.sidebar{display:none}.shell{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:640px){:root{--plot-height:130px}.top{height:47px;padding:0 10px;gap:9px}.brand{width:auto;font-size:13px}.logo{width:23px;height:23px}.top-menu{gap:0}.top-menu span{font-size:12px;padding:0 8px}.top-menu span:not(.active){display:none}.shell{min-height:calc(100vh - 47px)}main{padding:12px 9px;gap:10px}.page-head{gap:6px}.page-links{gap:6px}.page-links>a{display:none}h1{font-size:23px}.filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:9px}.filters .actions{grid-row:auto;grid-column:1/-1}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.metric{padding:7px 10px}.metric strong{font-size:22px}.trend,.distribution{padding:10px}.distribution-list{grid-template-columns:minmax(0,1fr)}.section-head{padding:10px}.records th:nth-child(n+3):nth-child(-n+5),.records td:nth-child(n+3):nth-child(-n+5){display:none}.records td:last-child{white-space:normal}.records th,.records td{padding:8px 7px}.records td:first-child{width:54%}.records .actions{gap:5px}.records .button{font-size:12px;padding-inline:7px}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="top"><div class="brand"><span class="logo" aria-hidden="true">K</span>kube-aiops</div><nav class="top-menu" aria-label="平台模块"><span class="active" aria-current="true">诊断控制台</span><span>资源管理</span><span>运维知识库</span><span>系统管理</span></nav></header>
+<div class="shell">
+  <aside class="sidebar"><h2>诊断控制台</h2><p>诊断工作区</p><span aria-current="page">诊断总览</span><span>故障事件</span><span>原有诊断结果</span><p>诊断配置</p><span>诊断策略</span></aside>
+  <main id="main">
+    <header class="page-head"><div><p class="trail">诊断控制台 / 诊断总览</p><h1>诊断总览</h1></div>
+      <div class="page-links"><a href="#recent">跳到最近诊断 ↓</a><label class="demo">演示状态<select id="scenario"><option value="normal">正常</option><option value="quiet">近 7 天无新增</option><option value="partial">部分来源不可用</option><option value="unavailable">全部来源不可用</option></select></label></div>
+    </header>
+    <form id="filters" class="panel filters" aria-label="诊断总览筛选">
+      <label>来源<select name="source"><option value="">全部来源</option><option value="incident">故障事件</option><option value="finding">K8sGPT</option><option value="zabbix">Zabbix</option></select></label>
+      <label>环境<select name="environment"><option value="">全部环境</option><option value="prod">生产</option><option value="test">测试</option></select></label>
+      <label>业务<select name="business"><option value="">全部业务</option><option value="retail">零售</option><option value="ops">运维</option></select></label>
+      <label>集群实例<select name="cluster"><option value="">全部可见实例</option><option value="east">华东容器集群</option><option value="test">测试集群</option></select></label>
+      <label>诊断级别<select name="severity"><option value="">全部级别</option><option value="critical">严重</option><option value="warning">警告</option><option value="info">信息</option></select></label>
+      <label>Zabbix 状态<select name="recent"><option value="">当前记录</option><option value="true">含最近恢复</option></select></label>
+      <div class="actions"><button class="button primary" type="submit">应用筛选</button><button type="button" class="link-button" id="clear-filters">清除筛选</button></div>
+    </form>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section class="metrics" id="metrics" aria-label="诊断范围指标"></section>
+    <section class="panel analytics" aria-labelledby="trend-title">
+      <div class="analysis">
+        <div class="trend">
+          <header class="card-head"><div><h2 id="trend-title">诊断趋势</h2><p class="caption" id="range"></p></div>
+            <div class="segment" id="window" role="group" aria-label="趋势时间窗">
+              <button type="button" data-days="7" aria-pressed="true">7 天</button>
+              <button type="button" data-days="14" aria-pressed="false">14 天</button>
+              <button type="button" data-days="30" aria-pressed="false">30 天</button>
+            </div>
+          </header>
+          <div class="trend-meta"><span id="window-count" aria-live="polite"></span><div id="legend" class="legend" aria-label="来源图例"></div></div>
+          <div id="chart"></div>
+          <div id="day-readout" class="chart-footer" aria-live="polite"></div>
+          <p id="chart-note" class="chart-note"></p>
+        </div>
+        <aside class="distribution" aria-labelledby="dist-title">
+          <div><h2 id="dist-title">严重度分布</h2><p class="caption" id="dist-scope"></p></div>
+          <div id="distribution" class="distribution-list" role="group" aria-label="按严重度筛选"></div>
+          <div class="distribution-foot"><span>点击级别筛选总览</span><button class="link-button" style="padding:0" type="button" id="all-levels" hidden>查看全部</button></div>
+        </aside>
+      </div>
+    </section>
+    <section id="recent" class="panel records" aria-labelledby="recent-title">
+      <header class="section-head"><div><h2 id="recent-title">最近诊断</h2><p class="caption">当前筛选 · 按首次发现时间倒序 · 最多 5 条 · UTC+8</p></div>
+        <div class="actions"><button class="button" type="button" data-list="incident">查看故障事件</button><button class="button" type="button" data-list="finding">查看原有诊断结果</button></div>
+      </header>
+      <div id="records"></div>
+    </section>
+  </main>
+</div>
+<dialog id="record-dialog" aria-labelledby="record-dialog-title"><header class="section-head"><h2 id="record-dialog-title"></h2><form method="dialog"><button class="button">关闭</button></form></header><div id="record-dialog-body"></div></dialog>
+<script>
+"use strict";
+const levels = { critical: "严重", warning: "警告", info: "信息" };
+const sourceNames = { incident: "故障事件", finding: "K8sGPT", zabbix: "Zabbix" };
+const sourceOrder = Object.keys(sourceNames);
+const dayMs = 86400000;
+const referenceDay = Date.UTC(2026, 10, 24);
+const dayAt = offset => new Date(referenceDay - offset * dayMs).toISOString().slice(0, 10);
+const fixedRows = [
+  [0, "16:06", "IIS 站点近 5 分钟连接数持续超过 1,500", "info", "零售 API · WIN-180"],
+  [0, "15:55", "Windows 可用内存低于 1 GB", "warning", "零售任务 · WIN-215"],
+  [0, "14:45", "支付应用内存使用超过 4 GB", "info", "支付应用 · WIN-246"],
+  [2, "22:07", "D 盘使用率超过 85%", "warning", "应用服务器 · WIN-118"],
+  [3, "08:15", "站点 TLS 证书剩余有效期不足 30 天", "info", "监控节点 · WIN-152"]
+].map(([offset, time, title, severity, host], i) =>
+  ({ offset, time, title, severity, host, source: "zabbix", environment: "prod", business: i === 4 ? "ops" : "retail", cluster: "" }));
+const slotCounts = [13, 6, 7, 12, 0, 10, 3, 0, 9, 2, 4, 0, 4, 2, 0, 3, 2, 0, 5, 0, 3, 0, 1, 2, 0, 2, 0, 3, 1, 3];
+const missingSlots = 112 - slotCounts.reduce((sum, count) => sum + count, 0);
+const slots = [...slotCounts, missingSlots];
+const backfillLevels = [...Array(24).fill("critical"), ...Array(74).fill("warning"), ...Array(9).fill("info")];
+const ideas = {
+  incident: ["服务实例健康检查失败", "应用副本不可用", "节点网络延时升高"],
+  finding: ["Pod 重启次数增加", "Deployment 可用副本不足", "容器探针检查异常"],
+  zabbix: ["日志磁盘剩余空间不足", "主机内存使用率达到阈值", "应用连接数超过阈值"]
+};
+const rows = [...fixedRows];
+let backfillIndex = 0;
+for (const [offset, count] of slots.entries()) {
+  const additional = count - fixedRows.filter(row => row.offset === offset).length;
+  for (let i = 0; i < additional; i++) {
+    const j = backfillIndex++;
+    const source = sourceOrder[([2,1,2,0,2,1,2,0,2,1,2])[j % 11]];
+    const environment = (j + offset) % 5 === 0 ? "test" : "prod";
+    rows.push({ offset, time: offset === 0 ? "13:" + String(59 - i).padStart(2, "0") : "07:" + String(59 - i).padStart(2, "0"),
+      title: ideas[source][(j + offset) % 3], severity: backfillLevels[(j * 43) % backfillLevels.length], source, environment,
+      business: (j + i) % 3 === 0 ? "ops" : "retail", cluster: source === "zabbix" ? "" : environment === "test" ? "test" : "east",
+      host: source === "zabbix" ? "应用主机 · WIN-" + (100 + j) : environment === "test" ? "测试集群" : "华东容器集群" });
+  }
+}
+const recovered = { ...fixedRows[0], title: "应用主机磁盘使用率已恢复", offset: 1, severity: "warning", time: "10:18", recovered: true };
+const get = id => document.getElementById(id);
+const form = get("filters");
+const defaultFilters = () => Object.fromEntries(new FormData(form));
+let filters = defaultFilters();
+let windowDays = 7;
+let selectedOffset = null;
+
+function getVisible(sourceOverride) {
+  const status = get("scenario").value;
+  const source = sourceOverride ?? filters.source;
+  const available = status === "unavailable" ? [] : sourceOrder.filter(key => status !== "partial" || key !== "zabbix");
+  const selected = source ? available.filter(key => key === source) : available;
+  const hasData = selected.length > 0;
+  const incomplete = status === "partial" && (!source || source === "zabbix");
+  const visible = (filters.recent ? [...rows, recovered] : rows).filter(row =>
+    selected.includes(row.source) && ["environment","business","cluster","severity"].every(key => !filters[key] || filters[key] === row[key]))
+    .map(row => status === "quiet" ? { ...row, offset: row.offset + 7 } : row)
+    .sort((a,b) => a.offset - b.offset || b.time.localeCompare(a.time));
+  return { visible, selected, hasData, incomplete };
+}
+const levelCounts = visible => Object.fromEntries(Object.keys(levels).map(key => [key, visible.filter(row => row.severity === key).length]));
+const dot = (key,text) => '<span><i aria-hidden="true" class="dot ' + key + '"></i>' + text + '</span>';
+const dateTime = row => dayAt(row.offset).replaceAll("-", "/") + " " + row.time;
+const stateText = row => row.source === "zabbix" ? (row.recovered ? "已恢复" : "未恢复") : row.source === "incident" ? "待确认" : "待排查";
+
+function chooseLevel(key) {
+  filters.severity = filters.severity === key ? "" : key;
+  form.elements.severity.value = filters.severity;
+  selectedOffset = null;
+  render();
+  get("metrics").querySelector('[data-level="' + filters.severity + '"]')?.focus({preventScroll:true});
+}
+function renderMetrics(visible,counts,hasData) {
+  get("metrics").innerHTML = [["","诊断记录总数"],...Object.entries(levels)].map(([key,label]) =>
+    '<button type="button" data-level="' + key + '" class="panel metric ' + key + '" aria-pressed="' + (filters.severity === key) + '"' + (!hasData ? " disabled" : "") + '>' + label +
+    '<strong>' + (hasData ? (key ? counts[key] : visible.length) : "—") + '</strong></button>').join("");
+}
+function renderDistribution(visible,counts,hasData,incomplete) {
+  get("dist-scope").textContent = (incomplete && hasData ? "已获取记录" : "当前筛选范围") + " · " + (hasData ? visible.length + " 条" : "暂不可用");
+  get("all-levels").hidden = !filters.severity || !hasData;
+  get("distribution").innerHTML = Object.entries(levels).map(([key,label]) => {
+    const share = visible.length ? counts[key] / visible.length * 100 : 0;
+    return '<button type="button" class="dist-button ' + key + '" data-level="' + key + '" aria-pressed="' + (filters.severity === key) + '"' + (!hasData ? " disabled" : "") +
+      '><span class="dist-row">' + label + '<span><b>' + (hasData ? counts[key] : "—") + '</b><small>' + (hasData && visible.length ? share.toFixed(1) + "%" : "—") +
+      '</small></span></span><span class="rail" aria-hidden="true"><i style="--fill:' + share + '%"></i></span></button>';
+  }).join("");
+}
+
+function renderTrend(state) {
+  const { visible, selected, hasData, incomplete } = state;
+  const points = Array.from({length:windowDays}, (_, index) => {
+    const offset = windowDays - index - 1;
+    const counts = Object.fromEntries(selected.map(key => [key, 0]));
+    for (const row of visible) if (row.offset === offset) counts[row.source]++;
+    return { offset, counts, total: Object.values(counts).reduce((sum,count) => sum + count,0) };
+  });
+  const total = points.reduce((sum, point) => sum + point.total, 0);
+  const peak = Math.max(...points.map(point => point.total));
+  const step = Math.max(1, Math.ceil(peak / 4));
+  const scale = step * 4;
+  get("range").textContent = dayAt(windowDays-1) + " 至 " + dayAt(0) + " · UTC+8 · 按首次发现日统计";
+  get("window-count").innerHTML = "窗口内 <b>" + (hasData && (total || !incomplete) ? total + " 条" : "—") + "</b>" + (incomplete && hasData ? " · 已获取" : "");
+  get("legend").innerHTML = selected.map(key => dot(key,sourceNames[key])).join("");
+  document.querySelectorAll("[data-days]").forEach(button => button.setAttribute("aria-pressed", Number(button.dataset.days) === windowDays));
+  get("chart-note").textContent = hasData && total ? "11/24 当日数据截至 16:30。" : "";
+  const chart = get("chart");
+  if (!hasData || !total) {
+    const heading = !hasData ? "诊断趋势暂不可用" : incomplete ? "近 " + windowDays + " 天未取得记录" : "近 " + windowDays + " 天无新增";
+    const hint = !hasData ? "当前来源未取得可用数据。" : incomplete ? "来源覆盖不完整，当前结果无法确认是否存在新增。" :
+      visible.length ? "当前筛选仍有较早记录，可扩大趋势时间窗查看。" : "当前筛选范围没有匹配记录。";
+    chart.innerHTML = '<div class="chart-empty"><strong>' + heading + '</strong><p>' + hint + '</p>' +
+      (hasData && visible.length && windowDays < 30 ? '<div><button type="button" class="link-button" data-days="' + (windowDays === 7 ? 14 : 30) + '">查看近 ' + (windowDays === 7 ? 14 : 30) + ' 天</button></div>' : "") + '</div>';
+    get("day-readout").hidden = true;
+    return;
+  }
+  if (!points.some(point => point.offset === selectedOffset)) selectedOffset = points.findLast(point => point.total).offset;
+  const pointLabel = point => dayAt(point.offset) + " 共 " + point.total + " 条，" + selected.map(key => sourceNames[key] + " " + point.counts[key] + " 条").join("，");
+  chart.innerHTML = '<div class="plot"><div class="ticks" aria-hidden="true">' +
+    [4,3,2,1,0].map(tick => '<span>' + (step * tick) + '</span>').join("") +
+    '</div><div class="plot-scroll"><div class="plot-inner" style="--days:' + windowDays +
+    '"><div class="plot-area" role="group" aria-label="每日新增诊断。方向键可切换日期。">' + points.map(point =>
+      '<button type="button" class="day" data-offset="' + point.offset + '" aria-pressed="' + (point.offset === selectedOffset) +
+      '" aria-label="' + pointLabel(point) + '" title="' + pointLabel(point) + '" tabindex="' + (point.offset === selectedOffset ? 0 : -1) +
+      '"><span class="stack" aria-hidden="true">' + selected.filter(key => point.counts[key]).map(key =>
+      '<i class="' + key + '" style="--height:' + point.counts[key] / scale * 100 + '%"></i>').join("") + '</span></button>').join("") +
+    '</div><div class="x-axis' + (windowDays === 7 ? "" : " dense") + '" aria-hidden="true">' + points.map((point,index) => '<span>' +
+      (windowDays === 7 || index === 0 || point.offset === 0 || (point.offset >= 2 && index % (windowDays === 14 ? 3 : 5) === 0) ?
+        dayAt(point.offset).slice(5).replace("-", "/") : "") + '</span>').join("") + '</div></div></div></div>';
+  function showDay(offset, focus) {
+    selectedOffset = offset;
+    const point = points.find(day => day.offset === offset);
+    const readout = get("day-readout");
+    readout.hidden = false;
+    readout.innerHTML = "<span><b>" + dayAt(offset) + (offset === 0 ? " · 今日" : "") + "</b> · " + point.total +
+      " 条</span><div class=\"legend\">" + selected.map(key => dot(key,sourceNames[key] + " " + point.counts[key])).join("") + "</div>";
+    chart.querySelectorAll(".day").forEach(button => {
+      const active = Number(button.dataset.offset) === offset;
+      button.setAttribute("aria-pressed",active);
+      button.tabIndex = active ? 0 : -1;
+      if (!active) return;
+      const scroll = chart.querySelector(".plot-scroll");
+      if (button.offsetLeft < scroll.scrollLeft) scroll.scrollLeft = button.offsetLeft;
+      const right = button.offsetLeft + button.offsetWidth;
+      if (right > scroll.scrollLeft + scroll.clientWidth) scroll.scrollLeft = right - scroll.clientWidth;
+      if (focus) button.focus({preventScroll:true});
+    });
+  }
+  chart.querySelector(".plot-area").addEventListener("click",event => {
+    const button = event.target.closest(".day");
+    if (button) showDay(Number(button.dataset.offset),false);
+  });
+  chart.querySelector(".plot-area").addEventListener("keydown",event => {
+    const offset = {ArrowLeft:Math.min(windowDays-1,selectedOffset+1),ArrowRight:Math.max(0,selectedOffset-1),Home:windowDays-1,End:0}[event.key];
+    if (offset === undefined) return;
+    event.preventDefault();
+    showDay(offset,true);
+  });
+  showDay(selectedOffset,false);
+}
+
+function renderRecords(visible,hasData) {
+  get("records").innerHTML = visible.length ?
+    '<div class="table-wrap"><table><thead><tr><th scope="col">问题</th><th scope="col">级别</th><th scope="col">处置状态</th><th scope="col">来源</th><th scope="col">主机或实例</th><th scope="col">首次发现</th></tr></thead><tbody>' +
+    visible.slice(0,5).map(row => '<tr><td><details><summary>' + row.title + '</summary><p class="row-detail">' +
+      sourceNames[row.source] + " · " + row.host + " · " + stateText(row) + '</p></details></td><td><span class="badge ' + row.severity + '">' +
+      levels[row.severity] + '</span></td><td>' + stateText(row) + '</td><td>' + sourceNames[row.source] + '</td><td>' +
+      row.host + '</td><td>' + dateTime(row) + '</td></tr>').join("") + '</tbody></table></div>' :
+    '<p class="no-rows">' + (hasData ? "当前筛选范围暂无匹配记录。" : "最近诊断暂不可用。") + '</p>';
+}
+function render() {
+  const state = getVisible();
+  const {visible,hasData,incomplete} = state;
+  const notice = get("notice");
+  notice.hidden = hasData && !incomplete;
+  notice.textContent = hasData ? "Zabbix 暂不可用 · 仅统计已获取的来源，窗口内记录数及严重度分布可能偏低。" : "当前筛选范围的数据暂不可用。";
+  const counts = levelCounts(visible);
+  renderMetrics(visible,counts,hasData);
+  renderDistribution(visible,counts,hasData,incomplete);
+  renderTrend(state);
+  renderRecords(visible,hasData);
+}
+form.addEventListener("submit",event => { event.preventDefault(); filters = defaultFilters(); selectedOffset = null; render(); });
+get("clear-filters").addEventListener("click",() => { form.reset(); filters = defaultFilters(); selectedOffset = null; render(); });
+get("scenario").addEventListener("change",() => { selectedOffset = null; render(); });
+get("all-levels").addEventListener("click",() => chooseLevel(""));
+for (const id of ["metrics","distribution"]) get(id).addEventListener("click", event => {
+  const button = event.target.closest("[data-level]"); if (button) chooseLevel(button.dataset.level);
+});
+document.querySelector(".trend").addEventListener("click",event => {
+  const button = event.target.closest("[data-days]"); if (!button) return;
+  windowDays = Number(button.dataset.days);
+  selectedOffset = null;
+  renderTrend(getVisible());
+  get("window").querySelector('[data-days="' + windowDays + '"]').focus({preventScroll:true});
+});
+document.querySelectorAll("[data-list]").forEach(button => button.addEventListener("click",() => {
+  const key = button.dataset.list;
+  get("record-dialog-title").textContent = key === "incident" ? "故障事件" : "原有诊断结果";
+  const matching = getVisible(key).visible;
+  get("record-dialog-body").innerHTML = matching.length ? '<p class="small">当前筛选 · 展示前 5 条演示记录</p><ul>' +
+    matching.slice(0,5).map(row => '<li>' + row.title + " · " + dateTime(row) + '</li>').join("") + '</ul>' : '<p class="no-rows">暂无可展示的演示记录。</p>';
+  get("record-dialog").showModal();
+}));
+render();
+</script>
+</body>
+</html>

@@ -42,8 +42,8 @@ func TestCatalogModulesAndPrototypeUseSameOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	pattern := regexp.MustCompile(`<script type="application/json" id="catalog">(.+)</script>`)
-	for _, name := range []string{"prototype.html", "group-admin-prototype.html"} {
-		prototype, err := os.ReadFile("../../../../docx/permission-catalog/" + name)
+	for _, name := range []string{"permission-catalog.html", "group-admin-prototype.html"} {
+		prototype, err := os.ReadFile("../../../../docx/system-management/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}

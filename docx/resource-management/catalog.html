@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>平台目录 · kube-aiops</title>
+<style>
+:root{font:14px/1.55 system-ui,"Microsoft YaHei","PingFang SC",sans-serif;color:#182a43;background:#f0f4f9;--ink:#182a43;--muted:#526680;--line:#d9e3ee;--soft:#f6f9fc;--blue:#1559c0;--red:#a12a3d}
+*{box-sizing:border-box}
+body,h1,h2,h3,h4,p,dl,dd{margin:0}
+button,input,select,textarea{font:inherit}
+button,summary{cursor:pointer}
+button:disabled{cursor:default;opacity:.55}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #7eaff6;outline-offset:2px}
+.topbar{display:flex;align-items:center;gap:31px;min-height:61px;background:#14263b;padding:0 24px;color:#e5eefb}
+.brand{font-weight:760;display:flex;gap:9px;align-items:center;white-space:nowrap}
+.mark{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;border:1px solid #5e8bb6;background:#19476f}
+.top-links{display:flex;align-items:center;gap:25px;font-size:13px;flex-wrap:wrap}
+.top-links strong{color:#fff;padding:19px 0 16px;border-bottom:3px solid #83b6fd}
+.shell{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:calc(100vh - 61px)}
+.sidebar{background:#fff;border-right:1px solid var(--line);padding:22px 12px;color:#324b68}
+.sidebar h2{font-size:16px;margin:0 8px}
+.sidebar p{color:var(--muted);font-size:12px;margin:22px 8px 6px}
+.sidebar span,.sidebar a{display:block;padding:8px;border-radius:7px;color:inherit;text-decoration:none}
+.sidebar a:hover{background:#f2f6fc}
+.sidebar a[aria-current=page]{background:#e8f2ff;color:#164e9d;font-weight:700}
+main{width:100%;max-width:1280px;min-width:0;padding:24px 28px 36px;margin-inline:auto}
+.crumb,.hint,.subtext{color:var(--muted);font-size:13px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:5px 0 17px}
+.head h1{font-size:28px;line-height:1.25;margin:0 0 4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:6px 12px;border:1px solid #bdcde0;border-radius:7px;background:#fff;color:#264264;font-weight:650;white-space:nowrap}
+.btn:hover:not(:disabled){background:#f0f5fc}
+.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.primary:hover:not(:disabled){background:#124aa5}
+.danger{background:var(--red);border-color:var(--red);color:#fff}
+.danger:hover:not(:disabled){background:#862334}
+.ghost{border-color:transparent;color:#16509e;background:transparent}
+.small{min-height:31px;padding:4px 7px;font-size:12px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 2px 7px #132b4809}
+.tabs{display:flex;gap:22px;padding:0 17px;border-bottom:1px solid var(--line)}
+.tabs button{padding:11px 4px 9px;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font-weight:650}
+.tabs button[aria-selected=true]{border-bottom-color:var(--blue);color:#164d9c}
+.panel-body{padding:15px 17px 17px}
+.filters{display:flex;align-items:end;gap:9px;flex-wrap:wrap}
+.control{display:grid;gap:4px;min-width:120px}
+.control span,.field label{font-size:13px;color:#344c6b;font-weight:700}
+.search{width:min(100%,340px)}
+.control input,.control select,.field input{min-width:0;width:100%;border:1px solid #bdcde0;border-radius:7px;padding:7px 9px;min-height:37px;background:#fff;color:var(--ink)}
+.field input[readonly]{background:#f2f5f9;color:#415873}
+.field [aria-invalid=true]{border-color:#b43241}
+.result-bar{display:flex;align-items:center;justify-content:space-between;gap:7px 13px;flex-wrap:wrap;min-height:25px;margin:8px 0;color:var(--muted);font-size:13px}
+.summary-read{font-size:12px}
+.table-wrap{border:1px solid var(--line);border-radius:8px;min-width:0}
+table{width:100%;table-layout:fixed;border-collapse:collapse;text-align:left}
+th{background:#f1f5fa;color:#3a526e;font-size:12px;font-weight:700}
+th,td{padding:9px 12px;overflow-wrap:anywhere}
+th:first-child{width:37%;border-radius:7px 0 0 0}
+th:last-child{width:24%;text-align:right;border-radius:0 7px 0 0}
+td{border-top:1px solid #e4ebf3}
+tbody tr:nth-child(2n){background:#fbfcff}
+tbody tr:hover{background:#f6faff}
+.name-button{color:#154f9f;font-weight:710;text-align:left;background:none;border:0;padding:0;overflow-wrap:anywhere}
+.name-button:hover{text-decoration:underline}
+.id-line{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+code{font:12px/1.5 ui-monospace,Consolas,monospace;color:#34516f;background:#ecf2f9;border-radius:5px;padding:2px 6px;overflow-wrap:anywhere}
+.actions{display:flex;align-items:center;justify-content:end;gap:5px;flex-wrap:wrap}
+.menu{position:relative}
+.menu summary{list-style:none;display:grid;place-items:center;width:31px;height:32px;border:1px solid transparent;border-radius:6px;color:#38516e}
+.menu summary::-webkit-details-marker{display:none}
+.menu[open] summary,.menu summary:hover{border-color:#d3e1f1;background:#edf4ff}
+.menu-items{min-width:133px;position:absolute;z-index:3;right:0;top:calc(100% + 4px);display:grid;gap:3px;border:1px solid var(--line);border-radius:7px;padding:4px;background:#fff;box-shadow:0 9px 24px #25406527}
+tr:nth-last-child(-n+2) .menu-items{top:auto;bottom:calc(100% + 4px)}
+.menu-items button{border:0;border-radius:4px;color:var(--ink);background:none;padding:6px 8px;text-align:left}
+.menu-items button:hover{background:#edf4ff}
+.menu-items .text-danger{color:var(--red)}
+.empty{padding:35px 14px;text-align:center;background:#f8fbff;border:1px dashed #c7d8ea;border-radius:8px}
+.empty h3{font-size:16px}
+.empty p{margin:4px 0 10px;color:var(--muted)}
+.notice{padding:7px 9px;border-radius:7px;background:#e8f5ee;color:#176047;font-size:13px;margin-top:9px;overflow-wrap:anywhere}
+.notice[data-tone=error]{background:#fff0ef;color:#902b39}
+.demo{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;font-size:12px;color:var(--muted)}
+.demo select{background:#fff;border:1px solid #bdcde0;border-radius:5px;font:inherit;padding:4px 6px}
+dialog{padding:0;border:0;color:var(--ink);box-shadow:0 20px 70px #1429414a}
+dialog::backdrop{background:#162a448f}
+.modal{max-width:none;max-height:none;width:min(560px,calc(100vw - 24px));border-radius:12px;overflow:hidden}
+.drawer{height:100dvh;max-height:none;width:min(490px,100vw);max-width:none;margin:0 0 0 auto}
+.dialog-layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 28px)}
+.drawer .dialog-layout{height:100%;max-height:none}
+.dialog-head{display:flex;justify-content:space-between;align-items:start;gap:10px;border-bottom:1px solid var(--line);padding:16px 18px}
+.dialog-head h2{font-size:21px;line-height:1.25}
+.dialog-head h2:focus{outline:none}
+.dialog-head p{margin-top:4px}
+.close{background:none;color:#455d79;border:0;border-radius:6px;width:33px;height:33px;font-size:23px;line-height:1;flex:none}
+.close:hover{background:#edf4ff}
+.dialog-body{padding:15px 18px;overflow:auto;overscroll-behavior:contain}
+.drawer .dialog-body{background:var(--soft)}
+.dialog-foot{padding:10px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.dialog-foot .actions{margin-left:auto}
+.dialog-foot p{flex:1 1 140px;color:var(--muted);overflow-wrap:anywhere;font-size:13px}
+.field{display:grid;min-width:0;gap:4px;margin-bottom:12px}
+.field:last-child{margin-bottom:0}
+.field code{width:fit-content}
+.field-error{color:#992d3e;font-size:12px}
+.id-box{display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;min-height:37px;border:1px solid var(--line);border-radius:7px;padding:3px 7px;background:#f7f9fc}
+.id-tools{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.note{border-radius:7px;padding:8px 10px;margin-top:8px;background:#edf4ff;color:#2b5482;font-size:13px}
+.note.warn{background:#fff4df;color:#78521b}
+.note.error{background:#fff0ef;color:#962c3d}
+.detail-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:9px}
+.detail-card h3{font-size:15px;margin-bottom:7px}
+.detail-card dl{display:grid;grid-template-columns:68px minmax(0,1fr);gap:7px}
+.detail-card dt{color:#4c6280}
+.detail-card dd{overflow-wrap:anywhere}
+.refs{margin:9px 0;padding:0;list-style:none;border:1px solid var(--line);border-radius:7px}
+.refs li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;overflow-wrap:anywhere}
+.refs li+li{border-top:1px solid var(--line)}
+.refs .ref-kind{font-size:12px;white-space:nowrap;color:#49607b}
+.clip-text{width:100%;min-height:60px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:7px 8px}
+.confirm{width:min(400px,calc(100vw - 24px));border-radius:10px;padding:16px 18px}
+.confirm h2{font-size:18px}
+.confirm p{margin:5px 0 12px;color:var(--muted)}
+@media(max-width:830px){.shell{display:block}.sidebar{display:none}main{padding:17px 15px 25px}}
+@media(max-width:570px){
+  .topbar{gap:1px 12px;flex-wrap:wrap;min-height:51px;padding:5px 12px 0}.top-links{gap:12px;font-size:12px}.top-links strong{padding:7px 0 5px}
+  main{padding:13px 10px 22px}.head h1{font-size:23px}.head{align-items:flex-start}
+  .panel-body{padding:10px}.tabs{padding:0 10px;gap:16px}
+  .search{width:100%}.control{min-width:110px}
+  table,tbody{display:block}thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  tr{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:8px 9px;gap:4px 7px;border-top:1px solid var(--line)}
+  tr:first-child{border:0}td{display:block;padding:0;border:0}td:first-child{grid-column:1/-1}
+  td[data-label]::before{content:attr(data-label);display:block;font-size:11px;color:var(--muted)}
+  .id-line code{padding-inline:3px}.menu-items{top:auto;bottom:calc(100% + 4px)}
+  .dialog-head,.dialog-body,.dialog-foot{padding-inline:12px}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark">K</span> kube-aiops</div>
+  <div class="top-links"><span>诊断控制台</span><strong>资源管理</strong><span>运维知识库</span><span>系统管理</span></div>
+</header>
+<div class="shell">
+  <aside class="sidebar">
+    <h2>资源管理</h2>
+    <p>集群资源</p><span>Kubernetes 集群管理</span>
+    <p>平台目录</p><a href="#environments" data-catalog="environments">环境管理</a><a href="#business-lines" data-catalog="business-lines">业务线管理</a><span>数据源管理</span>
+  </aside>
+  <main>
+    <p class="crumb" id="crumb"></p>
+    <header class="head"><div><h1 id="page-title"></h1><p class="hint" id="page-purpose"></p></div>
+      <button type="button" id="add-entry" class="btn primary"></button>
+    </header>
+    <section class="panel">
+      <div class="tabs" role="tablist" aria-label="平台目录">
+        <button type="button" role="tab" id="tab-environments" aria-controls="catalog-panel" data-tab="environments">环境管理</button>
+        <button type="button" role="tab" id="tab-business-lines" aria-controls="catalog-panel" data-tab="business-lines">业务线管理</button>
+      </div>
+      <div class="panel-body" id="catalog-panel" role="tabpanel">
+        <div class="filters">
+          <label class="control search"><span>搜索</span><input type="search" id="search" placeholder="搜索名称或 ID"></label>
+          <label class="control"><span>排序</span><select id="sort"><option value="sequence">目录顺序</option><option value="name">按名称</option><option value="id">按 ID</option></select></label>
+          <button type="button" class="btn ghost" id="clear-search">清空搜索</button>
+        </div>
+        <div class="result-bar"><span id="result-count" role="status"></span><span class="summary-read" id="read-only" hidden>只读权限</span></div>
+        <div class="table-wrap" id="table-wrap"><table aria-labelledby="page-title">
+          <thead><tr><th scope="col" id="head-name">名称</th><th scope="col" id="head-id">ID</th><th scope="col">操作</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+        <div class="empty" id="empty" hidden></div>
+        <div class="notice" id="notice" role="status" hidden></div>
+      </div>
+    </section>
+    <div class="demo">
+      <label for="scenario">原型场景</label><select id="scenario"><option value="normal">正常管理</option><option value="readonly">只读权限</option><option value="empty">目录为空</option><option value="load-error">加载失败</option><option value="save-error">保存失败一次</option></select>
+      <span>使用示例数据</span>
+    </div>
+  </main>
+</div>
+<dialog id="detail" class="drawer" aria-labelledby="detail-title"></dialog>
+<dialog id="editor" class="modal" aria-labelledby="editor-title"></dialog>
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title">
+  <h2 id="confirm-title">放弃未保存的修改？</h2>
+  <p>关闭后，这次填写的内容会丢弃。</p>
+  <div class="actions"><button type="button" class="btn" id="keep" autofocus>继续编辑</button><button type="button" class="btn primary" id="discard">放弃修改</button></div>
+</dialog>
+<script>
+"use strict";
+const by = id => document.getElementById(id);
+const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+  "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+})[char]);
+const definitions = {
+  environments: {
+    noun:"环境", purpose:"维护集群、数据源和授权范围使用的环境名称与标识。",
+    nameExample:"例如 灾备演练", idExample:"例如 disaster-recovery",
+    relation:"环境由集群管理、数据源管理和权限配置引用。归属调整在相应模块完成。"
+  },
+  "business-lines": {
+    noun:"业务线", purpose:"维护集群与命名空间归属使用的业务线目录。",
+    nameExample:"例如 数据平台", idExample:"例如 data-platform",
+    relation:"业务线由集群、命名空间归属和权限范围使用。调整归属时，在对应集群选择业务线并保存。"
+  }
+};
+const sample = {
+  environments:[
+    {key:"env-dev",name:"研发",id:"development",references:["dev-k8s"]},
+    {key:"env-test",name:"测试",id:"testing",references:["test-k8s"]},
+    {key:"env-stage",name:"预发布",id:"staging",references:["staging-k8s"]},
+    {key:"env-prod",name:"生产",id:"production",references:["prod-core","prod-edge","角色 生产运维值班"],oldIDs:["prod-old"]},
+    {key:"env-drill",name:"灾备演练",id:"drill",references:[]}
+  ],
+  "business-lines":[
+    {key:"biz-ops",name:"运维",id:"ops",references:["prod-core","prod-core/monitoring","角色 平台值班"]},
+    {key:"biz-data",name:"有数",id:"data",references:["prod-core/data-platform","test-k8s"]},
+    {key:"biz-cloud",name:"云帆",id:"cloud",references:["dev-k8s","dev-k8s/cloud-app"]},
+    {key:"biz-support",name:"技术支持",id:"support",references:[]}
+  ]
+};
+let lists=structuredClone(sample);
+let sequence=0;
+let kind="environments";
+let scene="normal";
+let failSave=false;
+const filters={environments:{query:"",sort:"sequence"},"business-lines":{query:"",sort:"sequence"}};
+const collator=new Intl.Collator("zh-CN",{numeric:true});
+const detail=by("detail");
+const editor=by("editor");
+const confirm=by("confirm");
+let detailKey="";
+let detailOrigin;
+let editOrigin;
+let editKey="";
+let operation;
+let busy=false;
+const current = () => definitions[kind];
+const canWrite = () => scene!=="readonly" && scene!=="load-error";
+const active = () => lists[kind];
+const entry = key => active().find(row=>row.key===key);
+
+function setNotice(message,tone="ok"){
+  const node=by("notice");
+  node.hidden=!message;
+  node.dataset.tone=tone;
+  node.textContent=message;
+}
+function visibleRows(){
+  const filter=filters[kind];
+  const needle=filter.query.trim().toLocaleLowerCase();
+  const rows=active().filter(row=>row.name.toLocaleLowerCase().includes(needle)||row.id.toLocaleLowerCase().includes(needle));
+  if(filter.sort!=="sequence")rows.sort((a,b)=>collator.compare(a[filter.sort],b[filter.sort])||collator.compare(a.id,b.id));
+  return rows;
+}
+function rowButton(key,action,text,classes="btn ghost small"){
+  return '<button type="button" class="'+classes+'" data-row-key="'+esc(key)+'" data-row-action="'+action+'">'+text+'</button>';
+}
+function rowHTML(row){
+  const key=esc(row.key);
+  return '<tr data-record="'+key+'"><td>'+rowButton(row.key,"detail",esc(row.name),"name-button")+'</td>'+
+    '<td data-label="'+current().noun+' ID"><div class="id-line"><code>'+esc(row.id)+'</code>'+
+    '<button type="button" class="btn ghost small" data-row-key="'+key+'" data-row-action="copy" aria-label="复制 '+esc(row.name)+'的 ID">复制</button></div></td>'+
+    '<td><div class="actions">'+(canWrite()?rowButton(row.key,"edit","编辑")+
+      '<details class="menu"><summary aria-label="'+esc(row.name)+'的更多操作">⋯</summary><div class="menu-items">'+rowButton(row.key,"remove","删除","text-danger")+'</div></details>':
+      rowButton(row.key,"detail","查看详情"))+'</div></td></tr>';
+}
+function paint(){
+  const {noun,purpose}=current();
+  const total=active().length;
+  const all=visibleRows();
+  const failure=scene==="load-error";
+  const filtered=Boolean(filters[kind].query.trim());
+  by("page-title").textContent=noun+"管理";
+  document.title=noun+"管理 · kube-aiops";
+  by("crumb").textContent="资源管理 › 平台目录 › "+noun+"管理";
+  by("page-purpose").textContent=purpose;
+  by("head-name").textContent=noun+"名称";
+  by("head-id").textContent=noun+" ID";
+  by("add-entry").textContent="＋ 新增"+noun;
+  by("add-entry").hidden=!canWrite();
+  by("read-only").hidden=scene!=="readonly";
+  by("clear-search").disabled=!filtered || failure;
+  by("search").disabled=failure;
+  by("sort").disabled=failure;
+  by("result-count").textContent=failure?"暂时无法统计":"显示 "+all.length+" / "+total+" 个"+noun;
+  by("table-wrap").hidden=failure||!all.length;
+  by("rows").innerHTML=failure?"":all.map(rowHTML).join("");
+  const empty=by("empty");
+  empty.hidden=!failure&&Boolean(all.length);
+  if(failure)empty.innerHTML='<h3>目录加载失败</h3><p>重新加载后可继续查看该目录。</p><button type="button" class="btn" data-retry>重新加载</button>';
+  else if(!all.length){
+    empty.innerHTML=total?'<h3>没有匹配的条目</h3><p>请更换关键词，或清空搜索查看完整目录。</p><button type="button" class="btn" data-clear>清空搜索</button>':
+      '<h3>暂无'+noun+'</h3><p>'+(canWrite()?'新增后可在对应的资源模块使用。':'目录中还没有已登记的条目。')+'</p>'+
+      (canWrite()?'<button type="button" class="btn primary" data-add>新增'+noun+'</button>':"");
+  }
+}
+function switchCatalog(next,focus=false){
+  if(!(next in definitions))return;
+  kind=next;
+  for(const tab of document.querySelectorAll("[data-tab]")){
+    const isCurrent=tab.dataset.tab===kind;
+    tab.tabIndex=isCurrent?0:-1;
+    tab.setAttribute("aria-selected",String(isCurrent));
+    if(focus&&isCurrent)tab.focus();
+  }
+  for(const link of document.querySelectorAll("[data-catalog]")){
+    if(link.dataset.catalog===kind)link.setAttribute("aria-current","page");
+    else link.removeAttribute("aria-current");
+  }
+  by("catalog-panel").setAttribute("aria-labelledby","tab-"+kind);
+  by("search").value=filters[kind].query;
+  by("sort").value=filters[kind].sort;
+  setNotice("");
+  paint();
+}
+function resetSearch(){
+  filters[kind].query="";
+  by("search").value="";
+  paint();
+  by("search").focus();
+}
+function overlay(id,title,summary,body,foot,isForm=false){
+  const tag=isForm?"form":"div";
+  return '<'+tag+' class="dialog-layout"><header class="dialog-head"><div><h2 id="'+id+'" tabindex="-1">'+esc(title)+'</h2>'+
+    (summary?'<p class="hint">'+esc(summary)+'</p>':"")+'</div><button type="button" class="close" data-close aria-label="关闭">×</button></header>'+
+    '<div class="dialog-body">'+body+'</div><footer class="dialog-foot">'+foot+'</footer></'+tag+'>';
+}
+function restoreFocus(origin,key,action){
+  if(origin?.isConnected && !origin.closest("[hidden]") && getComputedStyle(origin).visibility!=="hidden" &&
+      (!origin.closest(".menu")||origin.matches("summary"))){origin.focus();return;}
+  if(detail.open){detail.querySelector("h2")?.focus();return;}
+  const row=by("rows").querySelector('[data-record="'+CSS.escape(key)+'"]');
+  (row?.querySelector('[data-row-action="'+action+'"]')||by("search")).focus();
+}
+function showDetail(row,origin){
+  detailKey=row.key;
+  detailOrigin=origin;
+  paintDetail(row);
+  detail.showModal();
+  detail.querySelector("h2").focus();
+}
+function paintDetail(row){
+  const {noun,relation}=current();
+  detail.innerHTML=overlay("detail-title",row.name,noun+"详情",
+    '<section class="detail-card"><h3>基本信息</h3><dl><dt>名称</dt><dd>'+esc(row.name)+'</dd><dt>当前 ID</dt><dd><code>'+
+    esc(row.id)+'</code> '+rowButton(row.key,"copy","复制 ID")+'</dd></dl></section>'+
+    '<section class="detail-card"><h3>关联用途</h3><p class="hint">'+esc(relation)+'</p></section>',
+    '<div class="actions"><button type="button" class="btn" data-close>关闭</button>'+
+    (canWrite()?rowButton(row.key,"edit","编辑"+noun,"btn primary"):"")+'</div>');
+}
+function openEditor(mode,row,origin){
+  editOrigin=origin;
+  editKey=row?.key||"";
+  operation={mode,row,idEditing:mode==="add"};
+  busy=false;
+  if(mode==="remove")paintRemove();
+  else paintEdit();
+  editor.showModal();
+  editor.querySelector("h2").focus();
+}
+function paintEdit(){
+  const {noun,nameExample,idExample}=current();
+  const {row,mode}=operation;
+  const adding=mode==="add";
+  const body='<div class="field"><label for="entry-name">'+noun+'名称</label><input id="entry-name" name="name" value="'+esc(row?.name)+
+    '" placeholder="'+nameExample+'" required aria-describedby="name-error"><span id="name-error" class="field-error" hidden></span></div>'+
+    '<div class="field" id="id-view" '+(adding?"hidden":"")+'><label>当前 ID</label><div class="id-box"><code>'+esc(row?.id)+'</code>'+
+    '<div class="id-tools">'+(row?rowButton(row.key,"copy","复制 ID"):"")+'<button type="button" class="btn ghost small" data-unlock>修改 ID</button></div></div></div>'+
+    '<div class="field" id="id-edit" '+(adding?"":"hidden")+'><label for="entry-id">'+(adding?noun+" ID":"新 ID")+'</label>'+
+    '<input id="entry-id" name="id" value="'+esc(row?.id)+'" placeholder="'+idExample+'" autocomplete="off" spellcheck="false" aria-describedby="id-hint id-error">'+
+    '<span class="hint" id="id-hint">以小写字母开头，可包含数字和连字符，最多 128 个字符。</span><span id="id-error" class="field-error" hidden></span>'+
+    (adding?"":'<p class="note warn" id="id-impact">当前 ID <code>'+esc(row.id)+'</code>。保存后平台保留原 ID 引用。外部脚本或配置请同步核对新 ID。</p>'+
+      '<button type="button" class="btn ghost small" data-lock>取消修改 ID</button>')+'</div>';
+  editor.innerHTML=overlay("editor-title",(adding?"新增":"编辑")+noun,adding?"填写名称和可稳定引用的标识。":"",
+    body,'<p id="edit-status" role="status"></p><div class="actions"><button type="button" class="btn" data-close>取消</button>'+
+    '<button type="submit" class="btn primary" id="save">保存</button></div>',true);
+  editor.querySelector("form").noValidate=true;
+  refreshSave();
+}
+function editValues(){
+  return {name:by("entry-name").value.trim(),id:by("entry-id").value.trim()};
+}
+function changed(){
+  if(operation?.mode==="remove"||!by("entry-name"))return false;
+  const {name,id}=editValues();
+  return operation.row?operation.row.name!==name||operation.row.id!==id:Boolean(name||id);
+}
+function refreshSave(){
+  const submit=by("save");
+  if(submit)submit.disabled=busy||!changed();
+}
+function clearField(field){
+  const target=by(field+"-error");
+  if(target)target.hidden=true;
+  by("entry-"+field)?.removeAttribute("aria-invalid");
+}
+function fieldError(field,message){
+  const target=by(field+"-error");
+  target.hidden=false;
+  target.textContent=message;
+  const input=by("entry-"+field);
+  input.setAttribute("aria-invalid","true");
+  input.focus();
+}
+function updateIDVisibility(editing){
+  const row=operation.row;
+  operation.idEditing=editing;
+  by("id-view").hidden=editing;
+  by("id-edit").hidden=!editing;
+  if(editing)by("entry-id").focus();
+  else{
+    by("entry-id").value=row.id;
+    clearField("id");
+    editor.querySelector("[data-unlock]").focus();
+  }
+  refreshSave();
+}
+function paintRemove(){
+  const {row,references}=operation;
+  const noun=current().noun;
+  const blocked=Boolean(references?.length);
+  const body='<p>目标为 <strong>'+esc(row.name)+'</strong> <code>'+esc(row.id)+'</code>。</p>'+
+    (blocked?'<p class="note error" role="status">该'+noun+'仍被引用，当前无法删除。</p>'+
+      '<ul class="refs" aria-label="引用清单">'+references.map(value=>
+        '<li><span>'+esc(value)+'</span><span class="ref-kind">'+(value.startsWith("角色 ")?"角色范围":value.includes("/")?"命名空间归属":"集群")+'</span></li>').join("")+
+      '</ul><p class="hint">请在集群管理、命名空间归属或权限管理中处理上方引用，再重试删除。</p>':
+      '<p class="hint">确认后将提交删除请求，由平台核对该'+noun+'是否仍被引用。</p>');
+  editor.innerHTML=overlay("editor-title",blocked?"删除受阻":"删除"+noun,"",body,
+    (blocked?'<button type="button" class="btn ghost" data-copy-refs>复制引用清单</button>':'<p id="edit-status" role="status"></p>')+
+    '<div class="actions"><button type="button" class="btn" data-close>'+(blocked?"返回":"取消")+'</button>'+
+    '<button type="submit" class="btn '+(blocked?"":"danger")+'" id="remove">'+(blocked?"重试删除":"确认删除")+'</button></div>',true);
+}
+function requestClose(){
+  if(busy)return;
+  if(changed())confirm.showModal();
+  else editor.close();
+}
+function fillCopyMessage(ok,text){
+  const panel=editor.open?editor:detail.open?detail:null;
+  if(!panel&&ok){setNotice("已复制。");return;}
+  const parent=panel?.querySelector(".dialog-body")||by("catalog-panel");
+  parent.querySelector("[data-copy-message]")?.remove();
+  const result=document.createElement("div");
+  result.dataset.copyMessage="";
+  result.className="note";
+  const feedback=document.createElement("p");
+  feedback.setAttribute("role","status");
+  feedback.textContent=ok?"已复制。":"请复制下方内容。";
+  result.append(feedback);
+  if(!ok){
+    const field=document.createElement("textarea");
+    field.className="clip-text";
+    field.setAttribute("aria-label","待复制内容");
+    field.readOnly=true;
+    field.value=text;
+    result.append(field);
+    parent.append(result);
+    field.focus();
+    field.select();
+    return;
+  }
+  parent.append(result);
+}
+async function copyText(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    fillCopyMessage(true,text);
+  }catch{
+    fillCopyMessage(false,text);
+  }
+}
+function validate(){
+  const {name,id}=editValues();
+  const row=operation.row;
+  if(!name || Array.from(name).length>128 || /\p{Cc}/u.test(name)){
+    fieldError("name",name?"名称最多 128 个字符，且不能包含控制字符。":"请输入"+current().noun+"名称。");
+    return null;
+  }
+  if(row?.id!==id && (!/^[a-z][a-z0-9-]*$/.test(id)||id.length>128)){
+    fieldError("id","ID 以小写字母开头，仅支持小写字母、数字和连字符。");
+    return null;
+  }
+  if(active().some(item=>item!==row&&(item.name===name||item.oldNames?.includes(name)))){
+    fieldError("name","名称已被其他条目使用。");
+    return null;
+  }
+  if(active().some(item=>item!==row&&(item.id===id||item.oldIDs?.includes(id)))){
+    if(!operation.idEditing && row)updateIDVisibility(true);
+    fieldError("id","此 ID 已被其他条目使用，可能是历史 ID。");
+    return null;
+  }
+  return {name,id};
+}
+function exitWithSuccess(message, row){
+  editor.close();
+  paint();
+  if(detail.open&&row?.key===detailKey)paintDetail(row);
+  const hiddenBySearch=row&&!visibleRows().includes(row);
+  setNotice(message+(hiddenBySearch?" 当前搜索未匹配此条目，可清空搜索查看。":""));
+}
+async function submitEdit(){
+  if(busy||!changed())return;
+  const next=validate();
+  if(!next)return;
+  const row=operation.row;
+  const status=by("edit-status");
+  busy=true;
+  refreshSave();
+  editor.querySelector(".dialog-body").inert=true;
+  status.textContent="正在保存…";
+  await new Promise(resolve=>setTimeout(resolve,390));
+  busy=false;
+  if(failSave){
+    failSave=false;
+    editor.querySelector(".dialog-body").inert=false;
+    status.textContent="保存失败，请稍后重试。本次修改已保留。";
+    refreshSave();
+    by("save").focus();
+    return;
+  }
+  if(row){
+    if(row.id!==next.id)row.oldIDs=[...(row.oldIDs||[]),row.id];
+    if(row.name!==next.name)row.oldNames=[...(row.oldNames||[]),row.name];
+    Object.assign(row,next);
+    exitWithSuccess("已保存「"+row.name+"」。",row);
+  }else{
+    const created={...next,key:"new-"+(++sequence),references:[]};
+    active().push(created);
+    exitWithSuccess("已新增「"+created.name+"」。",created);
+  }
+}
+async function submitRemove(){
+  if(busy||!operation?.row)return;
+  const row=operation.row;
+  busy=true;
+  by("remove").disabled=true;
+  by("remove").textContent="正在核对…";
+  await new Promise(resolve=>setTimeout(resolve,330));
+  busy=false;
+  if(row.references.length){
+    operation.references=[...row.references];
+    paintRemove();
+    editor.querySelector("h2").focus();
+    return;
+  }
+  const idx=active().indexOf(row);
+  if(idx>=0)active().splice(idx,1);
+  exitWithSuccess("已删除「"+row.name+"」。");
+}
+function handleRow(action,row,trigger){
+  if(!row)return;
+  if(action==="detail")showDetail(row,trigger);
+  if(action==="copy")void copyText(row.id);
+  if(canWrite()&&(action==="edit"||action==="remove"))openEditor(action,row,trigger);
+}
+by("add-entry").addEventListener("click",event=>openEditor("add",null,event.currentTarget));
+by("clear-search").addEventListener("click",resetSearch);
+by("search").addEventListener("input",event=>{
+  filters[kind].query=event.target.value;
+  setNotice("");
+  paint();
+});
+by("sort").addEventListener("change",event=>{
+  filters[kind].sort=event.target.value;
+  paint();
+});
+function routeCatalog(next,focus=false){
+  if(next!==kind)history.replaceState(null,"","#"+next);
+  switchCatalog(next,focus);
+}
+document.querySelector(".tabs").addEventListener("keydown",event=>{
+  if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
+  event.preventDefault();
+  routeCatalog(event.key==="Home"?"environments":event.key==="End"?"business-lines":kind==="environments"?"business-lines":"environments",true);
+});
+document.addEventListener("click",event=>{
+  const target=event.target.closest("a,button,summary");
+  const menu=target?.closest(".menu");
+  for(const open of document.querySelectorAll(".menu[open]"))if(open!==menu)open.open=false;
+  if(!target)return;
+  if(target.dataset.catalog){
+    event.preventDefault();
+    routeCatalog(target.dataset.catalog);
+    return;
+  }
+  if(target.dataset.tab){routeCatalog(target.dataset.tab);return;}
+  if(target.dataset.rowAction){
+    const row=entry(target.dataset.rowKey);
+    const trigger=menu?.querySelector("summary")||target;
+    if(menu)menu.open=false;
+    handleRow(target.dataset.rowAction,row,trigger);
+    return;
+  }
+  if(target.hasAttribute("data-add"))openEditor("add",null,target);
+  if(target.hasAttribute("data-clear"))resetSearch();
+  if(target.hasAttribute("data-retry")){
+    scene="normal";
+    by("scenario").value="normal";
+    paint();
+    by("search").focus();
+    setNotice("目录已重新加载。");
+  }
+  if(target.hasAttribute("data-close")){
+    if(target.closest("dialog")===detail)detail.close();
+    else requestClose();
+  }
+  if(target.hasAttribute("data-unlock"))updateIDVisibility(true);
+  if(target.hasAttribute("data-lock"))updateIDVisibility(false);
+  if(target.hasAttribute("data-copy-refs"))void copyText(operation.references.join("\n"));
+});
+document.addEventListener("keydown",event=>{
+  const menu=event.target.closest(".menu[open]");
+  if(event.key!=="Escape"||!menu)return;
+  event.preventDefault();
+  menu.open=false;
+  menu.querySelector("summary").focus();
+});
+editor.addEventListener("input",event=>{
+  const id=event.target.id;
+  if(id!=="entry-name"&&id!=="entry-id")return;
+  clearField(id.slice(6));
+  by("edit-status").textContent=changed()?"有未保存的修改。":"";
+  refreshSave();
+});
+editor.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(operation.mode==="remove")void submitRemove();
+  else void submitEdit();
+});
+editor.addEventListener("cancel",event=>{
+  event.preventDefault();
+  requestClose();
+});
+editor.addEventListener("close",()=>{
+  if(editor.open)return;
+  editor.replaceChildren();
+  restoreFocus(editOrigin,editKey,"edit");
+  operation=undefined;
+});
+detail.addEventListener("close",()=>{
+  if(detail.open)return;
+  detail.replaceChildren();
+  restoreFocus(detailOrigin,detailKey,"detail");
+});
+by("keep").addEventListener("click",()=>confirm.close());
+by("discard").addEventListener("click",()=>{
+  confirm.close();
+  editor.close();
+});
+by("scenario").addEventListener("change",event=>{
+  if(scene==="empty"&&event.target.value!=="empty")lists=structuredClone(sample);
+  scene=event.target.value;
+  failSave=scene==="save-error";
+  if(scene==="empty")lists={environments:[],"business-lines":[]};
+  setNotice("");
+  paint();
+});
+window.addEventListener("hashchange",()=>switchCatalog(location.hash.slice(1)));
+switchCatalog(Object.hasOwn(definitions,location.hash.slice(1))?location.hash.slice(1):"environments");
+</script>
+</body>
+</html>

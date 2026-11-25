@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>数据源管理 · kube-aiops</title>
+<style>
+:root{font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#172941;background:#f2f5fa;--ink:#172941;--muted:#4e627b;--line:#dbe4ee;--blue:#1459c3;--blue-dark:#124b9f;--paper:#fff;--soft:#f7f9fc}
+*{box-sizing:border-box}
+body,p,h1,h2,h3,h4,dl,dd{margin:0}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+button:disabled{cursor:default;opacity:.55}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #79aef8;outline-offset:2px}
+a{color:var(--blue-dark)}
+.top{height:61px;display:flex;align-items:center;gap:32px;padding:0 22px;background:#14263b;color:#e5edf8;border-bottom:1px solid #243952}
+.logo{font-weight:770;display:flex;align-items:center;gap:9px;white-space:nowrap}
+.logo-icon{border:1px solid #5d87b2;border-radius:7px;width:28px;height:28px;display:grid;place-items:center;background:#18456f}
+.top-links{display:flex;gap:25px;align-items:center;font-size:13px}
+.top-links strong{color:#fff;align-self:stretch;padding:19px 0 16px;border-bottom:3px solid #86b7fe}
+.shell{display:grid;grid-template-columns:196px minmax(0,1fr);min-height:calc(100vh - 61px)}
+.sidebar{background:#fff;border-right:1px solid var(--line);padding:22px 12px;color:#3a5069}
+.sidebar h2{font-size:16px;padding:0 8px}
+.sidebar p{font-size:12px;margin:22px 8px 6px;color:var(--muted)}
+.sidebar span,.sidebar strong{display:block;padding:8px;border-radius:7px}
+.sidebar strong{background:#eaf2ff;color:#164d9c}
+main{width:100%;max-width:1510px;margin:auto;padding:23px 28px 36px;align-self:start}
+.crumb,.muted,.hint{color:var(--muted)}
+.crumb,.hint{font-size:13px}
+.page-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:4px 0 18px}
+.page-head h1{font-size:28px;line-height:1.25;letter-spacing:-.015em;margin-bottom:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 12px;border:1px solid #bdcce0;border-radius:7px;background:white;color:#25405f;font-weight:650;white-space:nowrap}
+.btn:hover:not(:disabled){background:#eff5fc}
+.primary{background:var(--blue);border-color:var(--blue);color:white}
+.primary:hover:not(:disabled){background:#0f4daa}
+.btn.weak{background:transparent;border-color:transparent;color:var(--blue-dark)}
+.btn.small{min-height:31px;font-size:12px;padding:4px 8px}
+.icon-button{width:36px;height:36px;flex:none;border:0;border-radius:6px;background:transparent;color:#415976;font-size:23px;line-height:1}
+.icon-button:hover{background:#edf3fa}
+.workspace{background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 2px 6px #132b4809}
+.tabbar{display:flex;padding:0 17px;gap:22px;border-bottom:1px solid var(--line)}
+.tabbar button{background:none;border:0;border-bottom:3px solid transparent;color:#455b76;padding:12px 4px 10px;font-weight:650}
+.tabbar button[aria-selected=true]{color:var(--blue-dark);border-bottom-color:var(--blue)}
+.workspace-body{padding:16px 17px}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.stat{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:#405771}
+.stat b{font-size:21px;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat[data-filter=issue] b{color:#a53a1d}
+.stat[aria-pressed=true]{background:#edf5ff;border-color:#a4c4f1}
+.stat:disabled{opacity:1}
+.filters{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:15px 0 7px}
+.control{display:grid;gap:3px;min-width:110px}
+.control span,.field>label{font-weight:650;color:#2c435f;font-size:13px}
+.control input,.control select,.field input:not([type=checkbox]),.field select,.field textarea{width:100%;min-width:0;min-height:36px;border:1px solid #bdcce0;border-radius:7px;background:#fff;color:var(--ink);padding:6px 9px}
+.control.search{min-width:185px;flex:1;max-width:340px}
+.control input:disabled,.field input[readonly],.field select:disabled{background:#f0f4f8;color:#516680}
+.results-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:5px 0 7px;color:var(--muted);font-size:13px;min-height:31px}
+.group-label{display:flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer}
+input[type=checkbox]{accent-color:var(--blue)}
+.table-wrap{border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;text-align:left;table-layout:fixed}
+th{background:#f2f6fb;color:#3b5270;font-size:12px;padding:8px 10px;font-weight:690}
+td{border-top:1px solid #e4ebf3;padding:9px 10px;vertical-align:middle;overflow-wrap:anywhere}
+th:first-child{border-radius:7px 0 0 0;width:28%}
+th:nth-child(2){width:19%}
+th:nth-child(3){width:16%}
+th:nth-child(4){width:19%}
+th:last-child{border-radius:0 7px 0 0;width:18%;text-align:right}
+tbody tr:not(.group-row):hover{background:#fafcff}
+.cell-name{display:flex;align-items:center;gap:9px;min-width:0}
+.provider-icon{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;font-weight:770;font-size:12px;flex:none}
+.source-link{background:transparent;border:0;padding:0;color:#154d9d;display:block;text-align:left;word-break:break-word;font-weight:720}
+.source-link:hover{text-decoration:underline}
+.cell-sub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.state{display:inline-block;font-size:12px;font-weight:660;padding:2px 7px;border-radius:5px;line-height:1.45}
+.state.good,.signal.good{background:#e5f5ed;color:#155c46}
+.state.issue,.signal.issue{background:#fff0e9;color:#973820}
+.state.pending,.signal.pending{background:#fff5d9;color:#785009}
+.state.ready,.signal.ready{background:#eaf1fc;color:#214d86}
+.state.paused,.signal.paused{background:#edf1f6;color:#52637a}
+.time{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.actions{display:flex;justify-content:flex-end;align-items:center;gap:3px;flex-wrap:wrap}
+.menu{position:relative}
+.menu>summary{list-style:none;display:grid;place-items:center;cursor:pointer;border:1px solid transparent;border-radius:6px;width:30px;height:31px;color:#3b5677;font-size:17px}
+summary::-webkit-details-marker{display:none}
+.menu>summary:hover,.menu[open]>summary{background:#edf4fc;border-color:#ccdcee}
+.menu-panel{z-index:3;position:absolute;right:0;top:calc(100% + 4px);width:max-content;min-width:135px;padding:4px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 20px #21385825}
+tr:nth-last-child(-n+2) .menu-panel{top:auto;bottom:calc(100% + 4px)}
+.menu-panel button{display:block;width:100%;padding:6px 8px;background:#fff;border:0;text-align:left;border-radius:4px;color:#263e5c}
+.menu-panel button:hover{background:#eff5fc}
+.group-row td{background:#f4f7fb;padding:0}
+.group-toggle{width:100%;background:none;border:0;text-align:left;padding:7px 11px;font-weight:700;color:#2b4664}
+.group-toggle small{margin-left:7px;color:var(--muted);font-weight:500}
+.chevron{display:inline-block;margin-right:7px}
+.group-toggle[aria-expanded=true] .chevron{transform:rotate(90deg)}
+.empty{text-align:center;padding:38px 15px 42px;border:1px dashed #c9d9eb;border-radius:8px;background:#f9fbfe}
+.empty p{margin:5px 0 12px;color:var(--muted)}
+.signal{padding:8px 10px;border-radius:7px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+#notice{margin-top:11px}
+details.deployment{margin-top:13px;border:1px solid var(--line);border-radius:7px;background:var(--soft)}
+.deployment summary{padding:7px 10px;cursor:pointer;font-weight:650;color:#34506f}
+.deployment p{padding:0 10px 8px 24px}
+.demo{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.demo select{font:inherit;color:#34506f;border:1px solid #bfcee0;border-radius:6px;padding:3px 5px;background:#fff}
+dialog{padding:0;border:0;color:var(--ink);box-shadow:0 20px 75px #14264155}
+dialog::backdrop{background:#14294295}
+.modal{width:min(920px,calc(100% - 26px));max-width:none;max-height:none;border-radius:12px;overflow:hidden}
+.dialog-ui{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 34px)}
+.dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:17px 20px;border-bottom:1px solid var(--line)}
+.dialog-head h2{font-size:21px;line-height:1.25;margin-bottom:3px}
+.dialog-body{padding:15px 20px;overflow:auto;overscroll-behavior:contain}
+.dialog-foot{border-top:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px 13px}
+.dialog-foot p{color:var(--muted);font-size:13px;flex:1}
+.dialog-foot .actions{gap:7px}
+.pick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pick{display:flex;text-align:left;align-items:center;gap:9px;border:1px solid var(--line);background:#fff;border-radius:8px;color:var(--ink);padding:10px}
+.pick:hover,.pick[aria-pressed=true]{background:#edf5ff;border-color:#9dbff0}
+.pick strong,.pick small{display:block}
+.pick small{margin-top:2px;color:var(--muted)}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.field{min-width:0}
+.wide{grid-column:1/-1}
+.field>label{display:block;margin-bottom:3px}
+.field small{display:block;margin-top:3px;color:var(--muted)}
+.field [aria-invalid=true]{border-color:#af352e}
+.field-error{font-size:12px;color:#972f26;margin-top:3px}
+.form-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:10px}
+.form-card h3{font-size:15px;margin-bottom:7px}
+.setup-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;align-items:start}
+.setup-columns>.form-card{margin:0}
+.setup-columns + .form-card{margin:10px 0 0}
+.dialog-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#setup-title:focus{outline:none}
+.inline-action{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px}
+.choices{display:grid;gap:5px;padding:6px 0}
+.choices label{display:flex;align-items:center;gap:5px}
+.choices input{width:auto}
+.form-msg{font-size:13px;padding:7px 8px;margin-top:7px;border-radius:6px;background:#edf4ff;color:#234e83}
+.form-msg[data-tone=issue]{background:#fff0e9;color:#973820}
+.form-msg[data-tone=good]{background:#e5f5ed;color:#155c46}
+.drawer{padding:0;width:min(510px,100%);height:100dvh;max-width:none;max-height:none;margin:0 0 0 auto;border:0}
+.drawer .dialog-ui{height:100%;max-height:none}
+.drawer .dialog-body{background:#f5f8fc}
+.detail-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:11px}
+.detail-kv{display:grid;grid-template-columns:100px minmax(0,1fr);gap:7px;font-size:13px}
+.detail-kv dt{color:var(--muted)}
+.detail-kv dd{overflow-wrap:anywhere}
+.detail-actions{display:flex;gap:7px;flex-wrap:wrap}
+.confirm{width:min(420px,calc(100% - 28px));border-radius:11px;padding:18px 20px}
+.confirm h2{font-size:18px}
+.confirm p{color:var(--muted);margin:6px 0 15px}
+@media(max-width:1000px){
+ .shell{grid-template-columns:158px minmax(0,1fr)}
+ main{padding:18px 16px 26px}
+ .sidebar{padding-inline:8px}
+ th:first-child{width:26%} th:nth-child(2){width:18%} th:nth-child(4){width:19%} th:last-child{width:21%}
+}
+@media(max-width:780px){
+ .shell{display:block}.sidebar{display:none}.top{gap:18px;padding:0 14px}.top-links{gap:12px}
+ main{padding:15px 12px 24px}
+}
+@media(max-width:650px){
+ .top{height:auto;min-height:49px;flex-wrap:wrap;gap:2px 12px}.top-links{font-size:12px;flex-wrap:wrap}.top-links strong{padding:10px 0 8px}
+ .page-head h1{font-size:24px}.page-head p{font-size:12px}.page-head{align-items:flex-start}
+ .workspace-body{padding:10px}.tabbar{padding:0 10px;gap:15px}
+ .stat{padding:5px 7px;font-size:12px}.stat b{font-size:17px}
+ .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .control.search{max-width:none;grid-column:1/-1}.filters .btn{align-self:end}
+ table,tbody{display:block}thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+ tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:5px 9px;padding:9px;border-top:1px solid #e4ebf3}
+ tbody tr:first-child{border-top:0}
+ td{display:block;padding:0;border:0}td:first-child,td:last-child{grid-column:1/-1}
+ td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+ .group-row{padding:0}.group-row td{display:block}
+ .time{white-space:normal}.menu-panel{top:auto;bottom:calc(100% + 4px)}
+ .dialog-head,.dialog-body,.dialog-foot{padding-inline:12px}
+ .dialog-foot{display:grid;grid-template-columns:minmax(0,1fr)}
+ .form-grid,.pick-grid,.setup-columns{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><span class="logo-icon">K</span>kube-aiops</div>
+  <div class="top-links"><span>诊断控制台</span><strong>资源管理</strong><span>运维知识库</span><span>系统管理</span></div>
+</header>
+<div class="shell">
+  <aside class="sidebar">
+    <h2>资源管理</h2><p>集群资源</p><span>Kubernetes 集群管理</span>
+    <p>平台目录</p><span>环境管理</span><span>业务线管理</span><strong aria-current="page">数据源管理</strong>
+  </aside>
+  <main>
+    <p class="crumb">资源管理 › 数据源管理</p>
+    <header class="page-head">
+      <div><h1>数据源管理</h1><p class="muted">接入诊断信号和云资产，查看验证与同步状态。</p></div>
+      <button type="button" class="btn primary" id="add-source">＋ 新增数据源</button>
+    </header>
+    <section class="workspace">
+      <div class="tabbar" role="tablist" aria-label="数据源分类">
+        <button type="button" data-tab="monitor" id="tab-monitor" role="tab" aria-controls="source-panel" aria-selected="true">监控与诊断</button>
+        <button type="button" data-tab="asset" id="tab-asset" role="tab" aria-controls="source-panel" aria-selected="false" tabindex="-1">资产数据源</button>
+      </div>
+      <div class="workspace-body" id="source-panel" role="tabpanel" aria-labelledby="tab-monitor">
+        <div class="summary" aria-label="当前页签统计">
+          <button type="button" class="stat" data-filter="all" aria-pressed="true">已接入<b id="stat-all">0</b></button>
+          <button type="button" class="stat" data-filter="issue" aria-pressed="false">需处理<b id="stat-issue">0</b></button>
+          <button type="button" class="stat" data-filter="paused" aria-pressed="false">暂停或停用<b id="stat-paused">0</b></button>
+        </div>
+        <div class="filters" aria-label="筛选数据源">
+          <label class="control search"><span>搜索</span><input type="search" id="search" placeholder="搜索数据源名称"></label>
+          <label class="control"><span>环境</span><select id="environment"><option value="">全部环境</option><option>生产</option><option>预发</option><option>测试</option><option>研发</option><option>未指定</option></select></label>
+          <label class="control"><span>类型</span><select id="type-filter"></select></label>
+          <label class="control"><span>状态</span><select id="state-filter"><option value="">全部状态</option><option value="enabled">已启用</option><option value="issue">需处理</option><option value="pending">待首次同步</option><option value="paused">暂停或停用</option></select></label>
+          <button type="button" class="btn weak" id="clear-filters">清空筛选</button>
+        </div>
+        <div class="results-bar"><span id="result-count" role="status"></span><label class="group-label"><input type="checkbox" id="group-view">按类型分组</label></div>
+        <div id="load-error" class="signal issue" hidden><span>资产数据源暂时无法读取。</span><button type="button" class="btn small" id="retry-load">重试加载</button></div>
+        <div class="table-wrap" id="table-wrap">
+          <table aria-label="数据源列表"><thead><tr><th scope="col">名称 / 类型</th><th scope="col">所属范围</th><th scope="col">状态</th><th scope="col">最近活动 <span class="muted">· UTC+8</span></th><th scope="col">操作</th></tr></thead><tbody id="rows"></tbody></table>
+        </div>
+        <div id="empty" class="empty" hidden></div>
+        <p id="notice" class="signal ready" role="status" hidden></p>
+        <details id="deployment" class="deployment"><summary>部署配置 <small class="muted">· 1 项</small></summary><p class="hint">Prometheus · 由部署参数维护</p></details>
+      </div>
+    </section>
+    <div class="demo"><label for="demo-view">原型场景</label><select id="demo-view"><option value="normal">已有数据源</option><option value="empty">尚未接入</option><option value="error">资产加载失败</option></select><span>使用示例数据</span></div>
+  </main>
+</div>
+<dialog id="detail" class="drawer" aria-labelledby="detail-title"></dialog>
+<dialog id="setup" class="modal" aria-labelledby="setup-title"></dialog>
+<dialog id="confirm" class="confirm" aria-labelledby="confirm-title">
+  <h2 id="confirm-title"></h2><p id="confirm-copy"></p>
+  <div class="actions"><button type="button" class="btn" id="confirm-stay" autofocus>取消</button><button type="button" class="btn primary" id="confirm-act">确认</button></div>
+</dialog>
+<script>
+"use strict";
+const by = id => document.getElementById(id);
+const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+  "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+})[char]);
+const types = {
+  zabbix: { name:"Zabbix", mark:"Z", tint:"#fce9e9", ink:"#97352f", purpose:"同步主机问题", side:"monitor", operation:"sync" },
+  prometheus: { name:"Prometheus", mark:"P", tint:"#ffebdf", ink:"#a54220", purpose:"查询指标证据", side:"monitor", operation:"test" },
+  victorialogs: { name:"VictoriaLogs", mark:"VL", tint:"#edf0ff", ink:"#4051a0", purpose:"查询日志证据", side:"monitor", operation:"test" },
+  alertmanager: { name:"Alertmanager", mark:"A", tint:"#f4eafb", ink:"#744694", purpose:"同步告警和查询证据", side:"monitor", operation:"sync" },
+  grafana: { name:"Grafana", mark:"G", tint:"#fff1d9", ink:"#835202", purpose:"关联诊断仪表盘", side:"monitor", operation:"test" },
+  ecs: { name:"阿里云 ECS", mark:"E", tint:"#ffede0", ink:"#9b4826", purpose:"同步阿里云实例资产", side:"asset", operation:"inventory" },
+  cvm: { name:"腾讯云 CVM", mark:"C", tint:"#e5f0ff", ink:"#19538e", purpose:"同步腾讯云实例资产", side:"asset", operation:"inventory" }
+};
+const envOptions = ["生产","预发","测试","研发"];
+const stamp = "11-25";
+const baseRows = [
+  { id:"z1", kind:"zabbix", name:"生产主机监控", env:"生产", business:"全局", state:"good", time:"09:18", checked:"09:18", auth:"token", selections:["生产应用主机","生产中间件"], sample:"128 台主机 · 7 条活跃问题" },
+  { id:"a1", kind:"alertmanager", name:"生产 Kubernetes 告警", env:"生产", business:"运维", cluster:"prod-k8s-01", state:"issue", time:"08:42", checked:"09:17", auth:"none", error:"上游连接超时，当前可查看上次成功同步的快照。" },
+  { id:"p1", kind:"prometheus", name:"生产集群指标", env:"生产", business:"运维", cluster:"prod-k8s-01", state:"ready", time:"09:06", checked:"09:06", auth:"bearer" },
+  { id:"v1", kind:"victorialogs", name:"生产应用日志", env:"生产", business:"运维", cluster:"prod-k8s-01", state:"ready", time:"08:56", checked:"08:56", auth:"basic", username:"observe-reader", account:"0", project:"0" },
+  { id:"g1", kind:"grafana", name:"运维诊断仪表盘", env:"生产", business:"运维", cluster:"prod-k8s-01", state:"ready", time:"09:03", checked:"09:03", auth:"bearer", selections:["Kubernetes 集群","应用可用性"] },
+  { id:"z2", kind:"zabbix", name:"预发主机监控", env:"预发", business:"全局", state:"paused", time:"08:24", auth:"password", selections:["预发应用主机"] },
+  { id:"a2", kind:"alertmanager", name:"测试集群告警", env:"测试", business:"运维", cluster:"test-k8s-01", state:"pending", auth:"none" },
+  { id:"e1", kind:"ecs", name:"生产杭州 ECS", env:"生产", business:"运维", cluster:"prod-k8s-01", namespace:"ops", state:"good", time:"07:30", checked:"07:30", region:"cn-hangzhou", assetIds:"i-demo12345", sample:"1 台可见资产" },
+  { id:"c1", kind:"cvm", name:"预发广州 CVM", env:"预发", business:"云帆", cluster:"pre-k8s-01", namespace:"apps", state:"untested", region:"ap-guangzhou", assetIds:"ins-demo2026" }
+];
+const detail = by("detail");
+const setup = by("setup");
+const confirmDialog = by("confirm");
+const groupState = new Set();
+const running = new Set();
+const filters = { monitor:{}, asset:{} };
+let rows = structuredClone(baseRows);
+let side = "monitor";
+let scene = "normal";
+let nextID = 0;
+let detailID;
+let flow;
+let saveDisabled = false;
+let confirmed;
+let detailReturn;
+let setupReturn;
+const groupLabel = id => types[id].name;
+const scopeLabel = row => [row.env || "未指定",row.business,row.cluster,row.namespace].filter(Boolean).join(" / ");
+const endpoint = row => row.endpoint || "https://" + row.kind + ".example.com";
+const isAsset = row => types[row.kind].side === "asset";
+const timeLabel = value => value ? stamp + " " + value : "—";
+const action = row => types[row.kind].operation;
+const activityLabel = row => action(row) === "test" ? "上次验证" : "上次成功同步";
+const getRow = id => rows.find(row => row.id === id);
+const now = () => new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Shanghai"}).format(new Date());
+const icon = kind => { const type=types[kind]; return '<span class="provider-icon" aria-hidden="true" style="background:'+type.tint+';color:'+type.ink+'">'+type.mark+'</span>'; };
+const stateText = row => ({
+  good: isAsset(row) ? "可用" : "同步正常", issue:row.time ? "同步失败" : "验证失败", pending:"等待首次同步",
+  ready:"已启用", paused:isAsset(row) ? "已停用" : "已暂停", untested:"待验证"
+})[row.state];
+const tone = row => row.state === "untested" ? "pending" : row.state;
+const rowActionLabel = row => running.has(row.id) ? "处理中…" : action(row) === "test" ? "测试连接" :
+  action(row) === "inventory" ? "测试并同步" : row.state === "issue" ? "重试同步" : "立即同步";
+const runButton = (row,small=false) => row.state === "paused" ? "" :
+  '<button type="button" class="btn '+(small ? "weak small" : "primary")+'" data-run="'+row.id+'" '+(running.has(row.id) ? "disabled" : "")+'>'+rowActionLabel(row)+'</button>';
+const more = (row,key,label) => '<button type="button" data-action="'+key+'" data-row="'+row.id+'">'+label+'</button>';
+function notify(message, kind="ready") {
+  const node=by("notice");
+  node.hidden=!message;
+  node.textContent=message;
+  node.className="signal "+kind;
+}
+function rowHTML(row) {
+  return '<tr data-record="'+row.id+'"><td><div class="cell-name">'+icon(row.kind)+'<div><button type="button" class="source-link" data-detail="'+row.id+'">'+esc(row.name)+'</button><span class="cell-sub">'+groupLabel(row.kind)+'</span></div></div></td>'+
+    '<td data-label="所属范围">'+esc(scopeLabel(row))+'</td><td data-label="状态"><span class="state '+tone(row)+'">'+stateText(row)+'</span>'+
+    (row.state==="issue"&&row.time ? '<small class="cell-sub">保留上次快照</small>' : '')+'</td>'+
+    '<td data-label="最近活动"><div class="time">'+timeLabel(row.time)+'</div><small class="cell-sub">'+activityLabel(row)+'</small></td>'+
+    '<td><div class="actions">'+runButton(row,true)+'<details class="menu"><summary aria-label="'+esc(row.name)+'的更多操作">⋯</summary><div class="menu-panel">'+
+    '<button type="button" data-detail="'+row.id+'">查看详情</button>'+
+    (row.kind==="zabbix" ? more(row,"scope","调整主机组")+more(row,"rotate","更换凭据") : more(row,"edit","编辑配置"))+
+    more(row,"toggle",row.state==="paused" ? "恢复" : isAsset(row) ? "停用" : "暂停")+
+    '</div></details></div></td></tr>';
+}
+function render() {
+  const current = filters[side];
+  const data = rows.filter(row => types[row.kind].side === side);
+  const failed = side === "asset" && scene === "error";
+  const enabled = current.state === "enabled";
+  const keyword = (current.search || "").trim().toLocaleLowerCase();
+  const visible = data.filter(row =>
+    row.name.toLocaleLowerCase().includes(keyword) && (!current.env || (row.env || "未指定") === current.env) &&
+    (!current.kind || row.kind === current.kind) &&
+    (!current.state || (enabled ? row.state !== "paused" : row.state === current.state))
+  );
+  by("stat-all").textContent = failed ? "—" : data.length;
+  by("stat-issue").textContent = failed ? "—" : data.filter(row=>row.state==="issue").length;
+  by("stat-paused").textContent = failed ? "—" : data.filter(row=>row.state==="paused").length;
+  for(const button of document.querySelectorAll("[data-filter]")){
+    button.disabled=failed;
+    button.setAttribute("aria-pressed",String(button.dataset.filter===(current.state||"all")));
+  }
+  by("result-count").textContent = failed ? "暂时无法统计" : "显示 "+visible.length+" 个数据源"+(side==="asset" ? " · 当前资产页" : "");
+  by("load-error").hidden=!failed;
+  by("table-wrap").hidden=failed||!visible.length;
+  by("empty").hidden=failed||Boolean(visible.length);
+  by("deployment").hidden=side!=="monitor"||scene!=="normal";
+  if(!failed && !visible.length){
+    by("empty").innerHTML=data.length ? '<h3>没有匹配的数据源</h3><p>调整搜索或筛选条件后再试。</p><button class="btn" type="button" data-clear>清空筛选</button>' :
+      '<h3>尚未接入'+(side==="asset" ? "资产数据源" : "监控与诊断数据源")+'</h3><p>选择一种类型，开始配置数据源。</p><button class="btn primary" type="button" data-add>新增数据源</button>';
+  }
+  if(current.group){
+    by("rows").innerHTML=Object.keys(types).map(kind=>{
+      const group=visible.filter(row=>row.kind===kind);
+      if(!group.length)return "";
+      const open=!groupState.has(kind);
+      return '<tr class="group-row"><td colspan="5"><button type="button" class="group-toggle" data-group="'+kind+'" aria-expanded="'+open+'"><span class="chevron" aria-hidden="true">›</span>'+types[kind].name+' 数据源<small>'+group.length+' 个</small></button></td></tr>'+
+        (open ? group.map(rowHTML).join("") : "");
+    }).join("");
+  }else by("rows").innerHTML=visible.map(rowHTML).join("");
+}
+function switchTab(tab, focus=false) {
+  side=tab;
+  for(const btn of document.querySelectorAll("[data-tab]")){
+    const active=btn.dataset.tab===tab;
+    btn.tabIndex=active?0:-1;
+    btn.setAttribute("aria-selected",String(active));
+    if(active&&focus)btn.focus();
+  }
+  by("source-panel").setAttribute("aria-labelledby","tab-"+tab);
+  by("type-filter").innerHTML='<option value="">全部类型</option>'+Object.entries(types).filter(([,t])=>t.side===tab)
+    .map(([id,t])=>'<option value="'+id+'">'+t.name+'</option>').join("");
+  const waiting=by("state-filter").options[3];
+  waiting.value=tab==="asset"?"untested":"pending";
+  waiting.textContent=tab==="asset"?"待验证":"待首次同步";
+  syncFilters();
+  notify("");
+  render();
+}
+function syncFilters() {
+  const values=filters[side];
+  by("search").value=values.search||"";
+  by("environment").value=values.env||"";
+  by("type-filter").value=values.kind||"";
+  by("state-filter").value=values.state||"";
+  by("group-view").checked=Boolean(values.group);
+}
+function clearFilters() {
+  filters[side]={group:filters[side].group};
+  syncFilters();
+  render();
+}
+function openDetail(row, trigger) {
+  detailID=row.id;
+  detailReturn=trigger;
+  paintDetail(row);
+  detail.showModal();
+  detail.querySelector("[data-close-detail]").focus();
+}
+function paintDetail(row) {
+  const entry = (term,value) => '<dt>'+term+'</dt><dd>'+esc(value)+'</dd>';
+  const storedAuth = {token:"API Token",password:"账号密码",bearer:row.kind==="grafana"?"Service Account Token":"Bearer Token",basic:"Basic 认证",none:"免认证"};
+  detail.innerHTML='<div class="dialog-ui"><header class="dialog-head"><div><h2 id="detail-title">'+esc(row.name)+'</h2><p class="hint">'+groupLabel(row.kind)+'</p></div><button type="button" class="icon-button" aria-label="关闭详情" data-close-detail>×</button></header>'+
+    '<div class="dialog-body"><div class="detail-top"><span class="state '+tone(row)+'">'+stateText(row)+'</span><span>'+esc(scopeLabel(row))+'</span></div>'+
+    (row.error ? '<p class="signal issue">'+esc(row.error)+'</p>' : '')+
+    '<section class="form-card"><h3>运行记录</h3><dl class="detail-kv">'+entry(activityLabel(row),timeLabel(row.time))+
+    (action(row)==="test" ? "" : entry("上次尝试",timeLabel(row.checked)))+(row.sample ? entry("最近样本",row.sample) : "")+'</dl></section>'+
+    '<section class="form-card"><h3>连接与范围</h3><dl class="detail-kv">'+
+    (isAsset(row) ? entry("云地域",row.region)+entry("凭据文件","已配置引用") :
+      entry("服务地址",endpoint(row))+entry("认证方式",storedAuth[row.auth]||"—"))+
+    (row.selections?.length ? entry(row.kind==="zabbix"?"主机组":"仪表盘",row.selections.join("、")) : "")+'</dl></section>'+
+    '<section class="form-card"><h3>管理操作</h3><div class="detail-actions">'+
+    (row.kind==="zabbix" ? detailButton(row,"overview","查看诊断总览")+detailButton(row,"scope","调整主机组")+detailButton(row,"rotate","更换凭据") :
+      detailButton(row,"edit","编辑配置")+(isAsset(row)?detailButton(row,"inventory","查看可见资产"):""))+
+    detailButton(row,"toggle",row.state==="paused" ? "恢复" : isAsset(row) ? "停用" : "暂停")+
+    '</div><div id="detail-extra" hidden></div></section></div>'+
+    '<footer class="dialog-foot"><p id="detail-status" role="status">'+(running.has(row.id)?"正在处理…":"")+'</p><div class="actions">'+runButton(row)+'</div></footer></div>';
+}
+function detailButton(row,key,label) {
+  return '<button type="button" class="btn small" data-action="'+key+'" data-row="'+row.id+'">'+label+'</button>';
+}
+function updateRowUI(row, returnTo) {
+  render();
+  if(detail.open&&detailID===row.id){
+    paintDetail(row);
+    detail.querySelector("[data-close-detail]").focus();
+  }else if(returnTo)by("rows").querySelector('[data-record="'+row.id+'"] '+returnTo)?.focus();
+}
+function run(row) {
+  if(running.has(row.id)||row.state==="paused")return;
+  running.add(row.id);
+  notify("正在处理「"+row.name+"」…");
+  updateRowUI(row);
+  setTimeout(()=>{
+    running.delete(row.id);
+    row.time=row.checked=now();
+    row.error="";
+    row.state=action(row)==="test"?"ready":"good";
+    if(isAsset(row))row.sample="1 台可见资产";
+    updateRowUI(row,"[data-run]");
+    notify(row.name+(action(row)==="test"?" · 连接测试通过。":" · 同步完成。"),"good");
+  },530);
+}
+function ask(title,text,label,callback) {
+  confirmed=callback;
+  by("confirm-title").textContent=title;
+  by("confirm-copy").textContent=text;
+  by("confirm-act").textContent=label;
+  confirmDialog.showModal();
+}
+function rowCommand(row,key,trigger) {
+  if(key==="toggle"){
+    const wasPaused=row.state==="paused";
+    const verb=wasPaused ? "恢复" : isAsset(row) ? "停用" : "暂停";
+    ask(verb+"「"+row.name+"」？",wasPaused?"恢复后，数据源会重新参与相应的查询或同步。":"生效后，这个数据源将停止参与相应的查询或同步。",verb,()=>{
+      if(!wasPaused){
+        row.beforePause=row.state;
+        row.state="paused";
+      }else row.state=row.beforePause||(action(row)==="test"?"ready":row.time?"good":"pending");
+      updateRowUI(row,"[data-detail]");
+      notify(row.name+" · 已"+verb+"。","good");
+    });
+    return;
+  }
+  if(key==="overview" || key==="inventory"){
+    const target=by("detail-extra");
+    target.className="form-msg";
+    target.hidden=false;
+    target.textContent=key==="overview"?"示例诊断总览 · "+(row.sample||"暂无已同步问题") :
+      "示例资产清单 · "+(row.sample?row.assetIds:"保存配置后，先测试并同步。");
+    return;
+  }
+  openSetup(key,row,trigger);
+}
+const selectInput = (id, current, choices, required=false) => '<select id="'+id+'" name="'+id+'" '+(required?"required":"")+'>'+
+  choices.map(([value,label])=>'<option value="'+esc(value)+'" '+(String(value)===String(current??"")?"selected":"")+'>'+esc(label)+'</option>').join("")+'</select>';
+const input = (id,value="",opts={}) => '<input id="'+id+'" name="'+id+'" type="'+(opts.type||"text")+'" value="'+esc(value)+'" '+
+  (opts.required?"required ":"")+(opts.readonly?"readonly ":"")+(opts.type==="password"?'autocomplete="new-password" ':'')+
+  (opts.placeholder?'placeholder="'+esc(opts.placeholder)+'" ':'')+'>';
+const field = (id,label,control,options={}) => '<div class="field'+(options.wide?" wide":"")+'"'+(options.wrapper?' id="'+options.wrapper+'"':'')+'>'+
+  '<label for="'+id+'">'+label+(options.required?' <span aria-hidden="true">*</span>':'')+'</label>'+control+
+  (options.hint?'<small>'+options.hint+'</small>':'')+'</div>';
+function closeSetup() {
+  if(saveDisabled)return;
+  if(flow?.dirty)ask("放弃本次配置？","关闭后，本次表单中填写的内容将被丢弃。","放弃修改",()=>setup.close());
+  else setup.close();
+}
+function openSetup(mode="pick",row,trigger) {
+  setupReturn=trigger;
+  flow={mode, kind:row?.kind, row, dirty:false, tested:mode==="scope", ready:false, scenario:"ok"};
+  saveDisabled=false;
+  if(mode==="pick")paintPicker();
+  else paintForm();
+  setup.showModal();
+  setup.querySelector("h2").focus();
+}
+function paintPicker() {
+  setup.innerHTML='<div class="dialog-ui"><header class="dialog-head"><div><h2 tabindex="-1" id="setup-title">新增数据源</h2><p class="hint">选择类型后继续配置。</p></div>'+
+    '<button type="button" class="icon-button" data-close-setup aria-label="关闭">×</button></header><div class="dialog-body">'+
+    '<div class="pick-grid">'+Object.entries(types).filter(([,t])=>t.side===side).map(([id,t])=>
+      '<button type="button" class="pick" data-pick="'+id+'" aria-pressed="'+(flow.kind===id)+'">'+icon(id)+
+      '<span><strong>'+t.name+'</strong><small>'+t.purpose+'</small></span></button>').join("")+'</div></div>'+
+    '<footer class="dialog-foot"><p>'+(side==="asset"?"资产数据源":"监控与诊断")+'</p><div class="actions"><button type="button" class="btn" data-close-setup>取消</button>'+
+    '<button type="button" class="btn primary" id="pick-next" '+(flow.kind?"":"disabled")+'>继续配置</button></div></footer></div>';
+}
+function formNav(title,sub,body,saveLabel){
+  const asset=types[flow.kind].side==="asset";
+  const back=flow.mode==="add"?'<button type="button" class="btn weak small" data-back-pick>返回类型</button>':"";
+  const testAction=asset||flow.mode==="scope"?"":'<button type="button" class="btn" id="probe">测试连接</button>';
+  const previewAction=asset||flow.mode==="rotate"?"":'<button type="button" class="btn" id="preview" hidden>预览范围</button>';
+  return '<form class="dialog-ui" id="setup-form" novalidate><header class="dialog-head"><div><div class="dialog-title-row"><h2 tabindex="-1" id="setup-title">'+title+'</h2>'+back+'</div><p class="hint">'+sub+'</p></div>'+
+    '<button type="button" class="icon-button" data-close-setup aria-label="关闭">×</button></header><div class="dialog-body" id="setup-body">'+body+
+    '</div><footer class="dialog-foot"><p id="setup-status" role="status"></p><div class="actions">'+
+    '<button type="button" class="btn" data-close-setup>取消</button>'+testAction+previewAction+
+    '<button type="submit" class="btn primary" id="setup-save">'+saveLabel+'</button></div></footer></form>';
+}
+function makeField(id,label,value,opts={}) {
+  return field(id,label,input(id,value,opts),opts);
+}
+function paintForm() {
+  const {kind, row, mode}=flow;
+  const type=types[kind];
+  const isZabbix=kind==="zabbix";
+  const asset=type.side==="asset";
+  const old=row||{};
+  const name=makeField("form-name","名称",old.name,{required:true,placeholder:type.name+" 数据源"});
+  const env=field("form-env","环境",selectInput("form-env",old.env,[["","请选择环境"],...envOptions.map(ev=>[ev,ev])],true),{required:true});
+  const sample='<button type="button" class="btn weak small" data-demo-fill>填入示例</button>';
+  if(asset){
+    const config='<section class="form-card"><h3>资产配置</h3><div class="form-grid">'+name+
+      makeField("form-region","云地域",old.region,{placeholder:kind==="ecs"?"cn-hangzhou":"ap-guangzhou"})+
+      makeField("form-asset-ids","资产原生 ID",old.assetIds,{required:true,wide:true,hint:"多个 ID 使用逗号分隔。" })+
+      makeField("form-ref","凭据文件引用","",{required:!row,placeholder:row?"留空沿用配置":"例如 cloud-reader"})+
+      makeField("form-ingress","推送凭据文件引用","",{placeholder:row?"留空沿用配置":"可选"})+'</div></section>';
+    const settings = row ? '<p class="hint">'+esc(scopeLabel(row))+'</p><label><input type="checkbox" id="clear-ingress"> 停用信号推送</label>' :
+      '<div class="form-grid">'+makeField("form-asset-cluster","集群实例 ID","",{required:true})+
+      makeField("form-namespace","命名空间","",{required:true})+makeField("form-asset-env","环境 ID")+
+      makeField("form-asset-business","业务 ID")+'</div>';
+    setup.innerHTML=formNav((row?"编辑 ":"接入 ")+type.name,"保存后从列表测试并同步。",'<div class="setup-columns">'+config+
+      '<section class="form-card"><h3>授权范围</h3>'+settings+'</section></div><div class="inline-action"><label><input type="checkbox" id="form-enabled" '+(old.state==="paused"?"":"checked")+'> 启用数据源</label>'+sample+'</div>',"保存数据源");
+  }else {
+    const selectedAuth=old.auth||(isZabbix?"token":"bearer");
+    const authOptions=isZabbix?[["token","API Token"],["password","账号密码"]]:kind==="grafana"?[["bearer","Service Account Token"]]:
+      [["bearer","Bearer Token"],["basic","Basic 认证"],["none","免认证（内网只读）"]];
+    const conn = mode==="scope" ? "" : '<section class="form-card"><h3>连接配置</h3><div class="form-grid">'+
+      (mode==="add" && isZabbix ? env+name : mode==="rotate" ? "" : name)+
+      makeField("form-endpoint",isZabbix?"Zabbix 访问地址":"服务地址",row?endpoint(row):"",{
+        required:true,wide:true,type:"url",readonly:mode==="rotate",placeholder:"https://"+kind+".example.com",
+        hint:isZabbix?"填写 HTTPS 站点地址，平台会补齐 API 路径。":"填写 HTTPS 基地址，并保留反向代理路径前缀。" })+
+      field("form-auth","认证方式",selectInput("form-auth",selectedAuth,authOptions))+
+      makeField("form-account","账号",old.username,{wrapper:"account-field"})+
+      makeField("form-secret","只读凭据","",{type:"password",wrapper:"secret-field",wide:true,
+        placeholder:row&&mode==="edit"?"留空沿用原凭据":"使用演示凭据"})+'</div><div class="inline-action">'+sample+'</div></section>';
+    const constraints = isZabbix ? '<div id="discover"><p class="hint">测试连接后选择主机组。</p></div>' :
+      '<div class="form-grid">'+env+
+        field("form-business","业务",selectInput("form-business",old.business,[["","请选择业务"],...["运维","云帆","有数"].map(item=>[item,item])],true),{required:true})+
+        field("form-cluster","集群实例",selectInput("form-cluster",old.cluster,clusterChoices(old.env),true),{required:true,wide:true})+
+      (kind==="grafana" ? '<div id="discover" class="wide"><p class="hint">测试连接后选择仪表盘。</p></div>' :
+        field("form-mapping","端点范围",selectInput("form-mapping",old.mapping||"dedicated",[["dedicated","此集群专用"],["shared","多集群共享"]]))+
+        makeField("form-label",kind==="victorialogs"?"上游字段":"上游标签",old.label,{wrapper:"mapping-label",placeholder:"cluster"})+
+        makeField("form-value","精确值",old.mappingValue,{wrapper:"mapping-value",placeholder:"prod-k8s-01"}))+
+      (kind==="victorialogs"?makeField("form-account-id","AccountID",old.account,{type:"number"})+
+        makeField("form-project-id","ProjectID",old.project,{type:"number"}):"")+
+      (kind==="alertmanager"?'<label class="wide"><input type="checkbox" id="form-suppressed" '+(old.suppressed?"checked":"")+'> 包含静默或抑制</label>':"")+'</div>';
+    const range = mode==="rotate" ? "" : '<section class="form-card"><h3>采集范围</h3>'+
+      (mode==="scope"?'<p class="hint">'+esc(scopeLabel(old))+'</p>':"")+constraints+'</section>';
+    const probe='<section class="form-card"><h3>验证'+(mode==="rotate"?"新凭据":"与预览")+'</h3><div class="inline-action">'+
+      (mode==="scope"?"":'<label class="hint">示例结果 <select id="probe-scenario"><option value="ok">连接成功</option><option value="denied">授权失败</option><option value="timeout">连接超时</option></select></label>')+
+      '</div><p id="probe-result" class="form-msg" role="status" hidden></p><p id="preview-result" class="form-msg" role="status" hidden></p></section>';
+    const saveLabel = mode==="rotate"?"保存新凭据":mode==="scope"?"保存并重新同步":mode==="edit"?"保存配置":"保存并启用";
+    const title = mode==="rotate"?"更换 Zabbix 凭据":mode==="scope"?"调整 Zabbix 主机组":(row?"编辑 ":"接入 ")+type.name;
+    const configs=conn&&range?'<div class="setup-columns">'+conn+range+'</div>':conn+range;
+    setup.innerHTML=formNav(title,type.purpose,configs+probe,saveLabel);
+    if(row&&mode==="edit"){
+      for(const id of ["form-env","form-business","form-cluster"]){
+        const control=by(id);
+        if(control)for(const option of control.options)option.disabled=!option.selected;
+      }
+    }
+    updateAuth();
+    updateMapping();
+    if(mode==="scope")paintDiscovery();
+  }
+  refreshSetup();
+}
+function clusterChoices(env) {
+  const clusters={生产:"prod",预发:"pre",测试:"test",研发:"dev"};
+  return [["","请选择集群实例"],...(clusters[env]?[[clusters[env]+"-k8s-01",clusters[env]+"-k8s-01"]]:[])];
+}
+function replaceClusterOptions() {
+  const select=by("form-cluster");
+  if(!select)return;
+  select.replaceChildren(...clusterChoices(by("form-env").value).map(([id,label])=>new Option(label,id)));
+}
+function value(id) {return by(id)?.value.trim()||"";}
+function updateAuth() {
+  if(!by("form-auth"))return;
+  const auth=value("form-auth");
+  const hasAccount=auth==="password"||auth==="basic";
+  by("account-field").hidden=!hasAccount;
+  by("form-account").disabled=!hasAccount;
+  by("secret-field").hidden=auth==="none";
+  by("form-secret").disabled=auth==="none";
+  const label=setup.querySelector('label[for="form-secret"]');
+  label.textContent=auth==="password"||auth==="basic"?"密码":auth==="bearer"?"Token":"API Token";
+}
+function updateMapping() {
+  if(!by("form-mapping"))return;
+  const shared=value("form-mapping")==="shared";
+  by("mapping-label").hidden=!shared;
+  by("mapping-value").hidden=!shared;
+  by("form-label").disabled=!shared;
+  by("form-value").disabled=!shared;
+}
+function selections() {
+  return [...setup.querySelectorAll("[name=selection]:checked")].map(option=>option.value);
+}
+function paintDiscovery() {
+  const block=by("discover");
+  if(!block)return;
+  const isZ=flow.kind==="zabbix";
+  if(!flow.tested){
+    block.innerHTML='<p class="hint">测试连接后选择'+(isZ?"主机组":"仪表盘")+'。</p>';
+    return;
+  }
+  const samples=isZ?["生产应用主机","生产中间件","预发应用主机"]:["Kubernetes 集群","应用可用性","入口流量"];
+  block.innerHTML='<strong>选择'+(isZ?"主机组":"仪表盘")+'</strong><div class="choices">'+samples.map(item=>
+    '<label><input name="selection" type="checkbox" value="'+esc(item)+'" '+(flow.row?.selections?.includes(item)?"checked":"")+'> '+esc(item)+'</label>').join("")+'</div>';
+}
+function setResult(id,message,tone="") {
+  const node=by(id);
+  if(!node)return;
+  node.hidden=!message;
+  node.textContent=message;
+  node.dataset.tone=tone;
+}
+function showError(control,message) {
+  if(!control){
+    by("setup-status").textContent=message;
+    return;
+  }
+  clearError(control);
+  const error=document.createElement("p");
+  error.id=control.id+"-error";
+  error.className="field-error";
+  error.textContent=message;
+  control.after(error);
+  control.setAttribute("aria-invalid","true");
+  control.setAttribute("aria-describedby",error.id);
+  control.focus();
+}
+function clearError(control) {
+  if(!control?.hasAttribute("aria-invalid"))return;
+  by(control.id+"-error")?.remove();
+  control.removeAttribute("aria-invalid");
+  control.removeAttribute("aria-describedby");
+}
+function check(ids) {
+  for(const id of ids){
+    const control=by(id);
+    if(control&&!control.disabled&&!value(id)){
+      const label=setup.querySelector('label[for="'+id+'"]').textContent.replace("*","").trim();
+      showError(control,"请填写或选择"+label+"。");
+      return false;
+    }
+  }
+  return true;
+}
+function checkURL() {
+  const addr=by("form-endpoint");
+  try{
+    const url=new URL(addr.value.trim());
+    if(url.protocol==="https:" && url.hostname && !url.username && !url.password)return true;
+  }catch{}
+  showError(addr,"请输入有效的 HTTPS 服务地址。");
+  return false;
+}
+function checkRange(previewing) {
+  if(flow.kind==="zabbix"){
+    if(previewing&&!selections().length){setResult("preview-result","请至少选择一个主机组。","issue");return false;}
+    return true;
+  }
+  if(!check(["form-env","form-business","form-cluster"]))return false;
+  if(value("form-mapping")==="shared"&&!check(["form-label","form-value"]))return false;
+  if(flow.kind==="victorialogs"&&(value("form-account-id")||value("form-project-id"))){
+    if(!check(["form-account-id","form-project-id"]))return false;
+    for(const id of ["form-account-id","form-project-id"]){
+      const number=Number(value(id));
+      if(!Number.isInteger(number)||number<0||number>4294967295){
+        showError(by(id),"请输入 0 至 4294967295 之间的整数。");
+        return false;
+      }
+    }
+  }
+  if(previewing&&flow.kind==="grafana"&&!selections().length){
+    setResult("preview-result","请至少选择一个仪表盘。","issue");
+    return false;
+  }
+  return true;
+}
+function refreshSetup() {
+  const save=by("setup-save");
+  if(!save)return;
+  const asset=types[flow.kind].side==="asset";
+  save.disabled=saveDisabled||(!asset&&!flow.ready);
+  if(by("preview")){
+    by("preview").hidden=!flow.tested;
+    by("preview").disabled=saveDisabled||!flow.tested;
+  }
+  if(by("probe")){
+    by("probe").hidden=flow.tested&&flow.mode!=="rotate";
+    by("probe").disabled=saveDisabled;
+  }
+  by("setup-status").textContent=saveDisabled?"正在处理…":asset?"保存后可在列表中测试并同步。":
+    flow.ready?"已完成验证，可保存。":flow.tested?"请选择范围并预览。":"请先测试连接。";
+}
+function invalidate(onlyPreview=false) {
+  flow.ready=false;
+  setResult("preview-result","");
+  if(!onlyPreview){
+    flow.tested=false;
+    setResult("probe-result","");
+    paintDiscovery();
+  }
+  refreshSetup();
+}
+function fillSample() {
+  const set=(id,text)=>{if(by(id)&&!by(id).readOnly)by(id).value=text;};
+  for(const field of setup.querySelectorAll("[aria-invalid]"))clearError(field);
+  if(!flow.row)set("form-name","示例 "+types[flow.kind].name);
+  set("form-endpoint","https://"+flow.kind+".example.com");
+  set("form-secret","prototype-reader");
+  set("form-account","observe-reader");
+  if(!flow.row){
+    set("form-env","生产");set("form-business","运维");
+    replaceClusterOptions();
+    set("form-cluster","prod-k8s-01");
+  }
+  if(types[flow.kind].side==="asset"){
+    set("form-region",flow.kind==="ecs"?"cn-hangzhou":"ap-guangzhou");
+    set("form-asset-ids",flow.kind==="ecs"?"i-sample-datasource":"ins-sample-datasource");
+    set("form-ref","cloud-reader");
+    set("form-asset-cluster","prod-k8s-01");
+    set("form-namespace","ops");
+    set("form-asset-env","prod");
+    set("form-asset-business","ops");
+  }
+  flow.dirty=true;
+  invalidate();
+}
+function probe(previewing) {
+  if(saveDisabled)return;
+  if(!previewing){
+    if(!check(["form-name","form-endpoint","form-env","form-account"])||!checkURL()||
+      ((!flow.row||flow.mode==="rotate"||flow.row.auth!==value("form-auth"))&&!check(["form-secret"])))return;
+  }
+  if(!checkRange(previewing))return;
+  saveDisabled=true;
+  refreshSetup();
+  by("setup-body").inert=true;
+  setResult(previewing?"preview-result":"probe-result",previewing?"正在预览…":"正在测试连接…");
+  setTimeout(()=>{
+    by("setup-body").inert=false;
+    saveDisabled=false;
+    if(previewing){
+      flow.ready=true;
+      const sample={zabbix:"预览通过 · 26 台主机，4 条活跃问题。",prometheus:"预览通过 · 18 条时序。",victorialogs:"预览通过 · 12 条日志。",alertmanager:"预览通过 · 4 条活动告警。",grafana:"预览通过 · "+selections().length+" 个仪表盘。"};
+      setResult("preview-result",sample[flow.kind],"good");
+    }else {
+      const outcome=value("probe-scenario");
+      flow.tested=outcome==="ok";
+      flow.ready=flow.tested&&flow.mode==="rotate";
+      setResult("preview-result","");
+      setResult("probe-result",flow.tested?"连接测试通过。":outcome==="denied"?"上游拒绝授权，请检查账号或只读凭据。":"连接超时，请检查服务地址和网络路径。",flow.tested?"good":"issue");
+      paintDiscovery();
+    }
+    refreshSetup();
+    const result=by(previewing?"preview-result":"probe-result");
+    if(result?.dataset.tone==="issue"||previewing||flow.mode==="rotate"){
+      result?.scrollIntoView({block:"nearest"});
+      (previewing?by("setup-save"):by("probe"))?.focus({preventScroll:true});
+    }else if(by("discover")){
+      const selection=setup.querySelector("[name=selection]");
+      if(selection)selection.focus();
+      else by("preview")?.focus();
+    }else by("preview")?.focus();
+  },420);
+}
+function saveFlow(event) {
+  event.preventDefault();
+  if(saveDisabled || by("setup-save").disabled)return;
+  const {mode,kind,row}=flow;
+  const asset=types[kind].side==="asset";
+  if(asset&&!check(["form-name","form-asset-ids","form-ref","form-asset-cluster","form-namespace"]))return;
+  const inputValues={
+    name:value("form-name"),endpoint:value("form-endpoint"),auth:value("form-auth"),username:value("form-account"),
+    env:value("form-env") || (value("form-asset-env")==="prod"?"生产":value("form-asset-env")),business:value("form-business") || value("form-asset-business"),
+    cluster:value("form-cluster") || value("form-asset-cluster"),namespace:value("form-namespace"),
+    region:value("form-region"),assetIds:value("form-asset-ids"),selections:selections(),
+    mapping:value("form-mapping"),label:value("form-label"),mappingValue:value("form-value"),
+    account:value("form-account-id"),project:value("form-project-id"),suppressed:Boolean(by("form-suppressed")?.checked)
+  };
+  let saved=row;
+  if(!row){
+    saved={...inputValues,kind,id:"new-"+(++nextID),
+      state:asset?(by("form-enabled").checked?"untested":"paused"):types[kind].operation==="sync"?"pending":"ready",
+      time:!asset&&types[kind].operation==="test"?now():""};
+    rows.unshift(saved);
+  }else if(mode==="scope"){
+    row.selections=inputValues.selections;
+  }else if(mode==="rotate"){
+    row.auth=inputValues.auth;
+  }else if(asset){
+    Object.assign(row,{name:inputValues.name,region:inputValues.region,assetIds:inputValues.assetIds});
+    if(!by("form-enabled").checked){
+      if(row.state!=="paused")row.beforePause=row.state;
+      row.state="paused";
+    }else if(row.state==="paused")row.state=row.beforePause||"untested";
+  }else {
+    Object.assign(row,{...inputValues});
+    if(action(row)==="test"){
+      row.time=row.checked=now();
+      if(row.state!=="paused")row.state="ready";
+    }
+  }
+  setup.close();
+  groupState.delete(kind);
+  render();
+  if(detail.open&&detailID===saved.id){paintDetail(saved);detail.querySelector("[data-close-detail]").focus();}
+  notify(saved.name+" · 配置已保存。"+(asset&&!row?" 可以测试并同步。":""),"good");
+}
+function goBack() {
+  const returnToPicker=()=>{
+    flow.mode="pick";
+    flow.dirty=flow.ready=flow.tested=false;
+    paintPicker();
+    setup.querySelector("h2").focus();
+  };
+  if(flow.dirty)ask("返回类型选择？","这一步已经填写的内容将被丢弃。","返回选择",returnToPicker);
+  else returnToPicker();
+}
+by("add-source").addEventListener("click",event=>openSetup("pick",undefined,event.currentTarget));
+by("clear-filters").addEventListener("click",clearFilters);
+for(const [id,key] of [["search","search"],["environment","env"],["type-filter","kind"],["state-filter","state"],["group-view","group"]]){
+  by(id).addEventListener("input",event=>{
+    filters[side][key]=key==="group"?event.target.checked:event.target.value;
+    render();
+  });
+}
+by("demo-view").addEventListener("change",event=>{
+  scene=event.target.value;
+  rows=scene==="empty"?[]:structuredClone(baseRows);
+  groupState.clear();
+  filters.monitor={};
+  filters.asset={};
+  switchTab(scene==="error"?"asset":"monitor");
+});
+by("retry-load").addEventListener("click",()=>{
+  scene="normal";
+  by("demo-view").value="normal";
+  render();
+  by("search").focus();
+  notify("资产数据源已重新加载。","good");
+});
+document.querySelector(".tabbar").addEventListener("click",event=>{
+  const tab=event.target.closest("[data-tab]");
+  if(tab)switchTab(tab.dataset.tab);
+});
+document.querySelector(".tabbar").addEventListener("keydown",event=>{
+  if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
+  event.preventDefault();
+  switchTab(event.key==="Home"?"monitor":event.key==="End"?"asset":side==="monitor"?"asset":"monitor",true);
+});
+by("source-panel").addEventListener("click",event=>{
+  const target=event.target.closest("button");
+  if(!target)return;
+  if(target.dataset.filter){
+    filters[side].state=target.dataset.filter==="all"?"":target.dataset.filter;
+    syncFilters();
+    render();
+  }
+  if(target.hasAttribute("data-clear")){
+    clearFilters();
+    by("search").focus();
+  }
+  if(target.hasAttribute("data-add"))openSetup("pick",undefined,target);
+  if(target.dataset.group){
+    const group=target.dataset.group;
+    if(groupState.has(group))groupState.delete(group);
+    else groupState.add(group);
+    render();
+    by("rows").querySelector('[data-group="'+group+'"]').focus();
+  }
+  const origin=target.closest(".menu");
+  const row=getRow(target.dataset.detail||target.dataset.run||target.dataset.row);
+  if(!row)return;
+  if(origin)origin.open=false;
+  const returnTo=origin?.querySelector("summary")||target;
+  if(target.dataset.detail)openDetail(row,returnTo);
+  if(target.dataset.run)run(row);
+  if(target.dataset.action)rowCommand(row,target.dataset.action,returnTo);
+});
+document.addEventListener("click",event=>{
+  const current=event.target.closest(".menu");
+  for(const menu of document.querySelectorAll(".menu[open]"))if(menu!==current)menu.open=false;
+});
+by("source-panel").addEventListener("keydown",event=>{
+  const menu=event.target.closest(".menu[open]");
+  if(event.key!=="Escape"||!menu)return;
+  event.preventDefault();
+  menu.open=false;
+  menu.querySelector("summary").focus();
+});
+detail.addEventListener("click",event=>{
+  const target=event.target.closest("button");
+  if(!target)return;
+  if(target.hasAttribute("data-close-detail"))detail.close();
+  const row=getRow(target.dataset.run||target.dataset.row);
+  if(!row)return;
+  if(target.dataset.run)run(row);
+  if(target.dataset.action)rowCommand(row,target.dataset.action,target);
+});
+detail.addEventListener("close",()=>{
+  const focus=detailReturn?.isConnected?detailReturn:by("rows").querySelector('[data-detail="'+detailID+'"]');
+  (focus||by("search")).focus();
+  detailID=undefined;
+});
+setup.addEventListener("click",event=>{
+  const target=event.target.closest("button");
+  if(!target)return;
+  if(target.hasAttribute("data-close-setup"))closeSetup();
+  if(target.dataset.pick){
+    flow.kind=target.dataset.pick;
+    for(const option of setup.querySelectorAll("[data-pick]")){
+      option.setAttribute("aria-pressed",String(option===target));
+    }
+    by("pick-next").disabled=false;
+  }
+  if(target.id==="pick-next"){
+    flow.mode="add";
+    paintForm();
+    setup.querySelector("h2").focus();
+  }
+  if(target.hasAttribute("data-back-pick"))goBack();
+  if(target.hasAttribute("data-demo-fill"))fillSample();
+  if(target.id==="probe")probe(false);
+  if(target.id==="preview")probe(true);
+});
+setup.addEventListener("input",event=>{
+  const control=event.target;
+  if(!setup.querySelector("form"))return;
+  clearError(control);
+  if(control.id==="probe-scenario"){
+    invalidate();
+    return;
+  }
+  flow.dirty=true;
+  if(control.id==="form-env")replaceClusterOptions();
+  if(control.id==="form-auth"){
+    by("form-secret").value="";
+    clearError(by("form-secret"));
+    clearError(by("form-account"));
+    updateAuth();
+  }
+  if(control.id==="form-mapping")updateMapping();
+  invalidate(control.name==="selection"||flow.mode==="scope");
+});
+setup.addEventListener("submit",saveFlow);
+setup.addEventListener("cancel",event=>{event.preventDefault();closeSetup();});
+setup.addEventListener("close",()=>{
+  setup.replaceChildren();
+  flow=undefined;
+  if(setupReturn?.isConnected)setupReturn.focus();
+  else if(detail.open)detail.querySelector("[data-close-detail]")?.focus();
+  else by("add-source").focus();
+});
+by("confirm-stay").addEventListener("click",()=>confirmDialog.close());
+by("confirm-act").addEventListener("click",()=>{
+  confirmDialog.close();
+  confirmed?.();
+});
+switchTab("monitor");
+</script>
+</body>
+</html>

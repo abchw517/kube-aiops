@@ -14,7 +14,7 @@
 - **3.2 Runbook 匹配。** 建立版本化 Runbook 库，先覆盖容器重启、Deployment 副本不足和 PVC Pending。按资源类型与证据匹配，每个步骤说明输入、预期信号和人工复验条件。
 - **3.3 Portal 验收。** 在 Finding 详情中展示假设及证据引用。用脱敏样例覆盖命中、证据冲突、无匹配和来源故障。若引入模型，输出需通过结构校验并保留证据引用。
 
-- **3.4 LLM Wiki 知识闭环。** 将 K8sGPT 初步诊断与 Wiki 知识交给 AI 生成增强说明，再结合多轮对话总结最终结论，人工确认后发布 Wiki 知识版本。接口、权限和同步验收见 [LLM Wiki 集成设计](llm-wiki-integration.md)。
+- **3.4 LLM Wiki 知识闭环。** 将 K8sGPT 初步诊断与 Wiki 知识交给 AI 生成增强说明，再结合多轮对话总结最终结论，人工确认后发布 Wiki 知识版本。接口、权限和同步验收见 [LLM Wiki 集成设计](operations-knowledge/design.md#llm-wiki-知识闭环与演进)。
 
 ## Phase 4 · HITL Remediation
 

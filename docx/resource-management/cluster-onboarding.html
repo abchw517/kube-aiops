@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>资源管理 · kube-aiops</title>
+<style>
+:root{--nav:#122637;--ink:#152840;--muted:#566c82;--line:#e0e7ef;--bg:#f1f5f9;--blue:#244fcd;--teal:#076660;--red:#a9273d}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:3px solid #3976e3;outline-offset:2px}h1,h2,p{margin:0}.layout{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:100vh}aside{background:var(--nav);color:#b6c9db;padding:27px 14px}.brand{color:#fff;display:flex;gap:9px;align-items:center;font-size:18px;font-weight:750;padding:0 8px 26px}.brand i{font-style:normal;background:#9ce2cb;color:#133e3d;width:29px;height:29px;border-radius:7px;display:grid;place-items:center}.side{display:grid;gap:5px}.side span{padding:10px 13px;border-radius:8px}.side .active{color:#fff;background:#234658;box-shadow:inset 3px 0 #60d1bd;font-weight:700}main{padding:34px clamp(18px,5vw,70px);max-width:1360px;width:100%}.crumb{color:var(--muted);font-size:12px;margin-bottom:10px}.title{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.title h1{font-size:35px;letter-spacing:-.04em}.demo{font-size:12px;background:#e1ebf5;color:#385a7a;border-radius:20px;padding:4px 10px}.card{background:white;border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:0 4px 12px #1c3f5b08}.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 23px}.tabs button,.tabs span{padding:13px 0;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);white-space:nowrap}.tabs button[aria-selected=true]{border-color:var(--teal);color:var(--teal);font-weight:750}.section{padding:22px 23px}.section h2{font-size:22px;margin-bottom:15px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}table{width:100%;border-collapse:collapse;text-align:left;min-width:400px}th,td{padding:12px 15px;border-bottom:1px solid var(--line)}th{background:#f6f8fc;color:#496077;font-size:12px}tbody tr:last-child td{border-bottom:0}td:first-child{font-weight:700}th:last-child,td:last-child{text-align:right}.actions{display:flex;justify-content:flex-end;gap:6px}.id{font:12px "IBM Plex Mono",monospace;color:#3e5c77;background:#edf2f8;border-radius:5px;padding:4px 7px}.btn{border:1px solid #ccd8e4;border-radius:7px;background:#fff;color:#233b55;padding:7px 12px;font-weight:650;white-space:nowrap}.btn:hover{background:#edf3fa}.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn.danger{color:var(--red);border-color:#ecd3d8}.btn.danger.fill{background:var(--red);color:#fff;border-color:var(--red)}.btn:disabled{opacity:.5;cursor:not-allowed}.bottom{padding-top:15px;display:flex;justify-content:space-between;align-items:center;color:var(--muted)}.empty{text-align:center!important;padding:23px!important;color:var(--muted);font-weight:400!important}dialog{border:1px solid var(--line);border-radius:14px;width:min(480px,calc(100% - 24px));padding:0;color:var(--ink);box-shadow:0 18px 65px #10233642}dialog::backdrop{background:#13243c91}dialog header,dialog section,dialog footer{padding:16px 20px}dialog header{border-bottom:1px solid var(--line)}dialog header h2{font-size:19px}dialog footer{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line)}dialog footer .left{margin-right:auto}label{display:grid;gap:5px;font-weight:650;margin-bottom:13px}input{width:100%;padding:8px 10px;border:1px solid #c9d8e6;border-radius:7px;color:var(--ink)}input[readonly]{background:#f0f4f9;color:var(--muted)}small{color:var(--muted)}.error{color:var(--red);margin-top:8px}.blocked{background:#fff1f2;padding:10px 12px;border:1px solid #f5d5da;border-radius:7px}.blocked ul{margin:7px 0 0;padding-left:20px}#toast{position:fixed;right:20px;bottom:20px;background:var(--nav);color:white;border-radius:8px;padding:9px 14px}#toast:empty{display:none}@media(max-width:670px){.layout{display:block}aside{padding:9px 12px}.brand{padding:0 0 6px}.side{display:flex;flex-wrap:wrap;font-size:12px;gap:1px}.side span{padding:5px 6px}main{padding:16px 10px}.title h1{font-size:27px}.section{padding:15px 10px}.tabs{padding:0 10px;gap:12px}td,th{padding:8px}.btn{padding:5px 8px}}
+
+.flow-head,.flow-filters{display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:16px}.flow-filters{justify-content:start}
+.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:12px}.flow-filters label,.flow-grid label{display:grid;gap:5px}
+.flow-filters input,.flow-filters select,.flow-grid select,#credential-fields textarea{font:inherit;background:#fff;border:1px solid var(--line);border-radius:7px;padding:8px;color:inherit}
+.flow-pill{display:inline-block;border-radius:5px;background:#e9f5f4;color:#076660;padding:4px 8px;white-space:nowrap}
+dialog:has(.ownership-editor){width:min(640px,calc(100% - 24px))}
+dialog:has(.ownership-editor) form{display:flex;flex-direction:column;max-height:calc(100dvh - 32px)}
+dialog:has(.ownership-editor) section{min-height:0;overflow:auto}
+.ownership-editor{display:grid;gap:14px}
+.ownership-editor>label{margin:0}
+.ownership-editor select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:inherit}
+.ownership-choices{min-width:0;margin:0;padding:4px 10px 10px;border:1px solid var(--line);border-radius:7px}
+.ownership-choices legend{padding-inline:4px;font-weight:700}
+.ownership-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:6px;max-height:min(42dvh,20rem);padding:4px;overflow-y:auto;overscroll-behavior:contain}
+.ownership-grid:focus-visible,.ownership-editor select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.ownership-grid label{display:flex;align-items:start;gap:8px;margin:0;padding:8px;background:#f6f8fc;border-radius:5px;overflow-wrap:anywhere}
+.ownership-grid input{flex:none;width:16px;height:16px;margin:2px 0 0}
+.ownership-feedback:empty{display:none}
+</style></head>
+<body><div class="layout"><aside><div class="brand"><i aria-hidden="true">k</i>kube-aiops</div><div class="side"><span>诊断控制台</span><span>运维知识库</span><span class="active" aria-current="page">资源管理</span><span>系统管理</span></div></aside>
+<main><div id="crumb" class="crumb"></div><div class="title"><h1>资源管理</h1><span class="demo">评审原型 · 模拟数据</span></div><div class="card"><div class="tabs" role="tablist" aria-label="资源管理"><button role="tab" data-tab="clusters">Kubernetes 集群管理</button><button role="tab" data-tab="env">环境管理</button><button role="tab" data-tab="business">业务线管理</button></div><section class="section" id="panel" role="tabpanel"></section></div></main></div>
+<dialog aria-labelledby="modal-title" id="modal"></dialog><div id="toast" role="status"></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const labels={env:"环境",business:"业务线"};
+const catalog={
+ env:[
+  {name:"研发",id:"development",refs:["集群 · dev-k8s"]},
+  {name:"测试",id:"testing",refs:["集群 · test-k8s"]},
+  {name:"预发布",id:"staging",refs:[]},
+  {name:"生产",id:"production",refs:["集群 · prod-shared"]}
+ ],
+ business:[
+  {name:"有数",id:"youshu",refs:["命名空间 · prod-shared/youshu-api"]},
+  {name:"云帆",id:"yunfan",refs:["集群 · prod-shared","命名空间 · prod-shared/yunfan-api"]},
+  {name:"架构",id:"architecture",refs:[]},
+  {name:"运维",id:"ops",refs:[]}
+ ]
+};
+const sampleClusters = [
+ {id:"local",name:"本地集群",environment:"研发",business:"架构",group:"研发平台",type:"共用集群",mode:"本地自动采集",state:"已接入 · 集群状态信息采集异常",locked:true,nodeForbidden:true,ns:["default","platform","api","apps","backups","batch","build","cert-manager","ci","data","events","gateway","ingress-nginx","k8sgpt-system","kube-node-lease","kube-public","kube-system","logging","metrics","monitoring","observability","sandbox","storage","testing"],assigned:{default:["architecture","ops"],platform:["architecture"]},nodes:[["dev-worker-1","Ready"],["dev-worker-2","NotReady"]]},
+ {id:"test-main",name:"测试集群",environment:"测试",business:"云帆",group:"测试应用",type:"独立业务集群",mode:"外部直连",state:"待接入",url:"https://test-api.example:6443",ns:["payments"],nodes:[]},
+ {id:"prod-report",name:"生产上报实例",environment:"生产",business:"有数",group:"生产平台",type:"共用集群",mode:"采集上报",state:"等待首次上报",ns:[],nodes:[]}
+];
+const labelRow=(row)=>'<strong>'+esc(row.name)+'</strong><br><small>'+esc(row.id)+' · '+esc(row.mode)+'</small>';
+const clusterButton=(label,action,id="",style="")=>'<button type="button" class="btn '+style+'" data-action="'+action+'" data-id="'+esc(id)+'">'+label+'</button>';
+const field=(label,name,val="",attrs="")=>'<label>'+label+'<input name="'+name+'" value="'+esc(val)+'" '+attrs+'></label>';
+const pick=(label,name,options,selected)=>'<label>'+label+'<select name="'+name+'">'+options.map(v=>'<option '+(v===selected?"selected":"")+'>'+esc(v)+'</option>').join("")+'</select></label>';
+let clusterQuery="", stateFilter="";
+function clusterList(){
+ const filtered=sampleClusters.filter(row=>(!stateFilter||row.state===stateFilter)&&(row.name+" "+row.id+" "+row.environment+" "+row.business).toLowerCase().includes(clusterQuery.toLowerCase()));
+ $("#panel").innerHTML='<div class="flow-head"><div><h2>Kubernetes 集群管理</h2><p>查看接入状态、采集详情和命名空间归属。</p></div><div class="actions">'+clusterButton("采集上报","cluster-add-push")+clusterButton("＋ 新增集群","cluster-add","","primary")+'</div></div>'+
+ '<div class="flow-filters"><label>搜索集群<input id="cluster-search" type="search" value="'+esc(clusterQuery)+'" placeholder="名称、ID、环境或业务线"></label>'+
+ '<label>采集状态<select id="cluster-state"><option value="">全部状态</option>'+[...new Set(sampleClusters.map(row=>row.state))].map(s=>'<option '+(s===stateFilter?"selected":"")+'>'+esc(s)+'</option>').join("")+'</select></label></div>'+
+ '<div class="table-wrap"><table><thead><tr><th>集群</th><th>环境 / 业务线</th><th>集群类型</th><th>采集状态</th><th>操作</th></tr></thead><tbody>'+
+ (filtered.map(row=>'<tr><td>'+labelRow(row)+'</td><td>'+esc([row.environment,row.business].filter(Boolean).join(" / ")||"待补齐")+'</td><td>'+esc(row.type)+'</td><td><span class="flow-pill">'+esc(row.state)+'</span></td><td><div class="actions">'+
+ (row.state==="已删除"?clusterButton("重新连接","cluster-reconnect",row.id,"primary"):
+ clusterButton("采集详情","cluster-detail",row.id)+clusterButton(row.mode==="本地自动采集"?"编辑归属":"编辑配置","cluster-edit",row.id)+clusterButton("命名空间归属","cluster-ownership",row.id)+
+ (row.mode!=="采集上报"?clusterButton("重新校验","cluster-check",row.id):"")+(row.mode==="本地自动采集"?"":clusterButton("轮换凭据","cluster-rotate",row.id))+
+ clusterButton("删除","cluster-delete",row.id,"danger"))+'</div></td></tr>').join("")||'<tr><td colspan="5" class="empty">暂无符合条件的集群</td></tr>')+
+ '</tbody></table></div><div class="bottom">共 '+filtered.length+' 个集群</div>';
+}
+function clusterEditor(row,mode){
+ const existing=Boolean(row);row??={mode,state:"待接入"};
+ const isLocal=row.mode==="本地自动采集",pull=row.mode==="外部直连";
+ const choices=catalog.env.map(x=>x.name);
+ if(row.environment&&!choices.includes(row.environment))choices.unshift(row.environment);
+ show(existing?"编辑集群":"新增集群",
+ '<p>'+esc(row.mode)+'</p><div class="flow-grid">'+field("实例 ID","id",row.id,existing?"readonly":"required pattern=\"[a-z0-9-]+\"")+field("实例名称","name",row.name,"required")+
+ (row.locked?field("环境","environment",row.environment,"readonly") : pick("环境","environment",choices,row.environment))+
+ pick("业务线","business",catalog.business.map(x=>x.name),row.business)+field("集群名称","group",row.group,"required")+
+ pick("集群类型","type",["共用集群","独立业务集群"],row.type)+(pull?field("Kubernetes API 地址","url",row.url,'type="url" disabled')+
+ field("Engine 命名空间","engineNamespace","k8sgpt-system","required")+field("Engine 实例名","engineName","k8sgpt","required")+
+ pick("直连凭据方式","credential",["kubeconfig","ServiceAccount Token","客户端证书与私钥"],"kubeconfig"):"")+'</div>'+
+ (row.locked?"<small>首次采集已成功，集群环境已锁定。</small>":"")+
+ (pull?'<p>直连凭据加密保存在 SQLite 中。直连轮换校验通过后切换。</p><div id="credential-fields"><label>kubeconfig<textarea rows="4"></textarea></label></div><p id="check-result" role="status"></p>':""),
+ cancel+(pull?clusterButton("测试连接","cluster-form-check"):"")+'<button class="btn primary">'+(isLocal?"保存归属":"保存")+'</button>',data=>{
+  const form=Object.fromEntries(data);
+  if(!existing&&sampleClusters.some(x=>x.id===form.id)){notify("实例 ID 已存在");return}
+  const state=existing?row.state:row.mode==="采集上报"?"等待首次上报":$("#check-result")?.dataset.passed?"等待首次采集":"待接入";
+  Object.assign(row,form,{mode:row.mode,state,nodes:row.nodes??[],ns:row.ns??[]});
+  if(!existing)sampleClusters.push(row);
+  if(!existing&&row.mode==="采集上报"){show("上报凭据","<p>上报凭据仅展示一次。</p><code>示例凭据（不可用于连接）</code>",cancel);clusterList();return}
+  modal.close();clusterList();notify("已保存");
+ });
+}
+// 按业务线维护勾选草稿，保存时只更新当前业务线。
+function ownershipDialog(row){
+ const dedicated=row.type==="独立业务集群";
+ const candidates=dedicated?catalog.business.filter(item=>item.name===row.business):catalog.business;
+ const first=candidates[0];
+ const drafts=new Map();
+ const initialFor=business=>new Set(row.ns.filter(ns=>row.assigned?.[ns]?.includes(business)));
+ const choice=dedicated?'<p>业务线 <strong>'+esc(first?.name??"暂无业务线")+'</strong></p><input type="hidden" name="ownershipBusiness" value="'+esc(first?.id)+'">':
+  '<label>业务线<select name="ownershipBusiness"><option value="">请选择业务线</option>'+candidates.map(item=>'<option value="'+esc(item.id)+'">'+esc(item.name)+'</option>').join("")+'</select></label>';
+ show("命名空间归属",'<div class="ownership-editor"><p>'+labelRow(row)+'</p>'+choice+
+  '<p>保存仅更新当前业务线。</p><fieldset class="ownership-choices"><legend>命名空间</legend><div data-ownership-options></div></fieldset>'+
+  '<p class="ownership-feedback" role="status" data-ownership-feedback></p></div>',
+  cancel+'<button class="btn primary" type="submit" data-ownership-save disabled>保存归属</button>',()=>{
+   const business=selector.value, selected=drafts.get(business);
+   if(!selected)return;
+   row.assigned??={};
+   for(const ns of row.ns){
+    const others=(row.assigned[ns]??[]).filter(id=>id!==business);
+    row.assigned[ns]=selected.has(ns)?[...others,business]:others;
+   }
+   drafts.delete(business);
+   if(drafts.size){
+    feedback.textContent="当前业务线归属已保存，可切换业务线继续保存。";
+    renderChoices();
+   }else{
+    modal.close();
+    toast("归属已保存");
+   }
+  });
+ const form=$("#form"), selector=form.elements.ownershipBusiness;
+ const options=form.querySelector("[data-ownership-options]");
+ const save=form.querySelector("[data-ownership-save]");
+ const feedback=form.querySelector("[data-ownership-feedback]");
+
+ // 切换时优先显示尚未保存的勾选，否则回填当前关联。
+ function renderChoices(){
+  const business=selector.value, selected=drafts.get(business)??initialFor(business);
+  options.innerHTML=!business?"<p>请选择业务线。</p>":!row.ns.length?"<p>尚未采集到命名空间。</p>":
+   '<div class="ownership-grid" role="region" aria-label="可选命名空间" tabindex="0">'+row.ns.map(ns=>
+    '<label><input type="checkbox" name="ownershipNamespace" value="'+esc(ns)+'" '+(selected.has(ns)?"checked":"")+'><span>'+esc(ns)+'</span></label>').join("")+'</div>';
+  save.disabled=!drafts.has(business);
+ }
+ selector.addEventListener("change",renderChoices);
+ options.addEventListener("change",()=>{
+  const business=selector.value, original=initialFor(business);
+  const selected=new Set([...options.querySelectorAll("input:checked")].map(input=>input.value));
+  if(original.size===selected.size&&[...original].every(ns=>selected.has(ns)))drafts.delete(business);
+  else drafts.set(business,selected);
+  feedback.textContent="";
+  save.disabled=!drafts.has(business);
+ });
+ renderChoices();
+}
+function clusterDialog(action,row){
+ if(action==="cluster-detail"){
+  return show("采集详情",'<p>'+labelRow(row)+'</p><p>状态 · '+esc(row.state)+'</p><h3>节点状态</h3>'+
+  (row.nodeForbidden?'<p class="blocked">本地 API 的 ServiceAccount 无权列出节点。请为部署使用的账号补齐 list nodes 权限，再重新校验。</p>':"")+
+  (row.nodes.map(([n,s])=>'<p>'+esc(n)+' · '+esc(s)+'</p>').join("")||"<p>尚未收到节点数据。</p>")+
+  '<h3>命名空间</h3><p>'+esc(row.ns.join("、")||"暂无数据")+'</p><h3>诊断采集</h3><p>按最近一次采集结果显示诊断状态。</p>',cancel);
+ }
+ if(action==="cluster-ownership")return ownershipDialog(row);
+ if(action==="cluster-delete"||action==="cluster-reconnect"){
+  const deleting=action==="cluster-delete";
+  return show(deleting?"删除集群连接":"重新连接本地集群",deleting?'<p>停止采集并清理此连接的采集快照。已发布的知识库文档保留。</p>':
+  '<p>沿用删除前的环境、业务线和集群名称，开始新一轮采集。</p>',cancel+'<button class="btn '+(deleting?"danger fill":"primary")+'">确认</button>',()=>{
+   if(deleting&&row.id!=="local")sampleClusters.splice(sampleClusters.indexOf(row),1);
+   else Object.assign(row,{state:deleting?"已删除":"等待首次采集",nodes:[],ns:[],locked:false});
+   modal.close();clusterList();
+  });
+ }
+ if(action==="cluster-rotate"){
+  return show("轮换凭据",row.mode==="采集上报"?"<p>生成新的上报凭据。原凭据立即失效，新凭据仅展示一次。</p>":
+  '<p>新凭据校验通过后切换，失败保留原凭据。</p>'+field("候选凭据","candidate","","type=password required"),
+  cancel+'<button class="btn primary">确认轮换</button>',()=>{show("凭据轮换结果","<p>"+(row.mode==="采集上报"?"新上报凭据（示例，不可用于连接）":"模拟验证通过。")+"</p>",cancel);});
+ }
+ if(action==="cluster-check"){
+  if(row.mode==="本地自动采集"){
+   row.nodeForbidden=false;
+   row.state=row.nodes.some(([,state])=>state==="NotReady")?"集群异常":"已接入";
+  }else row.state="等待首次采集";
+  clusterList();toast("模拟连接校验通过");
+ }
+}
+document.addEventListener("input",e=>{
+ if(e.target.id!=="cluster-search")return;
+ clusterQuery=e.target.value;
+ const caret=e.target.selectionStart;
+ clusterList();
+ const next=$("#cluster-search");next.focus();next.setSelectionRange(caret,caret);
+});
+document.addEventListener("change",e=>{
+ if(e.target.id==="cluster-state"){stateFilter=e.target.value;clusterList();}
+ if(e.target.name==="credential"){
+  const kind=e.target.value;
+  const url=e.target.form?.elements.namedItem("url");
+  if(url){url.disabled=kind==="kubeconfig";url.required=!url.disabled;}
+  $("#credential-fields").innerHTML=kind==="kubeconfig"?'<label>kubeconfig<textarea rows="4"></textarea></label>':
+   kind==="ServiceAccount Token"?field("Token","token","","type=password"):
+   kind==="客户端证书与私钥"?field("客户端证书","certificate")+field("客户端私钥","key","","type=password"):"";
+ }
+});
+
+const modal=$("#modal");
+let tab="clusters", submitAction;
+function render(){
+ document.querySelectorAll("[data-tab]").forEach(button=>button.setAttribute("aria-selected",String(button.dataset.tab===tab)));
+ if(tab==="clusters"){$("#crumb").textContent="资源管理 / Kubernetes 集群管理";clusterList();return}
+ const label=labels[tab], rows=catalog[tab];
+ $("#crumb").textContent="资源管理 / "+label+"管理";
+ document.querySelectorAll("[data-tab]").forEach(button=>{
+  button.setAttribute("aria-selected",String(button.dataset.tab===tab));
+ });
+ $("#panel").innerHTML='<h2>'+label+'管理</h2><div class="table-wrap"><table><thead><tr><th>'+label+'名称</th><th>'+label+' ID</th><th>操作</th></tr></thead><tbody>'+
+ (rows.map(row=>'<tr><td>'+esc(row.name)+'</td><td><code class="id">'+esc(row.id)+'</code></td><td><div class="actions"><button class="btn" data-action="edit" data-id="'+esc(row.id)+'">编辑</button><button class="btn danger" data-action="delete" data-id="'+esc(row.id)+'">删除</button></div></td></tr>').join("")||'<tr><td colspan="3" class="empty">暂无'+label+'</td></tr>')+
+ '</tbody></table></div><div class="bottom"><span>共 '+rows.length+' 条</span><button class="btn primary" data-action="add">＋ 新增'+label+'</button></div>';
+}
+function show(title,body,footer,action){
+ submitAction=action;
+ modal.innerHTML='<form id="form"><header><h2 id="modal-title">'+esc(title)+'</h2></header><section>'+body+'</section><footer>'+footer+'</footer></form>';
+ if(!modal.open)modal.showModal();
+}
+const cancel='<button class="btn" type="button" data-action="close">取消</button>';
+function toast(text){$("#toast").textContent=text;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$("#toast").textContent="",3000)}
+function edit(k,id){
+ const noun=labels[k], row=catalog[k].find(x=>x.id===id);
+ show((row?"编辑":"新增")+noun,
+ '<label>'+noun+'名称<input name="name" maxlength="128" required value="'+esc(row?.name)+'"></label>'+
+ '<label>'+noun+' ID<input name="id" required value="'+esc(row?.id)+'" '+('placeholder="'+(k==="env"?"sandbox":"data-platform")+'"')+'></label>'+
+ '<small>'+(row?"可修改 ID，目录引用继续关联同一条目。":"使用小写字母开头，可包含小写字母、数字或连字符。")+'</small><p class="error" id="error" role="alert"></p>',
+ (row?'<button class="btn danger left" type="button" data-action="delete" data-id="'+esc(id)+'">删除</button>':"")+cancel+'<button class="btn primary">保存</button>', data=>{
+  const name=String(data.get("name")??"").trim(), key=String(data.get("id")??"").trim();
+  if(!name){$("#error").textContent="请输入"+noun+"名称。";return}
+  if((!row||key!==row.id)&&!/^[a-z][a-z0-9-]*$/.test(key)){$("#error").textContent=noun+" ID 格式不正确。";return}
+  if(catalog[k].some(x=>x!==row&&x.id===key)){$("#error").textContent="该"+noun+" ID 已存在。";return}
+  if(row)Object.assign(row,{name,id:key});else catalog[k].push({name,id:key,refs:[]});
+  modal.close();render();toast((row?"已保存":"已新增")+noun);
+ });
+}
+function remove(k,id){
+ const row=catalog[k].find(x=>x.id===id);
+ if(!row)return;
+ const noun=labels[k], target='「'+esc(row.name)+'」 <code class="id">'+esc(id)+'</code>';
+ if(row.refs.length){
+  show("无法删除"+noun,'<p class="blocked">'+target+'仍有关联资源。请先解除以下关联。</p><ul>'+row.refs.map(ref=>'<li>'+esc(ref)+'</li>').join("")+'</ul>','<button class="btn" type="button" data-action="close">关闭</button>');
+  return;
+ }
+ show("删除"+noun,'<p>确定删除'+target+'？</p>',cancel+'<button class="btn danger fill">确认删除</button>',()=>{
+  catalog[k]=catalog[k].filter(x=>x.id!==id);modal.close();render();toast("已删除"+noun);
+ });
+}
+document.addEventListener("click",e=>{
+ const b=e.target.closest("button");if(!b)return;
+ if(b.dataset.tab){tab=b.dataset.tab;render();return}
+ const id=b.dataset.id;
+ if(b.dataset.action?.startsWith("cluster-")){
+  const row=sampleClusters.find(item=>item.id===id), action=b.dataset.action;
+  if(action==="cluster-add"||action==="cluster-add-push")clusterEditor(undefined,action==="cluster-add"?"外部直连":"采集上报");
+  else if(action==="cluster-edit"&&row)clusterEditor(row);
+  else if(action==="cluster-form-check"){$("#check-result").dataset.passed="yes";$("#check-result").textContent="模拟校验通过，保存后等待首次采集。"}
+  else if(row)clusterDialog(action,row);
+  return;
+ }
+ switch(b.dataset.action){
+ case "add": edit(tab);break;
+ case "edit": edit(tab,id);break;
+ case "delete": remove(tab,id);break;
+ case "close": modal.close();break;
+ }
+});
+document.addEventListener("submit",e=>{
+ if(e.target.id!=="form")return;
+ e.preventDefault();submitAction?.(new FormData(e.target));
+});
+render();
+</script></body></html>

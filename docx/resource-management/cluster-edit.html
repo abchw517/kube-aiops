@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>编辑集群配置 · kube-aiops</title>
+<style>
+:root{font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#172942;background:#eef3f8;--muted:#526581;--border:#d7e1ed;--blue:#1258c5;--pale:#eff5ff;--bg:#f7f9fc}
+*{box-sizing:border-box}
+body{margin:0}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #79abf6;outline-offset:2px}
+.shell{display:flex;align-items:center;gap:28px;background:#15253a;color:#edf5ff;padding:0 26px;min-height:60px;flex-wrap:wrap}
+.brand{font-weight:750;display:flex;gap:9px;align-items:center}
+.mark{border:1px solid #5b8fb9;border-radius:7px;background:#154367;width:29px;height:29px;display:grid;place-items:center}
+.shell-nav{display:flex;align-items:center;gap:24px;color:#cfdaeb;font-size:13px}
+.shell-nav b{color:white;padding:19px 0 16px;border-bottom:3px solid #70afff}
+.workspace{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:calc(100vh - 60px)}
+.app-side{background:#fff;border-right:1px solid var(--border);padding:22px 14px;color:#334963}
+.app-side p{font-size:12px;color:var(--muted);margin:24px 0 8px}
+.app-side strong{display:block;background:#e8f2ff;color:var(--blue);padding:10px;border-radius:6px}
+.app-side span{display:block;padding:9px 10px}
+main{padding:24px;min-width:0}
+h1,h2,h3,h4,p,dl,dd{margin:0}
+h1{font-size:26px;margin:4px 0 18px}
+.crumb,.hint{color:var(--muted);font-size:13px}
+.sample-list{overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)}
+.row:last-child{border:0}
+.row p{margin-top:2px}
+.demo{margin-top:18px;padding:14px 16px;background:#fff;border:1px solid var(--border);border-radius:9px;max-width:680px}
+.demo label{display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 12px 0 0;font-size:13px}
+.demo select{padding:4px 7px;border:1px solid var(--border);border-radius:5px}
+.dialog{width:min(1000px, calc(100% - 40px));max-width:none;max-height:none;border:0;border-radius:14px;padding:0;color:inherit;box-shadow:0 24px 85px #0f254355}
+.dialog::backdrop{background:#182b46a6}
+.layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:min(700px,calc(100dvh - 48px));background:#fff}
+.hero{padding:20px 26px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border)}
+.hero h2{font-size:23px;letter-spacing:.005em;line-height:1.3;margin:0 0 8px}
+.identity{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.identity strong{color:#334963;overflow-wrap:anywhere}
+.identity code{font:inherit;font-family:ui-monospace,monospace;overflow-wrap:anywhere}
+.mode{color:#265985;background:#ecf4ff;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.close{background:transparent;border:0;color:#506680;font-size:24px;line-height:1;border-radius:7px;width:36px;height:36px;flex:none}
+.close:hover{background:#edf2f8}
+.form-layout{display:grid;grid-template-columns:215px minmax(0,1fr);min-height:0}
+.rail{background:var(--bg);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:5px}
+.nav-item{text-align:left;background:transparent;color:#354a66;border:1px solid transparent;padding:10px 11px;border-radius:8px}
+.nav-item strong,.nav-item span{display:block}
+.nav-item span{font-size:12px;color:var(--muted);margin-top:2px}
+.nav-item:hover{background:#edf3fa}
+.nav-item[aria-selected=true]{color:#154faa;background:#eaf2ff;border-color:#bed5fa}
+.scroll{overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:21px 25px 25px}
+.panel h3{font-size:19px;line-height:1.3;margin-bottom:3px}
+.panel>p{margin-bottom:16px}
+.card{border:1px solid var(--border);background:#fff;border-radius:9px;margin-top:13px;padding:15px 16px}
+.card h4{font-size:14px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 16px;margin:0;padding:0;border:0}
+.full{grid-column:1/-1}
+.field{min-width:0}
+.field label{display:block;margin-bottom:4px;font-weight:650;color:#273c58}
+.req{color:#a22e36;font-size:13px}
+.field input,.field select,.field textarea{width:100%;min-width:0;border:1px solid #b9c9db;border-radius:6px;padding:8px 10px;background:#fff;color:#172942;min-height:38px}
+.field input[readonly],.field input:disabled{background:#f1f4f8;color:#455a73;border-color:#d9e2ee}
+.field textarea{resize:vertical;min-height:73px}
+.field [aria-invalid=true]{border-color:#b6293a}
+.field .hint,.error{display:block;margin-top:4px;font-size:12px}
+.error{color:#a42236;font-weight:600}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.switch-row label{display:block;font-weight:650;margin-bottom:2px;cursor:pointer}
+.switch{appearance:none;flex:none;width:41px;height:23px;border:1px solid #8296af;border-radius:20px;background:#72869f;position:relative;cursor:pointer;margin:0}
+.switch::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:white}
+.switch:checked{background:var(--blue);border-color:var(--blue)}
+.switch:checked::after{left:21px}
+details.card{padding:0}
+details summary{cursor:pointer;padding:13px 14px 13px 16px;font-weight:650}
+details summary:hover{background:#f4f8fd;border-radius:9px}
+details summary .count{margin-left:8px;color:var(--muted);font-size:12px;font-weight:450}
+details .details-body{padding:1px 15px 15px}
+.details-body>p{margin:0 0 10px}
+.footer{background:#fff;border-top:1px solid var(--border);padding:12px 25px;display:flex;align-items:center;justify-content:space-between;gap:10px 14px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.btn{border:1px solid #b8c8dc;border-radius:7px;background:white;color:#263f60;min-height:38px;padding:7px 12px;font-weight:650;white-space:nowrap}
+.btn:hover:not(:disabled){background:#edf4fe}
+.primary{background:var(--blue);border-color:var(--blue);color:white}
+.primary:hover:not(:disabled){background:#104ca9}
+.btn:disabled{cursor:default;opacity:.55}
+.status{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.status[data-tone=error]{color:#a42236}
+.status[data-tone=ok]{color:#17664e}
+.feedback{padding:11px 12px;border:1px solid #ccdced;border-radius:7px;background:#f4f8ff;margin-top:12px}
+.feedback[data-tone=error]{background:#fff4f4;color:#8b2232;border-color:#efc7cb}
+.feedback[data-tone=ok]{background:#edf9f4;color:#166049;border-color:#bfe1d2}
+.feedback strong,.feedback span{display:block}
+.feedback span{margin-top:2px;font-size:13px}
+.confirm{width:min(420px,calc(100% - 28px));border:0;border-radius:12px;padding:21px;color:inherit;box-shadow:0 16px 65px #0f254355}
+.confirm::backdrop{background:#182b4680}
+.confirm p{margin:8px 0 17px}
+.confirm .actions{justify-content:flex-end}
+@media(max-width:760px){
+  .workspace{display:block}.app-side{display:none}
+  .dialog{width:calc(100% - 20px)}
+  .layout{height:calc(100dvh - 22px)}
+  .hero{padding:15px 16px}
+  .hero h2{font-size:21px}
+  .form-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .rail{padding:7px 10px;border-right:0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  .nav-item{text-align:center;padding:6px 3px}
+  .nav-item span{display:none}
+  .scroll{padding:15px 15px 18px}
+  .footer{padding:10px 14px}
+}
+@media(max-width:540px){
+  .shell{gap:12px;padding:8px 14px}.shell-nav{gap:12px}.shell-nav b{padding:5px 0}
+  main{padding:14px}.hero .identity{gap:4px 9px}
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .footer{display:grid;grid-template-columns:minmax(0,1fr);gap:5px}
+  .actions{justify-content:end}
+  .status{min-height:19px}
+  .row{padding:12px}
+}
+</style>
+</head>
+<body>
+<header class="shell">
+  <div class="brand"><span class="mark">K</span> kube-aiops</div>
+  <div class="shell-nav"><span>诊断控制台</span><b>资源管理</b><span>运维知识库</span><span>系统管理</span></div>
+</header>
+<div class="workspace">
+  <aside class="app-side"><b>资源管理</b><p>集群资源</p><strong>Kubernetes 集群管理</strong><p>平台目录</p><span>环境管理</span><span>业务线管理</span><span>数据源管理</span></aside>
+  <main>
+    <p class="crumb">资源管理 › Kubernetes 集群管理</p>
+    <h1>Kubernetes 集群管理</h1>
+    <div class="sample-list">
+      <div class="row"><div><strong id="list-group"></strong><p class="hint" id="list-meta"></p></div><button type="button" class="btn" id="open-editor">编辑配置</button></div>
+      <div class="row"><div><strong>测试-K8S集群</strong><p class="hint">本地自动采集 · 测试</p></div></div>
+    </div>
+    <p class="hint" id="list-status" role="status"></p>
+    <div class="demo">
+      <strong>原型演示</strong><p class="hint">选择演示结果后重新打开编辑配置。请使用示例地址与凭据。</p>
+      <label>连接测试<select id="scenario-test"><option value="success">成功</option><option value="permission">节点权限不足</option><option value="network">连接超时</option></select></label>
+      <label>保存配置<select id="scenario-save"><option value="success">成功</option><option value="failure">保存失败一次</option></select></label>
+    </div>
+  </main>
+</div>
+
+<dialog class="dialog" id="editor" aria-labelledby="editor-title">
+  <form class="layout" id="form" novalidate>
+    <header class="hero">
+      <div><h2 id="editor-title">编辑集群配置</h2><div class="identity">
+        <strong id="current-group"></strong><span>实例 ID <code>dev</code></span><span class="mode">外部直连</span>
+      </div></div>
+      <button type="button" class="close" aria-label="关闭编辑配置" id="close-editor">×</button>
+    </header>
+
+    <div class="form-layout">
+      <div class="rail" role="tablist" aria-label="配置分区">
+        <button type="button" class="nav-item" id="tab-basic" role="tab" aria-controls="basic" aria-selected="true"><strong>基本信息</strong><span>名称、归属和启用状态</span></button>
+        <button type="button" class="nav-item" id="tab-connect" role="tab" aria-controls="connect" aria-selected="false" tabindex="-1"><strong>连接与凭据</strong><span>API 地址和认证方式</span></button>
+        <button type="button" class="nav-item" id="tab-observe" role="tab" aria-controls="observe" aria-selected="false" tabindex="-1"><strong>观测与诊断</strong><span>Engine、证据源和 AI 复核</span></button>
+      </div>
+      <div class="scroll" id="content">
+        <section class="panel" id="basic" role="tabpanel" aria-labelledby="tab-basic">
+          <h3>基本信息</h3><p class="hint">设置集群在资源列表中的名称、归属和采集状态。</p>
+          <div class="card grid">
+            <div class="field"><label for="group">集群名称 <span class="req" aria-hidden="true">*</span></label><input id="group" name="group" required aria-describedby="group-help"><span class="hint" id="group-help">资源列表中的集群分组名称。</span></div>
+            <div class="field"><label for="name">实例名称 <span class="req" aria-hidden="true">*</span></label><input id="name" name="name" required aria-describedby="name-help"><span class="hint" id="name-help">用于识别当前采集实例。</span></div>
+            <div class="field"><label for="environment">环境</label><input id="environment" value="研发" readonly aria-describedby="environment-help"><span class="hint" id="environment-help">首次采集已成功，环境已锁定。</span></div>
+            <div class="field"><label for="business">业务线 <span class="req" aria-hidden="true">*</span></label><select id="business" name="business" required><option>全局</option><option>运维</option><option>有数</option><option>云帆</option></select></div>
+            <div class="field"><label for="clusterType">集群类型</label><select id="clusterType" name="clusterType"><option value="shared">共用集群</option><option value="dedicated">独立业务集群</option></select><span class="hint" id="type-help" hidden>独立业务集群须选择已登记的业务线。</span></div>
+          </div>
+          <div class="card switch-row"><div><label for="enabled">启用实例</label><p class="hint" id="enabled-help">停用将在保存后生效，平台会停止采集该实例。</p></div><input type="checkbox" class="switch" role="switch" id="enabled" name="enabled" aria-describedby="enabled-help"></div>
+        </section>
+
+        <section class="panel" id="connect" role="tabpanel" aria-labelledby="tab-connect" hidden>
+          <h3>连接与凭据</h3><p class="hint">测试连接会验证 Kubernetes API 和节点读取权限。</p>
+          <div class="card grid">
+            <div class="field full"><label for="apiURL">Kubernetes API 地址 <span class="req" id="api-required" aria-hidden="true">*</span></label><input id="apiURL" name="apiURL" type="url" required aria-describedby="api-help" placeholder="https://kubernetes.example.com:6443"><span class="hint" id="api-help"></span></div>
+            <div class="field full"><label for="credentialKind">凭据方式</label><select id="credentialKind" name="credentialKind" aria-describedby="credential-help"><option value="">沿用 kubeconfig</option><option value="kubeconfig">使用新的 kubeconfig</option><option value="token">使用 ServiceAccount Token</option><option value="certificate">使用客户端证书与私钥</option></select><span class="hint" id="credential-help"></span></div>
+            <div class="field full" data-credential="kubeconfig" hidden><label for="kubeconfig">kubeconfig <span class="req" aria-hidden="true">*</span></label><textarea id="kubeconfig" name="kubeconfig" autocomplete="off" spellcheck="false" placeholder="粘贴示例 kubeconfig" disabled></textarea></div>
+            <div class="field full" data-credential="token" hidden><label for="token">只读 Token <span class="req" aria-hidden="true">*</span></label><input type="password" id="token" name="token" autocomplete="off" disabled></div>
+            <div class="field full" data-credential="token certificate" hidden><label for="ca">Kubernetes CA（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="ca" name="ca" autocomplete="off" spellcheck="false" disabled></textarea></div>
+            <div class="field" data-credential="certificate" hidden><label for="certificate">客户端证书（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="certificate" name="certificate" autocomplete="off" spellcheck="false" disabled></textarea></div>
+            <div class="field" data-credential="certificate" hidden><label for="privateKey">客户端私钥（PEM） <span class="req" aria-hidden="true">*</span></label><textarea id="privateKey" name="privateKey" autocomplete="off" spellcheck="false" disabled></textarea></div>
+          </div>
+          <div class="feedback" id="connection-result" role="status" hidden><strong></strong><span></span></div>
+        </section>
+
+        <section class="panel" id="observe" role="tabpanel" aria-labelledby="tab-observe" hidden>
+          <h3>观测与诊断</h3><p class="hint">设置诊断 Engine，并按需配置指标、日志和告警证据源。</p>
+          <div class="card">
+            <h4>诊断 Engine</h4>
+            <div class="grid">
+              <div class="field"><label for="engineNamespace">Engine 命名空间 <span class="req" aria-hidden="true">*</span></label><input id="engineNamespace" name="engineNamespace" required></div>
+              <div class="field"><label for="engineName">Engine 实例名 <span class="req" aria-hidden="true">*</span></label><input id="engineName" name="engineName" required></div>
+            </div>
+          </div>
+          <details class="card" id="sources"><summary>观测证据源 <span class="count" id="source-count"></span></summary>
+            <div class="details-body"><p class="hint">地址均为可选。清空已填写地址后保存，即移除该证据源配置。</p><div class="grid">
+              <div class="field"><label for="prometheusURL">Prometheus 地址</label><input id="prometheusURL" name="prometheusURL" type="url" placeholder="https://prometheus.example.com"></div>
+              <div class="field"><label for="victoriaLogsURL">VictoriaLogs 地址</label><input id="victoriaLogsURL" name="victoriaLogsURL" type="url" placeholder="https://logs.example.com"></div>
+              <div class="field"><label for="alertmanagerURL">Alertmanager 地址</label><input id="alertmanagerURL" name="alertmanagerURL" type="url" placeholder="https://alertmanager.example.com"></div>
+            </div></div>
+          </details>
+          <div class="card switch-row"><div><label for="aiEnabled">启用 AI 复核</label><p class="hint" id="ai-help">启用时，平台会读取目标 Engine Secret。</p></div><input type="checkbox" class="switch" role="switch" id="aiEnabled" name="aiEnabled" aria-describedby="ai-help"></div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p class="status" id="form-status" role="status" aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" class="btn" id="cancel">取消</button>
+        <button type="submit" class="btn" id="test">测试连接</button>
+        <button type="submit" class="btn primary" id="save" disabled>保存配置</button>
+      </div>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title">
+  <h3 id="confirm-title">放弃未保存的修改？</h3>
+  <p class="hint">关闭后，本次编辑的内容将被丢弃。</p>
+  <div class="actions"><button type="button" class="btn" id="keep-editing" autofocus>继续编辑</button><button type="button" class="btn primary" id="discard">放弃修改</button></div>
+</dialog>
+
+<script>
+const byId = (id) => document.getElementById(id);
+const editor = byId("editor");
+const confirmClose = byId("confirm");
+const form = byId("form");
+const status = byId("form-status");
+const save = byId("save");
+const test = byId("test");
+const tabs = [...form.querySelectorAll("[role=tab]")];
+const sourceIds = ["prometheusURL", "victoriaLogsURL", "alertmanagerURL"];
+const credentialIds = ["kubeconfig", "token", "ca", "certificate", "privateKey"];
+const kindNames = { kubeconfig: "kubeconfig", token: "ServiceAccount Token", certificate: "客户端证书" };
+let stored = {
+  group: "研发-K8S集群", name: "dev-k8s", business: "全局", clusterType: "shared", enabled: true,
+  apiURL: "https://kube-api.dev.example.com:6443", engineNamespace: "k8sgpt-operator-system",
+  engineName: "k8sgpt-zhipu", prometheusURL: "", victoriaLogsURL: "", alertmanagerURL: "", aiEnabled: false
+};
+let storedKind = "kubeconfig";
+let busy = false;
+const configIds = Object.keys(stored);
+
+function fieldValue(id) {
+  const input = byId(id);
+  return input.type === "checkbox" ? input.checked : input.value.trim();
+}
+function isDirty() {
+  return Boolean(byId("credentialKind").value) || configIds.some((id) => fieldValue(id) !== stored[id]);
+}
+function setStatus(message, tone = "") {
+  status.textContent = message;
+  status.dataset.tone = tone;
+}
+function refreshState() {
+  save.disabled = busy || !isDirty();
+  test.disabled = busy;
+  byId("source-count").textContent = sourceIds.filter((id) => fieldValue(id)).length + " / 3 项已填写";
+  byId("type-help").hidden = fieldValue("clusterType") !== "dedicated";
+}
+function refreshList() {
+  byId("list-group").textContent = stored.group;
+  byId("list-meta").textContent = stored.name + " · 外部直连 · 研发 · " + (stored.enabled ? "已启用" : "已停用");
+}
+function activate(panel, moveFocus = false, scrollToTop = true) {
+  for (const tab of tabs) {
+    const target = tab.getAttribute("aria-controls");
+    const active = target === panel;
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+    byId(target).hidden = !active;
+    if (active && moveFocus) tab.focus();
+  }
+  if (scrollToTop) byId("content").scrollTop = 0;
+}
+function clearError(field) {
+  if (!field.hasAttribute("aria-invalid")) return;
+  field.removeAttribute("aria-invalid");
+  const errorId = field.id + "-error";
+  byId(errorId)?.remove();
+  const remaining = (field.getAttribute("aria-describedby") || "").split(" ").filter((id) => id && id !== errorId);
+  if (remaining.length) field.setAttribute("aria-describedby", remaining.join(" "));
+  else field.removeAttribute("aria-describedby");
+}
+function showError(field, message) {
+  clearError(field);
+  const error = document.createElement("span");
+  error.className = "error";
+  error.id = field.id + "-error";
+  error.textContent = message;
+  field.after(error);
+  field.setAttribute("aria-invalid", "true");
+  field.setAttribute("aria-describedby", [field.getAttribute("aria-describedby"), error.id].filter(Boolean).join(" "));
+  const details = field.closest("details");
+  if (details) details.open = true;
+  activate(field.closest(".panel").id, false, false);
+  field.focus();
+  field.scrollIntoView({ block: "nearest" });
+  setStatus(message, "error");
+}
+function syncCredentials(reset = false) {
+  const kind = byId("credentialKind").value;
+  for (const wrapper of form.querySelectorAll("[data-credential]")) {
+    const field = wrapper.querySelector("input, textarea");
+    if (reset) field.value = "";
+    clearError(field);
+    wrapper.hidden = !wrapper.dataset.credential.split(" ").includes(kind);
+    field.disabled = wrapper.hidden;
+    field.required = !wrapper.hidden;
+  }
+  const fromKubeconfig = kind === "kubeconfig";
+  byId("apiURL").disabled = fromKubeconfig;
+  byId("apiURL").required = !fromKubeconfig;
+  byId("api-required").hidden = fromKubeconfig;
+  if (fromKubeconfig) clearError(byId("apiURL"));
+  byId("api-help").textContent = fromKubeconfig ? "API 地址由新 kubeconfig 提供。" : "平台通过此地址访问目标集群。";
+  byId("credential-help").textContent = kind ? "保存新凭据时会再次校验节点读取权限。" : "沿用已保存的 " + kindNames[storedKind] + "。";
+}
+function connectionFeedback(tone, title, message) {
+  const result = byId("connection-result");
+  result.hidden = !title;
+  result.dataset.tone = tone;
+  result.querySelector("strong").textContent = title;
+  result.querySelector("span").textContent = message;
+}
+function openEditor() {
+  for (const id of configIds) {
+    const field = byId(id);
+    if (field.type === "checkbox") field.checked = stored[id];
+    else field.value = stored[id];
+  }
+  for (const field of form.querySelectorAll("[aria-invalid]")) clearError(field);
+  byId("current-group").textContent = stored.group;
+  byId("credentialKind").selectedIndex = 0;
+  byId("credentialKind").options[0].textContent = "沿用 " + kindNames[storedKind];
+  byId("sources").open = false;
+  syncCredentials(true);
+  connectionFeedback("", "", "");
+  activate("basic");
+  setStatus("暂无未保存的修改");
+  refreshState();
+  editor.showModal();
+  byId("tab-basic").focus();
+}
+function requestClose() {
+  if (busy) return;
+  if (isDirty()) confirmClose.showModal();
+  else editor.close();
+}
+function isWebURL(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+function validationError() {
+  for (const id of ["group", "name", "apiURL", ...credentialIds, "engineNamespace", "engineName", ...sourceIds]) {
+    const field = byId(id);
+    if (field.disabled) continue;
+    const label = field.labels[0].childNodes[0].textContent.trim();
+    if (field.required && !fieldValue(id)) return [field, "请填写" + label + "。"];
+    if (field.type === "url" && fieldValue(id) && !isWebURL(fieldValue(id))) {
+      return [field, label + "需使用有效的 HTTP 或 HTTPS 地址。"];
+    }
+  }
+  if (fieldValue("clusterType") === "dedicated" && fieldValue("business") === "全局") {
+    return [byId("business"), "独立业务集群须选择已登记的业务线。"];
+  }
+}
+for (const tab of tabs) {
+  tab.addEventListener("click", () => activate(tab.getAttribute("aria-controls")));
+  tab.addEventListener("keydown", (event) => {
+    const delta = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
+    if (delta === undefined && !["Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+      : (tabs.indexOf(tab) + delta + tabs.length) % tabs.length;
+    activate(tabs[index].getAttribute("aria-controls"), true);
+  });
+}
+form.addEventListener("input", (event) => {
+  if (event.target.id === "credentialKind") syncCredentials(true);
+  clearError(event.target);
+  if (event.target.id === "clusterType") clearError(byId("business"));
+  if (["apiURL", "credentialKind", ...credentialIds].includes(event.target.id)) connectionFeedback("", "", "");
+  if (!busy) setStatus(isDirty() ? "有未保存的修改" : "暂无未保存的修改");
+  refreshState();
+});
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const testing = event.submitter === test;
+  if (busy || (!testing && !isDirty())) return;
+  const invalid = validationError();
+  if (invalid) {
+    showError(...invalid);
+    return;
+  }
+  busy = true;
+  form.setAttribute("aria-busy", "true");
+  const fields = [...form.querySelectorAll("input, select, textarea")].filter((field) => !field.disabled);
+  for (const field of fields) field.disabled = true;
+  setStatus(testing ? "正在测试连接…" : "正在保存配置…");
+  refreshState();
+  await new Promise((resolve) => setTimeout(resolve, 520));
+  for (const field of fields) field.disabled = false;
+  busy = false;
+  form.removeAttribute("aria-busy");
+  if (testing) {
+    const scenario = byId("scenario-test").value;
+    const result = {
+      success: ["ok", "连接测试通过", "Kubernetes API 可访问，节点读取权限验证通过。"],
+      permission: ["error", "节点读取权限不足", "请核对凭据对应的身份是否具有集群级 list nodes 权限。"],
+      network: ["error", "Kubernetes API 连接超时", "请检查平台到目标 API 地址的网络连通性。"]
+    }[scenario];
+    connectionFeedback(...result);
+    activate("connect");
+    byId("tab-connect").focus();
+    byId("connection-result").scrollIntoView({block:"nearest"});
+    setStatus(result[1], result[0]);
+  } else if (byId("scenario-save").value === "failure") {
+    byId("scenario-save").value = "success";
+    setStatus("保存失败，已保留本次修改。请重试。", "error");
+  } else {
+    const kind = byId("credentialKind").value;
+    for (const id of configIds) {
+      if (id === "apiURL" && kind === "kubeconfig") {
+        const server = fieldValue("kubeconfig").match(/^\s*server:\s*(https?:\/\/[^\s]+)\s*$/m);
+        if (server) stored.apiURL = server[1];
+      } else stored[id] = fieldValue(id);
+    }
+    if (kind) storedKind = kind;
+    refreshList();
+    editor.close();
+    byId("list-status").textContent = "已保存 " + stored.group + " 的配置。";
+  }
+  refreshState();
+});
+byId("open-editor").addEventListener("click", openEditor);
+byId("close-editor").addEventListener("click", requestClose);
+byId("cancel").addEventListener("click", requestClose);
+byId("keep-editing").addEventListener("click", () => confirmClose.close());
+byId("discard").addEventListener("click", () => {
+  confirmClose.close();
+  editor.close();
+});
+editor.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  requestClose();
+});
+editor.addEventListener("close", () => {
+  byId("credentialKind").selectedIndex = 0;
+  syncCredentials(true);
+  byId("open-editor").focus();
+});
+refreshList();
+openEditor();
+</script>
+</body>
+</html>

@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kube-aiops · 系统管理全局交互原型</title>
+<style>
+:root{color-scheme:light;--ink:#16263a;--muted:#596c82;--line:#dfe6ed;--paper:#fff;--bg:#f2f6f9;--mint:#a8e3cc;--teal:#00664f;--night:#102335;--shadow:0 14px 42px #142b3c15}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #149b7c;outline-offset:3px}button:disabled{cursor:not-allowed;opacity:.48}h1,h2,h3,p{margin:0}h1{font-size:35px;letter-spacing:-.04em;line-height:1.2}h2{font-size:19px}h3{font-size:15px}small,.muted{color:var(--muted)}small{font-size:12px}.mono{font:12px "IBM Plex Mono",monospace}.top{height:62px;position:sticky;top:0;z-index:5;background:var(--night);color:#fff;display:flex;align-items:center;padding:0 27px;gap:17px}.mark{display:grid;place-items:center;width:31px;height:31px;border-radius:9px;background:var(--mint);color:#12352e;font-size:18px;font-weight:800}.brand{font-weight:750;font-size:17px;letter-spacing:-.025em}.top .divider{border-left:1px solid #446072;height:21px}.top small{color:#bed0dc}.top .mode{margin-left:auto;display:flex;align-items:center;gap:12px}.top select{background:#20394c;color:#fff;border-color:#466074;max-width:165px}.frame{display:grid;grid-template-columns:218px minmax(0,1fr);min-height:calc(100vh - 62px)}aside.nav{background:#fff;border-right:1px solid var(--line);padding:32px 17px;min-height:100%}.nav h2{font-size:12px;color:#627689;letter-spacing:.08em;padding:0 11px 12px}.nav button{width:100%;text-align:left;display:flex;align-items:center;gap:12px;background:none;border:0;color:#405369;border-radius:8px;padding:11px;margin:2px 0}.nav button[aria-current=page]{background:#e0f4ec;color:#005942;font-weight:700}.nav button:hover{background:#edf5f7}.icon{width:20px;text-align:center;font-size:16px}.nav .note{font-size:12px;color:#688092;border-top:1px solid var(--line);margin-top:30px;padding:17px 10px}main{min-width:0;padding:28px 34px 48px;max-width:1750px;width:100%}.bread{font-size:12px;color:#65798e;margin-bottom:16px}.hero{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:23px}.hero p{margin-top:8px;color:var(--muted)}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.between{justify-content:space-between}.btn{border:1px solid #cbd7e0;background:white;border-radius:8px;padding:7px 11px;color:#263e55;font-weight:650;white-space:nowrap}.btn:hover{background:#edf6f4}.btn.primary{background:#00664f;color:#fff;border-color:#00664f}.btn.primary:hover{background:#005440}.btn.danger{color:#a33144}.link{border:0;background:none;color:#00664f;font-weight:700;padding:2px;text-align:left}.link:hover{text-decoration:underline}.panel{background:var(--paper);border:1px solid var(--line);border-radius:13px;box-shadow:0 3px 7px #182c3d05;min-width:0}.pad{padding:19px}.split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(325px,1fr);gap:17px;align-items:start}.half{grid-template-columns:1fr 1fr}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:17px}.stat{padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}.stat strong{font-size:25px;line-height:1;color:#174b43;font-variant-numeric:tabular-nums}.filters{padding:14px 14px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.filters input[type=search]{flex:1;min-width:140px}.filters select{max-width:150px}.scroll{overflow:auto}.table{width:100%;border-collapse:collapse;text-align:left}.table th,.table td{border-bottom:1px solid #e8edf2;padding:11px 11px;vertical-align:middle}.table th{font-size:12px;color:#51677a;background:#f6f9fb;font-weight:700;white-space:nowrap}.table tr:last-child td{border-bottom:0}.table tr.active td{background:#eaf7f2}.table tr:hover td{background:#f2f8f8}.user-cell{display:flex;gap:9px;align-items:center;min-width:122px}.avatar{flex:none;width:30px;height:30px;display:grid;place-items:center;background:#e1f0f9;color:#245c82;border-radius:8px;font-weight:750}.avatar.dark{color:#fff;background:#24485f}.avatar.mint{color:#065b47;background:#d9f1e7}.tag{display:inline-block;border-radius:5px;background:#e9eff5;color:#375571;font-size:11px;font-weight:700;padding:2px 6px;white-space:nowrap}.tag.ok{color:#075942;background:#dcf2e7}.tag.bad{color:#9f293b;background:#fbe8ec}.tag.warn{color:#805016;background:#fff0d8}.foot{padding:11px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.detailhead{padding:15px 15px 11px;border-bottom:1px solid var(--line)}.detailhead .avatar{width:37px;height:37px}.tabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 13px;border-bottom:1px solid var(--line)}.tabs button{padding:11px 9px;border:0;background:none;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}.tabs button[aria-selected=true]{color:var(--teal);font-weight:700;border-color:var(--teal)}.scope{padding:11px 12px;border:1px solid var(--line);border-radius:8px;margin:8px 0;background:#fbfdfe}.scope p{margin:5px 0}.source{font-size:12px;color:#3c6160;margin:4px 0}.spacer{height:12px}.gridform{display:grid;grid-template-columns:1fr 1fr;gap:13px}.wide{grid-column:1/-1}label.field{display:grid;gap:5px;color:#42566a;font-size:13px;font-weight:650}input:not([type=checkbox]),select{width:100%;border:1px solid #cbd7e0;border-radius:7px;background:white;padding:8px 9px;color:var(--ink);min-width:0}input[type=checkbox]{accent-color:#00664f}.notice{background:#e8f5f0;color:#205746;border:1px solid #c7e5da;border-radius:8px;padding:10px 12px;margin:10px 0}.notice.warn{background:#fff5e7;color:#775016;border-color:#f0dfbf}.stack>*+*{margin-top:11px}.list{padding:0;list-style:none}.list li{padding:11px 0;border-bottom:1px solid var(--line)}.list li:last-child{border-bottom:0}dialog{width:min(580px,calc(100vw - 28px));max-height:calc(100vh - 38px);border:1px solid var(--line);border-radius:14px;padding:0;box-shadow:var(--shadow);color:var(--ink)}dialog::backdrop{background:#101f31a8}dialog header,dialog footer{padding:14px 19px;border-bottom:1px solid var(--line)}dialog footer{border-top:1px solid var(--line);border-bottom:0;justify-content:flex-end}dialog section{padding:17px 19px}.toast{position:fixed;right:21px;bottom:21px;background:var(--night);color:white;padding:11px 15px;border-radius:9px;z-index:20;box-shadow:var(--shadow);max-width:calc(100vw - 42px)}.toast:empty{display:none}.check{display:flex;align-items:center;gap:8px;padding:8px 0}.hidden{display:none!important}.audit a{color:#00664f}.timeline li{padding-left:13px;border-left:2px solid #b6ded0}.detailbody{padding:14px}.code{background:#132b3c;color:#e9faf5;padding:12px;border-radius:8px;overflow:auto}
+@media(max-width:1150px){main{padding:24px 20px}.frame{grid-template-columns:175px 1fr}.split{grid-template-columns:1fr}.half{grid-template-columns:1fr 1fr}}@media(max-width:680px){.top{padding:0 10px;gap:8px}.top .divider,.top .project,.top .mode small{display:none}.frame{display:block}.nav h2,.nav .note,.nav .icon{display:none}aside.nav{display:flex;gap:4px;flex-wrap:wrap;padding:5px;border:0;border-bottom:1px solid var(--line)}.nav button{width:auto;padding:7px;font-size:12px}main{padding:16px 10px}.hero{align-items:start;flex-direction:column}h1{font-size:28px}.half,.gridform{grid-template-columns:1fr}.stats{gap:4px}.stat{padding:7px;display:block}.stat strong{display:block;font-size:19px}.table td,.table th{padding:8px 7px}}
+.user-selection { justify-content:space-between }
+.user-selection > [data-action="delete-user"] { margin-inline-start:auto }
+#dialog .btn.confirm-danger { background:#a33144; border-color:#a33144; color:white }
+.account-identity { min-width: 0; overflow-wrap: anywhere; }
+.account-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px }
+.account-toolbar .row { margin-inline-start:auto }
+.account-bindings { margin:0 }
+.account-binding { display:grid; grid-template-columns:minmax(4.5rem,max-content) minmax(0,1fr); align-items:baseline; gap:8px 12px; padding:10px 0; border-bottom:1px solid var(--line) }
+.account-binding dt { color:var(--muted); font-weight:650 }
+.account-binding dd { margin:0; display:flex; flex-wrap:wrap; gap:6px; overflow-wrap:anywhere }
+.account-bindings-footer { display:flex; justify-content:flex-end; margin-top:12px }
+.audit-retention { display:grid; gap:14px; margin-bottom:16px }
+.audit-retention-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px }
+.audit-retention-card { display:grid; align-content:start; justify-items:start; gap:8px; min-width:0; padding:12px; border:1px solid var(--line); border-radius:9px; background:#f8fafc }
+.audit-retention-card strong { font-size:20px; line-height:1.2; font-variant-numeric:tabular-nums }
+.audit-retention-card small { font-size:12px; font-weight:500 }
+.audit-list-heading { padding:17px 19px 5px }
+.audit-filters { display:grid; grid-template-columns:minmax(150px,1.5fr) repeat(2,minmax(110px,1fr)) auto; gap:10px; align-items:end; padding:12px 19px }
+.audit-filters .btn,.audit-list-foot .btn,.audit-detail .btn { min-height:40px }
+.audit-list-batch { margin:0 19px 12px; overflow-wrap:anywhere }
+.audit-table-wrap { overflow:auto; overscroll-behavior-inline:contain }
+.audit-table-wrap:focus-visible { outline:3px solid #149b7c; outline-offset:-3px }
+.audit-table-wrap .table { min-width:740px }
+.audit-table-wrap :is(td:nth-child(2),td:nth-child(5)) { max-width:13rem; overflow-wrap:anywhere }
+.audit-table-wrap td:last-child { width:1%; white-space:nowrap }
+.audit-table-wrap td:last-child .btn { min-height:36px }
+.audit-list-foot { min-height:56px; justify-content:flex-end }
+.audit-demo-pager { justify-content:flex-end; flex-wrap:wrap }
+.audit-demo-pager select { min-height:40px }
+.audit-demo-size { flex-basis:100%; justify-content:flex-end; flex-wrap:wrap }
+.audit-demo-size input { width:4.5rem }
+.audit-detail { display:grid; grid-template-rows:auto minmax(0,1fr) auto; max-height:calc(100dvh - 38px) }
+.audit-detail h2 { font-size:clamp(18px,3vw,22px); overflow-wrap:anywhere }
+.audit-detail h2:focus-visible { outline:2px solid #149b7c; outline-offset:3px }
+.audit-detail header .row { margin-top:8px }
+.audit-detail section { overflow:auto; overscroll-behavior:contain }
+.audit-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; margin:0 }
+.audit-meta div { padding:8px 0; border-bottom:1px solid var(--line) }
+.audit-meta dt { color:var(--muted); font-size:12px; font-weight:700 }
+.audit-meta dd { margin:4px 0 0; overflow-wrap:anywhere }
+.audit-reason { margin-top:16px; padding:11px 12px; border:1px solid #f0dfbf; border-radius:8px; background:#fff8ec; overflow-wrap:anywhere }
+.audit-reason p { margin-top:4px; white-space:pre-wrap }
+.audit-detail .audit-items { margin-top:16px }
+.audit-detail .audit-items .table { min-width:400px }
+@media(max-width:760px) {
+ .audit-filters { grid-template-columns:repeat(2,minmax(0,1fr)) }
+ .audit-filters .audit-search { grid-column:1/-1 }
+ .audit-filters .btn { justify-self:start }
+}
+@media(max-width:440px) {
+ .audit-retention-card { padding:9px; gap:6px }
+ .audit-retention-card strong { font-size:16px }
+ .audit-meta { grid-template-columns:1fr; gap:6px }
+ .audit-detail footer { gap:8px; padding-inline:12px }
+}
+/* 采用系统管理同级入口，减少角色和权限之间的往返。 */
+.frame{display:block;width:min(1360px,calc(100% - 2rem));margin:1.5rem auto 3rem}
+.area-title{font-weight:760;font-size:clamp(1.55rem,3.7vw,2.15rem);margin:0 0 .8rem}
+.workspace{border:1px solid var(--line);border-radius:12px;background:#fff;min-width:0}
+aside.nav{display:flex;align-items:center;flex-wrap:wrap;gap:4px;background:#fff;border:0;border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;padding:.5rem .95rem}
+.nav h2,.nav .note,.nav .icon,.bread{display:none}.nav button{width:auto;padding:.55rem .75rem}
+.workspace main{max-width:none;padding:1.1rem 1.3rem 1.55rem}.hero{margin-bottom:1rem}.hero h1{font-size:clamp(1.28rem,2.5vw,1.7rem)}
+#dialog.role-dialog{width:min(720px,calc(100vw - 28px))}.quick-fieldset{border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;min-width:0}
+.quick-fieldset .check{padding:.2rem .3rem}.quick-fieldset legend{font-weight:700}.quick-diff{margin:.45rem 0}.assign-options{max-height:28vh;overflow:auto}.check[hidden]{display:none}.namespace-options{display:flex;flex-wrap:wrap;gap:.25rem .75rem;align-items:center}.namespace-options small{flex-basis:100%}.namespace-options .check{overflow-wrap:anywhere}.nav .icon{display:none}
+@media(max-width:680px){.frame{width:calc(100% - 1rem);margin-top:.7rem}.workspace main{padding:.8rem}.nav button{padding:.35rem .45rem}.nav{border-radius:12px 12px 0 0}}
+.ldap-editor{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);align-items:start;gap:1rem}
+.ldap-editor section{min-width:0;border:1px solid var(--line);border-radius:8px}
+.ldap-editor .field input,.ldap-editor .field select{width:100%;min-width:0}
+.ldap-editor details .field{margin-top:.45rem}
+.ldap-card>summary{cursor:pointer;font-weight:700;padding:.25rem 0}
+.ldap-card[open]>summary{margin-bottom:1rem}
+@media(max-width:850px){.ldap-editor{grid-template-columns:minmax(0,1fr)}}
+</style></head>
+<body>
+<header class="top"><span class="mark" aria-hidden="true">k</span><span class="brand">kube-aiops</span><span class="divider"></span><small class="project">运维控制台</small><div class="mode"><small>原型身份</small><select id="actor" aria-label="切换原型身份"><option value="super">超级管理员</option><option value="admin">系统管理员</option><option value="ldap">LDAP 员工（李伟）</option><option value="guest">本地访客</option><option value="temporary">访客待改密</option><option value="expired">会话过期（演示）</option><option value="denied">审计访问被拒绝（演示）</option></select></div></header>
+<div class="frame"><div class="area-title" id="area-title">系统管理</div><div class="workspace"><aside class="nav" aria-label="系统管理导航" id="nav"></aside><main id="main"></main></div></div>
+<dialog id="dialog"></dialog><div class="toast" id="toast" role="status"></div>
+<script>
+"use strict";
+const $ = (selector, root = document) => root.querySelector(selector);
+const all = (selector, root = document) => [...root.querySelectorAll(selector)];
+const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const systemAdminRole = "system-admin";
+const state = {
+  page:"users", actor:"super", guestAccount:"visitor-qa", detail:"liwei", tab:"effective", q:"", filter:"", status:"", checked:new Set(), permissionTab:"roles",
+  auditFilter:{q:"",type:"",level:"",batch:""}, auditPage:0, auditPageSize:10, auditCustomSize:false, auditAccess:"", retention:{"低":3,"中":5,"高":7},
+  ldapOpen:false, tested:false, ldapSteps:[], ldapTest:{account:"",password:"",failure:"tcp",message:""},
+  ldap:{address:"ldaps://directory.example.internal:636",bind:"CN=svc-aiops,OU=Service Accounts,DC=example,DC=internal",base:"OU=Employees,DC=example,DC=internal",attribute:"sAMAccountName",userFilter:"",groupAttribute:"memberOf",groupBase:"",groupFilter:"",range:"整个子树",groupScope:"",allowPlain:false,passwordConfigured:true},
+  groups:[{id:"g1",name:"云帆生产观察组",roles:["r1"],desc:"生产业务命名空间历史诊断"},{id:"g2",name:"研测运维组",roles:["r2"],desc:"研发、测试环境诊断查看"}],
+  roles:[{id:"guest",name:"访客只读",fixed:true,scopes:[["研发","全部集群","—","全部命名空间"],["测试","全部集群","—","全部命名空间"]]},{id:systemAdminRole,name:"系统管理员",fixed:true,scopes:[]},{id:"r1",name:"云帆生产诊断",scopes:[["生产","prod-shared","云帆","yunfan-api"],["生产","prod-shared","云帆","yunfan-jobs"]]},{id:"r2",name:"研发集群观察",scopes:[["研发","dev-k8s","—","全部命名空间"]]},{id:"r3",name:"预发布诊断观察",scopes:[["预发布","stg-yunfan","云帆","yunfan-api"]]}],
+  users:[
+    {id:"superadmin",name:"超级管理员",type:"super",status:"enabled",roles:[systemAdminRole],groups:[],time:"今天 09:12"},
+    {id:"ops.liu",name:"刘洋",type:"admin",status:"enabled",roles:[systemAdminRole],groups:[],time:"今天 10:32"},
+    {id:"liwei",name:"李伟",dn:"ldap:cn=李伟,ou=安全组,ou=公共支撑部,ou=研发管理中心,ou=platform-engineering,dc=example,dc=internal",type:"ldap",status:"enabled",roles:["guest","r1"],groups:["g1"],time:"今天 14:26"},
+    {id:"zhangmin",name:"张敏",type:"ldap",status:"enabled",roles:["guest","r3"],groups:["g2"],time:"今天 13:08"},
+    {id:"chenyu",name:"陈宇",type:"ldap",status:"disabled",roles:["guest"],groups:["g2"],time:"昨天 18:42"},
+    {id:"visitor-qa",name:"测试访客",type:"guest",status:"enabled",roles:["guest"],groups:[],time:"今天 11:06"},
+    {id:"visitor-demo",name:"演示访客",type:"guest",status:"temporary",roles:["guest"],groups:[],time:"—"}
+  ],
+  audits:[
+    {time:"2026-11-17 14:28:12",who:"superadmin",type:"批量授予角色",level:"高",target:"liwei、visitor-qa",result:"部分成功",batch:"batch-demo-01",items:[["liwei","成功","已授予云帆生产诊断"],["visitor-qa","失败","本地访客只能关联预置访客角色"]]},
+    {time:"2026-11-17 14:28:12",who:"superadmin",type:"授予角色",level:"高",target:"visitor-qa",result:"失败",batch:"batch-demo-01",reason:"本地访客只能关联预置访客角色"},
+    {time:"2026-11-17 14:28:11",who:"superadmin",type:"授予角色",level:"高",target:"liwei",result:"成功",batch:"batch-demo-01"},
+    {time:"2026-11-17 14:26:10",who:"liwei",type:"登录成功",level:"低",target:"liwei",result:"成功"},
+    {time:"2026-11-17 14:12:24",who:"LDAP 状态检查",type:"目录停用撤权",level:"高",target:"chenyu",result:"成功"},
+    {time:"2026-11-17 11:54:09",who:"zhangmin",type:"登录失败",level:"低",target:"zhangmin",result:"失败",reason:"目录认证未通过"},
+    {time:"2026-11-17 10:18:34",who:"superadmin",type:"创建系统管理员",level:"高",target:"ops.liu",result:"成功"},
+    {time:"2026-11-17 09:45:01",who:"服务器恢复脚本",type:"重置超级管理员密码",level:"高",target:"superadmin",result:"成功"}
+  ]
+};
+const auditClock = new Intl.DateTimeFormat("zh-CN", {timeZone:"Asia/Shanghai",year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+const auditTime = at => auditClock.format(at).replace(/\s/g,"");
+const auditDay = 86_400_000;
+const auditLevels = ["低","中","高"];
+const auditPageSizes = [10,20,50];
+const maxAuditDays = 106_751_991_167_300;
+const sampleAuditBase = Date.parse("2026-11-17T14:28:12+08:00");
+const sampleAuditNow = Date.now();
+for(const event of state.audits){
+ event.at=sampleAuditNow+Date.parse(event.time.replace(" ","T")+"+08:00")-sampleAuditBase;
+}
+const oldestSample = state.audits.at(-1).at;
+for (let index=1;index<=68;index++) state.audits.push({
+ at:oldestSample-index*60_000,who:"superadmin",type:"维护资源目录",level:"中",target:"测试环境 "+index,result:"成功"
+});
+const withinRetention = event => state.retention[event.level]>0 && event.at>Date.now()-state.retention[event.level]*auditDay;
+const user = id => state.users.find(u => u.id === id);
+const role = id => state.roles.find(r => r.id === id);
+const group = id => state.groups.find(g => g.id === id);
+// LDAP 账号只通过生效的直接角色进入系统管理。
+const ldapAdmin = u => u?.type==="ldap" && u.roles.includes(systemAdminRole);
+const ldapActor = () => state.actor==="ldap" ? user("liwei") : undefined;
+const admin = () => {
+ const employee=ldapActor();
+ return ["super","admin"].includes(state.actor) ||
+  Boolean(ldapAdmin(employee) && employee.status==="enabled" && !employee.reloginRequired);
+};
+const canManageLDAP = u => admin() && u.type==="ldap" && (state.actor==="super" || !ldapAdmin(u));
+const canSelectUser = u => Boolean(u && u.type!=="super" && (!ldapAdmin(u) || state.actor==="super"));
+const types = {super:"超级管理员",admin:"系统管理员",ldap:"LDAP 员工",guest:"本地访客"};
+const statuses = {enabled:["启用","ok"],disabled:["停用","bad"],temporary:["待改密","warn"]};
+const tags = (label,cls="") => '<span class="tag '+cls+'">'+esc(label)+'</span>';
+const btn = (text,action,value="",cls="") => '<button type="button" class="btn '+cls+'" data-action="'+action+'" data-value="'+esc(value)+'">'+text+'</button>';
+const link = (text,action,value="") => '<button type="button" class="link" data-action="'+action+'" data-value="'+esc(value)+'">'+esc(text)+'</button>';
+const choices = (items, value) => items.map(([key,label])=>'<option value="'+esc(key)+'"'+(value===key?' selected':'')+'>'+esc(label)+'</option>').join("");
+const avatar = u => '<span class="avatar '+(u.type==="ldap"?"mint":u.type==="guest"?"":"dark")+'">'+esc(u.name.at(0))+'</span>';
+const header = (title,description,actions="") => '<div class="bread">系统管理 / '+title+'</div><div class="hero"><div><h1>'+title+'</h1><p>'+description+'</p></div><div class="row">'+actions+'</div></div>';
+// 风险保留天数为 0 时，演示写入入口直接跳过该类记录。
+function audit(type,target,level="中",items){
+ if(state.retention[level]===0)return;
+ const at=Date.now(),who=({super:"superadmin",admin:"ops.liu",ldap:"liwei",guest:"visitor-qa",temporary:"visitor-demo"})[state.actor];
+ const result=items?.some(item=>item[1]==="失败")?(items.some(item=>item[1]==="成功")?"部分成功":"失败"):"成功";
+ const batch=items?.length?"batch-demo-"+at+"-"+state.audits.length:"";
+ const children=items?.map(([id,outcome,reason])=>({at,who,type,level,target:id,result:outcome,reason:outcome==="失败"?reason:"",batch}))??[];
+ const recorded={at,who,type,level,target,result,items,batch};
+ state.audits.unshift(recorded,...children);
+ return recorded;
+}
+function notify(text){$("#toast").textContent=text;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$("#toast").textContent="",3300)}
+function table(headers,rows,empty="暂无符合条件的记录",scrollHeading=""){
+ const scroll=scrollHeading?' audit-table-wrap':'';
+ const region=scrollHeading?' role="region" aria-labelledby="'+esc(scrollHeading)+'" tabindex="0"':"";
+ return '<div class="scroll'+scroll+'"'+region+'><table class="table"><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join("")+'</tr></thead><tbody>'+(rows.join("")||'<tr><td colspan="'+headers.length+'">'+empty+'</td></tr>')+'</tbody></table></div>';
+}
+function navigate(page){state.page=page;location.hash=page;render()}
+const navs=[["ldap","认证配置","◇"],["users","用户管理","◎"],["permissions","权限管理","⊞"],["audit","操作审计","≡"],["password","修改密码","⊙"],["diagnosis","历史诊断","▤"]];
+function render(){
+ const employee=ldapActor();
+ $("#area-title").textContent=admin()?"系统管理":"我的工作台";
+ if(state.auditAccess==="expired"){
+  $("#nav").innerHTML="";
+  $("#main").innerHTML=header("重新登录","当前会话已过期。登录后可继续使用操作审计。")+
+   '<section class="panel pad">'+btn("模拟重新登录","audit-sign-in","","primary")+'</section>';
+  return;
+ }
+ if(employee?.reloginRequired||employee?.status==="disabled"){
+  $("#nav").innerHTML="";
+  $("#main").innerHTML=header("LDAP 重新登录","会话已失效，请使用公司目录凭据重新登录。")+
+   '<section class="panel pad">'+(employee.status==="enabled"?btn("模拟 LDAP 重新登录","ldap-login","","primary"):"当前账号已停用。")+'</section>';
+  return;
+ }
+ const allowed=admin()?navs.slice(0,5).filter(n=>!employee||n[0]!=="password"):state.actor==="temporary"?navs.filter(n=>n[0]==="password"):navs.filter(n=>n[0]==="diagnosis"||(state.actor==="guest"&&n[0]==="password"));
+ if(!allowed.some(n=>n[0]===state.page))state.page=allowed[0][0];
+ if(state.page!=="ldap"){
+  clearTimeout(ldapTimer);
+  state.ldapOpen=false;state.ldapDraft=null;state.ldapDirty=false;state.tested=false;state.ldapSteps=[];
+  state.ldapTest.account=state.ldapTest.password=state.ldapTest.message="";
+ }
+ $("#nav").innerHTML='<h2>'+(admin()?"系统管理":"我的工作台")+'</h2>'+allowed.map(([id,title,icon])=>'<button type="button" data-action="nav" data-value="'+id+'"'+(state.page===id?' aria-current="page"':'')+'><span class="icon" aria-hidden="true">'+icon+'</span>'+title+'</button>').join("")+'<div class="note">交互原型 · 模拟数据</div>';
+ $("#main").innerHTML=({users:usersPage,ldap:ldapPage,permissions:permissionsPage,audit:auditPage,password:passwordPage,diagnosis:diagnosisPage})[state.page]();
+}
+const scopeAction=s=>s[4]||"历史诊断查看";
+function effective(u){
+ const entries=new Map();
+ function add(rid,via){const r=role(rid);if(!r)return;for(const scope of r.scopes){const key=JSON.stringify([...scope.slice(0,4),scopeAction(scope)]);if(!entries.has(key))entries.set(key,{scope,sources:[]});entries.get(key).sources.push(via+" → "+r.name)}}
+ u.roles.forEach(id=>add(id,"直接授予"));u.groups.forEach(id=>{const g=group(id);g?.roles.forEach(r=>add(r,g.name))});return [...entries.values()];
+}
+function scopeName(s){return s.slice(0,4).filter(v=>v!=="—").join(" / ")}
+function userRows(){
+ const query=state.q.trim().toLowerCase();
+ return state.users.filter(u=>(!query||[u.name,u.id].join(" ").toLowerCase().includes(query))&&(!state.filter||u.type===state.filter)&&(!state.status||u.status===state.status));
+}
+function usersPage(){
+ const rows=userRows();
+ const selectable=rows.filter(canSelectUser);
+ const stat=(name,n)=>'<div class="stat panel"><span>'+name+'</span><strong>'+n+'</strong></div>';
+ const body=rows.map(u=>'<tr'+(u.id===state.detail?' class="active"':'')+'><td><input type="checkbox" aria-label="选择 '+esc(u.name)+'" data-check="'+esc(u.id)+'" '+(canSelectUser(u)?"":"disabled ")+(state.checked.has(u.id)?"checked":"")+'></td><td><div class="user-cell">'+avatar(u)+'<div>'+link(u.name,"detail",u.id)+'<br><small class="mono">'+esc(u.id)+'</small></div></div></td><td>'+tags(types[u.type])+'</td><td>'+tags(...statuses[u.status])+'</td><td>'+esc(u.time)+'</td></tr>');
+ const filters='<div class="filters"><input aria-label="搜索账号" type="search" id="user-q" placeholder="搜索用户名或账号" value="'+esc(state.q)+'"><select id="user-type" aria-label="账号类型">'+choices([["","全部类型"],...Object.entries(types)],state.filter)+'</select><select id="user-status" aria-label="账号状态">'+choices([["","全部状态"],...Object.entries(statuses).map(([k,[v]])=>[k,v])],state.status)+'</select></div>';
+ const checked=selectable.filter(u=>state.checked.has(u.id));
+ const target=checked.length===1&&canDeleteUser(checked[0])?checked[0]:null;
+ const selection=checked.length?'<div class="filters user-selection"><div class="row"><strong>已选 '+checked.length+' 项</strong>'+btn("批量授权 / 撤销","assign","batch","primary")+btn("取消选择","clear")+'</div>'+(target?btn("删除用户","delete-user",target.id,"danger"):'<button class="btn danger" disabled>删除用户</button>')+'</div>':"";
+ return header("用户管理","管理账号生命周期，并核对每项访问权限的来源。",btn("＋ 创建访客","new-user","guest","primary")+(state.actor==="super"?btn("创建系统管理员","new-user","admin"):""))+
+ '<div class="stats">'+stat("平台账号",state.users.length)+stat("LDAP 员工",state.users.filter(u=>u.type==="ldap").length)+stat("本地访客",state.users.filter(u=>u.type==="guest").length)+'</div><div class="split"><section class="panel">'+filters+selection+table(['<input type="checkbox" data-all aria-label="选择当前结果" '+(selectable.length&&selectable.every(u=>state.checked.has(u.id))?"checked":"")+'>',"账号","类型","状态","最近登录"],body)+'<div class="foot">共 '+rows.length+' 个账号</div></section>'+userDetail(user(state.detail))+'</div>';
+}
+function userDetail(u){
+ if(!u)return '<section class="panel pad">请选择一个账号。</section>';
+ const entries=effective(u);
+ const tabs=[["effective","生效权限"],["bindings","关联关系"]];
+ const canAssign=canManageLDAP(u);
+ let content;
+ if(state.tab==="bindings"){
+  content='<dl class="account-bindings"><div class="account-binding"><dt>用户组</dt><dd>'+(u.groups.map(g=>tags(group(g)?.name)).join("")||'<span class="muted">未加入用户组</span>')+'</dd></div><div class="account-binding"><dt>直接角色</dt><dd>'+(u.roles.map(r=>tags(role(r)?.name)).join("")||'<span class="muted">未分配直接角色</span>')+'</dd></div></dl><footer class="account-bindings-footer">'+(canAssign?"":u.type==="ldap"?'<small class="muted">该 LDAP 管理员由超级管理员维护。</small>':'<small class="muted">本地账号通过预置角色获得权限。</small>')+'</footer>';
+ }else{
+  content=u.status!=="enabled"?'<div class="notice warn">当前账号没有访问权限。启用并完成所需的改密后，按关联角色生效。</div>':["admin","super"].includes(u.type)||ldapAdmin(u)?'<div class="scope"><strong>全局管理与诊断查看</strong><div class="source">直接授予 → 系统管理员</div></div>':entries.length?entries.map(({scope,sources})=>'<div class="scope"><div class="row between"><strong>'+esc(scopeAction(scope))+'</strong>'+tags(sources.length+" 条来源","ok")+'</div><p>'+esc(scopeName(scope))+'</p>'+sources.map(x=>'<div class="source">'+esc(x)+'</div>').join("")+'</div>').join(""):'<p class="muted">没有生效权限，下次成功登录时恢复访客只读。</p>';
+ }
+ const lifecycle=canAssign||u.type==="guest"?btn(u.status==="disabled"?"重新启用":"停用","toggle",u.id,u.status==="disabled"?"":"danger")+(u.type==="guest"?btn("重置密码","reset",u.id):""):u.type==="admin"&&state.actor==="super"?btn("删除管理员","remove-admin",u.id,"danger"):"";
+ const actions=(canAssign?btn("分配或撤销","assign",u.id,"primary"):"")+lifecycle+btn("账号审计","account-audit",u.id);
+ return '<section class="panel"><div class="detailhead stack"><div class="row">'+avatar(u)+'<div class="account-identity"><h2>'+esc(u.name)+'</h2><small class="mono">'+esc(u.dn||u.id)+'</small></div></div><div class="account-toolbar">'+tags(...statuses[u.status])+'<div class="row">'+actions+'</div></div></div><div class="tabs" role="tablist" aria-label="用户详情">'+tabs.map(([k,v])=>'<button type="button" role="tab" aria-selected="'+(state.tab===k)+'" data-action="user-tab" data-value="'+k+'">'+v+'</button>').join("")+'</div><div class="detailbody">'+content+'</div></section>';
+}
+const ldapStages=["目录连接","搜索账号绑定","测试员工查询","测试员工认证"];
+const ldapFailures={
+ dns:[0,"API Pod 无法解析 LDAP 域名。"],tcp:[0,"API Pod 无法连接 LDAP 端口。"],
+ handshake:[0,"TCP 已连通，但 LDAPS 握手失败。"],certificate:[0,"LDAPS 证书校验失败，请核对域名和 CA。"],
+ bind:[1,"搜索账号绑定失败。"],search:[2,"测试员工查询失败。"],auth:[3,"测试员工认证失败。"]
+};
+const ldapSaveHint = () => state.tested ? "四项验证已通过，可以保存并启用。" : "请填写测试员工账号和密码，运行测试。四项验证通过后即可保存。";
+let ldapTimer;
+function ldapPage(){
+ const ds=state.ldapDraft||state.ldap;
+ const draft=(key,label,type="text")=>'<label class="field">'+label+'<input type="'+type+'" data-ldap="'+key+'" value="'+esc(ds[key])+'" '+(type==="password"?'autocomplete="new-password" placeholder="'+(state.ldap.passwordConfigured?"已配置，留空保留":"请输入 LDAP 搜索密码")+'"':"")+'></label>';
+ const testField=(key,label,type)=>'<label class="field">'+label+'<input type="'+type+'" data-ldap-test="'+key+'" value="'+esc(state.ldapTest[key])+'" autocomplete="off"></label>';
+ return header("认证配置","验证待启用的 LDAP 配置后保存。")
+ +'<details class="panel pad ldap-card" data-ldap-section'+(state.ldapOpen?' open':'')+'><summary>LDAP 连接配置 '+tags(state.ldapDirty?"有未保存变更":"配置已启用",state.ldapDirty?"warn":"ok")+'</summary>'
+ +'<div class="ldap-editor"><section class="pad stack"><h2>连接参数</h2>'
+ +draft("address","LDAP URL")+'<small>仅填写协议、域名和端口。LDAPS 默认 636，LDAP 默认 389。</small>'
+ +'<label class="check"><input type="checkbox" data-ldap="allowPlain" '+(ds.allowPlain?"checked":"")+'>允许明文 LDAP（仅用于 ldap://）</label>'
+ +draft("bind","LDAP 搜索 DN")+draft("bindPassword","LDAP 搜索密码","password")+draft("base","LDAP 基础 DN")
+ +'<details><summary>用户与组搜索设置</summary><div class="gridform">'+draft("attribute","LDAP 用户 UID")+draft("userFilter","LDAP 附加用户过滤器")+draft("groupAttribute","LDAP 组成员属性")+draft("groupBase","LDAP 组基础 DN")+draft("groupFilter","LDAP 组过滤器")
+ +'<label class="field">LDAP 用户搜索范围<select data-ldap="range">'+choices([["整个子树","整个子树"],["单层","单层"],["基准对象","基准对象"]],ds.range)+'</select></label><label class="field">LDAP 组搜索范围<select data-ldap="groupScope">'+choices([["","默认（子树）"],["整个子树","整个子树"],["单层","单层"],["基准对象","基准对象"]],ds.groupScope)+'</select></label></div></details>'
+ +'<details><summary>LDAPS 证书配置</summary><p>域名须匹配证书。使用私有 CA 时，可通过部署 Secret 提供 CA。</p></details></section>'
+ +'<section class="pad stack"><h2>测试待启用配置</h2>'+testField("account","LDAP 测试员工账号","text")+testField("password","LDAP 测试员工密码","password")
+ +'<small>测试失败时保留输入。验证通过后清空测试凭据。</small><div class="row">'+btn("运行测试","test-ldap","","primary")
+ +'<label>模拟失败阶段 <select data-ldap-test="failure">'+choices(Object.entries(ldapFailures).map(([key,[,message]])=>[key,message]),state.ldapTest.failure)+'</select></label>'+btn("演示失败","test-ldap","fail")+'</div>'
+ +'<ul class="list timeline">'+ldapStages.map((stage,i)=>'<li class="row between"><span>'+stage+'</span>'+tags(state.ldapSteps[i]||"待验证",state.ldapSteps[i]==="通过"?"ok":state.ldapSteps[i]==="失败"?"bad":"")+'</li>').join("")+'</ul>'
+ +'<small>测试登录不创建正式会话、用户记录或角色关联。</small><p role="status">'+esc(state.ldapTest.message)+'</p></section></div>'
+ +'<div class="row"><button class="btn primary" data-action="save-ldap" '+(state.tested?"":"disabled")+'>保存并启用</button><small id="ldap-save-hint" role="status">'+esc(ldapSaveHint())+'</small></div></details>';
+
+}
+function permissionsPage(){
+ const roles=state.permissionTab==="roles";
+ const attrs=k=>' role="tab" aria-selected="'+(state.permissionTab===k)+'" data-action="permission-tab" data-value="'+k+'"';
+ return header("权限配置","通过角色与用户组配置接口授权。",(roles?
+  '<a class="btn primary" href="group-admin-prototype.html">权限点勾选</a><a class="btn" href="permission-catalog.html">权限目录</a>':"")+
+  btn(roles?"＋ 新建角色":"＋ 新建用户组",roles?"edit-role":"edit-group","","primary"))+
+ '<div class="panel"><div class="tabs" role="tablist"><button'+attrs("roles")+'>角色配置</button><button'+attrs("groups")+'>用户组</button></div>'+
+ (roles?table(["角色","范围","引用","操作"],state.roles.map(r=>{const refs=roleRefs(r.id);return '<tr><td><strong>'+esc(r.name)+'</strong> '+(r.fixed?tags("预置"):"")+'</td><td>'+esc(r.id===systemAdminRole?"全局管理":r.scopes.length+" 项权限")+'</td><td>'+refs.length+' 处</td><td class="row">'+btn(r.fixed?"查看":"编辑","edit-role",r.id)+(r.fixed?tags("禁止删除"):btn("删除","delete-role",r.id,"danger"))+'</td></tr>'})):
+ table(["用户组","关联角色","成员","操作"],state.groups.map(g=>'<tr><td><strong>'+esc(g.name)+'</strong><br><small>'+esc(g.desc)+'</small></td><td>'+g.roles.map(id=>link(role(id)?.name,"edit-role",id)).join(" ")+'</td><td>'+state.users.filter(u=>u.groups.includes(g.id)).length+' 人</td><td class="row">'+btn("编辑","edit-group",g.id)+btn("删除","delete-group",g.id,"danger")+'</td></tr>')))+'</div>';
+}
+const riskBadge = level => tags(level+"风险",level==="高"?"bad":level==="中"?"warn":"");
+const outcomeBadge = outcome => tags(outcome,outcome==="成功"?"ok":outcome==="失败"?"bad":"warn");
+const retentionDays = days => days===0?"不保留":days+" 天";
+// 保留期限和日志查询分区，筛选状态不受表格横向滚动影响。
+function auditPage(){
+ if(state.auditAccess==="denied")return header("操作审计","")+
+  '<section class="panel pad" role="alert"><h2>无访问权限</h2><p>当前身份没有执行此操作的权限。</p></section>';
+ const f=state.auditFilter, q=f.q.toLowerCase();
+ const active=state.audits.map((a,i)=>[a,i]).filter(([a])=>withinRetention(a));
+ const rows=active.filter(([a])=>(!q||[a.who,a.target,...(a.items??[]).map(item=>item[0])].join(" ").toLowerCase().includes(q))&&
+  (!f.type||a.type===f.type)&&(!f.level||a.level===f.level)&&(!f.batch||a.batch===f.batch));
+ const auditPageSize=state.auditPageSize;
+ const pages=Math.max(1,Math.ceil(rows.length/auditPageSize));
+ const page=Math.min(state.auditPage,pages-1);
+ const pageRows=rows.slice(page*auditPageSize,(page+1)*auditPageSize);
+ const actions=[...new Set([...active.map(([a])=>a.type),f.type].filter(Boolean))];
+ const cards=auditLevels.map(level=>'<div class="audit-retention-card">'+riskBadge(level)+'<strong>'+retentionDays(state.retention[level])+'</strong></div>').join("");
+ const policy='<section class="panel pad audit-retention" aria-labelledby="audit-policy-heading"><header class="row between"><h2 id="audit-policy-heading" tabindex="-1">审计保留策略</h2>'+
+  (state.actor==="super"?btn("编辑保留策略","audit-retention-edit","","primary"):"")+'</header><div class="audit-retention-grid">'+cards+'</div></section>';
+ const filter='<form id="audit-filter" class="audit-filters"><label class="field audit-search">账号或目标<input type="search" name="q" placeholder="搜索操作者或目标账号" value="'+esc(f.q)+'"></label>'+
+  '<label class="field">操作类型<select name="type">'+choices([["","所有操作"],...actions.map(v=>[v,v])],f.type)+'</select></label>'+
+  '<label class="field">风险等级<select name="level">'+choices([["","所有等级"],...auditLevels.map(v=>[v,v+"风险"])],f.level)+'</select></label>'+
+  '<button class="btn primary" type="submit">查询</button></form>';
+ const batch=f.batch?'<div class="row between audit-list-batch"><p>同批次 <span class="mono">'+esc(f.batch)+'</span></p>'+btn("清除批次","audit-clear-batch")+'</div>':"";
+ const list=table(["时间（北京时间）","操作者","操作类型","风险等级","目标","结果","操作"],pageRows.map(([a,i])=>
+  '<tr><td class="mono">'+auditTime(a.at)+'</td><td>'+esc(a.who)+'</td><td>'+esc(a.type)+'</td><td>'+riskBadge(a.level)+'</td><td>'+esc(a.target)+'</td><td>'+outcomeBadge(a.result)+'</td><td>'+btn("查看详情","audit-detail",i)+'</td></tr>'),
+  "暂无符合条件的审计记录。","audit-heading");
+ const sizes=auditPageSizes.includes(auditPageSize)?auditPageSizes:[...auditPageSizes,auditPageSize];
+ const paging='<nav class="row audit-demo-pager" aria-label="审计记录分页"><span>共 '+rows.length+' 条</span>'+
+  '<button type="button" class="btn" aria-label="上一页" data-action="audit-page" data-value="'+(page-1)+'" '+(page===0?"disabled":"")+'>‹</button>'+
+  '<span>第 '+(page+1)+' / '+pages+' 页</span>'+
+  '<button type="button" class="btn" aria-label="下一页" data-action="audit-page" data-value="'+(page+1)+'" '+(page+1>=pages?"disabled":"")+'>›</button>'+
+  '<select id="audit-page-size" aria-label="每页条数">'+choices([...sizes.map(size=>[String(size),size+" 条/页"]),["custom","自定义…"]],state.auditCustomSize?"custom":String(auditPageSize))+'</select></nav>';
+ const customSize=state.auditCustomSize?'<form id="audit-custom-size" class="row audit-demo-size"><label>自定义每页条数 '+
+  '<input type="number" name="size" min="1" max="100" step="1" value="'+auditPageSize+'" required></label><small>1–100 条</small>'+
+  '<button class="btn primary" type="submit">应用</button>'+btn("取消","audit-size-cancel")+'</form>':"";
+ return header("操作审计","查询账号变更、认证事件和逐项批量结果。")+policy+
+  '<section class="panel" aria-labelledby="audit-heading"><header class="audit-list-heading"><h2 id="audit-heading" tabindex="-1">审计记录</h2></header>'+filter+batch+list+
+  '<footer class="row foot audit-list-foot">'+paging+customSize+'</footer></section>';
+}
+function passwordPage(){
+ const temp=state.actor==="temporary";
+ return header("修改密码",temp?"请先设置新密码，再进入历史诊断。":"为当前本地账号设置新密码。")+'<section class="panel pad stack" style="max-width:570px">'+(temp?'<div class="notice warn">当前会话仅可用于完成首次改密。</div>':"")+'<form id="password-form" class="stack"><label class="field">'+(temp?"临时密码":"当前密码")+'<input type="password" required autocomplete="current-password"></label><label class="field">新密码<input name="next" type="password" required minlength="12" maxlength="72" autocomplete="new-password"></label><label class="field">确认新密码<input name="again" type="password" required autocomplete="new-password"></label><button class="btn primary">保存新密码</button></form></section>';
+}
+function diagnosisPage(){
+ const u=user(state.actor==="ldap"?"liwei":state.guestAccount);
+ if(!u)return header("历史诊断","该账号已删除，无法登录本系统。");
+ if(u.status!=="enabled")return header("历史诊断","当前账号无可用会话。");
+ const entries=effective(u);
+ return header("历史诊断","当前账号可访问的诊断数据范围。")+'<section class="panel">'+table(["环境","集群","业务线","命名空间","权限"],entries.filter(({scope:s})=>scopeAction(s)==="历史诊断查看").map(({scope:s})=>'<tr>'+s.slice(0,4).map(x=>'<td>'+esc(x)+'</td>').join("")+'<td>'+tags("历史诊断查看","ok")+'</td></tr>'),"暂无可查看的历史诊断")+'</section>';
+}
+let onSubmit, auditDialogTrigger;
+function modal(title,html,label,handler){
+ const d=$("#dialog");onSubmit=handler;
+ d.innerHTML='<form id="dialog-form"><header class="row between"><h2 id="dialog-title">'+title+'</h2>'+btn("关闭","close")+'</header><section class="stack">'+html+'</section><footer class="row">'+btn(label?"取消":"关闭","close")+(label?'<button class="btn primary" type="submit">'+label+'</button>':"")+'</footer></form>';
+ d.setAttribute("aria-labelledby","dialog-title");if(!d.open)d.showModal();
+}
+const close=()=>{const dialog=$("#dialog");dialog.close();dialog.classList.remove("role-dialog");};
+$("#dialog").addEventListener("close",()=>{
+ $("#dialog").classList.remove("role-dialog");
+ const trigger=auditDialogTrigger;
+ auditDialogTrigger=undefined;
+ if(trigger?.isConnected)trigger.focus({preventScroll:true});
+});
+const checkboxes=(rows,selected=[])=>rows.map(([id,name])=>'<label class="check"><input type="checkbox" name="item" value="'+esc(id)+'" '+(selected.includes(id)?"checked":"")+'>'+esc(name)+'</label>').join("");
+const msg=t=>'<div class="notice warn">'+esc(t)+'</div>';
+function roleRefs(id){return [...state.users.filter(u=>u.roles.includes(id)).map(u=>"账号 "+u.id),...state.groups.filter(g=>g.roles.includes(id)).map(g=>"用户组 "+g.name)]}
+const groupRefs=id=>[...state.users.filter(u=>u.groups.includes(id)).map(u=>"成员 "+u.id),...(group(id)?.roles.map(r=>"角色 "+role(r).name)||[])];
+// 为当前操作者显示可分配角色，并逐个校验目标账号。
+let assignTargets=[];
+function showAssign(ids,bulk){
+ if(!admin())return;
+ assignTargets=ids;
+ const fields='<p>目标账号 '+ids.map(esc).join("、")+'</p><div class="gridform"><label class="field">关联类型<select id="assign-kind"><option value="groups">用户组</option><option value="roles">直接角色</option></select></label><label class="field">操作<select id="assign-mode">'+choices([["add","添加"],["remove","撤销"]],"add")+'</select></label></div><label class="field">搜索可分配项<input type="search" id="assign-q" placeholder="搜索用户组或角色"></label><div id="assign-items" class="assign-options"></div>';
+ modal(bulk?"批量授权 / 撤销":"分配用户组或角色",fields,"提交",data=>{
+  const kind=$("#assign-kind",$("#dialog")).value, remove=$("#assign-mode",$("#dialog")).value==="remove", selected=data.getAll("item");
+  if(!selected.length){notify("请至少选择一项。");return}
+  const items=ids.map(id=>{
+   const u=user(id);
+   if(!u)return [id,"失败","账号不存在"];
+   if(u.type!=="ldap")return [id,"失败","本地账号仅关联预置角色，不能执行此操作"];
+   if(!canManageLDAP(u)||kind==="roles"&&selected.includes(systemAdminRole)&&state.actor!=="super")return [id,"失败","仅超级管理员可管理 LDAP 管理员账号及管理员角色"];
+   if(kind==="roles"&&remove&&selected.includes("guest")&&u.roles.includes("guest")&&!u.roles.some(r=>!selected.includes(r))&&!u.groups.some(g=>group(g)?.roles.length))return [id,"失败","须保留其他生效角色，才能移除默认角色"];
+   const wasAdmin=ldapAdmin(u);
+   u[kind]=remove?u[kind].filter(x=>!selected.includes(x)):[...new Set([...u[kind],...selected])];
+   if(wasAdmin!==ldapAdmin(u))u.reloginRequired=true;
+   return [id,"成功","已更新"+(kind==="groups"?"用户组":"直接角色")];
+  });
+  const recorded=bulk||items.some(i=>i[1]==="成功")?audit((bulk?"批量":"")+(remove?"撤销":"授予")+(kind==="groups"?"用户组":"角色"),ids.join("、"),kind==="roles"?"高":"中",items):undefined;
+  state.checked.clear();render();
+  modal("授权操作结果",table(["账号","结果","说明"],items.map(i=>'<tr><td>'+esc(i[0])+'</td><td>'+tags(i[1],i[1]==="成功"?"ok":"bad")+'</td><td>'+esc(i[2])+'</td></tr>'))+(recorded?btn("查看本次审计","audit-detail",state.audits.indexOf(recorded),"primary"):""),"");
+ });
+ refreshAssign();
+}
+// 角色选项跟随操作者权限，管理员角色的重登说明只显示给超管。
+function refreshAssign(){
+ const direct=$("#assign-kind",$("#dialog")).value==="roles", superAdmin=state.actor==="super";
+ const rows=direct?state.roles.filter(r=>r.id!==systemAdminRole||superAdmin):state.groups;
+ const single=assignTargets.length===1?user(assignTargets[0]):undefined;
+ const assigned=direct?single?.roles:single?.groups;
+ const remove=$("#assign-mode",$("#dialog")).value==="remove";
+ const eligible=single&&remove?rows.filter(row=>assigned.includes(row.id)):rows;
+ $("#assign-items",$("#dialog")).innerHTML=eligible.map(row=>'<label class="check"><input type="checkbox" name="item" value="'+esc(row.id)+'"'+(!remove&&assigned?.includes(row.id)?' disabled':'')+'>'+esc(row.name)+
+  (assigned?.includes(row.id)?tags("已关联","ok"):"")+'</label>').join("")+
+  (eligible.length?"":'<p class="muted">没有可操作的关联。</p>')+
+  (direct&&superAdmin?'<small>管理员角色发生变更时，目标账号需重新登录。</small>':"");
+}
+const clustersByEnv={"研发":["dev-k8s"],"测试":["test-k8s"],"预发布":["stg-yunfan"],"生产":["prod-shared","prod-yunfan"]};
+const namespaces={"dev-k8s":["dev-base","platform"],"test-k8s":["qa-base","qa-payment"],"stg-yunfan":["yunfan-api","yunfan-jobs"],"prod-yunfan":["yunfan-api","yunfan-jobs"],"prod-shared":{"云帆":["yunfan-api","yunfan-jobs","shared-observe"],"有数":["youshu-api","shared-observe"]}};
+const diagnosticAction="历史诊断查看";
+const scopeKey=s=>JSON.stringify([...s.slice(0,4),scopeAction(s)]);
+let scopeDraft=[],roleDraftID="",roleDraftName="",roleRange;
+function editRole(id,resume=false){
+ const r=role(id);
+ if(!resume){
+  scopeDraft=(r?.scopes||[]).map(s=>s.slice());
+  roleDraftID=id;roleDraftName=r?.name||"";roleRange=undefined;
+ }
+ $("#dialog").classList.add("role-dialog");
+ if(r?.fixed){
+  modal(esc(r.name),'<p>'+ (r.id===systemAdminRole?"系统管理、资源管理、操作审计、知识库管理与全局诊断查看。":"研发和测试环境的历史诊断查看。")+'</p>'+
+   scopeDraft.map(s=>'<div class="scope">'+esc(scopeName(s))+' · '+esc(scopeAction(s))+'</div>').join(""),"");
+  return;
+ }
+ modal(r?"编辑角色":"新建角色",'<label class="field">角色名称<input name="name" maxlength="80" required value="'+esc(roleDraftName)+'"></label>'+
+  '<p><a href="group-admin-prototype.html">打开接口权限点勾选原型</a></p>'+
+  '<h3>已配置权限</h3><div id="scope-list"></div>'+
+  '<fieldset class="quick-fieldset stack"><legend>添加权限范围</legend><div class="gridform">'+
+  '<label class="field">操作<select id="scope-action">'+choices([[diagnosticAction,diagnosticAction]],roleRange?.action)+'</select></label>'+
+  '<label class="field">环境<select id="scope-env">'+choices(Object.keys(clustersByEnv).map(x=>[x,x]),roleRange?.env||"研发")+'</select></label>'+
+  '<label class="field">集群<select id="scope-cluster"></select></label>'+
+  '<label class="field hidden" id="biz-field">业务线<select id="scope-biz"></select></label></div>'+
+  '<fieldset class="quick-fieldset"><legend>命名空间</legend><div id="scope-ns" class="namespace-options"></div></fieldset>'+
+  '<div class="row">'+btn("添加到清单","add-scope")+btn("添加并预览","review-scope","","primary")+'</div>'+
+  '<p id="scope-feedback" class="muted" role="status"></p></fieldset>',"预览已配置权限",()=>{
+  if(selectedNamespaces().length||$("#scope-whole")?.checked){scopeFeedback("请先把已选范围加入清单，或使用「添加并预览」。");return;}
+  previewRole();
+ });
+ scopeOptions(true,roleRange);
+ showScopes();
+}
+function selectedNamespaces(){return all("#scope-ns input[name=item]:checked").map(input=>input.value);}
+function scopeFeedback(message){$("#scope-feedback").textContent=message;}
+function scopeOptions(reset,restore){
+ const env=$("#scope-env").value;
+ const high=["预发布","生产"].includes(env);
+ const cluster=$("#scope-cluster"), biz=$("#scope-biz");
+ if(reset)cluster.innerHTML=choices([...(high?[]:[["全部集群","整个环境"]]),...clustersByEnv[env].map(x=>[x,x])],restore?.cluster);
+ $("#biz-field").classList.toggle("hidden",!high);
+ const prev=restore?.biz??(reset?"":biz.value);
+ biz.innerHTML=choices((cluster.value==="prod-shared"?["云帆","有数"]:["云帆"]).map(x=>[x,x]),prev);
+ const keys=namespaces[cluster.value];
+ const list=Array.isArray(keys)?keys:keys?.[biz.value]??[];
+ $("#scope-ns").innerHTML=(list.length?checkboxes(list.map(v=>[v,v]),restore?.selected):'<p class="muted">'+
+  (cluster.value==="全部集群"?"当前范围为整个环境。":"暂无可选命名空间。")+'</p>')+
+  (!high&&cluster.value!=="全部集群"?'<label class="check"><input type="checkbox" id="scope-whole" '+(restore?.whole?"checked":"")+'>整个集群</label>':"");
+ scopeFeedback("");
+}
+function showScopes(){
+ $("#scope-list").innerHTML=scopeDraft.map((s,i)=>'<div class="scope row between"><div><strong>'+esc(scopeAction(s))+'</strong><div>'+esc(scopeName(s))+'</div></div>'+btn("移除","drop-scope",i)+'</div>').join("")||
+  '<p class="muted">尚未配置权限。</p>';
+}
+function addScopes(andPreview){
+ const action=$("#scope-action").value, env=$("#scope-env").value, cluster=$("#scope-cluster").value, selected=selectedNamespaces();
+ const high=["生产","预发布"].includes(env), biz=high?$("#scope-biz").value:"—";
+ if(high&&!selected.length){scopeFeedback("请选择至少一个具体命名空间。");return;}
+ if(cluster!=="全部集群"&&!selected.length&&!$("#scope-whole")?.checked){scopeFeedback("请勾选命名空间或明确选择整个集群。");return;}
+ const entries=(selected.length?selected:["全部命名空间"]).map(ns=>[env,cluster,biz,ns,action]);
+ const configured=new Set(scopeDraft.map(scopeKey));
+ const added=entries.filter(s=>!configured.has(scopeKey(s)));
+ scopeDraft.push(...added);
+ all("#scope-ns input:checked").forEach(input=>input.checked=false);
+ showScopes();
+ scopeFeedback(added.length?"已加入 "+added.length+" 项权限。":"所选范围已在清单中。");
+ if(andPreview)previewRole();
+}
+function previewRole(){
+ const nameField=$("#dialog [name=name]");
+ if(!nameField.reportValidity())return;
+ roleDraftName=nameField.value.trim();
+ if(!roleDraftName){scopeFeedback("请输入角色名称。");nameField.focus();return;}
+ if(state.roles.some(x=>x.id!==roleDraftID&&x.name===roleDraftName)){scopeFeedback("已存在同名角色。");nameField.focus();return;}
+ if(!scopeDraft.length){scopeFeedback("请至少添加一项权限。");return;}
+ roleRange={action:$("#scope-action").value,env:$("#scope-env").value,cluster:$("#scope-cluster").value,biz:$("#scope-biz").value,selected:selectedNamespaces(),whole:$("#scope-whole")?.checked};
+ const r=role(roleDraftID), before=r?.scopes??[], beforeName=r?.name;
+ const old=new Set(before.map(scopeKey)), next=new Set(scopeDraft.map(scopeKey));
+ const added=scopeDraft.filter(s=>!old.has(scopeKey(s))), removed=before.filter(s=>!next.has(scopeKey(s)));
+ const groups=state.groups.filter(g=>g.roles.includes(roleDraftID));
+ const direct=state.users.filter(u=>u.roles.includes(roleDraftID));
+ const users=state.users.filter(u=>direct.includes(u)||groups.some(g=>u.groups.includes(g.id)));
+ const diff=(title,items,cls)=>'<div class="quick-diff"><h3>'+title+' '+tags(items.length+" 项",cls)+'</h3>'+
+  (items.length?'<ul>'+items.map(s=>'<li>'+esc(scopeAction(s))+' · '+esc(scopeName(s))+'</li>').join("")+'</ul>':'<p class="muted">无</p>')+'</div>';
+ modal("核对角色变更",'<div><strong>'+esc(roleDraftName)+'</strong>'+(r&&r.name!==roleDraftName?'<p>原角色名称 '+esc(r.name)+'</p>':"")+'</div>'+
+  '<div class="notice">直接关联 '+direct.length+' 人 · 关联用户组 '+groups.length+' 个 · 涉及账号 '+users.length+' 人（去重）</div>'+
+  diff("新增权限",added,"ok")+diff("移除权限",removed,"bad")+btn("返回编辑","back-role"),"确认保存",()=>{
+  if(r){r.name=roleDraftName;r.scopes=scopeDraft;}
+  else state.roles.push({id:"role-"+Date.now(),name:roleDraftName,scopes:scopeDraft});
+  if(!r||added.length||removed.length||r.name!==beforeName)audit(r?"修改角色":"创建角色",roleDraftName);
+  close();render();notify("角色已保存。");
+ });
+ $("#dialog [data-action=back-role]").focus();
+}
+function editGroup(id){
+ const g=group(id);
+ modal(g?"编辑用户组":"新建用户组",'<label class="field">组名称<input name="name" required value="'+esc(g?.name)+'"></label><label class="field">用途<input name="desc" value="'+esc(g?.desc)+'"></label><h3>关联角色</h3>'+checkboxes(state.roles.filter(r=>r.id!==systemAdminRole).map(r=>[r.id,r.name]),g?.roles)+"<small>可同时添加或移除多个数据角色。成员在用户管理中维护。</small>","保存",data=>{
+  const name=String(data.get("name")).trim();if(!name){notify("请输入用户组名称。");return}
+  const values={name,desc:String(data.get("desc")),roles:data.getAll("item")};
+  if(values.roles.includes(systemAdminRole)){notify("系统管理员角色仅支持直接授权。");return}
+  if(g)Object.assign(g,values);else state.groups.push({id:"group-"+Date.now(),...values});
+  audit(g?"修改用户组及角色":"创建用户组",name);close();render();notify("用户组已保存。");
+ });
+}
+function deleteEntry(kind,id){
+ const target=kind==="role"?role(id):group(id), refs=kind==="role"?roleRefs(id):groupRefs(id);
+ if(!target||target.fixed)return;
+ if(refs.length){modal("存在关联，无法删除",msg("请先解除「"+target.name+"」的全部关联。")+'<ul class="list">'+refs.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>',"");return}
+ modal("确认删除",'<p>删除「'+esc(target.name)+'」？</p>',"确认删除",()=>{
+  const key=kind==="role"?"roles":"groups";state[key]=state[key].filter(x=>x.id!==id);
+  audit(kind==="role"?"删除角色":"删除用户组",target.name,"高");close();render();notify("已删除。");
+ });
+}
+function newUser(type){
+ if(type==="admin"&&state.actor!=="super")return;
+ modal(type==="guest"?"创建本地访客":"创建系统管理员",'<div class="gridform"><label class="field">账号<input name="account" required></label><label class="field">显示名称<input name="name" required></label></div>'+(type==="guest"?'<p class="muted">自动关联「访客只读」。首次登录需设置新密码。</p>':'<p class="muted">关联预置「系统管理员」。</p>'),"创建",data=>{
+  const id=String(data.get("account")).trim(),name=String(data.get("name")).trim();
+  if(!id||!name||user(id)){notify("请检查账号和名称，账号不可重复。");return}
+  state.users.push({id,name,type,status:type==="guest"?"temporary":"enabled",roles:[type==="guest"?"guest":systemAdminRole],groups:[],time:"—"});
+  state.detail=id;audit(type==="guest"?"创建访客":"创建系统管理员",id,type==="guest"?"中":"高");render();
+  if(type==="guest"){modal("临时密码",'<p>将示例临时密码交给访客。首次登录时要求改密。</p><div class="code mono">Demo-Temp-2026</div>',"");}else{close();notify("系统管理员已创建。")}
+ });
+}
+// 保护管理员账号的删除入口，LDAP 账号仍按来源处理。
+function canDeleteUser(u){return canManageLDAP(u)||u.type==="guest"||(u.type==="admin"&&state.actor==="super");}
+function accountAction(action,id){
+ const u=user(id);if(!u||!admin())return;
+ const ending=action==="remove-admin"||action==="delete-user",reset=action==="reset",disable=u.status!=="disabled";
+ if(ending?!canDeleteUser(u):reset?u.type!=="guest":u.type!=="guest"&&!canManageLDAP(u))return;
+ const title=ending?"删除用户":reset?"重置访客密码":disable?"停用账号":"重新启用账号";
+ modal(title,'<p>账号 '+esc(u.name+' ('+u.id+')')+'</p>'+msg(ending&&u.type==="ldap"?"已有会话立即失效。原 LDAP 身份无法再次登录本系统，公司目录账号不受影响。":ending||reset||disable?"此操作会立即使该账号的所有已有会话失效。":"已关联的角色将恢复生效。"),ending?"确认删除":"确认",()=>{
+  if(ending){state.users=state.users.filter(v=>v.id!==id);state.checked.delete(id);state.detail=state.users[0]?.id;}
+  else if(reset){if(u.status==="disabled")u.beforeDisabled="temporary";else u.status="temporary";}
+  else if(disable){u.beforeDisabled=u.status;u.status="disabled";if(u.type==="ldap")u.reloginRequired=true;}
+  else u.status=u.beforeDisabled||"enabled";
+  audit(title,id,ending||reset||disable?"高":"中");render();
+  if(reset)modal("临时密码",'<p>访客须用临时密码重新登录，并先完成改密。</p><div class="code mono">Demo-Reset-2026</div>',"");
+  else{close();notify(title+"成功。");}
+ });
+ if(ending){
+  $("#dialog footer button[type=submit]")?.classList.add("confirm-danger");
+  $("#dialog footer button[type=button]")?.focus();
+ }
+}
+// 分开显示操作主题、客观信息和具体失败原因。
+function auditDetail(i,trigger){
+ const a=state.audits[i];
+ if(!a||!admin()||state.auditAccess||!withinRetention(a))return;
+ const d=$("#dialog");
+ auditDialogTrigger=trigger;
+ onSubmit=undefined;
+ const metadata=[["操作者",a.who],["目标",a.target],["时间（北京时间）",auditTime(a.at)]];
+ if(a.batch)metadata.push(["批次",a.batch]);
+ const details='<dl class="audit-meta">'+metadata.map(([key,value])=>'<div><dt>'+esc(key)+'</dt><dd>'+esc(value||"—")+'</dd></div>').join("")+'</dl>';
+ const reason=a.reason?'<div class="audit-reason"><h3>失败原因</h3><p>'+esc(a.reason)+'</p></div>':"";
+ const members=a.batch?state.audits.filter(event=>event.batch===a.batch&&!event.items&&withinRetention(event)):[];
+ const items=members.length?'<div class="audit-items"><h3 id="audit-items-heading">批次结果</h3>'+
+  table(["对象","结果","说明"],members.map(event=>'<tr><td>'+esc(event.target)+'</td><td>'+outcomeBadge(event.result)+'</td><td>'+esc(event.reason||"—")+'</td></tr>'),undefined,"audit-items-heading")+'</div>':"";
+ d.innerHTML='<div class="audit-detail"><header><h2 id="dialog-title" tabindex="-1">'+esc(a.type)+'</h2><div class="row">'+riskBadge(a.level)+outcomeBadge(a.result)+'</div></header>'+
+  '<section>'+details+reason+items+'</section><footer class="row">'+(a.batch?btn("查看同批次","audit-batch",a.batch):"")+btn("关闭","close","","primary")+'</footer></div>';
+ d.setAttribute("aria-labelledby","dialog-title");
+ if(!d.open)d.showModal();
+ $("#dialog-title",d).focus();
+}
+
+// 保存后按新策略清理，审计写入入口独立执行高风险保留规则。
+function saveAuditRetention(days){
+ if(state.actor!=="super"||state.auditAccess)return;
+ state.retention=days;
+ state.audits=state.audits.filter(withinRetention);
+ state.auditPage=0;
+ audit("修改审计保留策略",auditLevels.map(level=>level+"风险 "+retentionDays(days[level])).join(" / "),"高");
+ close();render();$("#audit-policy-heading")?.focus();notify("已保存保留策略。");
+}
+
+// 正数改为零会清理现有记录，须在独立步骤确认。
+function editAuditRetention(trigger,draft=state.retention){
+ if(state.actor!=="super"||state.auditAccess)return;
+ auditDialogTrigger=trigger;
+ const fields='<p>按记录发生时间计算。保存会清理超过新期限的记录。填 0 表示不保留。</p>'+
+  '<div class="audit-retention-grid">'+auditLevels.map(level=>'<label class="field">'+level+'风险（天）<input name="'+level+'" value="'+draft[level]+'" type="number" min="0" max="'+maxAuditDays+'" step="1" required></label>').join("")+'</div>';
+ modal("编辑保留策略",fields,"保存保留策略",data=>{
+  const values=auditLevels.map(level=>String(data.get(level)??"").trim());
+  const days=Object.fromEntries(auditLevels.map((level,i)=>[level,Number(values[i])]));
+  if(values.some(value=>!value)||Object.values(days).some(day=>!Number.isSafeInteger(day)||day<0||day>maxAuditDays))return;
+  const purged=auditLevels.filter(level=>state.retention[level]>0&&days[level]===0);
+  if(purged.length){
+   modal("确认不保留审计记录",'<p>保存后立即清除'+esc(purged.map(level=>level+"风险").join("、"))+
+    '的所有现有记录，后续也不再保存这些记录。</p>',"确认保存并清理",()=>saveAuditRetention(days));
+   const cancel=$("#dialog footer button[type=button]");
+   cancel.removeAttribute("data-action");
+   cancel.addEventListener("click",()=>editAuditRetention(trigger,days),{once:true});
+   cancel.focus();
+   return;
+  }
+  saveAuditRetention(days);
+ });
+}
+document.addEventListener("click",event=>{
+ const b=event.target.closest("[data-action]");if(!b)return;
+ const a=b.dataset.action,v=b.dataset.value;
+ switch(a){
+ case "nav":navigate(v);break;
+ case "detail":state.detail=v;state.tab="effective";render();break;
+ case "user-tab":state.tab=v;render();break;
+ case "permission-tab":state.permissionTab=v;render();break;
+ case "clear":state.checked.clear();render();break;
+ case "close":close();break;
+ case "assign":showAssign(v==="batch"?userRows().filter(u=>canSelectUser(u)&&state.checked.has(u.id)).map(u=>u.id):[v],v==="batch");break;
+ case "ldap-login":{
+  const employee=ldapActor();
+  if(employee?.reloginRequired&&employee.status==="enabled"){
+   employee.reloginRequired=false;
+   if(!employee.roles.length&&!employee.groups.some(id=>group(id)?.roles.length))employee.roles=["guest"];
+   navigate(admin()?"users":"diagnosis");
+  }
+  break;
+ }
+ case "new-user":newUser(v);break;
+ case "reset":case "toggle":case "remove-admin":case "delete-user":accountAction(a,v);break;
+ case "edit-role":editRole(v);break;
+ case "account-audit":
+  state.auditFilter={q:v,type:"",level:"",batch:""};state.auditPage=0;navigate("audit");$("#audit-heading")?.focus();break;
+ case "review-scope":addScopes(true);break;
+ case "back-role":editRole(roleDraftID,true);break;
+ case "edit-group":editGroup(v);break;
+ case "delete-role":deleteEntry("role",v);break;
+ case "delete-group":deleteEntry("group",v);break;
+ case "audit-detail":auditDetail(Number(v),b);break;
+ case "audit-retention-edit":editAuditRetention(b);break;
+ case "audit-batch":case "audit-clear-batch":
+  if(!admin()||state.auditAccess)break;
+  state.auditFilter={q:"",type:"",level:"",batch:a==="audit-batch"?v:""};
+  state.auditPage=0;
+  if($("#dialog").open)close();
+  navigate("audit");$("#audit-heading")?.focus();break;
+ case "audit-page":
+  if(!admin()||state.auditAccess)break;
+  state.auditCustomSize=false;state.auditPage=Number(v);render();$("#audit-heading")?.focus();break;
+ case "audit-size-cancel":
+  state.auditCustomSize=false;render();$("#audit-page-size")?.focus();break;
+ case "audit-sign-in":
+  state.auditAccess="";$("#actor").value=state.actor;
+  navigate(admin()?"audit":"diagnosis");break;
+ case "add-scope":addScopes(false);break;
+ case "drop-scope":scopeDraft.splice(Number(v),1);showScopes();break;
+ case "test-ldap":{
+  const cfg=state.ldapDraft||state.ldap;
+  const employee=state.ldapTest;
+  if(!employee.account.trim()||!employee.password){employee.message="请输入有效的 LDAP 测试员工账号和密码。";render();break;}
+  const failure=!/^ldaps?:\/\//i.test(cfg.address)||(/^ldap:\/\//i.test(cfg.address)&&!cfg.allowPlain)?[0,"请核对 URL。使用 ldap:// 需允许明文 LDAP。"]:
+   !cfg.bind.trim()?ldapFailures.bind:!cfg.base.trim()?ldapFailures.search:v==="fail"?ldapFailures[employee.failure]:null;
+  const failed=failure?.[0]??-1;
+  state.tested=!failure;state.ldapSteps=ldapStages.map((_,i)=>!failure||i<failed?"通过":i===failed?"失败":"待验证");
+  employee.message=failure?.[1]??"四项验证全部通过，可以保存。";
+  clearTimeout(ldapTimer);
+  if(!failure){
+   employee.account=employee.password="";
+   ldapTimer=setTimeout(()=>{state.tested=false;state.ldapSteps=[];employee.message="验证已失效，请重新测试。";if(state.page==="ldap")render();},300000);
+  }
+  render();break;
+ }
+ case "save-ldap":
+  if(state.tested){const draft={...(state.ldapDraft||state.ldap)};draft.passwordConfigured=Boolean(draft.bindPassword||draft.passwordConfigured);delete draft.bindPassword;state.ldap=draft;state.ldapDraft=null;state.ldapDirty=false;state.tested=false;state.ldapSteps=[];clearTimeout(ldapTimer);audit("启用 LDAP 配置","LDAP","高");render();$("#ldap-save-hint").textContent="已保存并启用 LDAP 配置。";}break;
+ }
+});
+function selectUniqueUser(){
+ const matches=userRows();
+ const previous=state.detail;
+ if(matches.length===1)state.detail=matches[0].id;
+ else if(!matches.some(u=>u.id===previous))state.detail="";
+ if(state.detail!==previous)state.tab="effective";
+}
+function filterInput(el,value,apply){const position=el.selectionStart;apply(value);render();const restored=document.getElementById(el.id);restored.focus();restored.setSelectionRange(position,position)}
+document.addEventListener("toggle",event=>{
+ if(event.target.matches("[data-ldap-section]"))state.ldapOpen=event.target.open;
+},true);
+document.addEventListener("input",event=>{
+ const e=event.target;
+ if(e.id==="user-q")filterInput(e,e.value,v=>{state.q=v;selectUniqueUser();});
+ if(e.id==="assign-q")all("#assign-items label").forEach(row=>row.hidden=!row.textContent.toLowerCase().includes(e.value.trim().toLowerCase()));
+ const testKey=e.dataset.ldapTest;
+ if(testKey)state.ldapTest[testKey]=e.value;
+ const key=e.dataset.ldap;
+ if(key){
+  clearTimeout(ldapTimer);
+  state.ldapDraft={...(state.ldapDraft||state.ldap),[key]:e.type==="checkbox"?e.checked:e.value};state.ldapDirty=true;state.tested=false;state.ldapSteps=[];
+  const status=$("#main .tag");status.textContent="有未保存变更";status.className="tag warn";
+  $("[data-action=save-ldap]").disabled=true;
+  $("#ldap-save-hint").textContent="配置已修改，请重新运行测试后保存。";
+  all(".timeline .tag").forEach(el=>{el.textContent="待验证";el.className="tag"});
+ }
+});
+document.addEventListener("change",event=>{
+ const e=event.target;
+ if(e.matches("#scope-ns input")&&e.checked){
+  if(e.id==="scope-whole")all("#scope-ns input[name=item]").forEach(input=>input.checked=false);
+  else if($("#scope-whole"))$("#scope-whole").checked=false;
+ }
+ if(e.id==="actor"){
+  if(e.value==="expired"||e.value==="denied"){
+   state.auditAccess=e.value;onSubmit=undefined;
+   if($("#dialog").open)close();
+   if(e.value==="denied")navigate("audit");else render();
+   return;
+  }
+  state.auditAccess="";state.actor=e.value;state.checked.clear();
+  if(e.value==="guest")state.guestAccount="visitor-qa";
+  state.page=admin()?"users":state.actor==="temporary"?"password":"diagnosis";navigate(state.page);return;
+ }
+ if(e.id==="audit-page-size"){
+  if(e.value==="custom"){
+   state.auditCustomSize=true;render();$("#audit-custom-size input")?.focus();return;
+  }
+  const size=Number(e.value);
+  if(!Number.isInteger(size)||size<1||size>100)return;
+  state.auditCustomSize=false;state.auditPageSize=size;state.auditPage=0;
+ }
+ else if(e.id==="user-type"){state.filter=e.value;selectUniqueUser();}
+ else if(e.id==="user-status"){state.status=e.value;selectUniqueUser();}
+ else if(e.id==="assign-kind"||e.id==="assign-mode"){refreshAssign();$("#assign-q").value="";return}
+ else if(e.id==="scope-env"||e.id==="scope-cluster"||e.id==="scope-biz"||e.id==="scope-action"){scopeOptions(e.id==="scope-env"||e.id==="scope-action");return}
+ else if(e.dataset.check){if(e.checked&&canSelectUser(user(e.dataset.check)))state.checked.add(e.dataset.check);else state.checked.delete(e.dataset.check)}
+ else if("all" in e.dataset){userRows().filter(canSelectUser).forEach(u=>e.checked?state.checked.add(u.id):state.checked.delete(u.id))}
+ else return;
+ render();
+});
+document.addEventListener("submit",event=>{
+ const f=event.target;
+ if(f.id==="dialog-form"){event.preventDefault();onSubmit?.(new FormData(f));}
+ if(f.id==="audit-custom-size"){
+  event.preventDefault();
+  if(!admin()||state.auditAccess)return;
+  const size=Number(new FormData(f).get("size"));
+  if(!Number.isInteger(size)||size<1||size>100)return;
+  state.auditCustomSize=false;state.auditPageSize=size;state.auditPage=0;
+  render();$("#audit-heading")?.focus();
+ }
+ if(f.id==="audit-filter"){
+  event.preventDefault();
+  if(!admin()||state.auditAccess)return;
+  const fields=new FormData(f);
+  for(const key of ["q","type","level"])state.auditFilter[key]=String(fields.get(key)??"").trim();
+  state.auditFilter.batch="";
+  state.auditPage=0;
+  render();$("#audit-heading")?.focus();
+ }
+ if(f.id==="password-form"){
+  event.preventDefault();const data=new FormData(f);
+  if(data.get("next")!==data.get("again")){notify("两次输入的新密码不一致。");return}
+  audit("修改本地密码",({super:"superadmin",admin:"ops.liu",guest:"visitor-qa",temporary:"visitor-demo"})[state.actor],"中");
+  if(state.actor==="temporary"){
+   const account=user("visitor-demo");if(!account){notify("该账号已删除，无法登录本系统。");return;}
+   account.status="enabled";state.guestAccount=account.id;state.actor="guest";$("#actor").value="guest";navigate("diagnosis");}
+  else f.reset();
+  notify("示例密码已修改。");
+ }
+});
+function hashPage(){
+ const hash=location.hash.slice(1);
+ const legacy={"/admin/ldap":"ldap","/admin/users":"users","/admin/access":"permissions","/admin/access/roles":"permissions","/admin/access/groups":"permissions","/admin/policy":"permissions","/admin/operations":"audit","/admin/password":"password"};
+ if(legacy[hash])state.page=legacy[hash];
+ else if(navs.some(n=>n[0]===hash))state.page=hash;
+ if(hash==="/admin/access/groups")state.permissionTab="groups";
+ if(["/admin/access","/admin/access/roles","/admin/policy"].includes(hash))state.permissionTab="roles";
+ render();
+}
+window.addEventListener("hashchange",hashPage);
+hashPage();
+</script></body></html>

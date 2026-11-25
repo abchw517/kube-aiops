@@ -507,7 +507,7 @@ spec:
   value: "https://zabbix.example.com/api_jsonrpc.php"
 ```
 
-API Pod 启动时读取该配置。已有部署补充地址后重新发布 API Pod。Web 页面可填写 `https://zabbix.example.com`，平台会补齐 `/api_jsonrpc.php`。 [Zabbix 接入与故障处理](zabbix-diagnostics-onboarding.md#发布和运维)
+API Pod 启动时读取该配置。已有部署补充地址后重新发布 API Pod。Web 页面可填写 `https://zabbix.example.com`，平台会补齐 `/api_jsonrpc.php`。 [Zabbix 接入与故障处理](resource-management/design.md#发布和运维)
 
 ### 应用并验证数据源
 
