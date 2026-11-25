@@ -4,7 +4,6 @@ import { submitIdentityAdmin } from "./views/permissions/identity-admin.ts";
 import { submitSessionPolicy, updateSessionPolicy } from "./views/permissions/session-policy.ts";
 import { submitPlatform } from "./views/permissions/platform-admin.ts";
 import { submitRole } from "./views/permissions/roles.ts";
-import { submitResourceCatalog } from "./views/resources/resource-management.ts";
 
 interface PortalFormActions {
   refresh: () => void;
@@ -24,11 +23,6 @@ export function bindPortalForms(root: HTMLElement, actions: PortalFormActions): 
     if (form.hasAttribute("data-role-form")) {
       event.preventDefault();
       void submitRole(form, action === "delete");
-      return;
-    }
-    if (form.dataset.resourceCatalog) {
-      event.preventDefault();
-      void submitResourceCatalog(form, action === "delete", actions.refresh);
       return;
     }
     if (form.dataset.clusterMaintenance) {

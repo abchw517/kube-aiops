@@ -3,6 +3,7 @@ import { resolvePortalNavigation, type PortalNavigationState } from "../domain/p
 
 interface PortalShellState extends PortalNavigationState {
   showLogout: boolean;
+  contentOwnsHeading?: boolean;
 }
 
 /** 在共享外框中渲染可访问的模块、当前栏目与正文。 */
@@ -34,7 +35,7 @@ export function renderPortalShell(content: string, state: PortalShellState): str
       <main class="page-shell" id="portal-content" tabindex="-1">
         ${state.signedOut ? "" : `<header class="page-intro">
           ${!state.mustChangePassword ? `<nav aria-label="面包屑">${moduleLabel} <span aria-hidden="true">›</span> <span aria-current="page">${title}</span></nav>` : ""}
-          <div class="page-title"><h1>${title}</h1>${state.demoMode ? '<p class="demo-notice">演示数据</p>' : ""}</div>
+          ${state.contentOwnsHeading ? (state.demoMode ? '<p class="demo-notice">演示数据</p>' : "") : `<div class="page-title"><h1>${title}</h1>${state.demoMode ? '<p class="demo-notice">演示数据</p>' : ""}</div>`}
         </header>`}
         ${content}
       </main>

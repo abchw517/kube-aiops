@@ -70,6 +70,7 @@ let rcaFixture;
 let datasourceFixture;
 let zabbixSourceFixture;
 let observabilityFixture;
+let observabilityUnavailable = false;
 let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
@@ -92,6 +93,7 @@ let role;
 
 let localConnectionDeleted = false;
 let localCheckedAt = 0;
+let catalogMode = "normal";
 const catalogs = {
   environments: [{ id: "development", name: "研发" }],
   "business-lines": [{ id: "yunfan", name: "云帆" }, { id: "platform", name: "平台" }],
@@ -99,6 +101,14 @@ const catalogs = {
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (url.pathname === "/test/observability-unavailable") {
+    observabilityUnavailable = url.searchParams.get("enabled") === "1";
+    return response.writeHead(204).end();
+  }
+  if (url.pathname === "/test/catalog-mode") {
+    catalogMode = url.searchParams.get("mode") || "normal";
+    return response.writeHead(204).end();
+  }
   if (url.pathname === "/test/admin-session") {
     adminSession = true;
     fixtureSuperAdministrator = url.searchParams.get("super") !== "false";
@@ -213,7 +223,7 @@ createServer(async (request, response) => {
     return json(response, input.pageId === "page-2" ? 200 : 400, {saved: 1, skipped: 0, failed: 0, missing: 0});
   }
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
-    admin: true, superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,
+    admin: catalogMode !== "readonly", superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,
     incidents: incidentMode, incidentCreate: incidentMode,
     diagnosticDatasources: incidentMode, diagnosticDatasourceWrite: incidentMode, diagnosticDatasourceTest: incidentMode,
     diagnosticPolicies: incidentMode, diagnosticPolicyWrite: incidentMode,
@@ -252,17 +262,24 @@ createServer(async (request, response) => {
   const catalogKind = url.pathname.split("/").at(-1);
   if (catalogKind in catalogs && adminSession) {
     const items = catalogs[catalogKind];
-    if (request.method === "GET") return json(response, 200, items);
+    if (request.method === "GET") {
+      if (catalogMode === "load-error") return response.writeHead(503).end();
+      return json(response, 200, items);
+    }
+    if (catalogMode === "readonly") return response.writeHead(403).end();
+    if (catalogMode === "save-error") return response.writeHead(503).end();
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
     const entry = items.find((item) => item.id === (input.originalId ?? input.id));
     if (request.method === "DELETE") {
       if (input.id === "new-dev") return json(response, 409, { message: "仍有集群引用", references: ["dev-k8s"] });
+      if (input.id === "yunfan-app") return json(response, 409, { message: "仍有集群引用", references: ["dev-k8s/apps", "角色 平台值班"] });
       catalogs[catalogKind] = items.filter((item) => item.id !== input.id);
       response.writeHead(204).end();
       return;
     }
+    if (input.id === "retired-id") return response.writeHead(409, { "Content-Type": "text/plain" }).end("ID 已被使用或属于其他目录条目的历史 ID");
     if (request.method === "PUT" && entry && !items.some((item) => item !== entry && item.id === input.id)) Object.assign(entry, { id: input.id, name: input.name });
     else if (request.method === "POST" && !entry) items.push(input);
     else return json(response, 409, { message: "ID 已存在" });
@@ -722,7 +739,10 @@ async function incidents(request, response, url) {
           environmentName: "生产", businessName: "运维" }] : [], truncated: false });
     }
   }
-  if (path === "/observability/sources" && method === "GET") return json(response, 200, {items: observabilityFixture ? [observabilityFixture] : [], legacy: []});
+  if (path === "/observability/sources" && method === "GET") {
+    if (observabilityUnavailable) return json(response, 503, { error: { message: "观测数据源暂时无法读取。" } });
+    return json(response, 200, { items: observabilityFixture ? [observabilityFixture] : [], legacy: [] });
+  }
   if (["/observability/probe", "/observability/sources"].includes(path) && method === "POST") {
     const body = await readIncidentBody(request);
     if (body.kind !== "alertmanager" || body.scope?.environmentId !== "testing" || body.scope?.businessId !== "test" ||
@@ -745,7 +765,10 @@ async function incidents(request, response, url) {
   if (path === "/datasources") {
     if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
     const body = await readIncidentBody(request);
-    if (!body.credentialRef || !body.config.assetIds.includes("10010")) return json(response, 400, {});
+    if (!body.credentialRef || !body.config.assetIds.includes("10010") ||
+        body.config.kind !== "tencent-cvm" || body.config.region !== "ap-guangzhou" || body.config.endpoint) {
+      return json(response, 400, {});
+    }
     datasourceFixture = { id: "fixture-ds", name: body.name, scope: incidentFixture.scope, config: body.config,
       version: 1, enabled: true, health: "untested", credentialConfigured: true, ingressConfigured: false };
     return json(response, 201, datasourceFixture);
