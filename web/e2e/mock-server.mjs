@@ -4,6 +4,9 @@ import { extname, posix } from "node:path";
 
 const port = Number(process.env.PORT ?? "4173");
 const root = new URL("../dist/", import.meta.url);
+const nginxConfig = await readFile(new URL("../../config/web/nginx.conf", import.meta.url), "utf8");
+const contentSecurityPolicy = nginxConfig.match(/add_header Content-Security-Policy "([^"]+)"/)?.[1];
+if (!contentSecurityPolicy) throw new Error("Missing Portal Content-Security-Policy");
 
 const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
 
@@ -66,6 +69,7 @@ let incidentFixture;
 let rcaFixture;
 let datasourceFixture;
 let zabbixSourceFixture;
+let observabilityFixture;
 let policyFixture;
 let fixtureSuperAdministrator = true;
 let fixtureAccountDeleted = false;
@@ -504,11 +508,11 @@ createServer(async (request, response) => {
     const requested = url.pathname === "/" ? "index.html" : posix.normalize(url.pathname).replace(/^\/+/, "");
     const fileUrl = new URL(requested, root);
     const body = await readFile(fileUrl);
-    response.writeHead(200, { "Content-Type": contentType(extname(requested)) });
+    response.writeHead(200, { "Content-Type": contentType(extname(requested)), "Content-Security-Policy": contentSecurityPolicy });
     response.end(body);
   } catch {
     const body = await readFile(new URL("index.html", root));
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": contentSecurityPolicy });
     response.end(body);
   }
 }).listen(port, "127.0.0.1", () => console.log(`mock server listening on ${port}`));
@@ -718,6 +722,26 @@ async function incidents(request, response, url) {
           environmentName: "生产", businessName: "运维" }] : [], truncated: false });
     }
   }
+  if (path === "/observability/sources" && method === "GET") return json(response, 200, {items: observabilityFixture ? [observabilityFixture] : [], legacy: []});
+  if (["/observability/probe", "/observability/sources"].includes(path) && method === "POST") {
+    const body = await readIncidentBody(request);
+    if (body.kind !== "alertmanager" || body.scope?.environmentId !== "testing" || body.scope?.businessId !== "test" ||
+        body.scope?.clusterId !== "test-k8s" || body.label !== "cluster" || body.value !== "test-a" ||
+        body.credential?.secret !== "fixture-alertmanager-token") return json(response, 422, {});
+    if (path === "/observability/probe") return json(response, 200, {count: 1});
+    observabilityFixture = {id:"alertmanager-fixture",kind:body.kind,name:body.name,endpoint:body.endpoint,scope:body.scope,
+      auth:body.credential.method,shared:true,enabled:true,version:1,syncedAt:Math.floor(Date.now()/1000)};
+    return json(response, 200, observabilityFixture);
+  }
+  if (path === "/observability/alerts" && method === "GET") {
+    const source = observabilityFixture;
+    const included = source && [["environmentId",source.scope.environmentId],["businessId",source.scope.businessId],
+      ["clusterId",source.scope.clusterId]].every(([key,value])=>!url.searchParams.has(key)||url.searchParams.get(key)===value);
+    const items = included ? [{id:"am-alert",title:"GatewayErrors",severity:"warning",rawSeverity:"warning",
+      startedAt:new Date().toISOString(),state:"active",scope:source.scope}] : [];
+    return json(response, 200, {items, sources: included ? [source] : [], truncated: false});
+  }
+  if (path === "/observability/dashboards" && method === "GET") return json(response, 200, {items: []});
   if (path === "/datasources") {
     if (method === "GET") return json(response, 200, { items: datasourceFixture ? [datasourceFixture] : [], pagination: {} });
     const body = await readIncidentBody(request);

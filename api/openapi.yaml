@@ -1847,6 +1847,298 @@ paths:
           schema:
             type: boolean
 
+  /api/v1/diagnostics/observability/sources:
+    get:
+      tags:
+        - Incidents
+      operationId: listObservabilitySources
+      summary: List scoped observability sources
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: List scoped observability sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilitySources'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags:
+        - Incidents
+      operationId: createObservabilitySource
+      summary: Create a verified observability source
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: Create a verified observability source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilitySource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservabilityInput'
+  /api/v1/diagnostics/observability/probe:
+    post:
+      tags:
+        - Incidents
+      operationId: probeObservabilitySource
+      summary: Test or preview a scoped observability source
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: Test or preview a scoped observability source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservabilityInput'
+  /api/v1/diagnostics/observability/sources/{sourceId}:
+    put:
+      tags:
+        - Incidents
+      operationId: updateObservabilitySource
+      summary: Update a verified observability source
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: Update a verified observability source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilitySource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservabilityInput'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+    patch:
+      tags:
+        - Incidents
+      operationId: toggleObservabilitySource
+      summary: Pause or resume an observability source
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: Pause or resume an observability source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityToggle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservabilityToggle'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+  /api/v1/diagnostics/observability/sources/{sourceId}/sync:
+    post:
+      tags:
+        - Incidents
+      operationId: syncObservabilitySource
+      summary: Queue alert synchronization or recheck a source
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: Queue alert synchronization or recheck a source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityQueued'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+  /api/v1/diagnostics/observability/alerts:
+    get:
+      tags:
+        - Incidents
+      operationId: listObservabilityAlerts
+      summary: List scoped Alertmanager observations
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: List scoped Alertmanager observations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityAlerts'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+        - name: environmentId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: businessId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: clusterId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: recent
+          in: query
+          required: false
+          schema:
+            type: string
+  /api/v1/diagnostics/observability/dashboards:
+    get:
+      tags:
+        - Incidents
+      operationId: listObservabilityDashboards
+      summary: List authorized dashboard links
+      security:
+        - PortalSession: []
+      responses:
+        '200':
+          description: List authorized dashboard links
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityDashboards'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+        - name: clusterId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: businessId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: anchor
+          in: query
+          required: false
+          schema:
+            type: string
 components:
   securitySchemes:
     DiagnosticIngress:
@@ -1995,6 +2287,284 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    ObservabilityScope:
+      type: object
+      additionalProperties: false
+      required:
+        - environmentId
+        - businessId
+        - clusterId
+      properties:
+        environmentId:
+          type: string
+        businessId:
+          type: string
+        clusterId:
+          type: string
+    ObservabilityCredential:
+      type: object
+      additionalProperties: false
+      required:
+        - method
+      properties:
+        method:
+          type: string
+          enum:
+            - none
+            - bearer
+            - basic
+        username:
+          type: string
+        secret:
+          type: string
+          writeOnly: true
+    ObservabilityTenant:
+      type: object
+      additionalProperties: false
+      required:
+        - account
+        - project
+      properties:
+        account:
+          type: integer
+        project:
+          type: integer
+    ObservabilityDashboard:
+      type: object
+      additionalProperties: false
+      required:
+        - uid
+        - title
+      properties:
+        uid:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+    ObservabilityAlert:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - state
+        - severity
+        - startedAt
+        - scope
+      properties:
+        namespace:
+          type: string
+        id:
+          type: string
+        title:
+          type: string
+        state:
+          type: string
+          enum:
+            - active
+            - suppressed
+            - unprocessed
+            - departed
+        severity:
+          type: string
+          enum:
+            - critical
+            - warning
+            - info
+            - ''
+        rawSeverity:
+          type: string
+        startedAt:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ObservabilityScope'
+    ObservabilitySource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - name
+        - endpoint
+        - scope
+        - shared
+        - auth
+        - enabled
+        - version
+      properties:
+        coverageFrom:
+          type: integer
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - prometheus
+            - victorialogs
+            - alertmanager
+            - grafana
+        name:
+          type: string
+        endpoint:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ObservabilityScope'
+        shared:
+          type: boolean
+        label:
+          type: string
+        value:
+          type: string
+        tenant:
+          $ref: '#/components/schemas/ObservabilityTenant'
+        includeSuppressed:
+          type: boolean
+        dashboards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilityDashboard'
+        auth:
+          type: string
+          enum:
+            - none
+            - bearer
+            - basic
+        enabled:
+          type: boolean
+        version:
+          type: integer
+        checkedAt:
+          type: integer
+        syncedAt:
+          type: integer
+        failed:
+          type: boolean
+    ObservabilityInput:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - name
+        - endpoint
+        - scope
+        - shared
+      properties:
+        kind:
+          type: string
+          enum:
+            - prometheus
+            - victorialogs
+            - alertmanager
+            - grafana
+        name:
+          type: string
+        endpoint:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ObservabilityScope'
+        shared:
+          type: boolean
+        label:
+          type: string
+        value:
+          type: string
+        tenant:
+          $ref: '#/components/schemas/ObservabilityTenant'
+        includeSuppressed:
+          type: boolean
+        dashboardIds:
+          type: array
+          items:
+            type: string
+        credential:
+          $ref: '#/components/schemas/ObservabilityCredential'
+        sourceId:
+          type: string
+        preview:
+          type: boolean
+    ObservabilityPreview:
+      type: object
+      additionalProperties: false
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+        suppressed:
+          type: integer
+        dashboards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilityDashboard'
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilityAlert'
+    ObservabilitySources:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - legacy
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilitySource'
+        legacy:
+          type: array
+          items:
+            type: string
+            enum:
+              - prometheus
+              - victorialogs
+              - alertmanager
+              - grafana
+    ObservabilityAlerts:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - sources
+        - truncated
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilityAlert'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilitySource'
+        truncated:
+          type: boolean
+    ObservabilityDashboards:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservabilityDashboard'
+    ObservabilityToggle:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+    ObservabilityQueued:
+      type: object
+      additionalProperties: false
+      required:
+        - queued
+      properties:
+        queued:
+          type: boolean
     ZabbixScope:
       type: object
       required:

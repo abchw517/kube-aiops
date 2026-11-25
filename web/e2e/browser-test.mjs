@@ -1763,6 +1763,57 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('.zabbix-source-card a').click()` });
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
+  for (const days of [7, 14, 30]) {
+    const plot = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
+      document.querySelector('[data-overview-window="${days}"]').click();
+      const grid = document.querySelector(".overview-plot-grid");
+      const dates = document.querySelector(".overview-dates");
+      const columnCount = node => getComputedStyle(node).gridTemplateColumns.split(" ").length;
+      const first = grid.firstElementChild.getBoundingClientRect();
+      const last = grid.lastElementChild.getBoundingClientRect();
+      const bar = grid.querySelector(".overview-trend-bars .overview-series-zabbix").getBoundingClientRect();
+      return {
+        columns: columnCount(grid),
+        dateColumns: columnCount(dates),
+        rowAligned: first.top === last.top && first.left < last.left,
+        barHeight: bar.height,
+        zabbixCount: document.querySelector("[data-overview-note] .overview-series-zabbix").textContent,
+      };
+    })()` });
+    const layout = plot.result?.value;
+    if (layout?.columns !== days || layout.dateColumns !== days || !layout.rowAligned ||
+        layout.barHeight <= 0 || layout.zabbixCount !== "Zabbix 1") {
+      throw new Error(`Zabbix ${days}-day trend did not render under the Portal CSP: ${JSON.stringify(layout ?? plot.exceptionDetails)}`);
+    }
+  }
+
+  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("接入 Alertmanager"), "Observability type sections did not load");
+  await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-obs-add="alertmanager"]').click()` });
+  await assertText(cdp, text => text.includes("选择环境") && text.includes("多集群共享"), "Observability scope options were not available");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const f = document.querySelector("[data-observability] dialog form");
+    const set = (name, value) => { const field = f.elements[name]; field.value = value; field.dispatchEvent(new Event("input",{bubbles:true})); };
+    set("environment","testing");
+    set("business","test");
+    set("cluster","test-k8s");
+    set("mapping","shared");
+    set("label","cluster");
+    set("value","test-a");
+    set("name","测试告警中心");
+    set("endpoint","https://alertmanager.example/alertmanager");
+    set("secret","fixture-alertmanager-token");
+    f.querySelector("[data-obs-test]").click();
+  })()` });
+  await assertText(cdp, text => text.includes("连接成功 · 可预览已选择范围"), "Alertmanager could not test the exact binding");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-obs-preview]").click()' });
+  await assertText(cdp, text => text.includes("1 条活动告警"), "Alertmanager preview did not return the activity count");
+  await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-obs-save]").click()' });
+  await assertText(cdp, text => text.includes("测试告警中心"), "Saved Alertmanager section was not expanded");
+  await assertPage(cdp, `${origin}/#/diagnostics?source=alertmanager`, text => text.includes("GatewayErrors") && text.includes("窗口内 1 条"),
+    "Alertmanager observations did not reach the unified overview");
+  const alertBar = await cdp.send("Runtime.evaluate", { returnByValue: true, expression:
+    'document.querySelector(".overview-trend-bars .overview-series-alertmanager").getBoundingClientRect().height' });
+  if (!alertBar.result?.value) throw new Error("Alertmanager column did not render under CSP");
 
   await assertPage(cdp, `${origin}/#/diagnostics/policies`, (text) => text.includes("新增诊断策略") && text.includes("暂无诊断策略"), "Policy page did not load");
   await cdp.send("Runtime.evaluate", { expression: `(() => {

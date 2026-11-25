@@ -22,6 +22,7 @@ SERVER_PATHS = [
     ROOT / "api" / "internal" / "diagnosis" / "incident" / "datasource.go",
     ROOT / "api" / "internal" / "diagnosis" / "incident" / "policy.go",
     ROOT / "api" / "internal" / "diagnosis" / "incident" / "zabbix.go",
+    ROOT / "api" / "internal" / "diagnosis" / "incident" / "observability.go",
 ]
 INCIDENT_MODEL_PATH = ROOT / "api" / "internal" / "diagnosis" / "incident" / "model.go"
 GENERATED_PATH = ROOT / "web" / "src" / "api" / "generated.ts"

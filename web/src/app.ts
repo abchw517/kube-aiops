@@ -1,3 +1,4 @@
+import { bindObservabilitySources, renderObservabilityDashboardLinks } from "./views/diagnosis/observability-sources.ts";
 import { datasourcesPath, legacyDatasourcesPath, resolveResourceTab, type ResourceAccess } from "./domain/resource-routes.ts";
 import { bindZabbixSources } from "./views/diagnosis/zabbix-sources.ts";
 import { loadUnifiedOverview } from "./views/diagnosis/unified-overview.ts";
@@ -402,6 +403,7 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(page.html);
         bindDatasourcesPage(this.root, page.items, refresh, this.incidentCreate);
+        bindObservabilitySources(this.root, page.observability, refresh);
         bindZabbixSources(this.root, page.zabbix, this.diagnosticSettings.datasourceWrite, this.diagnosticSettings.datasourceTest);
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);
@@ -444,6 +446,9 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(html);
         bindIncidentDetail(this.root, detail, hash, () => void this.route());
+        const item = detail.incident;
+        void this.loadObservabilityDashboards(generation, { clusterId: item.scope.clusterId, namespace: item.scope.namespace,
+          businessId: item.scope.businessId, anchor: item.firstSeen });
       } else {
         const html = await loadIncidentWorkspace(hash, diagnosticListView(hash) === "overview", this.incidentCreate, this.incidentsAvailable);
         if (generation !== this.renderGeneration) return;
@@ -517,12 +522,20 @@ export class PortalApp {
       this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
+      if (finding.namespace) void this.loadObservabilityDashboards(generation, { clusterId: finding.cluster,
+        namespace: finding.namespace, anchor: finding.createdAt });
       const region = this.root.querySelector<HTMLElement>("[data-correlation-finding]");
       if (region) void this.loadCorrelation(id, generation, region);
     } catch (error) {
       if (generation !== this.renderGeneration) return;
       this.renderRequestError(error);
     }
+  }
+
+  private async loadObservabilityDashboards(generation: number, params: Parameters<typeof renderObservabilityDashboardLinks>[0]) {
+    if (demoMode || !params.namespace) return;
+    const html = await renderObservabilityDashboardLinks(params);
+    if (html && generation === this.renderGeneration) this.root.querySelector("main")?.insertAdjacentHTML("beforeend", html);
   }
 
   private async loadCorrelation(id: string, generation: number, region: HTMLElement): Promise<void> {

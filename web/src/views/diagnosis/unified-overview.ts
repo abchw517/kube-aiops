@@ -59,7 +59,7 @@ function overviewHref(query: URLSearchParams, changes: Record<string, string>): 
 }
 
 function clearScope(query: URLSearchParams): string {
-  return overviewHref(query, { clusterId: "", severity: "", source: "", environmentId: "", businessId: "", recent: "" });
+  return overviewHref(query, { clusterId: "", severity: "", source: "", environmentId: "", businessId: "", recent: "", alertRecent: "" });
 }
 
 function renderScope(clusters: Cluster[], query: URLSearchParams, severity: Severity | undefined, hasZabbix: boolean, sourceScopes: ZabbixHealth[]) {
@@ -86,12 +86,13 @@ function renderScope(clusters: Cluster[], query: URLSearchParams, severity: Seve
   return `<section class="panel overview-panel overview-scope">
     <form class="overview-toolbar" data-unified-filters aria-label="诊断总览筛选">
     <label>来源<select name="source">${choices([["", "全部来源"], ["incident", "故障事件"], ["finding", "K8sGPT"],
-      ...(hasZabbix ? [["zabbix", "Zabbix"] as [string, string]] : [])], query.get("source") ?? "")}</select></label>
+      ...(hasZabbix ? [["zabbix", "Zabbix"] as [string, string], ["alertmanager", "Alertmanager"] as [string, string]] : [])], query.get("source") ?? "")}</select></label>
     <label>环境<select name="environmentId">${scopeChoices("environment")}</select></label>
     <label>业务<select name="businessId">${scopeChoices("business")}</select></label>
       <label>集群实例<select name="clusterId">${choices([["", "全部可见实例"], ...entries], instance)}</select></label>
       <label>诊断级别<select name="severity">${choices([["", "全部级别"], ...levels], severity ?? "")}</select></label>
       ${hasZabbix ? `<label>Zabbix 状态<select name="recent">${choices([["", "当前记录"], ["true", "含最近恢复"]], query.get("recent") ?? "")}</select></label>` : ""}
+      ${hasZabbix && query.get("source") === "alertmanager" ? `<label>告警状态<select name="alertRecent">${choices([["", "活动告警"], ["true", "包含非活动告警"]], query.get("alertRecent") ?? "")}</select></label>` : ""}
       <input type="hidden" name="trendDays" value="${overviewDays(query.get("trendDays"))}">
       <div class="overview-filter-actions"><button class="button" type="submit">应用筛选</button>
       <a class="overview-text-link" href="${clearScope(query)}">清除筛选</a></div>
@@ -114,8 +115,9 @@ function scopeValue(label: string | undefined, kind: "environment" | "business",
 function sourceLabel(source: string | null, hasZabbix: boolean): string {
   if (source === "incident") return "故障事件";
   if (source === "finding") return "K8sGPT";
+  if (source === "alertmanager") return "Alertmanager";
   if (source === "zabbix") return "Zabbix";
-  return hasZabbix ? "故障事件、K8sGPT 与 Zabbix" : "故障事件与 K8sGPT";
+  return hasZabbix ? "故障事件、K8sGPT、Zabbix 与 Alertmanager" : "故障事件与 K8sGPT";
 }
 
 const coverageLabels: Record<Coverage, string> = {
@@ -134,11 +136,12 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   const tryFindings = !source || source === "finding";
   const tryZabbix = canReadZabbix && (!source || source === "zabbix");
   const client = createOverviewClient(signal);
+  const tryAlerts = canReadZabbix && (!source || source === "alertmanager");
   const tolerateZabbix = (error: unknown): ZabbixProblems | undefined => {
     if (error instanceof ApiError && error.status === 401) throw error;
     return undefined;
   };
-  const [incident, finding, catalog, zabbix, zabbixCatalog] = await Promise.all([
+  const [incident, finding, catalog, zabbix, zabbixCatalog, alerts] = await Promise.all([
     tryIncidents && canReadIncidents ? readPages<Incident>((cursor) =>
       client.listIncidents({ clusterId: cluster ?? undefined, environmentId, businessId, limit: 100, continue: cursor }))
       : { items: [], coverage: "restricted" as const },
@@ -152,6 +155,11 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
       .catch(tolerateZabbix) : undefined,
     canReadZabbix && (!tryZabbix || environmentId || businessId)
       ? client.listZabbixProblems({ metadataOnly: true }).catch(tolerateZabbix) : undefined,
+    tryAlerts ? client.listObservabilityAlerts({ clusterId: cluster ?? undefined, environmentId, businessId,
+      recent: source === "alertmanager" ? query.get("alertRecent") ?? undefined : undefined }).catch(error => {
+        if (error instanceof ApiError && error.status === 401) throw error;
+        return undefined;
+      }) : undefined,
   ]);
   const sources = [
     ...(tryIncidents ? [["故障事件", incident.coverage] as const] : []),
@@ -175,9 +183,17 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
     const at = item.syncedAt && item.hasSnapshot ? ` · 上次成功同步 ${item.syncedAt}` : "";
     coverage.push(`Zabbix ${item.environmentName ?? item.scope.environmentId} / ${item.businessName ?? item.scope.businessId} · ${zabbixHealth[item.health] ?? item.health}${at}`);
   }
-  const hasData = sources.some(([, state]) => state === "complete" || state === "partial") ||
+  const alertSources = alerts?.sources ?? [];
+  for (const item of alertSources) {
+    if (!item.syncedAt || item.failed) coverage.push(`Alertmanager ${item.name}：${item.failed ? "同步失败" : "等待首次同步"}${item.syncedAt ? ` · 上次成功同步 ${new Date(item.syncedAt * 1000).toLocaleString("zh-CN")}` : ""}`);
+  }
+  if (source === "alertmanager" && !alerts?.sources.length) coverage.push("当前范围暂无可用的 Alertmanager 数据源");
+  if (alerts?.truncated) coverage.push("Alertmanager：结果超过总览范围");
+  const alertCoverage = alertSources.flatMap(item => item.coverageFrom ? [item.coverageFrom] : []);
+  const hasData = alertSources.some(item => item.syncedAt) || sources.some(([, state]) => state === "complete" || state === "partial") ||
     zabbixSources.some(item => item.hasSnapshot);
-  const incomplete = sources.some(([, state]) => state === "partial" || state === "unavailable") ||
+  const incomplete = Boolean(alerts?.truncated || alertSources.some(item => item.failed || !item.syncedAt) ||
+      tryAlerts && !alerts) || sources.some(([, state]) => state === "partial" || state === "unavailable") ||
     (tryZabbix && !zabbix) || zabbix?.truncated === true || zabbixSources.some(item => item.health !== "available");
   const sourceScopes = zabbixCatalog?.sources ?? zabbix?.sources ?? [];
   const byCluster = new Map(catalog.map(item => [item.id, item]));
@@ -189,14 +205,16 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   const notice = coverage.length ? `<div class="overview-notice" role="status"><span>${escapeHtml(coverage.join("；"))}。${hasData && incomplete ? "仅统计已获取记录。" : ""}</span>
     ${incomplete ? '<button type="button" class="button secondary" data-action="retry">重试</button>' : ""}</div>` : "";
   const now = Date.now();
-  const data = aggregateDiagnostics(incident.items, findingRows, severity, now, 30, problems);
+  const data = aggregateDiagnostics(incident.items, findingRows, severity, now, 30, problems, alerts?.items);
   const trend: Trend = { data, now, incomplete, available: hasData, sources: [] };
   if (incident.coverage === "complete" || incident.coverage === "partial") trend.sources.push("incident");
   if (finding.coverage === "complete" || finding.coverage === "partial") trend.sources.push("finding");
   if (problems.length || zabbixSources.some(item => item.hasSnapshot)) trend.sources.push("zabbix");
+  if (alertSources.some(item => item.syncedAt)) trend.sources.push("alertmanager");
   const counts = hasData ? data : undefined;
   const renderWindow = (days: OverviewDays) => renderOverviewTrend(trend, days,
-    window => overviewHref(query, { trendDays: String(window) }));
+    window => overviewHref(query, { trendDays: String(window) })) + (alertCoverage.length
+    ? `<p class="overview-chart-note">Alertmanager 从 ${new Date(Math.min(...alertCoverage) * 1000).toLocaleString("zh-CN")} 起有平台采集记录。</p>` : "");
   const html = `<section class="unified-overview" aria-label="诊断概况">
     ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(counts, query, severity)}
     <div class="panel overview-analytics">
@@ -233,17 +251,18 @@ function renderDistribution(data: Overview | undefined, query: URLSearchParams, 
       const percent = data?.total ? (count ?? 0) / data.total * 100 : 0;
       const row = `<span class="overview-distribution-row"><span>${label}</span>
         <span><strong>${count ?? "—"}</strong><small>${data?.total ? `${percent.toFixed(1)}%` : "—"}</small></span></span>
-        <span class="overview-progress" aria-hidden="true"><span style="width:${percent}%"></span></span>`;
+        <span class="overview-progress" aria-hidden="true"><span data-overview-progress-width="${percent}"></span></span>`;
       return `<li class="overview-${level}">${data ? `<a href="${severityHref(query, level, severity)}"
         ${severity === level ? 'aria-current="true"' : ""}>${row}</a>` : row}</li>`;
     }).join("")}</ul>
+    ${data && data.total > data.counts.critical + data.counts.warning + data.counts.info ? `<p class="overview-chart-note">未映射级别 · ${data.total - data.counts.critical - data.counts.warning - data.counts.info} 条</p>` : ""}
     ${data ? `<p class="overview-distribution-foot"><span>点击级别筛选总览</span>${clearLevel}</p>` : ""}
   </section>`;
 }
 
 function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean) {
   const eventQuery = new URLSearchParams(query);
-  for (const key of ["trendDays", "source", "recent"]) eventQuery.delete(key);
+  for (const key of ["trendDays", "source", "recent", "alertRecent"]) eventQuery.delete(key);
   const findingsQuery = new URLSearchParams();
   const cluster = query.get("clusterId");
   const severity = overviewLevel(query.get("severity"));
@@ -255,8 +274,13 @@ function renderRecent(rows: Overview["recent"], query: URLSearchParams, canReadI
   }
   const items = rows.map((row) => {
     const at = row.time === undefined ? "—" : `<time datetime="${escapeHtml(row.observed)}">${escapeHtml(observedTime.format(row.time))}</time>`;
-    const level = `<span class="overview-badge overview-${row.severity}">${diagnosticLevels[row.severity]}</span>`;
+    const level = `<span class="overview-badge overview-${row.severity}">${row.severity ? diagnosticLevels[row.severity] : "未映射"}</span>`;
     if (row.problem) return { ...renderZabbixProblem(row.problem), at, level };
+    if (row.alert) {
+      const state = { active: "活动", suppressed: "静默或抑制", unprocessed: "待处理", departed: "已离开当前列表" }[row.alert.state];
+      return { link: `<details><summary>${escapeHtml(row.title)}</summary><p>${state} · 原始级别 ${escapeHtml(row.alert.rawSeverity || "—")}</p></details>`,
+        level, status: state, source: "Alertmanager", instance: escapeHtml(row.cluster), at };
+    }
     const params = new URLSearchParams({ cluster: row.cluster, from: "overview", return: query.toString() });
     const target = row.source === "incident" ? incidentHref(row.id, query.toString(), true) :
       href(`${diagnosticListPaths.findings}/${encodeURIComponent(row.id)}`, params);
@@ -309,6 +333,9 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
   const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
   const overview = root.querySelector<HTMLElement>(".unified-overview");
   if (!form || !chart || !overview) return;
+  for (const bar of overview.querySelectorAll<HTMLElement>("[data-overview-progress-width]")) {
+    bar.style.width = `${bar.dataset.overviewProgressWidth}%`;
+  }
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const next = new URLSearchParams();

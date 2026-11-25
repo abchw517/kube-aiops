@@ -35,8 +35,8 @@ test("visible merge targets keep the representative and the trend counts only da
   assert.equal(result.total, 6);
   assert.equal(result.recent.length, 5);
   assert.equal(result.undated, 1);
-  assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1, zabbix: 0 });
-  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 1, zabbix: 0 });
+  assert.deepEqual(result.daily[0], { date: "2026-11-18", incident: 0, finding: 1, zabbix: 0, alertmanager: 0 });
+  assert.deepEqual(result.daily.at(-1), { date: "2026-11-24", incident: 1, finding: 1, zabbix: 0, alertmanager: 0 });
   assert.equal(result.recent.some(({ id }) => id === "child" || id === "linked"), false);
   assert.equal(aggregateDiagnostics([events[0]], [], undefined, now).total, 1);
 });
@@ -49,8 +49,8 @@ test("UTC+8 trend opens the next day at 16:00 UTC and excludes timestamps after 
   const result = aggregateDiagnostics([], records, undefined, cutoff);
   assert.equal(result.total, 3);
   assert.deepEqual(result.daily.slice(-2), [
-    { date: "2026-11-23", incident: 0, finding: 1, zabbix: 0 },
-    { date: "2026-11-24", incident: 0, finding: 1, zabbix: 0 },
+    { date: "2026-11-23", incident: 0, finding: 1, zabbix: 0, alertmanager: 0 },
+    { date: "2026-11-24", incident: 0, finding: 1, zabbix: 0, alertmanager: 0 },
   ]);
 });
 

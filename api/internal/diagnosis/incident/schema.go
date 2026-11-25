@@ -65,7 +65,7 @@ func Open(ctx context.Context, db *sql.DB, audit AuditWriter) (*Store, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, schema+schemaV2+zabbixSchema); err != nil {
+	if _, err := tx.ExecContext(ctx, schema+schemaV2+zabbixSchema+observabilitySchema); err != nil {
 		return nil, err
 	}
 	if err := migrateZabbixSourceName(ctx, tx); err != nil {
