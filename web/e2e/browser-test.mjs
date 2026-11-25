@@ -1298,9 +1298,11 @@ try {
 async function waitForPage(debugPort) {
   const url = `http://127.0.0.1:${debugPort}/json/list`;
   let lastError;
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  // Chrome can take over 30 seconds to open DevTools on a cold CI runner.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
       if (response.ok) {
         const pages = await response.json();
         const page = pages.find(
