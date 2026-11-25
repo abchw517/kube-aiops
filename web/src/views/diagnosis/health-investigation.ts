@@ -1,0 +1,59 @@
+import { createOverviewClient } from "../../api/client.ts";
+import { ApiError } from "../../api/generated.ts";
+import { escapeHtml } from "../../components/html.ts";
+import type { aggregateDiagnostics } from "../../domain/unified-diagnostics.ts";
+
+type RecordRow = ReturnType<typeof aggregateDiagnostics>["records"][number];
+
+export function bindHealthInvestigation(root: HTMLElement, rows: RecordRow[], lifetime: AbortSignal): void {
+  root.addEventListener("click", event => {
+    const opener = event.target instanceof Element && event.target.closest<HTMLButtonElement>("button[data-health-record]");
+    if (!opener) return;
+    const row = rows[Number(opener.dataset.healthRecord)];
+    const sourceId = row?.problem?.sourceId ?? row?.alert?.sourceId;
+    if (!row || !(row.problem || row.alert)) return;
+    const dialog = document.createElement("dialog");
+    dialog.className = "health-investigation";
+    dialog.setAttribute("aria-labelledby", "health-investigation-title");
+    const fields = [
+      ["来源", row.origin], ["主机或实例", row.problem?.hosts.map(h => h.name).join("、") || row.cluster],
+      ["首次发现", row.time === undefined ? "—" : new Date(row.time).toLocaleString("zh-CN", {timeZone: "Asia/Shanghai"}) + " · UTC+8"],
+      ["记录编号", row.problem?.eventId ?? row.id],
+      ["处置状态", row.problem ? (row.problem.recovered ? "已恢复" : "未恢复") :
+        row.alert ? ({active: "活动", departed: "已离开当前列表", suppressed: "静默或抑制", unprocessed: "待处理"} as const)[row.alert.state] : "—"],
+    ];
+    dialog.innerHTML = `<header><h2 id="health-investigation-title">诊断记录详情</h2><button type="button" class="button secondary" autofocus data-close>关闭</button></header>
+      <section><h3>${escapeHtml(row.title)}</h3><dl>${fields.map(([name, value]) => `<dt>${name}</dt><dd>${escapeHtml(value || "—")}</dd>`).join("")}</dl>
+      <h3>AI 深度调查</h3><p>根据本条告警及其授权范围内的只读证据分析。</p>
+      <button type="button" class="button" data-run ${sourceId ? "" : "disabled"}>发起 AI 深度调查</button>
+      <p data-result role="status">${sourceId ? "尚未发起" : "缺少来源实例，请刷新告警列表。"}</p></section>`;
+    root.append(dialog);
+    const controller = new AbortController();
+    const close = () => dialog.close();
+    dialog.querySelector("[data-close]")?.addEventListener("click", close);
+    dialog.addEventListener("close", () => {
+      controller.abort();
+      dialog.remove();
+      if (opener.isConnected) opener.focus({preventScroll: true});
+    }, {once: true});
+    const run = dialog.querySelector<HTMLButtonElement>("[data-run]");
+    const result = dialog.querySelector<HTMLElement>("[data-result]");
+    if (!run || !result) { dialog.remove(); return; }
+    run.addEventListener("click", async () => {
+      if (!sourceId || run.disabled) return;
+      run.disabled = true;
+      result.textContent = "正在调查，关闭窗口可结束本次请求。";
+      try {
+        const response = await createOverviewClient(AbortSignal.any([controller.signal, lifetime])).investigateHealthAlert({source: row.source, sourceId, id: row.id});
+        result.textContent = response.analysis;
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        const reason = err instanceof ApiError ? (err.body as {error?: {message?: string}} | null)?.error?.message : "";
+        result.textContent = reason || "调查未完成，请检查连接后重试。";
+      } finally {
+        run.disabled = false;
+      }
+    });
+    dialog.showModal();
+  });
+}

@@ -2093,6 +2093,46 @@ paths:
           required: false
           schema:
             type: string
+  /api/v1/diagnostics/health/{source}/{sourceId}/{id}/investigate:
+    post:
+      tags: [Incidents]
+      operationId: investigateHealthAlert
+      summary: 对当前可见告警执行只读调查
+      security:
+        - PortalSession: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 基于告警和限定范围工具的模型分析
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthInvestigation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/diagnostics/observability/dashboards:
     get:
       tags:
@@ -2342,6 +2382,13 @@ components:
           type: string
         url:
           type: string
+    HealthInvestigation:
+      type: object
+      additionalProperties: false
+      required: [analysis]
+      properties:
+        analysis:
+          type: string
     ObservabilityAlert:
       type: object
       additionalProperties: false
@@ -2353,6 +2400,8 @@ components:
         - startedAt
         - scope
       properties:
+        sourceId:
+          type: string
         namespace:
           type: string
         id:

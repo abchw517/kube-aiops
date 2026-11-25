@@ -62,6 +62,7 @@ var (
 )
 
 func (s *Server) Register(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/v1/diagnostics/health/{source}/{sourceId}/{id}/investigate", s.protect(s.investigateHealth))
 	s.registerRCA(mux)
 	s.registerTopology(mux)
 	s.registerDatasource(mux)

@@ -1,6 +1,6 @@
 # kube-aiops
 
-基于 K8sGPT 的 Kubernetes 只读诊断平台。简体中文 Web Portal 集中展示集群诊断结果，以及同一资源和时间窗口内的事件、指标、日志信号和告警。
+面向 Kubernetes 与主机监控的只读诊断平台。简体中文 Web Portal 汇总 K8sGPT Finding、故障事件、Zabbix 和 Alertmanager 告警，并支持在授权范围内通过 HolmesGPT 调查告警、复核诊断和使用已发布的运维知识。
 
 ## 当前阶段
 
@@ -11,7 +11,8 @@
 | Phase 1.4 | 已完成 | 身份认证与授权、结构化审计、响应脱敏和生产启动门禁 |
 | Phase 2 | 已完成 | Kubernetes Events、Prometheus、VictoriaLogs、Alertmanager 四类证据关联 |
 | Platform Portal | 已实现 | 多集群资源管理、运维知识库、LDAP 与接口权限配置、管理员组继承及操作审计 |
-| Phase 3–5 | 已规划 | RCA Agent 和 Runbook、人工审批修复、受控自动修复 |
+| Phase 3 | Holmes 首轮已实现，待客户环境联调 | 告警调查、Finding 复核、事件 RCA 和知识问答，持续完善证据轨迹与 Runbook |
+| Phase 4–5 | 已规划 | 人工审批修复与受控自动修复 |
 
 交付与验收记录见 [Phase 1.4](docx/phase-1.4-completion.md) 和 [Phase 2](docx/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docx/kubernetes-v1.36-baseline.md)。
 
@@ -27,7 +28,7 @@ make portal-demo
 
 ## 安装与部署
 
-`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docx/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。
+`make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docx/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。Holmes 使用独立内部服务，通过 Portal API 的 Secret 绑定启用，完整步骤见 [部署 HolmesGPT](docx/install-deployment.md#部署-holmesgpt)。
 
 ## 当前支持基线
 
@@ -52,7 +53,7 @@ K8sGPT Engine、Operator 等默认上游运行时镜像使用 `tag@sha256`
 
 ## 安全边界
 
-当前阶段继续保持只读 AIOps 边界：
+K8sGPT Engine 和 Portal 采用以下只读诊断边界。
 
 - 使用固定 `k8sgpt` ServiceAccount 承载 Engine 权限；
 - 业务资源只允许 `get/list/watch`；
@@ -64,6 +65,8 @@ K8sGPT Engine、Operator 等默认上游运行时镜像使用 `tag@sha256`
 - AI 分析默认启用匿名化；
 - Result CR 作为 K8sGPT 与 Portal Backend 的结构化边界；
 - Raw Result CR / Raw Kubernetes Object 不通过 Portal API 暴露。
+
+Holmes 使用独立的工具配置与凭据。Portal API 先校验当前记录权限，再按绑定范围调用内部服务。Wiki 知识问答只传入已授权的发布章节。
 
 ## 架构拓扑
 
@@ -81,9 +84,10 @@ flowchart TD
     Engine -->|发送匿名化诊断请求| Provider["AI Provider"]
     Backend -->|读取 Result、资源和事件| Kubernetes
     Backend -->|员工认证| LDAP["LDAP / Active Directory"]
-    Backend -->|按需查询指标| Prometheus["Prometheus"]
-    Backend -->|按需查询日志信号| VictoriaLogs["VictoriaLogs"]
-    Backend -->|按需查询告警| Alertmanager["Alertmanager"]
+    Backend -->|读取快照与关联证据| Obs["Zabbix / Alertmanager / Prometheus / VictoriaLogs"]
+    Backend -->|按授权范围调用| Holmes["HolmesGPT / 内部服务"]
+    Holmes -->|经批准的模型端点| Provider
+    Holmes -->|按实例启用只读取证| Obs
 ```
 
 Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docx/architecture.md) 和 [生产部署](docx/install-deployment.md#生产部署)。
@@ -100,6 +104,7 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   │   ├── portal/       # 依赖装配与 HTTP 路由
 │   │   ├── permissions/  # 身份、角色、权限和 LDAP 凭据
 │   │   ├── diagnosis/    # 诊断复核与诊断知识发布
+│   │   ├── holmes/       # Holmes API 和精确范围绑定
 │   │   ├── wiki/         # 文档、问答、附件、同步与计划
 │   │   └── …            # API 领域、数据源和共享组件
 │   └── openapi.yaml
@@ -113,7 +118,7 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   ├── k8sgpt/
 │   └── examples/         # 可选部署清单
 ├── docx/                 # 架构、部署、产品设计与验收
-│   └── permission-catalog/ # 权限目录、管理员组和交互原型
+│   └── system-management/ # 权限目录、管理员组和交互原型
 ├── scripts/
 ├── tests/
 ├── Dockerfile            # API 镜像的根目录构建入口
@@ -541,7 +546,7 @@ Remediation -> Disabled
 
 ## 路线图
 
-- Phase 3 · RCA Agent 与 Runbook
+- Phase 3 · 已实现多来源调查与既有 AI 入口集成。下一轮交付真实数据源联调、SSE 工具轨迹、调查记录与结论保存、告警知识草稿及版本化 Runbook。
 - Phase 4 · 人工审批修复
 - Phase 5 · 受控自动修复
 

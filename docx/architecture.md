@@ -8,7 +8,7 @@ Phase 1.2 Portal Backend API       — Completed
 Phase 1.3 Web Portal               — Completed
 Phase 1.4 Security Hardening       — Completed
 Phase 2   Observability Correlation — Completed
-Phase 3   RCA Agent + Runbook      — Planned
+Phase 3   RCA Agent + Runbook      — Initial Holmes integration implemented
 Phase 4   HITL Remediation         — Planned
 Phase 5   Controlled Auto Remediation — Planned
 ```
@@ -46,6 +46,25 @@ Projection                 ^                         Engine
 ```
 
 Phase 2 source adapters remain server-side. The browser never talks directly to Kubernetes, Prometheus, VictoriaLogs or Alertmanager.
+
+## HolmesGPT Integration
+
+```mermaid
+flowchart TD
+    Portal["Web Portal"] --> API["Portal API"]
+    API --> Access["Resolve record and check access"]
+    Access --> Match["Match source and scope binding"]
+    Match --> Holmes["Internal Holmes service"]
+    Holmes --> Model["Model endpoint"]
+    Holmes --> Tools["Scoped read-only sources"]
+    Match --> Legacy["Existing model fallback"]
+    Holmes --> View["Validated analysis"]
+    Legacy --> View
+```
+
+The Portal owns record identity, access checks and response rendering. Zabbix and Alertmanager use authorized source snapshots. Finding assessment and incident RCA use structured output and existing evidence validation. Wiki passes only published excerpts visible to the requester and rechecks citations before returning. The fallback applies to existing Finding, RCA and Wiki flows. For health alerts, an engine failure is returned to the caller.
+
+The current health-alert flow uses a synchronous response. Holmes runs as a separate internal service with credentials matched to its deployment scope. See the [Holmes deployment guide](install-deployment.md#部署-holmesgpt).
 
 ## Security Composition
 

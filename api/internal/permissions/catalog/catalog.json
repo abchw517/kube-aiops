@@ -60,6 +60,16 @@
           "risk": "中",
           "rule": "",
           "status": "现有路由"
+        },
+        {
+          "action": "C",
+          "code": "diagnosis.health.investigate",
+          "label": "发起健康告警深度调查",
+          "method": "POST",
+          "path": "/api/v1/diagnostics/health/{source}/{sourceId}/{id}/investigate",
+          "risk": "中",
+          "rule": "读取告警并按真实数据源范围授权",
+          "status": "新增路由"
         }
       ]
     },

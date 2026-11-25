@@ -100,6 +100,13 @@ func TestObservabilityReadEnforcesScopeAndKeepsCredentialsPrivate(t *testing.T) 
 	if restricted.Code != 200 || strings.Contains(restricted.Body.String(), "Test Alerts") {
 		t.Fatalf("restricted source leaked: %s", restricted.Body.String())
 	}
+	t.Setenv("HOLMES_BINDINGS_FILE", "")
+	for id, status := range map[string]int{"a": 503, "b": 404} {
+		res := fixture.request("POST", "/health/alertmanager/am/"+id+"/investigate", "admin", "", "", "")
+		if res.Code != status {
+			t.Fatal(id, res.Code, res.Body.String())
+		}
+	}
 	alerts := fixture.request(http.MethodGet, "/observability/alerts", "admin", "", "", "")
 	if alerts.Code != 200 || !strings.Contains(alerts.Body.String(), "Allowed") || strings.Contains(alerts.Body.String(), "OtherBusiness") {
 		t.Fatalf("namespace isolation failed: %s", alerts.Body.String())

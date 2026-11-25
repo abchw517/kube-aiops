@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 96ec3122 ab4b681b 521255ec 04361484 7b1fed99 4afe958c 9ded0ee9 e780a813
+// Contract source SHA-256 groups: 9eecd63f 11548293 83c672ea 3eb85c39 6558976b 3c85aa4c b96d007b b6923b36
 
 export interface ObservabilityScope {
   "environmentId": string;
@@ -24,7 +24,12 @@ export interface ObservabilityDashboard {
   "url"?: string;
 }
 
+export interface HealthInvestigation {
+  "analysis": string;
+}
+
 export interface ObservabilityAlert {
+  "sourceId"?: string;
   "namespace"?: string;
   "id": string;
   "title": string;
@@ -996,6 +1001,12 @@ export interface ListObservabilityAlertsParams {
   "recent"?: string;
 }
 
+export interface InvestigateHealthAlertParams {
+  "source": string;
+  "sourceId": string;
+  "id": string;
+}
+
 export interface ListObservabilityDashboardsParams {
   "clusterId": string;
   "namespace": string;
@@ -1450,6 +1461,12 @@ export class KubeAIOpsApiClient {
     const queryString = query.toString();
     if (queryString) path += `?${queryString}`;
     return this.request<ObservabilityAlerts>(path);
+  }
+
+  async investigateHealthAlert(params: InvestigateHealthAlertParams): Promise<HealthInvestigation> {
+    let path = `/api/v1/diagnostics/health/${encodeURIComponent(String(params["source"]))}/${encodeURIComponent(String(params["sourceId"]))}/${encodeURIComponent(String(params["id"]))}/investigate`;
+    const headers: Record<string, string> = {};
+    return this.request<HealthInvestigation>(path, { method: "POST", headers });
   }
 
   async listObservabilityDashboards(params: ListObservabilityDashboardsParams): Promise<ObservabilityDashboards> {

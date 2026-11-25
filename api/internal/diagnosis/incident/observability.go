@@ -52,6 +52,7 @@ type ObservabilityDashboard struct {
 }
 
 type ObservabilityAlert struct {
+	SourceID    string             `json:"sourceId,omitempty"`
 	Namespace   string             `json:"namespace,omitempty"`
 	ID          string             `json:"id"`
 	Title       string             `json:"title"`

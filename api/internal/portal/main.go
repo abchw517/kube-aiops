@@ -2,10 +2,12 @@ package portal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/correlation"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis/incident"
+	"github.com/abchw517/kube-aiops/api/internal/holmes"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 	"log/slog"
@@ -183,6 +185,9 @@ func Run() {
 		}()
 	}
 
+	if os.Getenv("HOLMES_BINDINGS_FILE") != "" {
+		writeTimeout = max(writeTimeout, 55*time.Second)
+	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,
@@ -262,6 +267,10 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 		}
 		incidents.ModelAvailable = func(i incident.Incident) bool { return provider(i).Enabled() }
 		incidents.Model = func(ctx context.Context, i incident.Incident, prompt string, data []byte) (string, error) {
+			scope := holmes.Scope{Source: "incident", SourceID: i.Scope.ClusterID, Environment: i.Scope.EnvironmentID, Business: i.Scope.BusinessID, Cluster: i.Scope.ClusterID, Namespace: i.Scope.Namespace}
+			if answer, err := holmes.Chat(ctx, scope, prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
+				return answer, nil
+			}
 			return provider(i).AnalyzeIncident(ctx, prompt, data)
 		}
 		managed.runDiagnostics = incidents.RunBackground

@@ -1,3 +1,4 @@
+import { bindHealthInvestigation } from "./health-investigation.ts";
 import { createOverviewClient } from "../../api/client.ts";
 import { ApiError, type Cluster, type Finding, type Incident, type Severity, type ZabbixHealth, type ZabbixProblems } from "../../api/generated.ts";
 import { escapeHtml } from "../../components/html.ts";
@@ -226,7 +227,11 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
     </div>
     <div data-overview-record-page>${renderRecords()}</div>
   </section>`;
-  return { html, bind: (root: HTMLElement) => bindUnifiedOverview(root, trend, query, renderWindow, renderRecords) };
+  return { html, bind: (root: HTMLElement, lifetime: AbortSignal) => {
+    bindUnifiedOverview(root, trend, query, renderWindow, renderRecords);
+    const section = root.querySelector<HTMLElement>(".unified-overview");
+    if (section) bindHealthInvestigation(section, data.records, lifetime);
+  } };
 }
 
 function severityHref(query: URLSearchParams, level: Severity | "", severity: Severity | undefined): string {
@@ -281,13 +286,17 @@ function renderRecent(rows: Overview["records"], query: URLSearchParams, canRead
     if (entry) eventQuery.set("severity", entry[0]);
   }
   const { page, pages, size, start, end } = overviewRecordPage(query, rows.length);
-  const items = rows.slice(start, end).map((row) => {
+  const items = rows.slice(start, end).map((row, index) => {
+    const investigate = `<button type="button" class="button secondary" data-health-record="${start + index}">查看详情与 AI 调查</button>`;
     const at = row.time === undefined ? "—" : `<time datetime="${escapeHtml(row.observed)}">${escapeHtml(observedTime.format(row.time))}</time>`;
     const level = `<span class="overview-badge overview-${row.severity}">${row.severity ? diagnosticLevels[row.severity] : "未映射"}</span>`;
-    if (row.problem) return { ...renderZabbixProblem(row.problem), at, level };
+    if (row.problem) {
+      const problem = renderZabbixProblem(row.problem);
+      return { ...problem, link: problem.link + investigate, at, level };
+    }
     if (row.alert) {
       const state = { active: "活动", suppressed: "静默或抑制", unprocessed: "待处理", departed: "已离开当前列表" }[row.alert.state];
-      return { link: `<details><summary>${escapeHtml(row.title)}</summary><p>${state} · 原始级别 ${escapeHtml(row.alert.rawSeverity || "—")}</p></details>`,
+      return { link: `<details><summary>${escapeHtml(row.title)}</summary><p>${state} · 原始级别 ${escapeHtml(row.alert.rawSeverity || "—")}</p></details>${investigate}`,
         level, status: state, source: "Alertmanager", instance: escapeHtml(row.cluster), at };
     }
     const params = new URLSearchParams({ cluster: row.cluster, from: "overview", return: query.toString() });

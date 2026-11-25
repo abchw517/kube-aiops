@@ -170,3 +170,19 @@ a.overview-metric:is([aria-current=true], :hover) { background: var(--accent-sof
   .overview-metric { min-height: 59px; padding: 6px 10px; }
   .overview-metric strong { font-size: 23px; }
 }
+
+.health-investigation {
+  box-sizing: border-box; width: min(42rem, calc(100% - 2rem)); max-width: 100%;
+  max-height: calc(100dvh - 2rem); padding: 0; margin: auto; overflow: hidden;
+  border: 1px solid var(--control-line); border-radius: 16px; color: var(--ink); background: var(--surface);
+}
+.health-investigation[open] { display: flex; flex-direction: column; }
+.health-investigation::backdrop { background: rgb(23 36 62 / 42%); }
+.health-investigation header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--control-line); }
+.health-investigation header h2 { margin: 0; font-size: 1.15rem; }
+.health-investigation section { min-width: 0; overflow-y: auto; overflow-wrap: anywhere; padding: 1rem; }
+.health-investigation h3 { margin: .25rem 0 .75rem; }
+.health-investigation dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .4rem 1rem; }
+.health-investigation dt { color: var(--muted); }
+.health-investigation dd { margin: 0; }
+.health-investigation [data-result] { white-space: pre-wrap; }

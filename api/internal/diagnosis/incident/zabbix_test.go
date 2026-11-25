@@ -2,8 +2,12 @@ package incident
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -128,6 +132,35 @@ func TestZabbixOnboardingSnapshotAndAuthorization(t *testing.T) {
 	sync(nil)
 	if got := read("", "admin"); len(got.Items) != 1 || got.Items[0].Hosts[0].ClusterID != "ack-prod" || !strings.Contains(got.Items[0].OriginalURL, "eventid=20") {
 		t.Fatalf("projected problems: %+v", got)
+	}
+	t.Setenv("HOLMES_BINDINGS_FILE", "")
+	record := read("", "admin").Items[0]
+	investigationPath := "/health/zabbix/" + created.ID + "/" + record.ID + "/investigate"
+	if res := f.request("POST", investigationPath, "admin", "", "", ""); res.Code != 503 || !strings.Contains(res.Body.String(), "HOLMES_SCOPE_UNCONFIGURED") {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	if res := f.request("POST", investigationPath, "readonly", "", "", ""); res.Code != 404 {
+		t.Fatal("unauthorized source investigation", res.Code)
+	}
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Ask string `json:"ask"`
+		}
+		if json.NewDecoder(r.Body).Decode(&payload) != nil || !strings.Contains(payload.Ask, record.Title) || strings.Contains(payload.Ask, "test-secret") {
+			t.Error("wrong Holmes evidence")
+		}
+		json.NewEncoder(w).Encode(map[string]string{"analysis": "已取得告警快照，尚需核实主机可用内存。"})
+	}))
+	defer engine.Close()
+	bindings := []map[string]string{{"source": "zabbix", "sourceId": created.ID, "environmentId": "production", "businessId": "ops", "endpoint": engine.URL}}
+	encoded, _ := json.Marshal(bindings)
+	file := filepath.Join(t.TempDir(), "holmes.json")
+	if err := os.WriteFile(file, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOLMES_BINDINGS_FILE", file)
+	if res := f.request("POST", investigationPath, "admin", "", "", ""); res.Code != 200 || !strings.Contains(res.Body.String(), "尚需核实") {
+		t.Fatal(res.Code, res.Body.String())
 	}
 	if got := read("?environmentId=production&businessId=different", "admin"); len(got.Items) != 0 || len(got.Sources) != 0 {
 		t.Fatalf("wrong business scope: %+v", got)
