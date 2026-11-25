@@ -441,6 +441,37 @@ try {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 720, deviceScaleFactor: 1, mobile: true });
     await assertDOM(cdp, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`, "Cluster rows overflowed at 390 px");
     await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.send("Runtime.evaluate", { expression: `(() => {
+      document.querySelector('[data-cluster-editor="choose"]').click();
+      document.querySelector('[data-cluster-editor="pull"]').click();
+    })()` });
+    await assertText(cdp, (text) => text.includes("新增外部直连集群") && text.includes("启用实例"), "Direct cluster setup did not open");
+    for (const width of [1280, 390]) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 720, deviceScaleFactor: 1, mobile: width === 390 });
+      for (const { step, name, checked } of [
+        { step: "basic", name: "enabled", checked: true },
+        { step: "observe", name: "aiEnabled", checked: false },
+      ]) {
+        await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-editor-step="${step}"]').click()` });
+        await assertDOM(cdp, `(() => {
+          const input = document.querySelector('dialog[open] input[name="${name}"]');
+          const labelText = input.labels[0].querySelector("span");
+          const textRange = document.createRange();
+          textRange.selectNodeContents(labelText);
+          const lines = textRange.getClientRects();
+          const checkbox = input.getBoundingClientRect();
+          const text = lines[0];
+          if (lines.length !== 1 || checkbox.width === 0 || checkbox.right >= text.left ||
+              Math.abs((checkbox.top + checkbox.bottom - text.top - text.bottom) / 2) > 2 || input.checked !== ${checked}) return false;
+          labelText.click();
+          const toggled = input.checked !== ${checked};
+          labelText.click();
+          return toggled && input.checked === ${checked};
+        })()`, `Cluster checkbox ${name} was misaligned or its label could not toggle it at ${width} px`);
+      }
+    }
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('dialog[open][data-cluster-dialog]').close()` });
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     const environmentScopes = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const field = document.querySelector('[data-cluster-filter="environment"]');
       const change = (value) => { field.value = value; field.dispatchEvent(new Event("change", { bubbles: true })); };

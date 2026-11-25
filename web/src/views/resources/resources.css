@@ -118,7 +118,25 @@
 .cluster-editor .cluster-form-footer { justify-content: space-between; align-items: center; padding: 10px 16px; }
 .cluster-form-footer > p { flex: 1 1 145px; }
 .cluster-editor .cluster-form-grid label { margin: 0; }
-.cluster-editor .cluster-switch { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; margin: 0; }
+.cluster-editor .cluster-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 0;
+  cursor: pointer;
+}
+.cluster-editor .cluster-switch input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  cursor: inherit;
+}
 .cluster-observability { border: 1px solid var(--line); border-radius: 7px; padding: 8px; }
 .cluster-observability summary { cursor: pointer; margin-bottom: 6px; }
 .zabbix-dialog-actions { flex-wrap: wrap; }
