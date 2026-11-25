@@ -920,7 +920,7 @@ function updateRoleScopeKinds(form: HTMLFormElement): void {
 }
 
 function hostDatasourcePoint(code: string): boolean {
-  return ["diagnosis.connector.read", "diagnosis.connector.write", "diagnosis.connector.test"].includes(code);
+  return ["diagnosis.connector.read", "diagnosis.connector.write", "diagnosis.connector.test", "diagnosis.health.investigate"].includes(code);
 }
 
 function addInterfaceGrants(form: HTMLFormElement, hostScope = false): void {

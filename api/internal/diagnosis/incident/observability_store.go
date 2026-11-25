@@ -389,6 +389,7 @@ func (s *Server) listObservabilityAlerts(w http.ResponseWriter, r *http.Request,
 				break
 			}
 			seen[scopedID] = true
+			alert.SourceID = row.ID
 			items = append(items, alert)
 		}
 	}

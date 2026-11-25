@@ -197,3 +197,28 @@ T01、T03 与 T04 在 `feat/diagnostic-center-v2` 分支交付。T02 已随 [PR 
 | --- | --- | --- |
 | DEV-04 API 契约与受权查询 | `api/internal/diagnosis/incident/zabbix.go`、`api/openapi.yaml` | PRD-01 至 06 |
 | DEV-06 汇总、详情和状态口径 | `web/src/views/diagnosis/unified-overview.ts` | PRD-05、06 |
+
+### Holmes 健康告警调查接入
+
+总览保留原始统计和数据源链接。Zabbix 与 Alertmanager 记录可在详情内发起一次同步调查。API 根据数据源 ID 和记录 ID 重新读取授权快照。Zabbix 以环境和业务授权，Alertmanager 还验证集群和命名空间。角色需要数据源读取和 `diagnosis.health.investigate`。关闭弹窗会终止浏览器请求。
+
+在 Portal API 容器中通过 Secret 只读挂载 JSON 文件，将 `HOLMES_BINDINGS_FILE` 设为其绝对路径。每行绑定的 Holmes 服务应部署在客户环境中，工具凭据的读取权限须与该行范围一致。下例使用虚构的实例 ID，接入时取自对应告警的 sourceId。可选 apiKey 通过 X-API-Key 传给内部网关。可选 model 使用 Holmes 的模型配置名。
+
+```json
+[
+  {"source":"zabbix","sourceId":"zbx-prod","environmentId":"prod","businessId":"orders","endpoint":"https://holmes-orders.internal"},
+  {"source":"alertmanager","sourceId":"am-prod","environmentId":"prod","businessId":"orders","clusterId":"prod-sh-01","namespace":"orders","endpoint":"https://holmes-orders-ns.internal"}
+]
+```
+
+Go 客户端调用 POST /api/chat，读取 analysis，超时 45 秒。缺少精确匹配时返回 HOLMES_SCOPE_UNCONFIGURED。移除绑定可关闭对应范围的新调查。首轮交付采用同步文本结果，调查历史、SSE 工具轨迹、人工保存和知识草稿见后续任务。
+
+现有 Finding 的 assess 和 enhance 共用同一适配器。Finding 绑定使用 source=finding、sourceId=clusterId 和实际 namespace，environmentId/businessId 取空字符串。assess 使用结构化输出及已有引用检查。现有事件 RCA 使用 source=incident、sourceId=clusterId 及事件的环境、业务、集群、命名空间。已有模型配置仍作为复核和 RCA 的可用性前提，未绑定或上游请求失败时调用既有模型。
+
+在已有内部 Holmes 服务及测试绑定文件就绪后，可在试点环境挂载绑定。保留目录挂载可接收 Secret 更新。更新绑定与 API 部署可独立回滚。
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings --from-file=bindings.json=./bindings.json --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic --patch-file deploy/examples/holmes/api-bindings-patch.yaml
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api
+```

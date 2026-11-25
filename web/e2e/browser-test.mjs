@@ -2006,6 +2006,25 @@ async function assertRemainingDiagnosticPages(cdp) {
   if (!groupCollapse.result?.value) throw new Error("Zabbix type group did not collapse or reopen");
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
+  await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-health-record]").click(); document.querySelector("dialog [data-run]").click()`});
+  await assertText(cdp, text => text.includes("已核对测试证据"), "Zabbix investigation did not render the scoped response");
+  const readable = await cdp.send("Runtime.evaluate", {returnByValue:true,expression:`(() => {
+    const dialog=document.querySelector("dialog");
+    dialog.querySelector("h3").textContent="kafka_consumer_group_".repeat(100);
+    dialog.style.width="320px";
+    const content=dialog.querySelector("section");
+    content.scrollTop=content.scrollHeight;
+    const close=dialog.querySelector("[data-close]");
+    const visible=close.getBoundingClientRect().top >= dialog.getBoundingClientRect().top && content.scrollWidth<=content.clientWidth+1;
+    close.click();
+    return visible && !dialog.open;
+  })()`});
+  if (!readable.result?.value) throw new Error("Long alert overflowed or close control was inaccessible");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("[data-health-record]").click()'});
+  await cdp.send("Input.dispatchKeyEvent", {type:"keyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
+  await cdp.send("Input.dispatchKeyEvent", {type:"keyUp",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
+  const closed=await cdp.send("Runtime.evaluate",{returnByValue:true,expression:'!document.querySelector("dialog[open]")'});
+  if (!closed.result?.value) throw new Error("Escape did not dismiss alert details");
   for (const days of [7, 14, 30]) {
     const plot = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector('[data-overview-window="${days}"]').click();

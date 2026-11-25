@@ -694,6 +694,9 @@ async function incidents(request, response, url) {
       edges: [{ source: rootID, target: asset.id, relation: "runs_on", confidence: "confirmed",
         reason: "部署记录核对", actor: "local:admin", recordedAt: incidentFixture.firstSeen }] });
   }
+  if (method === "POST" && path === "/health/zabbix/zabbix-fixture/zabbix-fixture-problem/investigate") {
+    return json(response, 200, {analysis: "已核对测试证据，需要验证主机内存。"});
+  }
   if (path.startsWith("/zabbix/")) {
     const groups = [{ groupid: "200", name: "Windows 应用主机" }];
     const scope = { environmentId: "production", businessId: "ops" };

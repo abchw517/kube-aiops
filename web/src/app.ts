@@ -339,7 +339,7 @@ export class PortalApp {
           AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources);
         if (generation === this.renderGeneration) {
           this.renderShell(overview.html);
-          overview.bind(this.root);
+          overview.bind(this.root, request.signal);
         }
       } catch (error) {
         if (generation === this.renderGeneration) this.renderRequestError(error);

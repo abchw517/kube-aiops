@@ -1,0 +1,16 @@
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: HOLMES_BINDINGS_FILE
+              value: /etc/kube-aiops/holmes/bindings.json
+          volumeMounts:
+            - name: holmes-bindings
+              mountPath: /etc/kube-aiops/holmes
+              readOnly: true
+      volumes:
+        - name: holmes-bindings
+          secret:
+            secretName: kube-aiops-holmes-bindings

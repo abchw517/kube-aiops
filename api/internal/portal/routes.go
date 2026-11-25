@@ -2,8 +2,11 @@ package portal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/abchw517/kube-aiops/api/internal/holmes"
 	"net/http"
+	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/diagnosis"
@@ -159,7 +162,17 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 		item, err := backend.GetFinding(ctx, id)
 		return item, diagnosis.ReviewKey(item), err
 	})
-	wikis.Register(mux, s, review.AskWiki)
+	wikis.Register(mux, s, func(ctx context.Context, prompt string, data []byte) (string, error) {
+		// Only the excerpts already selected by the Wiki ACL enter this tool-free deployment.
+		limited, cancel := context.WithTimeout(ctx, 12*time.Second)
+		defer cancel()
+		scope := holmes.Scope{Source: "wiki", SourceID: "published-excerpts"}
+		answer, err := holmes.Chat(limited, scope, prompt, json.RawMessage(data), nil)
+		if err == nil && json.Valid([]byte(answer)) {
+			return answer, nil
+		}
+		return review.AskWiki(ctx, prompt, data)
+	})
 	mux.Handle("/", next)
 	return mux
 }
