@@ -2,20 +2,7 @@
 
 在已有 Kubernetes 集群中按顺序完成 [预检](#1-依赖和预检) → [安装 K8sGPT](#2-安装-k8sgpt) → [准备镜像](#3-准备-api-和-web-镜像) → [部署 API 与 Web Portal](#4-部署-api-与-web-portal)。已有 K8sGPT 部署时，先核对其 Namespace、实例名和 Result。API 清单默认读取 `k8sgpt-operator-system/k8sgpt-engine`，使用其他实例时，按实际配置调整 API 清单中的 `K8SGPT_NAMESPACE` 和 `K8SGPT_NAME`，并核对 ServiceAccount 的读取权限。
 
-## 从旧目录布局升级
-
-升级前检查 CI、镜像构建脚本和文档链接中硬编码的路径。
-
-| 用途 | 旧路径 | 当前路径 |
-| --- | --- | --- |
-| 安装部署指南 | `docs/install-deployment.md` | `docx/install-deployment.md` |
-| Go API 入口 | `./cmd/api` | `./api/cmd/api` |
-| 生成的 Web API 客户端 | `clients/typescript/generated.ts` | `web/src/api/generated.ts` |
-| Web NGINX 配置 | `web/nginx.conf` | `config/web/nginx.conf` |
-
-从仓库根目录运行 `make api-build`、`make web-build` 和 `make api-contract-check` 验证构建与接口契约。生产镜像按[准备镜像](#3-准备-api-和-web-镜像)构建，API 和 Web 均使用仓库根目录作为 Docker 构建上下文。
-
-正式发布分别使用 `deploy/api/` 和 `deploy/web/`。可观测性示例中的 Deployment 与正式清单使用相同的资源名，使用示例时从 `deploy/examples/observability/` 选择所需文件并按[可观测性配置](#配置可观测性来源)渲染，再应用生成的清单。
+部署基础服务后，可按需 [接入多个集群](#在控制台接入-kubernetes-集群)、[配置数据源](#配置可观测性来源) 和 [部署 HolmesGPT](#部署-holmesgpt)。API 和 Web 的 Docker 构建均以仓库根目录为上下文。
 
 ## 0. 验证 Portal Demo
 
@@ -300,7 +287,7 @@ imagePullSecrets:
   - name: harbor-pull
 ```
 
-应用清单前，按 [生产身份接入](#生产身份接入) 完成 SQLite PVC 和 `api.yaml` 配置。需要关联指标、日志或告警时，先执行 [配置可观测性来源](#配置可观测性来源)，再应用渲染后的清单。
+继续 [生产身份接入](#生产身份接入)，完成 SQLite、API 清单和 HTTPS 入口配置。随后从控制台[配置数据源](#配置可观测性来源)。
 
 #### 检查本地节点采集权限
 
@@ -311,9 +298,317 @@ kube_context="$(kubectl config current-context)"
 python3 scripts/check-api-node-rbac.py --context "$kube_context"
 ```
 
-若返回缺少权限，确认目标上下文及服务账号后，由有权管理集群 RBAC 的管理员对同一命令追加 `--repair`。脚本仅向该 API 的专用 ServiceAccount 授予集群级 `list nodes`，并重新检查生效结果。在「资源管理 → 集群接入」对本地自动采集实例点「重新校验」，确认节点列表恢复。
+若返回缺少权限，确认目标上下文及服务账号后，由有权管理集群 RBAC 的管理员对同一命令追加 `--repair`。脚本仅向该 API 的专用 ServiceAccount 授予集群级 `list nodes`，并重新检查生效结果。在「资源管理 → Kubernetes 集群管理」对本地自动采集实例点「重新校验」，确认节点列表恢复。
 
-### 启用诊断详情的 AI 分析
+### 应用清单并等待就绪
+
+在应用前检查清单。Web 示例的副本和资源按实际容量调整。
+
+```bash
+kubectl apply --dry-run=server -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
+kubectl apply -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+kubectl -n kube-aiops-system get pods,svc
+```
+
+## 生产部署
+
+准备同一源码版本的 API 与 Web 镜像及已验收的 digest。依次配置 SQLite、应用工作负载、发布同源 HTTPS 入口并初始化管理员。LDAP 按需在首次登录后配置。
+
+### 生产身份接入
+
+以下步骤适用于全新部署。SQLite 在首次启动时初始化，首次登录后通过 Portal 管理账号、权限和 LDAP 配置。按顺序完成存储和清单配置、首次改密、本地账号授权，再按需启用 LDAP。
+
+#### 1. 创建 SQLite PVC
+
+API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API 与 Web Portal](#4-部署-api-与-web-portal) 中的镜像渲染，准备本次发布的 `api.yaml`、`web.yaml` 和 `web-service.yaml`，暂缓应用 Deployment。
+
+```bash
+kubectl apply -f deploy/api/namespace.yaml
+kubectl get storageclass
+kubectl apply -f deploy/examples/identity/pvc.yaml
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
+```
+
+示例使用默认 StorageClass，申请 1 GiB 的 `ReadWriteOnce` 卷。没有默认 StorageClass 时，在 PVC 的 `spec.storageClassName` 指定实际名称。若存储类采用 `WaitForFirstConsumer`，PVC 会在 API Pod 调度时绑定。
+
+#### 2. 配置 API 并发布 HTTPS 入口
+
+把以下片段合并到本次发布的 `api.yaml`。保留原有 Deployment 字段、容器镜像、探针和环境变量。将 `AUTH_ORIGIN` 改为浏览器实际访问的 HTTPS 来源，只填写协议、主机和非默认端口。Portal 和 API 使用同一个来源。
+
+```yaml
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+        - name: api
+          env:
+            - name: AUTH_ORIGIN
+              value: https://kube-aiops.example.com
+            - name: AUTH_SQLITE_PATH
+              value: /var/lib/kube-aiops/identity.db
+            - name: AUTH_BOOTSTRAP_ADMIN
+              value: "true"
+          volumeMounts:
+            - name: identity-db
+              mountPath: /var/lib/kube-aiops
+      volumes:
+        - name: identity-db
+          persistentVolumeClaim:
+            claimName: kube-aiops-identity
+```
+
+API 以 UID/GID 65532 运行，PVC 挂载目录需要可写。单副本配合 `Recreate` 使用同一个 SQLite 卷。默认会话有效期为 30 分钟，可在系统管理调整。API 重启后需重新登录。
+
+执行 [应用清单并等待就绪](#应用清单并等待就绪)，然后按 [挂载 HTTPS 入口](#挂载-https-入口) 应用两条 HTTPRoute。初始化期间将 HTTPS 入口限制在部署人员可访问的范围内。用实际域名检查入口。
+
+```bash
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+curl -fsS https://kube-aiops.example.com/portal-healthz
+curl -sS -o /dev/null -w '%{http_code}\n' https://kube-aiops.example.com/api/v1/findings
+```
+
+PVC 应为 `Bound`，匿名诊断请求应返回 `401`。
+
+#### 3. 初始化管理员并关闭引导
+
+1. 打开 `https://kube-aiops.example.com`，选择本地账号登录，输入账号 `admin` 和初始密码 `admin123`。Portal 会直接进入改密页面，改密前只能查看登录状态、修改密码或退出。
+2. 在首次改密页面输入当前密码和至少 12 字节的新密码。保存后会话立即失效，用新密码重新登录，确认页面出现 **系统管理**。
+3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`，并更新运行中的 Deployment。
+
+```bash
+kubectl -n kube-aiops-system set env deployment/kube-aiops-api AUTH_BOOTSTRAP_ADMIN-
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。SQLite 已存在管理员时会保留该账号和密码。
+
+#### 4. 验证本地角色并配置接口权限
+
+1. 进入 **系统管理 → 用户管理**，创建一个本地访客，使用至少 12 字节的临时密码。以访客登录并改密，确认可只读访问研发和测试范围。
+2. 要为 LDAP 员工配置细粒度权限，先接入 LDAP 并让员工登录一次，再进入 **系统管理 → 权限管理 → 角色配置 → 新建角色**。勾选查询诊断列表、详情及所需证据等动作，或者批量勾选当前筛选结果。
+3. 选择数据范围，点击 **添加到授权清单 → 保存角色 → 确认保存**。研发及测试可使用环境级范围，预发布及生产的命名空间动作需指定实际实例、业务线和命名空间。
+4. 在 **用户管理** 向测试员工授予该角色，或将角色关联到用户组后添加成员。从独立会话验证授权范围与只读动作生效，以及未经授予的接口和范围被拒绝。授权来源可在账号详情核对。
+
+#### 5. 按需接入 LDAP / Active Directory
+
+准备域控的 LDAPS 域名、只读搜索账号和密码。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（明文 LDAP）。网页验证并保存后，LDAP 配置和搜索密码写入身份 SQLite 数据库。
+
+使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。
+
+```bash
+kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
+  --from-file=ca.crt=/secure/ad-ca.crt
+```
+
+向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可省略 `AUTH_LDAP_CA_FILE`、`ldap` 卷及挂载。
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: AUTH_LDAP_CA_FILE
+              value: /etc/kube-aiops/ldap/ca.crt
+          volumeMounts:
+            - name: ldap
+              mountPath: /etc/kube-aiops/ldap
+              readOnly: true
+      volumes:
+        - name: ldap
+          secret:
+            secretName: kube-aiops-ldap
+```
+
+```bash
+kubectl apply -f "$release_dir/api.yaml"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码、**LDAP 测试员工账号**和该员工的密码，再点 **运行测试**。测试依次检查目录连接、搜索账号绑定、唯一员工查询和员工本人认证。通过后在 5 分钟内点击 **保存并启用**。修改草稿后须重新验证。测试不创建用户或会话，测试失败时当前配置继续生效。
+
+连接模式由 URL 决定。使用 `ldap://` 时需在页面勾选「允许明文 LDAP」，搜索账号和员工凭据会以明文传输。原来使用 `ldap://` 的已保存配置在升级后需要用本地管理员重新测试并保存。采用环境变量配置时，使用 `AUTH_LDAP_ALLOW_PLAIN=true` 显式启用明文 LDAP。
+
+若 LDAPS 的「目录连接」失败，从 API Pod 的网络环境验证证书。设置 `ldap_host` 为 URL 中的域名，`ldap_ca` 为 API 使用的签发 CA 链文件。使用系统受信任的 CA 时，可省略 `-CAfile`。
+
+```bash
+openssl s_client -connect "${ldap_host}:636" -servername "$ldap_host" \
+  -verify_hostname "$ldap_host" -verify_return_error -CAfile "$ldap_ca" </dev/null
+```
+
+默认无需配置 `AUTH_LDAP_ENCRYPTION_KEY_FILE`，搜索密码直接保存在 SQLite 中。数据库及备份包含可读取的搜索密码，应限制文件访问权限。测试员工密码只用于当次验证。修改 URL 或搜索 DN 时需重新填写搜索密码。
+
+已有加密配置仍可使用原密钥。移除原密钥后，本地管理员可重新填写搜索密码，运行测试并保存，以恢复 LDAP 登录。部署显式提供密钥时，API 仍可对 SQLite 中的搜索密码加密。若外部集群凭据也在复用该密钥，变更挂载前需确保 `CLUSTER_CREDENTIAL_KEY_FILE` 指向相同密钥。
+
+| 字段 | AD 示例 |
+| --- | --- |
+| LDAP URL | `ldaps://ad.example.com:636` 或 `ldap://ad.example.com:389`（需明确允许明文 LDAP） |
+| LDAP 搜索密码 | 搜索账号的密码 |
+| LDAP 搜索 DN | `cn=kube-aiops-reader,ou=service,dc=example,dc=com` |
+| LDAP 基础 DN | `dc=example,dc=com` |
+| LDAP 用户 UID | `sAMAccountName` |
+| LDAP 附加用户过滤器 | `(objectClass=user)`，可留空。沿用带 `%s` 的旧模板时请留空 UID |
+| LDAP 用户搜索范围 | 子树（默认），可选单层或基础对象 |
+| LDAP 组成员属性 | `memberOf` |
+| LDAP 组基础 DN | 可选，例如 `OU=Groups,DC=example,DC=com` |
+| LDAP 组过滤器 | 可选，例如 `(objectClass=group)` |
+| LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
+| LDAP 测试用户名 | 例如 `alice`，仅用于本次测试 |
+
+在独立浏览器会话勾选 LDAP 登录，用测试员工完成首次登录。随后由管理员在「用户管理」找到该账号，按第 4 步直接授予角色，或将员工加入关联了所需角色的平台用户组。再用未获相关授权的账号确认诊断访问受限。LDAP 密码由目录服务验证，平台保存员工身份和组信息。
+
+##### 验收管理员组继承
+
+1. 用超级管理员进入 **系统管理 → 权限管理 → 用户组 → 新建用户组**，勾选 **系统管理员**，核对成员影响后确认保存。
+2. 在用户管理中将测试 LDAP 员工加入该组。员工重新登录后，在账号详情核对「用户组 → 系统管理员」来源，并验证系统管理可用。
+3. 从组上取消关联后再次核对影响预览。仅通过该组获得管理员角色的员工需要重新登录，有其他来源的成员继续保留管理员权限。
+4. 以普通系统管理员登录，核对管理员组可查看，角色和成员关联的写入口由超级管理员控制。保存结果可定位到操作审计。
+
+升级时同步发布本次 API 与 Web 镜像并保留现有身份 SQLite 挂载。已有账号、组和直授权限随原数据保留。新增管理员组授权由超级管理员明确提交。
+
+
+#### 6. 核对部署结果
+
+```bash
+kubectl -n kube-aiops-system get deployment kube-aiops-api kube-aiops-web
+kubectl -n kube-aiops-system get pvc kube-aiops-identity
+kubectl -n kube-aiops-system logs deployment/kube-aiops-api --tail=100
+```
+
+API 和 Web 应各自就绪，PVC 为 `Bound`。若 API 在启动时退出，核对 `AUTH_ORIGIN`、PVC 写权限和引导配置。若 LDAP 登录返回服务不可用，核对域控连通性、证书链、搜索账号凭据和过滤器。完成验收后按发布流程开放入口，并将 SQLite 与凭据加密密钥纳入同一备份和恢复计划。
+
+### 挂载 HTTPS 入口
+
+由平台在目标 Gateway 的命名空间准备签发给 `portal_host` 的 TLS Secret。以下是可合并到目标 Gateway 的 `spec.listeners` 中的监听器示例。使用实际证书 Secret 名称，已有共享 listener 可沿用平台的证书和命名空间授权配置。配置方式见 [Gateway API TLS](https://gateway-api.sigs.k8s.io/guides/user-guides/tls/) 和 [跨命名空间挂载](https://gateway-api.sigs.k8s.io/guides/user-guides/multiple-ns/)。
+
+```yaml
+- name: https
+  hostname: kube-aiops.example.com
+  protocol: HTTPS
+  port: 443
+  tls:
+    mode: Terminate
+    certificateRefs:
+      - kind: Secret
+        name: kube-aiops-tls
+  allowedRoutes:
+    namespaces:
+      from: Selector
+      selector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-aiops-system
+```
+
+按环境将 `portal_host` 解析到 Gateway 地址。两个 HTTPRoute 使用同一个域名和 HTTPS listener。API 路由将 `/api/v1` 转发到 API Service，Web 路由将 `/` 转发到 Web Service。
+
+将 [API](../deploy/api) 和 [Web](../deploy/web) 的 HTTPRoute 与 NetworkPolicy 复制到本次发布目录。
+
+```bash
+cp deploy/api/httproute.yaml "$release_dir/api-route.yaml"
+cp deploy/web/httproute.yaml "$release_dir/web-route.yaml"
+cp deploy/api/networkpolicy.yaml "$release_dir/api-networkpolicy.yaml"
+cp deploy/web/networkpolicy.yaml "$release_dir/web-networkpolicy.yaml"
+```
+
+在两份 Route 中填写实际 Gateway 名称、命名空间、listener 名称和域名。集群需要支持 NetworkPolicy 的 CNI。根据实际 Gateway 数据面 Pod 的命名空间和标签调整两份策略的入站选择器。
+
+| 流量 | 允许范围 |
+| --- | --- |
+| Gateway → Web / API | 指定 Gateway 数据面 Pod → TCP 8080 |
+| Web → API | 同命名空间的 Web Pod → API Pod TCP 8080。Web Pod 内可通过 `http://kube-aiops-api:8080` 访问 API Service |
+| Web → DNS | `kube-system` 中标签为 `k8s-app=kube-dns` 的 DNS Pod，UDP/TCP 53 |
+
+使用 NodeLocal DNSCache 或自定义 DNS 时，应用前根据 Web Pod 的 `/etc/resolv.conf` 和 CNI 的 DNS 策略调整 Web 出站规则。API 的出站由集群现有策略管理，需允许 DNS、Kubernetes API 和已启用的上游。
+
+应用策略前确认 API 已在 `production` 模式成功启动。用实际值设置以下变量并核对 Gateway 与数据面 Pod。
+
+```bash
+portal_host=kube-aiops.example.com
+gateway_namespace=envoy-gateway-system
+gateway_name=production-gateway
+proxy_namespace=envoy-gateway-system
+
+kubectl -n "$gateway_namespace" wait --for=condition=Programmed "gateway/$gateway_name" --timeout=120s
+kubectl -n "$gateway_namespace" get gateway "$gateway_name" -o jsonpath='{.status.addresses[*].value}{"\n"}'
+kubectl -n "$proxy_namespace" get pods \
+  -l "gateway.envoyproxy.io/owning-gateway-namespace=$gateway_namespace,gateway.envoyproxy.io/owning-gateway-name=$gateway_name"
+
+kubectl apply --dry-run=server -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml" \
+  -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
+kubectl apply -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml"
+kubectl apply -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
+kubectl -n kube-aiops-system get httproute kube-aiops-api kube-aiops-web -o yaml
+```
+
+核对两条 Route 在目标 listener 下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若使用预发域名，在完成验收后再切生产 DNS 或流量。
+
+### 验收、发布与回滚
+
+先验证 TLS、页面和 API 访问控制。对于将未认证请求转交给 API 的入口，下面的请求应返回 `401`；若入口统一跳转登录，在预发通过受控测试路径复验应用层 `401`。
+
+```bash
+portal_url="https://$portal_host"
+curl -fsS --max-time 10 "$portal_url/portal-healthz"
+curl -fsS --max-time 10 -o /dev/null "$portal_url/"
+test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+  "$portal_url/api/v1/findings")" = 401
+```
+
+使用已获准的登录会话在浏览器完成列表、详情和证据验收。自动验收时，可将认证 Header 或 Cookie 交由受控的 curl 配置文件提供。`allowed_curl_config` 和 `denied_curl_config` 分别对应允许和缺少 `findings:list` 权限的已认证账号。
+
+```bash
+curl --config "$allowed_curl_config" -fsS --max-time 10 "$portal_url/api/v1/findings" |
+  jq -e '.items | type == "array"' >/dev/null
+test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+  "$portal_url/api/v1/findings")" = 403
+```
+
+| 检查 | 放行标准 |
+| --- | --- |
+| 认证和授权 | 具备目标能力的账号读取列表、详情和关联证据成功；无权账号对同一受保护资源收到 `403`；跨命名空间请求无法读取范围外的数据 |
+| K8sGPT 和证据 | `make verify` 通过；用实际 Result 对照 Finding 详情，验证已启用数据源及其状态 |
+| 审计 | API 审计记录能关联到同一次请求，日志中无明文凭据 |
+| 稳定性 | API 和 Web rollout 完成，探针稳定；Operator 无新增 OOM 重启，主要请求的错误率和延迟符合本次发布标准 |
+
+生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。
+
+```bash
+previous=/path/to/previous-approved-release
+manifests=(
+  -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml"
+  -f "$previous/api-networkpolicy.yaml" -f "$previous/web-networkpolicy.yaml"
+  -f "$previous/api-route.yaml" -f "$previous/web-route.yaml"
+)
+kubectl apply --dry-run=server "${manifests[@]}"
+kubectl apply "${manifests[@]}"
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
+make verify
+```
+
+首次发布且尚无上一版时，撤销本次新增的流量入口并保留工作负载供排查。K8sGPT 安装过程中的失败由安装器按 Lease 和快照处理回滚。若安装已成功但需回退配置，使用上一版获批的源码和参数重新执行 `make install`，然后运行 `make verify`。安装器报告回滚失败时，先按日志给出的快照和恢复报告检查 Helm、RBAC 与 K8sGPT CR 状态。
+
+## 在控制台接入 Kubernetes 集群
+
+以系统管理员身份打开 **资源管理 → Kubernetes 集群管理 → 接入集群**。本地集群由平台自动发现，直接在列表中查看或编辑归属。远端集群从同一个入口选择接入方式。
+
+1. **外部直连**适用于中心 API 能访问目标集群 Kubernetes API 的情况。在「基本信息」填写实例 ID、名称、环境和业务归属。在「连接与凭据」提交目标集群的专用只读 kubeconfig，或填写 API 地址、CA 和 Token／客户端证书。在「观测与诊断」填写目标 K8sGPT Engine 的命名空间和名称，点击「测试连接」，通过后点击「保存配置」。直连凭据由平台加密保存。
+2. **采集上报**适用于目标集群主动向中心上报的情况。在控制台登记并启用实例，保存后记录仅显示一次的上报凭据。为目标集群采集端配置该凭据，并按[采集 CronJob 示例](../deploy/collector/cronjob.yaml)填写 Portal HTTPS 地址和实例 ID。首次收到快照后，在集群列表查看上报状态。
+3. 在 **系统管理 → 权限管理** 按目标实例和命名空间授权，再用值班账号检查「诊断总览」中的集群筛选和诊断数据。
+
+详细表单和凭据要求见[资源管理 · Kubernetes 集群管理](resource-management/04-development-tasks.md#kubernetes-集群管理当前实现)。
+
+## 启用诊断详情的 AI 分析
 
 完成 [配置 Engine 模型与语言](#配置-engine-模型与语言) 和 [生产身份接入](#生产身份接入) 后，将下列变量合并到 API 容器的 `env` 中：
 
@@ -336,32 +631,63 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 默认只批准 `https://api.openai.com/v1/chat/completions`。使用智谱等兼容端点时，在 Portal API 的环境变量中设置 `FINDING_AI_ALLOWED_ENDPOINT` 为平台批准的完整 HTTPS 请求地址，例如 `https://open.bigmodel.cn/api/paas/v4/chat/completions`。地址必须与 Engine Base URL 推导出的请求地址完全一致，切换模型供应商时同步更新 API 清单。地址校验在读取 Secret 前执行。
 
-每次提交 AI 分析都会读取现有 Engine 的模型、Base URL 和其引用 Secret 的指定键；轮换同一个 Secret 的值后，下次分析即使用新密钥，无需重启。升级旧部署时，从 API 清单移除原先的 `FINDING_AI_URL`、`FINDING_AI_MODEL`、`FINDING_AI_KEY_FILE` 和 `finding-ai` 卷及挂载。
+使用既有模型路径时，Portal 会读取 Engine 的模型、Base URL 和其引用 Secret 的指定键。轮换同一个 Secret 的值后，下次使用该路径即可读取新密钥。命中 Holmes 绑定时，Holmes 按其自身模型配置和凭据调用。
 
 管理员在诊断详情展开 **AI 复核**，查看模型对关联证据的判断、待验证项和下一步。可以补充现场观察后重新复核。API 在当前诊断的集群、命名空间、资源和时间窗口内查询关联证据，例如 Kubernetes 事件以及已配置的 Prometheus、VictoriaLogs 和 Alertmanager。请勿提交凭据或个人敏感信息。
 
-核对并编辑复核结论后，点击 **保存复核结论**。需要沉淀知识时，可另行预览并确认发布。若结论已被其他人更新，请先加载最新版本。
+核对并编辑复核结论后，点击 **保存复核结论**。需沉淀知识时，从诊断详情创建故障案例草稿，再进入运维知识库按治理流程发布。若结论已被其他人更新，请先加载最新版本。
 
-诊断 AI 复核（包括补充观察后的重新复核）的模型请求默认等待 90 秒。API 容器环境变量 `FINDING_AI_PROVIDER_TIMEOUT` 支持 `5s` 到 `120s`，本地和手动接入实例共用该配置。升级前已显式配置旧值的环境需同步调整该值才能使用较长的等待时间。复核总时限为 135 秒，关联证据查询最多占 5 秒。启用诊断复核时，API 响应写入时限为 140 秒。知识库问答继续使用自身 30 秒总时限。
+诊断 AI 复核（包括补充观察后的重新复核）的模型请求默认等待 90 秒。API 容器环境变量 `FINDING_AI_PROVIDER_TIMEOUT` 支持 `5s` 到 `120s`，本地和手动接入实例共用该配置。升级前已显式配置旧值的环境需同步调整该值才能使用较长的等待时间。复核总时限为 135 秒，关联证据查询最多占 5 秒。启用诊断复核时，API 响应写入时限为 140 秒。知识库问答继续使用自身 30 秒总时限。同时启用 Holmes 时，回退模型和 Holmes 请求共用复核总预算。
 
 发布时同步更新 API、Web 和 [API HTTPRoute](../deploy/api/httproute.yaml)。该清单仅为 `/api/v1/admin/finding-analysis` 设置 150 秒请求时限和 145 秒后端时限。域名前有 NGINX 时，将同一路径的 `proxy_read_timeout` 设为至少 `150s`。如果仍超时，检查 API 日志 `AI provider request failed` 中的 `elapsed_ms` 和 `upstream_status`，分别核对 API 等待时间与上游实际返回的超时状态。
 
 诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，现场观察内容保留，可直接重新复核。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。响应中缺少此错误码时，对照 Portal 入口代理日志和 API 请求日志判断等待发生在哪一层。
 
-复核成功后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
+手动保存复核结论后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
 
 
-### 应用清单并等待就绪
+## 配置可观测性来源
 
-在应用前检查清单。Web 示例的副本和资源按实际容量调整。
+新增连接统一从 **资源管理 → 数据源管理 → 新增数据源** 操作。先在 API 发布清单中批准服务地址，再在 Portal 填写凭据、配置范围和验证连接。Kubernetes Events 通过本地或外部直连集群的 Kubernetes API 及 RBAC 读取。
+
+### 批准数据源地址
+
+在 API Deployment 的容器 `env` 中加入需要使用的条目，并换成实际 HTTPS 基地址。保留反向代理路径前缀。同类型多个地址可用逗号分隔。Zabbix 批准实际 JSON-RPC 地址，表单可填写站点基地址，平台会规范化路径。
+
+```yaml
+- name: DIAGNOSTIC_ZABBIX_ENDPOINTS
+  value: https://zabbix.example.com/api_jsonrpc.php
+- name: DIAGNOSTIC_PROMETHEUS_ENDPOINTS
+  value: https://monitor.example.com/prometheus
+- name: DIAGNOSTIC_VICTORIALOGS_ENDPOINTS
+  value: https://logs.example.com
+- name: DIAGNOSTIC_ALERTMANAGER_ENDPOINTS
+  value: https://monitor.example.com/alertmanager
+- name: DIAGNOSTIC_GRAFANA_ENDPOINTS
+  value: https://grafana.example.com
+```
+
+API 启动时读取地址清单。更新后应用本次 API 发布清单并等待就绪。确认 API Pod 能访问上游，且信任 HTTPS 证书。
 
 ```bash
-kubectl apply --dry-run=server -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
-kubectl apply -f "$release_dir/api.yaml" -f "$release_dir/web.yaml" -f "$release_dir/web-service.yaml"
+kubectl apply --dry-run=server -f "$release_dir/api.yaml"
+kubectl apply -f "$release_dir/api.yaml"
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
-kubectl -n kube-aiops-system get pods,svc
 ```
+
+### 在控制台接入并验证
+
+| 来源 | 配置与验收 |
+| --- | --- |
+| Zabbix | 填写名称、允许的地址和只读 Token 或账号密码。点击「测试连接」，选择环境、业务和主机组，预览问题并「保存并启用」。后台同步后在诊断总览检查告警。 |
+| Prometheus | 选择环境、业务和实例。共享端点还要填写上游标签及精确值。测试连接、按页面提示预览范围并保存，进入有指标证据的诊断详情验收。 |
+| VictoriaLogs | 选择环境、业务和实例。共享端点填写字段和精确值，按上游配置填写租户 AccountID、ProjectID。通过连接和范围验证后，在诊断详情检查日志证据。 |
+| Alertmanager | 配置环境、业务、实例和共享端点标签，按需包含静默或抑制告警。保存后在总览验收告警同步，在诊断详情核对关联证据。 |
+| Grafana | 使用 Service Account Token 测试连接，在表单选择仪表盘并保存。用相同实例范围的诊断记录确认仪表盘入口。 |
+
+查询正常但没有证据时，检查集群和命名空间范围、资源标签或字段及查询窗口。地址未获允许时核对审批清单、HTTPS 基地址和代理前缀。证书或认证失败时，从 API Pod 所在网络排查信任链、连通性和凭据。更多配置和故障处理见[资源管理设计](resource-management/design.md)。
+
+已有使用环境变量接入的 Prometheus、VictoriaLogs 和 Alertmanager 仍由代码兼容。向控制台迁移时，在同一实例验证来源与证据后，再按本次发布计划清理旧配置。升级或者迁移数据时，同时保留 SQLite 和凭据加密所需文件。
 
 ## 部署 HolmesGPT
 
@@ -574,474 +900,6 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --since=10m --tail=1
 
 撤掉某个范围时，从绑定数组删掉该条并重新应用 Secret，等待挂载更新后在页面复验。只部署了本例一个范围时，可以将文件内容改成 `[]` 再重新应用。已有 Finding、事件 RCA 和 Wiki 可回到各自的既有模型路径。健康告警继续显示，发起调查时会提示该范围未配置。
 
-## 配置可观测性来源
-
-Kubernetes Events 通过 API 的 Kubernetes RBAC 读取。其余三个来源通过 API Deployment 的环境变量按需启用。填写 Base URL，保留反向代理路径前缀，API 会追加查询路径。
-
-| 来源 | 启用变量 | API 查询路径 |
-| --- | --- | --- |
-| Prometheus | `PROMETHEUS_URL` | `/api/v1/query`、`/api/v1/query_range` |
-| VictoriaLogs | `VICTORIALOGS_URL` | `/select/logsql/stats_query_range` |
-| Alertmanager | `ALERTMANAGER_URL` | `/api/v2/alerts` |
-
-### 完整 Deployment 示例
-
-仓库提供完整的 [API Deployment](../deploy/examples/observability/api-deployment.yaml) 和 [Web Deployment](../deploy/examples/observability/web-deployment.yaml) 示例。API 示例配置了三个数据源的集群内 HTTP 地址和集群标签，Web 通过项目 API 获取关联证据。部署前修改镜像、数据源地址和集群标签，并按生产身份接入章节完成 API 认证授权。
-
-```bash
-cp deploy/examples/observability/api-deployment.yaml "$release_dir/api-observability-example.yaml"
-cp deploy/examples/observability/web-deployment.yaml "$release_dir/web-observability-example.yaml"
-
-# 修改镜像、数据源地址与集群标签后检查并应用
-kubectl apply --dry-run=server -f "$release_dir/api-observability-example.yaml" -f "$release_dir/web-observability-example.yaml"
-kubectl apply -f "$release_dir/api-observability-example.yaml" -f "$release_dir/web-observability-example.yaml"
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
-```
-
-当前项目尚未实现 OpenTelemetry SDK 或 OTLP 导出接口。上述清单启用现有的三个数据源查询适配器，OpenTelemetry 接入需要代码实现后再配置。
-
-### 设置数据源地址和集群标签
-
-在 [API Deployment](../deploy/api/deployment.yaml) 的 `spec.template.spec.containers` 中找到 `name: api`，将下列变量添加到已有的 `env` 列表。地址和集群标签值按实际环境填写，只保留需要启用的来源。渲染镜像后，同样可以直接编辑 `$release_dir/api.yaml`。
-
-```yaml
-# 添加到 api 容器已有的 env 列表
-- name: PROMETHEUS_URL
-  value: "http://prometheus.monitoring.svc:9090"
-- name: PROMETHEUS_CLUSTER_LABEL_VALUE
-  value: "my-k8s-cluster"
-- name: VICTORIALOGS_URL
-  value: "http://victorialogs.monitoring.svc:9428"
-- name: VICTORIALOGS_CLUSTER_LABEL_VALUE
-  value: "my-k8s-cluster"
-- name: ALERTMANAGER_URL
-  value: "http://alertmanager.monitoring.svc:9093"
-- name: ALERTMANAGER_CLUSTER_LABEL_VALUE
-  value: "my-k8s-cluster"
-```
-
-共享数据源时，分别填写对应数据源中实际的 `cluster` 标签值。单集群专用端点可删除或留空这些标签变量。VictoriaLogs 多租户场景使用已配置目标租户的入口。[证据关联设计](phase-2-correlation-design.md)
-
-### 挂载 HTTPS 凭据
-
-上游使用 Bearer token 或私有 CA 时，使用 HTTPS 地址。以下以 Prometheus 为例。先准备 token 和 CA 文件，在目标 Namespace 创建 Secret。
-
-```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-prometheus \
-  --from-file=token=/secure/prometheus.token \
-  --from-file=ca.crt=/secure/prometheus-ca.pem
-```
-
-将以下字段合并到 `api.yaml` 中现有的 `spec.template.spec`。容器 `name: api`、`env` 和 `volumes` 均在原有列表中添加字段。
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          env:
-            - name: PROMETHEUS_URL
-              value: "https://prometheus.example.com"
-            - name: PROMETHEUS_BEARER_TOKEN_FILE
-              value: "/var/run/secrets/kube-aiops/prometheus/token"
-            - name: PROMETHEUS_CA_FILE
-              value: "/var/run/secrets/kube-aiops/prometheus/ca.crt"
-          volumeMounts:
-            - name: prometheus-credentials
-              mountPath: /var/run/secrets/kube-aiops/prometheus
-              readOnly: true
-      volumes:
-        - name: prometheus-credentials
-          secret:
-            secretName: kube-aiops-prometheus
-```
-
-VictoriaLogs 和 Alertmanager 可以分别创建独立 Secret。按需替换实际文件路径并执行。
-
-```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-victorialogs \
-  --from-file=token=/secure/victorialogs.token \
-  --from-file=ca.crt=/secure/victorialogs-ca.pem
-
-kubectl -n kube-aiops-system create secret generic kube-aiops-alertmanager \
-  --from-file=token=/secure/alertmanager.token \
-  --from-file=ca.crt=/secure/alertmanager-ca.pem
-```
-
-将以下字段合并到同一个 API Deployment 的 `spec.template.spec`。三个来源同时启用时，Prometheus、VictoriaLogs 和 Alertmanager 的环境变量及挂载分别放在已有的 `env`、`volumeMounts` 和 `volumes` 列表中。
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          env:
-            - name: VICTORIALOGS_URL
-              value: "https://victorialogs.example.com"
-            - name: VICTORIALOGS_BEARER_TOKEN_FILE
-              value: "/var/run/secrets/kube-aiops/victorialogs/token"
-            - name: VICTORIALOGS_CA_FILE
-              value: "/var/run/secrets/kube-aiops/victorialogs/ca.crt"
-            - name: ALERTMANAGER_URL
-              value: "https://alertmanager.example.com"
-            - name: ALERTMANAGER_BEARER_TOKEN_FILE
-              value: "/var/run/secrets/kube-aiops/alertmanager/token"
-            - name: ALERTMANAGER_CA_FILE
-              value: "/var/run/secrets/kube-aiops/alertmanager/ca.crt"
-          volumeMounts:
-            - name: victorialogs-credentials
-              mountPath: /var/run/secrets/kube-aiops/victorialogs
-              readOnly: true
-            - name: alertmanager-credentials
-              mountPath: /var/run/secrets/kube-aiops/alertmanager
-              readOnly: true
-      volumes:
-        - name: victorialogs-credentials
-          secret:
-            secretName: kube-aiops-victorialogs
-        - name: alertmanager-credentials
-          secret:
-            secretName: kube-aiops-alertmanager
-```
-
-只使用 token 或私有 CA 时，创建对应文件并设置相应的 `*_BEARER_TOKEN_FILE` 或 `*_CA_FILE`。使用系统信任的证书且无需 token 时，只需填写 HTTPS 地址。变更 Secret 后重启 API Pod 以加载证书。
-
-### 配置 Zabbix 接入地址
-
-在发布清单的 API 容器设置 `DIAGNOSTIC_ZABBIX_ENDPOINTS`，并把值替换为该环境允许的 HTTPS API 地址。可追加多个逗号分隔的地址。凭据在 Portal 的「资源管理 → 数据源管理 → 接入 Zabbix」中配置。
-
-```yaml
-- name: DIAGNOSTIC_ZABBIX_ENDPOINTS
-  value: "https://zabbix.example.com/api_jsonrpc.php"
-```
-
-API Pod 启动时读取该配置。已有部署补充地址后重新发布 API Pod。Web 页面可填写 `https://zabbix.example.com`，平台会补齐 `/api_jsonrpc.php`。 [Zabbix 接入与故障处理](resource-management/design.md#发布和运维)
-
-### 应用并验证数据源
-
-首次部署返回第 4 节应用两套工作负载。已有部署使用包含当前镜像、身份和数据源配置的发布清单更新 API。
-
-```bash
-kubectl apply --dry-run=server -f "$release_dir/api.yaml"
-kubectl apply -f "$release_dir/api.yaml"
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-```
-
-HTTPS 入口就绪后，使用同时拥有 Finding 列表和证据读取权限的账号查询已有 Finding。以下命令中的域名替换为实际域名，`/secure/portal-allowed.curl` 替换为平台提供的 curl 配置文件路径。文件中按身份平台的要求配置认证 Header 或 Cookie。API Pod 需要能够访问 DNS、Kubernetes API、身份服务和数据源端口。
-
-先查看 Finding 列表及 ID：
-
-```bash
-curl --config /secure/portal-allowed.curl -fsS --max-time 10 \
-  'https://kube-aiops.example.com/api/v1/findings' |
-  jq '.items[] | {id, namespace, resource, title}'
-```
-
-将列表中选定的 ID 替换到下面的 URL。ID 如包含 URL 特殊字符，先执行下方编码命令，将结果替换到 URL 中。
-
-```bash
-jq -rn --arg id '替换为Finding ID' '$id | @uri'
-```
-
-```bash
-curl --config /secure/portal-allowed.curl -fsS --max-time 15 \
-  'https://kube-aiops.example.com/api/v1/findings/替换为编码后的Finding ID/correlation' |
-  jq '{sources, signalCount: (.signals | length)}'
-```
-
-`available` 表示来源可查询。出现 `partial` 或 `unavailable` 时，检查连通性、TLS 和凭据。未启用的来源显示 `disabled`。查询可用但证据为空时，核对资源标签、集群标签和时间窗口。
-
-## 生产部署
-
-配置本地账号或 LDAP 后，从同一源码构建并发布生产镜像，再按前面的现有集群步骤部署。使用已验证的镜像 digest、发布清单和权限策略，按目标环境配置域名、证书和 Secret 引用。
-
-### 生产身份接入
-
-以下步骤适用于全新部署。SQLite 在首次启动时初始化，账号、权限和 LDAP 配置通过 Portal 创建。按顺序完成存储和清单配置、首次改密、本地账号授权，再按需启用 LDAP。
-
-#### 1. 创建 SQLite PVC
-
-API 和 Web 镜像需包含 SQLite 与系统管理功能。先完成 [部署 API 与 Web Portal](#4-部署-api-与-web-portal) 中的镜像渲染，准备本次发布的 `api.yaml`、`web.yaml` 和 `web-service.yaml`，暂缓应用 Deployment。
-
-```bash
-kubectl apply -f deploy/api/namespace.yaml
-kubectl get storageclass
-kubectl apply -f deploy/examples/identity/pvc.yaml
-kubectl -n kube-aiops-system get pvc kube-aiops-identity
-```
-
-示例使用默认 StorageClass，申请 1 GiB 的 `ReadWriteOnce` 卷。没有默认 StorageClass 时，在 PVC 的 `spec.storageClassName` 指定实际名称。若存储类采用 `WaitForFirstConsumer`，PVC 会在 API Pod 调度时绑定。
-
-#### 2. 配置 API 并发布 HTTPS 入口
-
-把以下片段合并到本次发布的 `api.yaml`。保留原有 Deployment 字段、容器镜像、探针和环境变量。将 `AUTH_ORIGIN` 改为浏览器实际访问的 HTTPS 来源，只填写协议、主机和非默认端口。Portal 和 API 使用同一个来源。
-
-```yaml
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  template:
-    spec:
-      securityContext:
-        fsGroup: 65532
-      containers:
-        - name: api
-          env:
-            - name: AUTH_ORIGIN
-              value: https://kube-aiops.example.com
-            - name: AUTH_SQLITE_PATH
-              value: /var/lib/kube-aiops/identity.db
-            - name: AUTH_BOOTSTRAP_ADMIN
-              value: "true"
-          volumeMounts:
-            - name: identity-db
-              mountPath: /var/lib/kube-aiops
-      volumes:
-        - name: identity-db
-          persistentVolumeClaim:
-            claimName: kube-aiops-identity
-```
-
-API 以 UID/GID 65532 运行，PVC 挂载目录需要可写。单副本配合 `Recreate` 使用同一个 SQLite 卷。会话有效期为 30 分钟，API 重启后需重新登录。
-
-执行 [应用清单并等待就绪](#应用清单并等待就绪)，然后按 [挂载 HTTPS 入口](#挂载-https-入口) 应用两条 HTTPRoute。初始化期间将 HTTPS 入口限制在部署人员可访问的范围内。用实际域名检查入口。
-
-```bash
-kubectl -n kube-aiops-system get pvc kube-aiops-identity
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
-curl -fsS https://kube-aiops.example.com/portal-healthz
-curl -sS -o /dev/null -w '%{http_code}\n' https://kube-aiops.example.com/api/v1/findings
-```
-
-PVC 应为 `Bound`，匿名诊断请求应返回 `401`。
-
-#### 3. 初始化管理员并关闭引导
-
-1. 打开 `https://kube-aiops.example.com`，选择本地账号登录，输入账号 `admin` 和初始密码 `admin123`。Portal 会直接进入改密页面，改密前只能查看登录状态、修改密码或退出。
-2. 在首次改密页面输入当前密码和至少 12 字节的新密码。保存后会话立即失效，用新密码重新登录，确认页面出现 **系统管理**。
-3. 从本次发布的 `api.yaml` 删除 `AUTH_BOOTSTRAP_ADMIN`，并更新运行中的 Deployment。
-
-```bash
-kubectl -n kube-aiops-system set env deployment/kube-aiops-api AUTH_BOOTSTRAP_ADMIN-
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-```
-
-再次用新密码登录，确认管理员密码已持久化。保留 PVC 供后续发布使用。SQLite 已存在管理员时会保留该账号和密码。
-
-#### 4. 验证本地角色并配置接口权限
-
-1. 进入 **系统管理 → 用户管理**，创建一个本地访客，使用至少 12 字节的临时密码。以访客登录并改密，确认可只读访问研发和测试范围。
-2. 要为 LDAP 员工配置细粒度权限，先接入 LDAP 并让员工登录一次，再进入 **系统管理 → 权限配置 → 角色配置 → 新建角色**。勾选查询诊断列表、详情及所需证据等动作，或者批量勾选当前筛选结果。
-3. 选择数据范围，点击 **添加到授权清单 → 保存角色 → 确认保存**。研发及测试可使用环境级范围，预发布及生产的命名空间动作需指定实际实例、业务线和命名空间。
-4. 在 **用户管理** 向测试员工授予该角色，或将角色关联到用户组后添加成员。从独立会话验证授权范围与只读动作生效，以及未经授予的接口和范围被拒绝。授权来源可在账号详情核对。
-
-#### 5. 按需接入 LDAP / Active Directory
-
-准备域控的 LDAPS 域名、只读搜索账号和密码。确认 API Pod 能解析域控域名，并可访问 TCP 636（LDAPS）或 389（明文 LDAP）。网页验证并保存后，LDAP 配置和搜索密码写入身份 SQLite 数据库。
-
-使用私有 CA 时，准备签发域控证书的 CA 链并创建下方 Secret。
-
-```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-ldap \
-  --from-file=ca.crt=/secure/ad-ca.crt
-```
-
-向 `api.yaml` 追加以下配置，保留 SQLite 挂载。域控证书使用系统受信任的 CA 时，可省略 `AUTH_LDAP_CA_FILE`、`ldap` 卷及挂载。
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          env:
-            - name: AUTH_LDAP_CA_FILE
-              value: /etc/kube-aiops/ldap/ca.crt
-          volumeMounts:
-            - name: ldap
-              mountPath: /etc/kube-aiops/ldap
-              readOnly: true
-      volumes:
-        - name: ldap
-          secret:
-            secretName: kube-aiops-ldap
-```
-
-```bash
-kubectl apply -f "$release_dir/api.yaml"
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-```
-
-管理员重新登录，进入 **系统管理 → 认证配置**，按目录结构填写。填写搜索密码、**LDAP 测试员工账号**和该员工的密码，再点 **运行测试**。测试依次检查目录连接、搜索账号绑定、唯一员工查询和员工本人认证。通过后在 5 分钟内点击 **保存并启用**。修改草稿后须重新验证。测试不创建用户或会话，测试失败时当前配置继续生效。
-
-连接模式由 URL 决定。使用 `ldap://` 时需在页面勾选「允许明文 LDAP」，搜索账号和员工凭据会以明文传输。原来使用 `ldap://` 的已保存配置在升级后需要用本地管理员重新测试并保存。采用环境变量配置时，使用 `AUTH_LDAP_ALLOW_PLAIN=true` 显式启用明文 LDAP。
-
-若 LDAPS 的「目录连接」失败，从 API Pod 的网络环境验证证书。设置 `ldap_host` 为 URL 中的域名，`ldap_ca` 为 API 使用的签发 CA 链文件。使用系统受信任的 CA 时，可省略 `-CAfile`。
-
-```bash
-openssl s_client -connect "${ldap_host}:636" -servername "$ldap_host" \
-  -verify_hostname "$ldap_host" -verify_return_error -CAfile "$ldap_ca" </dev/null
-```
-
-默认无需配置 `AUTH_LDAP_ENCRYPTION_KEY_FILE`，搜索密码直接保存在 SQLite 中。数据库及备份包含可读取的搜索密码，应限制文件访问权限。测试员工密码只用于当次验证。修改 URL 或搜索 DN 时需重新填写搜索密码。
-
-已有加密配置仍可使用原密钥。移除原密钥后，本地管理员可重新填写搜索密码，运行测试并保存，以恢复 LDAP 登录。部署显式提供密钥时，API 仍可对 SQLite 中的搜索密码加密。若外部集群凭据也在复用该密钥，变更挂载前需确保 `CLUSTER_CREDENTIAL_KEY_FILE` 指向相同密钥。
-
-| 字段 | AD 示例 |
-| --- | --- |
-| LDAP URL | `ldaps://ad.example.com:636` 或 `ldap://ad.example.com:389`（需明确允许明文 LDAP） |
-| LDAP 搜索密码 | 搜索账号的密码 |
-| LDAP 搜索 DN | `cn=kube-aiops-reader,ou=service,dc=example,dc=com` |
-| LDAP 基础 DN | `dc=example,dc=com` |
-| LDAP 用户 UID | `sAMAccountName` |
-| LDAP 附加用户过滤器 | `(objectClass=user)`，可留空。沿用带 `%s` 的旧模板时请留空 UID |
-| LDAP 用户搜索范围 | 子树（默认），可选单层或基础对象 |
-| LDAP 组成员属性 | `memberOf` |
-| LDAP 组基础 DN | 可选，例如 `OU=Groups,DC=example,DC=com` |
-| LDAP 组过滤器 | 可选，例如 `(objectClass=group)` |
-| LDAP 组搜索范围 | 默认子树，也可选单层或基础对象 |
-| LDAP 测试用户名 | 例如 `alice`，仅用于本次测试 |
-
-进入 **系统管理 → 权限配置**，编辑需要授予同样权限的角色，在 **LDAP 组** 填写完整 DN，例如 `CN=kube-aiops-readers,OU=Groups,DC=example,DC=com`。多个组每行填写一个。LDAP 的 `memberOf` 对应用户的直接组。
-
-在独立浏览器会话选择登录框下方的 **LDAP / Active Directory 登录**，用属于目标组的测试账号验证登录与授权。再用可认证但不属于授权组的账号验证诊断访问返回 `403`。LDAP 密码由域控验证，SQLite 保存 LDAP 用户 DN、登录名、组和最近登录时间。
-
-##### 验收管理员组继承
-
-1. 用超级管理员进入 **系统管理 → 权限配置 → 用户组 → 新建用户组**，勾选 **系统管理员**，核对成员影响后确认保存。
-2. 在用户管理中将测试 LDAP 员工加入该组。员工重新登录后，在账号详情核对「用户组 → 系统管理员」来源，并验证系统管理可用。
-3. 从组上取消关联后再次核对影响预览。仅通过该组获得管理员角色的员工需要重新登录，有其他来源的成员继续保留管理员权限。
-4. 以普通系统管理员登录，核对管理员组可查看，角色和成员关联的写入口由超级管理员控制。保存结果可定位到操作审计。
-
-升级时同步发布本次 API 与 Web 镜像并保留现有身份 SQLite 挂载。已有账号、组和直授权限随原数据保留。新增管理员组授权由超级管理员明确提交。
-
-
-#### 6. 核对部署结果
-
-```bash
-kubectl -n kube-aiops-system get deployment kube-aiops-api kube-aiops-web
-kubectl -n kube-aiops-system get pvc kube-aiops-identity
-kubectl -n kube-aiops-system logs deployment/kube-aiops-api --tail=100
-```
-
-API 和 Web 应各自就绪，PVC 为 `Bound`。若 API 在启动时退出，核对 `AUTH_ORIGIN`、PVC 写权限和引导配置。若 LDAP 登录返回服务不可用，核对域控连通性、证书链、搜索账号凭据和过滤器。完成验收后按发布流程开放入口，并将 PVC 纳入备份。
-
-### 挂载 HTTPS 入口
-
-由平台在目标 Gateway 的命名空间准备签发给 `portal_host` 的 TLS Secret。以下是可合并到目标 Gateway 的 `spec.listeners` 中的监听器示例。使用实际证书 Secret 名称，已有共享 listener 可沿用平台的证书和命名空间授权配置。配置方式见 [Gateway API TLS](https://gateway-api.sigs.k8s.io/guides/user-guides/tls/) 和 [跨命名空间挂载](https://gateway-api.sigs.k8s.io/guides/user-guides/multiple-ns/)。
-
-```yaml
-- name: https
-  hostname: kube-aiops.example.com
-  protocol: HTTPS
-  port: 443
-  tls:
-    mode: Terminate
-    certificateRefs:
-      - kind: Secret
-        name: kube-aiops-tls
-  allowedRoutes:
-    namespaces:
-      from: Selector
-      selector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-aiops-system
-```
-
-按环境将 `portal_host` 解析到 Gateway 地址。两个 HTTPRoute 使用同一个域名和 HTTPS listener。API 路由将 `/api/v1` 转发到 API Service，Web 路由将 `/` 转发到 Web Service。
-
-将 [API](../deploy/api) 和 [Web](../deploy/web) 的 HTTPRoute 与 NetworkPolicy 复制到本次发布目录。
-
-```bash
-cp deploy/api/httproute.yaml "$release_dir/api-route.yaml"
-cp deploy/web/httproute.yaml "$release_dir/web-route.yaml"
-cp deploy/api/networkpolicy.yaml "$release_dir/api-networkpolicy.yaml"
-cp deploy/web/networkpolicy.yaml "$release_dir/web-networkpolicy.yaml"
-```
-
-在两份 Route 中填写实际 Gateway 名称、命名空间、listener 名称和域名。集群需要支持 NetworkPolicy 的 CNI。根据实际 Gateway 数据面 Pod 的命名空间和标签调整两份策略的入站选择器。
-
-| 流量 | 允许范围 |
-| --- | --- |
-| Gateway → Web / API | 指定 Gateway 数据面 Pod → TCP 8080 |
-| Web → API | 同命名空间的 Web Pod → API Pod TCP 8080。Web Pod 内可通过 `http://kube-aiops-api:8080` 访问 API Service |
-| Web → DNS | `kube-system` 中标签为 `k8s-app=kube-dns` 的 DNS Pod，UDP/TCP 53 |
-
-使用 NodeLocal DNSCache 或自定义 DNS 时，应用前根据 Web Pod 的 `/etc/resolv.conf` 和 CNI 的 DNS 策略调整 Web 出站规则。API 的出站由集群现有策略管理，需允许 DNS、Kubernetes API 和已启用的上游。
-
-应用策略前确认 API 已在 `production` 模式成功启动。用实际值设置以下变量并核对 Gateway 与数据面 Pod。
-
-```bash
-portal_host=kube-aiops.example.com
-gateway_namespace=envoy-gateway-system
-gateway_name=production-gateway
-proxy_namespace=envoy-gateway-system
-
-kubectl -n "$gateway_namespace" wait --for=condition=Programmed "gateway/$gateway_name" --timeout=120s
-kubectl -n "$gateway_namespace" get gateway "$gateway_name" -o jsonpath='{.status.addresses[*].value}{"\n"}'
-kubectl -n "$proxy_namespace" get pods \
-  -l "gateway.envoyproxy.io/owning-gateway-namespace=$gateway_namespace,gateway.envoyproxy.io/owning-gateway-name=$gateway_name"
-
-kubectl apply --dry-run=server -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml" \
-  -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
-kubectl apply -f "$release_dir/api-networkpolicy.yaml" -f "$release_dir/web-networkpolicy.yaml"
-kubectl apply -f "$release_dir/api-route.yaml" -f "$release_dir/web-route.yaml"
-kubectl -n kube-aiops-system get httproute kube-aiops-api kube-aiops-web -o yaml
-```
-
-核对两条 Route 在目标 listener 下的 `Accepted=True`、`ResolvedRefs=True`，以及状态所对应的当前 generation。若此前应用了旧版合并路由 `httproute/kube-aiops`，确认其归属及两条新 Route 均已就绪后，删除旧 Route，再执行下节验收。若使用预发域名，在完成验收后再切生产 DNS 或流量。
-
-### 验收、发布与回滚
-
-先验证 TLS、页面和 API 访问控制。对于将未认证请求转交给 API 的入口，下面的请求应返回 `401`；若入口统一跳转登录，在预发通过受控测试路径复验应用层 `401`。
-
-```bash
-portal_url="https://$portal_host"
-curl -fsS --max-time 10 "$portal_url/portal-healthz"
-curl -fsS --max-time 10 -o /dev/null "$portal_url/"
-test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
-  "$portal_url/api/v1/findings")" = 401
-```
-
-使用已获准的登录会话在浏览器完成列表、详情和证据验收。自动验收时，可将认证 Header 或 Cookie 交由受控的 curl 配置文件提供。`allowed_curl_config` 和 `denied_curl_config` 分别对应允许和缺少 `findings:list` 权限的已认证账号。
-
-```bash
-curl --config "$allowed_curl_config" -fsS --max-time 10 "$portal_url/api/v1/findings" |
-  jq -e '.items | type == "array"' >/dev/null
-test "$(curl --config "$denied_curl_config" -sS --max-time 10 -o /dev/null -w '%{http_code}' \
-  "$portal_url/api/v1/findings")" = 403
-```
-
-| 检查 | 放行标准 |
-| --- | --- |
-| 认证和授权 | 具备目标能力的账号读取列表、详情和关联证据成功；无权账号对同一受保护资源收到 `403`；跨命名空间请求无法读取范围外的数据 |
-| K8sGPT 和证据 | `make verify` 通过；用实际 Result 对照 Finding 详情，验证已启用数据源及其状态 |
-| 审计 | API 审计记录能关联到同一次请求，日志中无明文凭据 |
-| 稳定性 | API 和 Web rollout 完成，探针稳定；Operator 无新增 OOM 重启，主要请求的错误率和延迟符合本次发布标准 |
-
-生产沿用预发已验证的清单和 digest。保留本次以及上一版的 `api.yaml`、`web.yaml`、`web-service.yaml`、两份 Route、两份 NetworkPolicy、镜像 digest 和身份策略版本。出现故障时，恢复上一版相互兼容的身份策略与发布清单，再复验。若上一版仍使用合并的 `route.yaml`，按实际归档恢复上一版清单和网络策略。确认旧 Route 已被 Gateway 接受后，移除本次新建的两条 Route，复验旧入口。
-
-```bash
-previous=/path/to/previous-approved-release
-manifests=(
-  -f "$previous/api.yaml" -f "$previous/web.yaml" -f "$previous/web-service.yaml"
-  -f "$previous/api-networkpolicy.yaml" -f "$previous/web-networkpolicy.yaml"
-  -f "$previous/api-route.yaml" -f "$previous/web-route.yaml"
-)
-kubectl apply --dry-run=server "${manifests[@]}"
-kubectl apply "${manifests[@]}"
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-web --timeout=180s
-make verify
-```
-
-首次发布且尚无上一版时，撤销本次新增的流量入口并保留工作负载供排查。K8sGPT 安装过程中的失败由安装器按 Lease 和快照处理回滚。若安装已成功但需回退配置，使用上一版获批的源码和参数重新执行 `make install`，然后运行 `make verify`。安装器报告回滚失败时，先按日志给出的快照和恢复报告检查 Helm、RBAC 与 K8sGPT CR 状态。
-
 ## 排查与清理
 
 | 现象 | 核对项 |
@@ -1052,7 +910,7 @@ make verify
 | Engine 已就绪但 Finding 为空 | 分析周期、Provider 凭据、K8sGPT Result 及 Result 的实例标签 |
 | API 的 `/readyz` 返回 503 | Result CRD、K8sGPT Namespace 和 API ServiceAccount 的 Result 读取权限 |
 | 页面打开但 API 返回 HTML 或 404 | 同源入口的 `/api/v1/` 转发路径和 API Service 端口 |
-| LDAP 搜索密码或测试按钮未出现 | 从包含 PR #61 的同一提交构建并发布 API 和 Web 镜像，使用新的镜像 digest 更新两个 Deployment，等待 rollout 完成后重新加载页面 |
+| LDAP 搜索密码或测试按钮未出现 | 检查 API 与 Web 是否来自同一源码版本。更新镜像后确认两个 Deployment 已就绪，再重新打开认证配置 |
 | LDAP 配置无法保存 | 在浏览器 Network 检查 `PUT /api/v1/admin/ldap`。成功应返回 204，测试请求应返回 JSON。更换 LDAP 地址或搜索 DN 后重新填写密码，并确认 API 使用 SQLite 身份存储 |
 | 证据来源为 `disabled` | 对应 `*_URL` 是否已设置 |
 | 证据来源为 `partial` 或 `unavailable` | Pod 到上游的连通性、TLS、凭据、集群标签和查询窗口 |
@@ -1061,13 +919,3 @@ make verify
 清理 Portal 时，先下线两条专用 HTTPRoute，再删除本次发布的 Deployment、Service 和 NetworkPolicy。按发布清单核对资源归属后再删除；共享 Gateway、证书和其他系统的资源由平台维护。
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
-
-## 在控制台接入 Kubernetes 集群
-
-以系统管理员身份打开 **资源管理 → Kubernetes 集群管理 → 接入集群**。本地集群由平台自动发现，直接在列表中查看或编辑归属。远端集群从同一个入口选择接入方式。
-
-1. **外部直连**适用于中心 API 能访问目标集群 Kubernetes API 的情况。在「基本信息」填写实例 ID、名称、环境和业务归属。在「连接与凭据」提交目标集群的专用只读 kubeconfig，或填写 API 地址、CA 和 Token／客户端证书。在「观测与诊断」填写目标 K8sGPT Engine 的命名空间和名称，点击「测试连接」，通过后点击「保存配置」。直连凭据由平台加密保存。
-2. **采集上报**适用于目标集群主动向中心上报的情况。在控制台登记并启用实例，保存后记录仅显示一次的上报凭据。为目标集群采集端配置该凭据，并按[采集 CronJob 示例](../deploy/collector/cronjob.yaml)填写 Portal HTTPS 地址和实例 ID。首次收到快照后，在集群列表查看上报状态。
-3. 在 **系统管理 → 权限管理** 按目标实例和命名空间授权，再用值班账号检查「诊断总览」中的集群筛选和诊断数据。
-
-详细表单和凭据要求见[资源管理 · Kubernetes 集群管理](resource-management/04-development-tasks.md#kubernetes-集群管理当前实现)。
