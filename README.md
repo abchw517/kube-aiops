@@ -2,6 +2,22 @@
 
 面向 Kubernetes 与主机监控的只读诊断平台。简体中文 Web Portal 汇总 K8sGPT Finding、故障事件、Zabbix 和 Alertmanager 告警，并支持在授权范围内通过 HolmesGPT 调查告警、复核诊断和使用已发布的运维知识。
 
+## 当前功能与文档入口
+
+| 模块 | 当前功能 | 文档与原型 |
+| --- | --- | --- |
+| 前端 UI | 简体中文 Portal、响应式导航、本地账号和 LDAP 登录 | [设计](docx/portal-ui/design.md) · [原型](docx/portal-ui/prototype.html) |
+| 诊断控制台 | 诊断总览汇总 Finding、故障事件、Zabbix 和 Alertmanager。最近诊断分页默认 5 条，支持 10、15 条或自定义。保留原有诊断结果、趋势和统计，支持证据查看、AI 复核和告警深度调查。 | [设计](docx/diagnosis-console/design.md) · [原型](docx/diagnosis-console/prototype.html) |
+| 运维知识库 | 文档检索与预览、全文与版本治理、AI 问答、导入和同步 | [设计](docx/operations-knowledge/design.md) · [原型](docx/operations-knowledge/prototype.html) |
+| 资源管理 | 环境与业务线、Kubernetes 集群、命名空间归属、监控诊断及资产数据源。Zabbix、Prometheus、VictoriaLogs、Alertmanager 和 Grafana 可从「资源管理 → 数据源管理」接入。 | [设计](docx/resource-management/design.md) · [原型](docx/resource-management/prototype.html) |
+| 系统管理 | 用户、用户组与角色、可批量勾选的接口权限和数据范围、LDAP/AD 配置、会话与审计 | [设计](docx/system-management/design.md) · [原型](docx/system-management/prototype.html) |
+
+原型可从完整仓库中打开各模块的 `prototype.html`。需要分享单文件时，可在仓库根目录运行以下命令，导出五份可离线打开的交互 HTML。[原型打开方式和验收要求](docx/development-standard.md#打开与交付原型)
+
+```bash
+python3 scripts/package-prototypes.py /tmp/kube-aiops-prototypes
+```
+
 ## 当前阶段
 
 | 阶段 | 进展 | 能力 |
@@ -11,7 +27,7 @@
 | Phase 1.4 | 已完成 | 身份认证与授权、结构化审计、响应脱敏和生产启动门禁 |
 | Phase 2 | 已完成 | Kubernetes Events、Prometheus、VictoriaLogs、Alertmanager 四类证据关联 |
 | Platform Portal | 已实现 | 多集群资源管理、运维知识库、LDAP 与接口权限配置、管理员组继承及操作审计 |
-| Phase 3 | Holmes 首轮已实现，待客户环境联调 | 告警调查、Finding 复核、事件 RCA 和知识问答，持续完善证据轨迹与 Runbook |
+| Phase 3 | Holmes 首轮已合入，待客户环境联调 | 告警调查、Finding 复核、事件 RCA 和知识问答，持续完善证据轨迹与 Runbook |
 | Phase 4–5 | 已规划 | 人工审批修复与受控自动修复 |
 
 交付与验收记录见 [Phase 1.4](docx/phase-1.4-completion.md) 和 [Phase 2](docx/phase-2-completion.md)。后续目标见 [Phase 3–5 路线图](docx/phase-3-5-roadmap.md)。集群验证基线为 [Kubernetes v1.36.4](docx/kubernetes-v1.36-baseline.md)。
@@ -29,6 +45,13 @@ make portal-demo
 ## 安装与部署
 
 `make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docx/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。Holmes 使用独立内部服务，通过 Portal API 的 Secret 绑定启用，完整步骤见 [部署 HolmesGPT](docx/install-deployment.md#部署-holmesgpt)。
+
+### HolmesGPT 从哪里开始
+
+1. 部署 Portal API 和 Web，并配置至少一个可用的告警数据源。
+2. 按[部署 HolmesGPT](docx/install-deployment.md#部署-holmesgpt)创建模型 Secret、安装独立服务并检查模型响应。指南以 Chart `0.24.3` 为示例，命令直接使用示例名称。
+3. 先绑定一条 Zabbix 告警的真实数据源 ID、环境和业务范围。为试点账号配置读取权限与 `diagnosis.health.investigate`，再从 **诊断控制台 → 诊断总览 → 告警详情 → AI 深度调查** 验收。
+4. 按需追加 Alertmanager、Finding、故障事件或 Wiki 绑定。Finding 和故障事件 RCA 的既有诊断模型还需启用。Wiki 使用独立 Holmes 实例处理已授权的发布章节。
 
 ## 当前支持基线
 
@@ -85,12 +108,15 @@ flowchart TD
     Backend -->|读取 Result、资源和事件| Kubernetes
     Backend -->|员工认证| LDAP["LDAP / Active Directory"]
     Backend -->|读取快照与关联证据| Obs["Zabbix / Alertmanager / Prometheus / VictoriaLogs"]
-    Backend -->|按授权范围调用| Holmes["HolmesGPT / 内部服务"]
+    Backend -->|按来源和范围匹配| Holmes["HolmesGPT / 内部服务"]
+    Backend -->|既有复核、RCA、Wiki 可回退| Provider
     Holmes -->|经批准的模型端点| Provider
-    Holmes -->|按实例启用只读取证| Obs
+    Holmes -.->|按实例配置额外只读取证| Obs
 ```
 
-Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 Finding 实际资源范围授权，再对四类来源执行有时间窗和查询预算的读取。Prometheus、VictoriaLogs 和 Alertmanager 通过后端配置启用。生产启动要求接入受信任的身份认证和授权组件。更多细节见 [架构设计](docx/architecture.md) 和 [生产部署](docx/install-deployment.md#生产部署)。
+Go API 将 K8sGPT Result 转换为 Finding，依据实际资源范围读取关联证据。Prometheus、VictoriaLogs 和 Alertmanager 可通过资源管理配置，相关查询按时间窗与预算执行。Grafana 接入用于关联仪表盘。生产启动要求配置可信的身份认证和授权。[架构设计](docx/architecture.md) · [生产部署](docx/install-deployment.md#生产部署)
+
+Holmes 是独立、可选的内部服务。健康告警经 Portal 校验后按授权范围同步调用 Holmes。Finding 复核、故障事件 RCA 和 Wiki 问答可在 Holmes 不可用时回退到既有模型。未配置健康告警绑定时，详情会提示该范围尚未启用调查。
 
 ## 目录结构
 
@@ -118,7 +144,11 @@ Go API 将 K8sGPT Result 转换为 Finding。查看关联证据时，API 先按 
 │   ├── k8sgpt/
 │   └── examples/         # 可选部署清单
 ├── docx/                 # 架构、部署、产品设计与验收
-│   └── system-management/ # 权限目录、管理员组和交互原型
+│   ├── portal-ui/
+│   ├── diagnosis-console/
+│   ├── operations-knowledge/
+│   ├── resource-management/
+│   └── system-management/
 ├── scripts/
 ├── tests/
 ├── Dockerfile            # API 镜像的根目录构建入口
@@ -546,7 +576,7 @@ Remediation -> Disabled
 
 ## 路线图
 
-- Phase 3 · 已实现多来源调查与既有 AI 入口集成。下一轮交付真实数据源联调、SSE 工具轨迹、调查记录与结论保存、告警知识草稿及版本化 Runbook。
+- Phase 3 · 已交付首轮同步调查和既有 AI 入口集成。接下来验证客户环境的模型、权限和真实数据源，并实施 SSE 工具轨迹、调查历史、健康告警结论留存、告警知识草稿及版本化 Runbook。
 - Phase 4 · 人工审批修复
 - Phase 5 · 受控自动修复
 
