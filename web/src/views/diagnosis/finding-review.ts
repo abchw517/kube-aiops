@@ -19,6 +19,7 @@ interface Assessment {
   evidenceState: string;
   sources: { source: CorrelationSource; state: SourceState }[];
   citations: { knowledgeId: string; title: string; revision: number }[] | null;
+  appliedSkills?: string[] | null;
 }
 
 
@@ -43,10 +44,11 @@ export function findingReviewPanel(): string {
   </section>`;
 }
 
-function renderAssessment({ assessment, evidence, sources: states, evidenceState, citations }: Assessment): string {
+function renderAssessment({ assessment, evidence, sources: states, evidenceState, citations, appliedSkills }: Assessment): string {
   const summary = evidenceState === "timeout" ? "关联证据查询超时。" :
     evidenceState === "disabled" ? "未启用关联证据采集。" : "本次未能取得关联证据。";
-  return `<h3>当前判断</h3><span class="review-state" data-state="${assessment.state}">${judgments[assessment.state]}</span>
+  return `${appliedSkills?.length ? `<p>已应用技能 ${escapeHtml(appliedSkills.join("、"))}</p>` : ""}
+    <h3>当前判断</h3><span class="review-state" data-state="${assessment.state}">${judgments[assessment.state]}</span>
     <p class="detail-text">${escapeHtml(assessment.judgment)}</p>
     <h3>证据依据</h3>
     ${evidence.length ? `<ul class="review-evidence">${evidence.map((item) => {

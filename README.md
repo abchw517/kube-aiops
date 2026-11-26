@@ -12,7 +12,7 @@
 | 诊断控制台 | 诊断总览汇总 Finding、故障事件、Zabbix 和 Alertmanager。最近诊断分页默认 5 条，支持 10、15 条或自定义。保留原有诊断结果、趋势和统计，支持证据查看、AI 复核和告警深度调查。 | [设计](docx/diagnosis-console/design.md) · [原型](docx/diagnosis-console/prototype.html) |
 | 运维知识库 | 文档检索与预览、全文与版本治理、AI 问答、导入和同步 | [设计](docx/operations-knowledge/design.md) · [原型](docx/operations-knowledge/prototype.html) |
 | 资源管理 | 环境与业务线、Kubernetes 集群、命名空间归属、监控诊断及资产数据源。Zabbix、Prometheus、VictoriaLogs、Alertmanager 和 Grafana 可从「资源管理 → 数据源管理」接入。 | [设计](docx/resource-management/design.md) · [原型](docx/resource-management/prototype.html) |
-| AI 服务 | 管理员查看 Holmes 绑定、按环境筛选、检查服务就绪状态，也可从 AI 技能页进入已有调查工作流。 | [部署与配置](docx/install-deployment.md#部署-holmesgpt) |
+| AI 服务 | 管理员按环境管理 Holmes 模型档位，发现模型、保存草稿并校验发布。支持上传 SKILL.md、从已发布手册转化以及独立审核。 | [部署与配置](docx/install-deployment.md#部署-holmesgpt) |
 | 系统管理 | 用户、用户组与角色、可批量勾选的接口权限和数据范围、LDAP/AD 配置、会话与审计 | [设计](docx/system-management/design.md) · [原型](docx/system-management/prototype.html) |
 
 原型可从完整仓库中打开各模块的 `prototype.html`。需要分享单文件时，可在仓库根目录运行以下命令，导出五份可离线打开的交互 HTML。[原型打开方式和验收要求](docx/development-standard.md#打开与交付原型)
@@ -107,7 +107,7 @@ Portal 首页导航由页面注册表维护，按账号权限展示五个业务�
 | 诊断控制台 | 诊断总览统一展示 Finding、故障事件、Zabbix 和 Alertmanager，并提供筛选、趋势和分页。故障详情包含 AI 根因分析、关联证据和拓扑。原有诊断结果仍有独立入口，健康告警详情提供 AI 深度调查。 |
 | 资源管理 | Kubernetes 集群管理、命名空间归属、环境与业务线目录、数据源管理。远端集群从控制台选择外部直连或采集上报。 |
 | 运维知识库 | 知识检索、详情、AI 问答与知识治理，覆盖文档版本、发布及远端同步。 |
-| AI 服务 | 查看实际部署绑定与模型别名、测试 Holmes 就绪状态、进入已有调查工作流。 |
+| AI 服务 | 按范围查看和发布模型档位。已启用技能可在匹配范围内为 Holmes 调查提供只读参考。 |
 | 系统管理 | 本地账号和 LDAP/AD 认证配置、用户与用户组、角色和接口权限、密码及操作审计。 |
 
 ### 生产部署拓扑

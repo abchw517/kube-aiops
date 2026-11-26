@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 9eecd63f 11548293 83c672ea 3eb85c39 6558976b 3c85aa4c b96d007b b6923b36
+// Contract source SHA-256 groups: 000c7b9a 0e51401d 85e20550 05c2f11a f57c1a42 fecd4738 3adaed69 ed0442d9
 
 export interface ObservabilityScope {
   "environmentId": string;
@@ -26,6 +26,7 @@ export interface ObservabilityDashboard {
 
 export interface HealthInvestigation {
   "analysis": string;
+  "appliedSkills"?: Array<string>;
 }
 
 export interface ObservabilityAlert {

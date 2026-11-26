@@ -63,8 +63,8 @@ func TestConfiguredModelProjectionAndReadiness(t *testing.T) {
 		t.Fatalf("unexpected model projection: %+v, %v", models, err)
 	}
 	view, err := json.Marshal(models)
-	if err != nil || bytes.Contains(view, []byte("private-key")) || bytes.Contains(view, []byte(server.URL)) {
-		t.Fatalf("unexpected credential or endpoint disclosed")
+	if err != nil || bytes.Contains(view, []byte("private-key")) || bytes.Contains(view, []byte("/holmes")) {
+		t.Fatalf("unexpected credential or internal route disclosed")
 	}
 	if err := CheckService(t.Context(), scope); err != nil {
 		t.Fatal(err)

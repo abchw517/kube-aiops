@@ -10,6 +10,8 @@ if (!contentSecurityPolicy) throw new Error("Missing Portal Content-Security-Pol
 
 const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
 
+let aiConnection;
+let aiSkills = [];
 const reviewHistory = [];
 let observationRequests = 0;
 let knowledgeCandidate;
@@ -231,10 +233,32 @@ createServer(async (request, response) => {
     wikiAsk: true, findingChat: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true,
   });
   if (url.pathname === "/api/v1/admin/ai-services" && adminSession) {
-    if (request.method === "POST") return json(response, 200, {ready: true});
-    return json(response, 200, {status: "configured", models: [
-      {source: "zabbix", sourceId: "fixture-monitor", environmentId: "testing", businessId: "ops", model: "accurate-model"},
-    ]});
+    const model = {source: "finding", sourceId: "local", environmentId: "", businessId: "", clusterId: "local", namespace: "default", model: "accurate-model", service: "https://holmes.example"};
+    const {model: _model, service: _service, ...scope} = model;
+    if (request.method === "GET") return json(response, 200, {status: "configured", models: [model], connections: aiConnection ? [aiConnection] : []});
+    const action = url.searchParams.get("action");
+    if (action === "discover") return json(response, 200, {models: ["fast-model", "accurate-model"]});
+    if (action === "recheck") return json(response, 200, {ready: true});
+    const bytes = [];
+    for await (const chunk of request) bytes.push(chunk);
+    const input = JSON.parse(Buffer.concat(bytes).toString());
+    if (action === "save") {
+      aiConnection = {id: "model-conf", version: 1, data:{scope, desired: input.config, effective: {}, effectiveVersion: 0}};
+    } else if (action === "publish") {
+      aiConnection.version = 2;
+      aiConnection.data.effectiveVersion = 1;
+      aiConnection.data.effective = aiConnection.data.desired;
+    }
+    return json(response, 200, aiConnection);
+  }
+  if (url.pathname === "/api/v1/admin/ai-skills" && adminSession) {
+    if (request.method === "GET") return json(response, 200, {skills: aiSkills, actor: "fixture-author"});
+    const bytes = [];
+    for await (const chunk of request) bytes.push(chunk);
+    const input = JSON.parse(Buffer.concat(bytes).toString());
+    const entry = {id:"skill", version:1, data:{...input,status:"review",author:"fixture-author"}};
+    aiSkills = [entry];
+    return json(response, 200, entry);
   }
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: reviewHistory, canPublish: true });
@@ -704,7 +728,7 @@ async function incidents(request, response, url) {
         reason: "部署记录核对", actor: "local:admin", recordedAt: incidentFixture.firstSeen }] });
   }
   if (method === "POST" && path === "/health/zabbix/zabbix-fixture/zabbix-fixture-problem/investigate") {
-    return json(response, 200, {analysis: "已核对测试证据，需要验证主机内存。"});
+    return json(response, 200, {analysis: "已核对测试证据，需要验证主机内存。", appliedSkills: ["内存排查"]});
   }
   if (path.startsWith("/zabbix/")) {
     const groups = [{ groupid: "200", name: "Windows 应用主机" }];

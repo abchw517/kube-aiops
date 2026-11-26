@@ -403,6 +403,34 @@ try {
       text => text.includes("AI 服务配置") && text.includes("accurate-model"), "AI service configuration did not show the configured mapping");
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-probe]").click()'});
     await assertText(cdp, text => text.includes("服务已就绪"), "AI service probe did not update the row");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-ai-add]").click();
+      document.querySelector("[data-ai-discover]").click()`});
+    await assertText(cdp, text => text.includes("已发现 2 个"), "Model aliases were not loaded");
+    await cdp.send("Runtime.evaluate", {expression: `(() => {
+      const form = document.querySelector("[data-ai-dialog] form");
+      form.elements.name.value = "预发 vLLM";
+      form.elements.fast.value = "fast-model";
+      form.elements.accurate.value = "accurate-model";
+      form.requestSubmit();
+    })()`});
+    await assertText(cdp, text => text.includes("预发 vLLM") && text.includes("待发布"), "Connection draft was not saved");
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-ai-publish]").click();
+      document.querySelector("[data-ai-confirm]").click()`});
+    await assertText(cdp, text => text.includes("已发布") && text.includes("生效 v1"), "Connection draft was not published");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/ai/skills",
+      text => text.includes("从知识库手册转化") && text.includes("上传技能"), "Skills workspace did not load");
+    await cdp.send("Runtime.evaluate", {expression: `(() => {
+      document.querySelector('[data-skill-new="upload"]').click();
+      const form = document.querySelector("[data-ai-dialog] form");
+      form.elements.name.value = "镜像检查";
+      form.elements.body.value = "# 镜像检查";
+      form.requestSubmit();
+    })()`});
+    await assertText(cdp, text => text.includes("审核中") && text.includes("镜像检查"), "Skill was not submitted for review");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-skill-view]").click()'});
+    await assertText(cdp, text => text.includes("另一位管理员审核"), "Skill review did not require a second administrator");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-close]").click()'});
+
     await cdp.send("Runtime.evaluate", {expression: `(() => {
       document.querySelector(".ai-assistant-trigger").click();
       const form = document.querySelector(".ai-assistant-drawer [data-wiki-ask]");
@@ -2034,7 +2062,7 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
   await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-health-record]").click(); document.querySelector("dialog [data-run]").click()`});
-  await assertText(cdp, text => text.includes("已核对测试证据"), "Zabbix investigation did not render the scoped response");
+  await assertText(cdp, text => text.includes("已核对测试证据") && text.includes("已应用技能 内存排查"), "Zabbix investigation did not render the scoped response");
   const readable = await cdp.send("Runtime.evaluate", {returnByValue:true,expression:`(() => {
     const dialog=document.querySelector("dialog");
     dialog.querySelector("h3").textContent="kafka_consumer_group_".repeat(100);

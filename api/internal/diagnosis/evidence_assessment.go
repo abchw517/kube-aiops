@@ -54,7 +54,7 @@ func assessmentSources(item finding.Finding, bundle *correlation.CorrelationBund
 	return out
 }
 
-func (f *Review) assess(ctx context.Context, item finding.Finding, observation string, bundle *correlation.CorrelationBundle) (string, error) {
+func (f *Review) assess(ctx context.Context, item finding.Finding, observation string, bundle *correlation.CorrelationBundle, applied *[]string) (string, error) {
 	data, _ := json.Marshal(map[string]any{
 		"problem": item.Problem, "original": item.Details, "operatorObservation": observation,
 		"references": assessmentSources(item, bundle), "signals": bundle, "wikiExamples": wiki.Evidence(ctx),
@@ -63,9 +63,11 @@ func (f *Review) assess(ctx context.Context, item finding.Finding, observation s
 字段为 state（supported、insufficient 或 conflicting），judgment（当前判断），references（支持或反驳判断的引用编号数组，可为空），gaps（待验证项），next（最优先的一条只读验证动作）。
 采用简体中文。references 只能使用 references 中的 reference 值。按 signals 与 references 的 signalId 对照。Wiki 与人工观察只能提供线索。验证动作应匹配已知的集群运行时及工具，仍不明确就先核实，避免沿用原诊断不适用的命令。historical 表示不能证明当前状态。
 只根据可用的现场证据判断，不声称执行命令或访问未提供的数据，不给出修改资源的指令。缺乏当前证据时使用 insufficient。`
-	if answer, err := holmes.Chat(ctx, findingScope(item), prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
+	trace, skills := holmes.TraceSkills(ctx)
+	if answer, err := holmes.Chat(trace, findingScope(item), prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
 		var parsed assessment
 		if json.Unmarshal([]byte(answer), &parsed) == nil && (parsed.State == "supported" || parsed.State == "insufficient" || parsed.State == "conflicting") && parsed.Judgment != "" && parsed.Gaps != "" && parsed.Next != "" {
+			*applied = *skills
 			return answer, nil
 		}
 	}
@@ -76,7 +78,7 @@ func (f *Review) assess(ctx context.Context, item finding.Finding, observation s
 	return f.completeAI(ctx, ai, prompt, data)
 }
 
-func writeAssessment(w http.ResponseWriter, ctx context.Context, item finding.Finding, raw string, bundle *correlation.CorrelationBundle, evidenceState string) bool {
+func writeAssessment(w http.ResponseWriter, ctx context.Context, item finding.Finding, raw string, bundle *correlation.CorrelationBundle, evidenceState string, applied []string) bool {
 	var result assessment
 	if json.Unmarshal([]byte(raw), &result) != nil ||
 		(result.State != "supported" && result.State != "insufficient" && result.State != "conflicting") {
@@ -116,6 +118,7 @@ func writeAssessment(w http.ResponseWriter, ctx context.Context, item finding.Fi
 	adminhttp.WriteJSON(w, map[string]any{
 		"assessment": result, "evidence": evidence, "sources": sources,
 		"evidenceState": evidenceState, "citations": citations,
+		"appliedSkills": applied,
 	})
 	return true
 }

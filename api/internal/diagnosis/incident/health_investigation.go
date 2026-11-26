@@ -87,6 +87,7 @@ func (s *Server) investigateHealth(w http.ResponseWriter, r *http.Request, p ide
 	if err != nil {
 		return err
 	}
+	ctx, skills := holmes.TraceSkills(ctx)
 	analysis, err := holmes.Investigate(ctx, scope, evidence)
 	slog.InfoContext(ctx, "health alert investigation", "actor", p.Subject, "source", source, "source_id", sourceID, "record_id", id, "engine_success", err == nil)
 	if errors.Is(err, holmes.ErrUnconfigured) {
@@ -107,6 +108,9 @@ func (s *Server) investigateHealth(w http.ResponseWriter, r *http.Request, p ide
 	if current != scope {
 		return ErrConflict
 	}
-	adminhttp.WriteJSON(w, map[string]string{"analysis": cleanText(analysis, 64<<10)})
+	adminhttp.WriteJSON(w, struct {
+		Analysis string   `json:"analysis"`
+		Skills   []string `json:"appliedSkills,omitempty"`
+	}{cleanText(analysis, 64<<10), *skills})
 	return nil
 }

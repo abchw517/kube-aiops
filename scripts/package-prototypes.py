@@ -31,6 +31,8 @@ SOURCES = {
         ("角色选择、接口授权、范围与保存预览", "web/src/views/permissions/platform-admin.ts"),
         ("LDAP 测试与认证配置", "web/src/views/permissions/identity-admin.ts"),
         ("会话策略与过期时间", "web/src/views/permissions/session-policy.ts"),
+        ("Holmes 模型连接与发布", "web/src/views/ai/services.ts"),
+        ("技能上传、手册转化与审核", "web/src/views/ai/skills.ts"),
     ],
     "resource-management": [
         ("数据源类型、页签和维护动作", "web/src/views/resources/datasource-management.ts"),

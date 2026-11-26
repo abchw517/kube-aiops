@@ -84,12 +84,16 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			http.Error(w, "forbidden", 403)
 			return
 		}
-		if resource == "ai-services" {
-			if !admin {
+		if resource == "ai-services" || resource == "ai-skills" {
+			if !admin || permissions.MustChangePassword(p) {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
-			serveAIServices(w, r)
+			if resource == "ai-skills" {
+				a.AuditChange(w, r, p.Subject, "维护 AI 技能", "中", resource, func(w http.ResponseWriter, r *http.Request) { serveAISkills(w, r, wikis, p) })
+			} else {
+				a.AuditChange(w, r, p.Subject, "维护 AI 服务", "中", resource, serveAIServices)
+			}
 			return
 		}
 		if resource == "permission-catalog" && r.Method == http.MethodGet {
