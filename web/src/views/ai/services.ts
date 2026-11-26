@@ -126,7 +126,7 @@ function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () =
   };
   showSource();
   scope.addEventListener("change", () => {
-    selects.forEach(select => select.replaceChildren());
+    for (const select of selects) select.replaceChildren();
     showSource();
     status.textContent = "";
   });
