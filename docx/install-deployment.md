@@ -1062,83 +1062,12 @@ make verify
 
 在已有测试集群中，`make clean-demo` 清理故障样例，`make uninstall` 清理 K8sGPT Release、实例和项目 RBAC。默认保留 Secret、Namespace 和 CRD。使用 `PURGE_SECRET=true make uninstall` 可同时删除 Provider Secret。
 
-## 接入多个 Kubernetes 集群
+## 在控制台接入 Kubernetes 集群
 
-现有集群继续使用 `local`。中心 API Pod 需要能通过内网访问各目标集群的 kube-apiserver。目标集群独立运行 K8sGPT，并为中心 API 提供单独的只读凭据。每个目标集群的 RBAC 需要覆盖实际使用的 Result、Event、Namespace 和资源详情读取操作。
+以系统管理员身份打开 **资源管理 → Kubernetes 集群管理 → 接入集群**。本地集群由平台自动发现，直接在列表中查看或编辑归属。远端集群从同一个入口选择接入方式。
 
-创建 `clusters.json`，示例中的 API 地址、实例名、CA 和 Token 路径均按现场替换。
+1. **外部直连**适用于中心 API 能访问目标集群 Kubernetes API 的情况。在「基本信息」填写实例 ID、名称、环境和业务归属。在「连接与凭据」提交目标集群的专用只读 kubeconfig，或填写 API 地址、CA 和 Token／客户端证书。在「观测与诊断」填写目标 K8sGPT Engine 的命名空间和名称，点击「测试连接」，通过后点击「保存配置」。直连凭据由平台加密保存。
+2. **采集上报**适用于目标集群主动向中心上报的情况。在控制台登记并启用实例，保存后记录仅显示一次的上报凭据。为目标集群采集端配置该凭据，并按[采集 CronJob 示例](../deploy/collector/cronjob.yaml)填写 Portal HTTPS 地址和实例 ID。首次收到快照后，在集群列表查看上报状态。
+3. 在 **系统管理 → 权限管理** 按目标实例和命名空间授权，再用值班账号检查「诊断总览」中的集群筛选和诊断数据。
 
-```json
-[
-  {
-    "id": "dev-cn-01",
-    "name": "开发集群 01",
-    "environment": "dev",
-    "apiURL": "https://dev-k8s.example.com:6443",
-    "tokenFile": "/etc/kube-aiops/clusters/dev-cn-01/token",
-    "caFile": "/etc/kube-aiops/clusters/dev-cn-01/ca.crt",
-    "k8sGPTNamespace": "k8sgpt-operator-system",
-    "k8sGPTName": "k8sgpt-engine",
-    "prometheus": {
-      "url": "https://prometheus.example.com",
-      "clusterLabelValue": "dev-cn-01"
-    }
-  }
-]
-```
-
-```bash
-kubectl -n kube-aiops-system create configmap kube-aiops-clusters --from-file=clusters.json
-kubectl -n kube-aiops-system create secret generic kube-aiops-dev-cn-01 \
-  --from-file=token=/secure/dev-cn-01/token --from-file=ca.crt=/secure/dev-cn-01/ca.crt
-```
-
-将以下片段合并到 API Deployment。远端 Token 由平台签发及轮换，更新时保留整个 Secret 目录挂载。
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          env:
-            - name: KUBERNETES_CLUSTERS_FILE
-              value: /etc/kube-aiops/registry/clusters.json
-          volumeMounts:
-            - name: cluster-registry
-              mountPath: /etc/kube-aiops/registry
-              readOnly: true
-            - name: dev-cluster-credentials
-              mountPath: /etc/kube-aiops/clusters/dev-cn-01
-              readOnly: true
-      volumes:
-        - name: cluster-registry
-          configMap:
-            name: kube-aiops-clusters
-        - name: dev-cluster-credentials
-          secret:
-            secretName: kube-aiops-dev-cn-01
-```
-
-每个远端可独立配置 Prometheus、VictoriaLogs 和 Alertmanager。启用任一远端集群后，所有已启用的可观测性来源均需配置集群标签，`local` 使用原有的 `*_CLUSTER_LABEL_VALUE`。共享数据源中的集群标签必须互不相同。保存集群配置后重新部署 API。
-
-在权限策略里保留全局 `clusters:list` 用于访问集群列表接口，再用具体集群规则限制可见性及数据访问。由于通配规则也匹配各集群，可以对受限组为指定集群添加 `clusters:list` 拒绝规则，拒绝优先。接入生产前，检查已有 `cluster: "*"` 读取授权。诊断详情及证据链接可使用 `?cluster=dev-cn-01`，省略该参数仍访问 `local`。
-
-从两个非生产集群分别查看同名 Result、资源及证据，确认来源正确。断开一个远端集群后，另一个集群的查询和中心 API readiness 应继续工作。
-
-### Web 管理多环境集群接入
-
-使用生产模式和 SQLite，打开 **系统管理 → 集群接入**。每个实例使用不可变的实例 ID，填写环境、业务、集群名称和实例显示名。例如 `生产 / 云帆 / 云帆应用集群 / 上海`，实例 ID 为 `prod-yunfan-sh01`。诊断台按这四级选择实例，详情及证据链接携带实例 ID。通过文件注册的旧实例继续可用，其 ID 不可被 Web 重复使用。
-
-**手动配置**：先将目标集群的专用只读 token 和 CA 挂载到中心 API 容器的 `/etc/kube-aiops/clusters/<实例 ID>/token` 和 `ca.crt`。在 Web 填写 HTTPS API 地址及实际 Engine 名称、命名空间，先点「测试连接」，成功后启用。中心的出站访问应限制在受管集群和经批准的数据源。手动实例可以配置 Prometheus、VictoriaLogs 和 Alertmanager，集群标签值使用实例 ID；共享数据源的标签需唯一。
-
-**采集上报**：在 Web 预登记实例并启用，保存后会显示一次实例上报凭据。将凭据写入受控文件，在目标集群的 Engine 命名空间创建采集 Secret：
-
-```bash
-kubectl -n k8sgpt-operator-system create secret generic kube-aiops-collector \
-  --from-file=token=/secure/collector-token
-```
-
-拷贝 [采集 CronJob 示例](../deploy/collector/cronjob.yaml)，替换 API 镜像、中心 HTTPS 地址、实例 ID 和 Engine 参数，再应用到目标集群。实例首次提交快照后显示在线，每分钟上报当前有效 Result。完整空快照表示当前无诊断，采集失败保留最后一份快照；超过三分钟未收到快照标记为离线。中心只保存凭据哈希，停用实例可阻止查询和继续上报。采集组件只读取指定 Engine 命名空间的 Results，不上传 Kubernetes 凭据。采集实例的 Kubernetes 资源详情和原生 Event 尚未上报，可配置独立指标、日志、告警证据源。
-
-**权限与 AI**：在权限配置中为每个实例 ID 分配集群发现和所需模块，按命名空间收敛业务读取。上线前核对已有的通配策略。手动接入实例可勾选「启用 AI 复核」，复核时使用该实例的 Kubernetes 连接读取配置的 Engine 和其引用的 Secret。需在目标集群为中心 API 使用的凭据授予对指定 Engine 和 Secret 的单对象 `get`，可参考 [Engine 读取权限](../deploy/examples/finding-ai/engine-reader.yaml) 并调整绑定主体。采集上报模式没有目标 Kubernetes API 连接，因此不支持此项。远端实例默认沿用中心 API 的 `FINDING_AI_ALLOWED_ENDPOINT`，可用 `FINDING_AI_ALLOWED_ENDPOINT_<实例 ID 大写并将短横线改为下划线>` 单独配置，例如 `FINDING_AI_ALLOWED_ENDPOINT_PROD_YUNFAN_SH01`。两者均未设置时只允许 OpenAI 默认地址。既有 `local` 使用 `FINDING_AI_ENGINE_ENABLED=true` 启用。升级时移除旧的 `aiURL`、`aiModel` 配置及 `ai-key` 挂载，并在手动接入实例中重新启用。角色表单可以按环境、业务或集群名称选择目录，保存时将当前匹配的实例 ID 写入授权。以后新增的实例需重新授权。
+详细表单和凭据要求见[资源管理 · Kubernetes 集群管理](resource-management/04-development-tasks.md#kubernetes-集群管理当前实现)。

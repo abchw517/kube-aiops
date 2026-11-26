@@ -46,6 +46,8 @@ make portal-demo
 
 `make install` 部署 K8sGPT Operator 和 Engine。Go API 与 Web Portal 按需独立部署。详见 [安装部署指南](docx/install-deployment.md)，其中包括在现有 Kubernetes 集群部署、内网镜像同步、可观测性配置和生产部署。Holmes 使用独立内部服务，通过 Portal API 的 Secret 绑定启用，完整步骤见 [部署 HolmesGPT](docx/install-deployment.md#部署-holmesgpt)。
 
+管理多个集群时，从 **资源管理 → Kubernetes 集群管理 → 接入集群** 添加实例。[控制台接入步骤](docx/install-deployment.md#在控制台接入-kubernetes-集群)
+
 ### HolmesGPT 从哪里开始
 
 1. 部署 Portal API 和 Web，并配置至少一个可用的告警数据源。
