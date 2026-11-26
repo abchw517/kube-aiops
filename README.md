@@ -2,6 +2,8 @@
 
 面向 Kubernetes 与主机监控的只读诊断平台。简体中文 Web Portal 汇总 K8sGPT Finding、故障事件、Zabbix 和 Alertmanager 告警，并支持在授权范围内通过 HolmesGPT 调查告警、复核诊断和使用已发布的运维知识。
 
+[功能架构](#功能架构) · [生产部署拓扑](#生产部署拓扑) · [诊断数据流](#集群接入与诊断数据流) · [HolmesGPT 调用与回退](#ai-请求与权限边界)
+
 ## 当前功能与文档入口
 
 | 模块 | 当前功能 | 文档与原型 |
@@ -10,6 +12,7 @@
 | 诊断控制台 | 诊断总览汇总 Finding、故障事件、Zabbix 和 Alertmanager。最近诊断分页默认 5 条，支持 10、15 条或自定义。保留原有诊断结果、趋势和统计，支持证据查看、AI 复核和告警深度调查。 | [设计](docx/diagnosis-console/design.md) · [原型](docx/diagnosis-console/prototype.html) |
 | 运维知识库 | 文档检索与预览、全文与版本治理、AI 问答、导入和同步 | [设计](docx/operations-knowledge/design.md) · [原型](docx/operations-knowledge/prototype.html) |
 | 资源管理 | 环境与业务线、Kubernetes 集群、命名空间归属、监控诊断及资产数据源。Zabbix、Prometheus、VictoriaLogs、Alertmanager 和 Grafana 可从「资源管理 → 数据源管理」接入。 | [设计](docx/resource-management/design.md) · [原型](docx/resource-management/prototype.html) |
+| AI 服务 | 管理员查看 Holmes 绑定、按环境筛选、检查服务就绪状态，也可从 AI 技能页进入已有调查工作流。 | [部署与配置](docx/install-deployment.md#部署-holmesgpt) |
 | 系统管理 | 用户、用户组与角色、可批量勾选的接口权限和数据范围、LDAP/AD 配置、会话与审计 | [设计](docx/system-management/design.md) · [原型](docx/system-management/prototype.html) |
 
 原型可从完整仓库中打开各模块的 `prototype.html`。需要分享单文件时，可在仓库根目录运行以下命令，导出五份可离线打开的交互 HTML。[原型打开方式和验收要求](docx/development-standard.md#打开与交付原型)
@@ -104,13 +107,12 @@ Portal 首页导航由页面注册表维护，按账号权限展示五个业务�
 | 诊断控制台 | 诊断总览统一展示 Finding、故障事件、Zabbix 和 Alertmanager，并提供筛选、趋势和分页。故障详情包含 AI 根因分析、关联证据和拓扑。原有诊断结果仍有独立入口，健康告警详情提供 AI 深度调查。 |
 | 资源管理 | Kubernetes 集群管理、命名空间归属、环境与业务线目录、数据源管理。远端集群从控制台选择外部直连或采集上报。 |
 | 运维知识库 | 知识检索、详情、AI 问答与知识治理，覆盖文档版本、发布及远端同步。 |
-| AI 服务 | 管理员查看 Holmes 绑定、按环境筛选、检查服务就绪状态，也可从 AI 技能页进入已有调查工作流。 | [部署与配置](docx/install-deployment.md#部署-holmesgpt) |
 | AI 服务 | 查看实际部署绑定与模型别名、测试 Holmes 就绪状态、进入已有调查工作流。 |
 | 系统管理 | 本地账号和 LDAP/AD 认证配置、用户与用户组、角色和接口权限、密码及操作审计。 |
 
 ### 生产部署拓扑
 
-生产示例使用同一 HTTPS 域名，Gateway 将页面请求和 API 请求分别发往两个 Service。Web 容器中的 Nginx 提供静态页面和前端路由，Go API 负责业务接口、鉴权和数据访问。[Web HTTPRoute](deploy/web/httproute.yaml) · [API HTTPRoute](deploy/api/httproute.yaml) · [生产部署](docx/install-deployment.md#生产部署)
+生产示例使用同一 HTTPS 域名，Gateway 将 `/api/v1` 前缀请求转给 `kube-aiops-api:8080`，页面和静态资源由 `/` 路由转给 `kube-aiops-web:8080`。Web 容器中的 Nginx 提供静态页面和前端路由，Go API 负责业务接口、鉴权和数据访问。[Web HTTPRoute](deploy/web/httproute.yaml) · [API HTTPRoute](deploy/api/httproute.yaml) · [生产部署](docx/install-deployment.md#生产部署)
 
 ```mermaid
 flowchart TD
@@ -121,8 +123,8 @@ flowchart TD
         Store["SQLite / PVC"]
         API <-->|读写业务数据| Store
     end
-    Gateway -->|页面和静态资源| Web
-    Gateway -->|API 请求| API
+    Gateway -->|"/ 页面与静态资源"| Web
+    Gateway -->|"/api/v1 接口"| API
     API -->|按需启用目录认证| LDAP["LDAP / Active Directory"]
 ```
 
@@ -152,7 +154,7 @@ flowchart TD
 | 入口 | 发给模型的数据 | Holmes 不可用时 |
 | --- | --- | --- |
 | Zabbix、Alertmanager 告警深度调查 | 校验数据源权限后读取对应告警快照，通过精确绑定发起同步调查 | 告警和统计可继续查看，调查显示未配置或调用失败 |
-| Finding 复核与故障事件 RCA | 当前授权范围中的诊断和关联证据 | 有既有模型配置时走原有模型路径 |
+| Finding 复核与故障事件 RCA | 当前授权范围中的诊断和关联证据 | 有既有模型配置时走原有模型路径。诊断助手的 Finding 追问使用既有复核对话接口。 |
 | Wiki 问答 | 调用者有权查看的已发布章节，返回前校验引用 | 走既有问答模型路径 |
 
 ## 目录结构
