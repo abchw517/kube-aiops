@@ -1,3 +1,4 @@
+import "./views/ai/ai.css";
 import { PortalApp } from "./app.ts";
 import "./styles.css";
 import "./components/portal-shell.css";

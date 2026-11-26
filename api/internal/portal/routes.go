@@ -62,6 +62,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			}
 			status["reviewAccess"] = read("finding-analysis")
 			status["interfaceRoleAccount"] = permissions.UsesInterfaceRoles(p)
+			status["findingChat"], _ = a.AuthorizeOperation(r.Context(), p, catalog.ReviewChat, "", authorization.GlobalScope(), true)
 			status["wikiAsk"] = a.HasScopedOperation(r.Context(), p, catalog.WikiAsk)
 			if managed != nil {
 				status["manageEnvironments"] = read("environments")
@@ -81,6 +82,14 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 		}
 		if (resource == "users" || resource == "roles" || resource == "policy") && p.Subject != "local:admin" {
 			http.Error(w, "forbidden", 403)
+			return
+		}
+		if resource == "ai-services" {
+			if !admin {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			serveAIServices(w, r)
 			return
 		}
 		if resource == "permission-catalog" && r.Method == http.MethodGet {

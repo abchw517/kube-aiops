@@ -22,10 +22,11 @@ interface Assessment {
 }
 
 
-export const findingReviewTrigger = () => '<button type="button" class="button secondary finding-review-trigger" data-review-action="toggle" aria-controls="finding-review" aria-expanded="false">AI 复核</button>';
+export const findingReviewTrigger = () => '<button type="button" class="button secondary finding-review-trigger" data-review-action="toggle" aria-controls="finding-review" aria-expanded="false">AI 深度调查（AI 复核）</button>';
 
 export function findingReviewPanel(): string {
-  return `<section id="finding-review" class="finding-review" aria-label="AI 证据复核" hidden>
+  return `<section id="finding-review" class="finding-review" aria-label="AI 深度调查" hidden>
+    <h3>AI 深度调查</h3>
     <p data-review-status role="status"></p>
     <div data-review-result></div>
     <details data-review-input>

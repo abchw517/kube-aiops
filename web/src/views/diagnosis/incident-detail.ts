@@ -69,7 +69,7 @@ export async function loadIncidentDetail(id: string, hash: string): Promise<{ ht
       ${incident.mergedInto ? `<p><a href="${escapeHtml(incidentHref(incident.mergedInto, returns, fromOverview))}">查看归并后的故障</a></p>` : ""}
       ${finding}
       <div class="diagnostic-toolbar">
-        ${actions.rca?.read || actions.rca?.run ? `<a class="button secondary" href="${escapeHtml(incidentSubview(id, "rca", hash))}">AI 根因分析</a>` : ""}
+        ${actions.rca?.read || actions.rca?.run ? `<a class="button secondary" href="${escapeHtml(incidentSubview(id, "rca", hash))}">AI 深度调查</a>` : ""}
         ${actions.topology ? `<a class="button secondary" href="${escapeHtml(incidentSubview(id, "topology", hash))}">关联拓扑</a>` : ""}
       </div>
       ${actions.update ? updateForm(incident) : ""}

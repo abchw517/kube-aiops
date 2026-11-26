@@ -1,3 +1,5 @@
+import { bindAIServices, loadAIServices, renderAISkills } from "./views/ai/services.ts";
+import { bindKnowledgeAsk, renderKnowledgeAsk, type AssistantFinding } from "./views/wiki/wiki-tools.ts";
 import { bindResourceCatalog } from "./views/resources/catalog-workspace.ts";
 import type { Catalog, CatalogFilters } from "./views/resources/catalog-model.ts";
 import { renderObservabilityDashboardLinks } from "./views/diagnosis/observability-sources.ts";
@@ -73,6 +75,8 @@ export class PortalApp {
   private identityAdmin = false;
   private permissionCatalog = false;
   private auditRead = false;
+  private canUseAssistant = false;
+  private canChatFinding = false;
   private wikiAccess: WikiAccess | undefined;
   private catalogFilters = new Map<Catalog, CatalogFilters>();
   private resourceAccess: ResourceAccess = { clusters: false, environments: false, "business-lines": false };
@@ -152,6 +156,8 @@ export class PortalApp {
 
   private async route(): Promise<void> {
     const generation = ++this.renderGeneration;
+    this.canUseAssistant = false;
+    this.canChatFinding = false;
     this.findingAI = false;
     this.reviewAccess = false;
     this.overviewRequest?.abort();
@@ -174,6 +180,8 @@ export class PortalApp {
         const status = response.ok ? await response.json() : {};
         if (generation !== this.renderGeneration) return;
         this.identityAdmin = status.admin === true;
+        this.canUseAssistant = status.wikiAsk === true;
+        this.canChatFinding = status.findingChat === true;
         this.permissionCatalog = status.permissionCatalog === true || this.identityAdmin;
         this.auditRead = status.auditRead === true || this.identityAdmin;
         this.wikiAccess = status.interfaceRoleAccount === true ? {
@@ -220,6 +228,26 @@ export class PortalApp {
         return;
       }
       const path = hash.split("?", 1)[0] ?? "";
+      if (!this.mustChangePassword && (path === "#/ai" || path === "#/ai/skills")) {
+        if (!this.identityAdmin) {
+          this.renderShell(authorizationDeniedState());
+          return;
+        }
+        if (path === "#/ai/skills") {
+          this.renderShell(renderAISkills());
+          return;
+        }
+        this.renderShell(loadingState("正在读取 AI 服务配置。"));
+        try {
+          const page = await loadAIServices();
+          if (generation !== this.renderGeneration) return;
+          this.renderShell(page.html);
+          bindAIServices(this.root, page.models, () => void this.route());
+        } catch {
+          if (generation === this.renderGeneration) this.renderShell(errorState("无法加载 AI 服务配置。"));
+        }
+        return;
+      }
       if (!this.mustChangePassword && path === legacyDatasourcesPath) {
         window.location.replace(datasourcesPath + hash.slice(legacyDatasourcesPath.length));
         return;
@@ -537,7 +565,8 @@ export class PortalApp {
       const params = new URLSearchParams(hash.split("?")[1]);
       const view = diagnosticListView(hash);
       const returnView = params.get("from") === "overview" ? "overview" : view;
-      this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()));
+      const assistantFinding = reviewEnabled && this.canChatFinding ? { id, cluster: finding.cluster, namespace: finding.namespace } : undefined;
+      this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()), false, false, assistantFinding);
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
       if (finding.namespace) void this.loadObservabilityDashboards(generation, { clusterId: finding.cluster,
@@ -601,7 +630,7 @@ export class PortalApp {
   }
 
   /** 更新统一外框，并恢复仍然存在的全局导航焦点。 */
-  private renderShell(content: string, signedOut = false, contentOwnsHeading = false): void {
+  private renderShell(content: string, signedOut = false, contentOwnsHeading = false, assistantFinding?: AssistantFinding): void {
     this.stopLoginScene?.();
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
@@ -621,6 +650,13 @@ export class PortalApp {
       contentOwnsHeading,
       diagnosticPolicies: this.diagnosticSettings.policies,
     });
+    if ((this.canUseAssistant || assistantFinding) && !signedOut && !this.mustChangePassword) {
+      const assistant = document.createElement("div");
+      assistant.className = "portal-ai-assistant";
+      assistant.innerHTML = `<button type="button" class="button ai-assistant-trigger" data-open-wiki-ask aria-haspopup="dialog">诊断助手</button>${renderKnowledgeAsk(true, assistantFinding)}`;
+      this.root.append(assistant);
+      bindKnowledgeAsk(assistant, assistantFinding);
+    }
     this.stopLoginScene = signedOut ? mountLoginScene(this.root) : undefined;
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     if (activeLink) {

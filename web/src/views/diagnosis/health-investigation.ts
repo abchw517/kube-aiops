@@ -25,33 +25,44 @@ export function bindHealthInvestigation(root: HTMLElement, rows: RecordRow[], li
     dialog.innerHTML = `<header><h2 id="health-investigation-title">诊断记录详情</h2><button type="button" class="button secondary" autofocus data-close>关闭</button></header>
       <section><h3>${escapeHtml(row.title)}</h3><dl>${fields.map(([name, value]) => `<dt>${name}</dt><dd>${escapeHtml(value || "—")}</dd>`).join("")}</dl>
       <h3>AI 深度调查</h3><p>根据本条告警及其授权范围内的只读证据分析。</p>
-      <button type="button" class="button" data-run ${sourceId ? "" : "disabled"}>发起 AI 深度调查</button>
+      <div class="system-actions"><button type="button" class="button" data-run ${sourceId ? "" : "disabled"}>发起 AI 深度调查</button><button type="button" class="button secondary" data-cancel hidden>取消调查</button></div>
       <p data-result role="status">${sourceId ? "尚未发起" : "缺少来源实例，请刷新告警列表。"}</p></section>`;
     root.append(dialog);
-    const controller = new AbortController();
+    let investigation: AbortController | undefined;
     const close = () => dialog.close();
     dialog.querySelector("[data-close]")?.addEventListener("click", close);
     dialog.addEventListener("close", () => {
-      controller.abort();
+      investigation?.abort();
       dialog.remove();
       if (opener.isConnected) opener.focus({preventScroll: true});
     }, {once: true});
     const run = dialog.querySelector<HTMLButtonElement>("[data-run]");
     const result = dialog.querySelector<HTMLElement>("[data-result]");
-    if (!run || !result) { dialog.remove(); return; }
+    const cancel = dialog.querySelector<HTMLButtonElement>("[data-cancel]");
+    if (!run || !result || !cancel) { dialog.remove(); return; }
+    cancel.addEventListener("click", () => investigation?.abort());
     run.addEventListener("click", async () => {
       if (!sourceId || run.disabled) return;
+      const controller = new AbortController();
+      investigation = controller;
       run.disabled = true;
+      cancel.hidden = false;
       result.textContent = "正在调查，关闭窗口可结束本次请求。";
       try {
         const response = await createOverviewClient(AbortSignal.any([controller.signal, lifetime])).investigateHealthAlert({source: row.source, sourceId, id: row.id});
         result.textContent = response.analysis;
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (lifetime.aborted) return;
+        if (controller.signal.aborted) {
+          result.textContent = "调查已取消，可以重新发起。";
+          return;
+        }
         const reason = err instanceof ApiError ? (err.body as {error?: {message?: string}} | null)?.error?.message : "";
         result.textContent = reason || "调查未完成，请检查连接后重试。";
       } finally {
+        investigation = undefined;
         run.disabled = false;
+        cancel.hidden = true;
       }
     });
     dialog.showModal();
