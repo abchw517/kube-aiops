@@ -26,3 +26,11 @@
 ## 共享外框实现边界
 
 导航模型位于 `web/src/domain/portal-navigation.ts`，壳组件位于 `web/src/components/portal-shell.ts` 与 `portal-shell.css`。`web/src/app.ts` 管理路由、授权入口、移动侧栏焦点及页面切换时的渲染代次。各业务模块维护自己的请求、表单及派生状态。会话、LDAP、权限及审计的实现边界见[系统管理](../system-management/04-development-tasks.md#认证用户管理与审计)。
+
+## AI 服务导航与诊断助手外框
+
+**PC-T90**
+
+`web/src/domain/page-registry.ts` 与 `portal-navigation.ts` 定义菜单、栏目和路由投影。`web/src/app.ts` 挂载助手、处理加载与鉴权。弹层样式在 `web/src/views/ai/ai.css`，问答交互复用 `wiki-tools.ts`。保持键盘、焦点和窄屏回归。
+
+[测试用例](05-unit-test-cases.md#ai-服务导航与诊断助手外框)

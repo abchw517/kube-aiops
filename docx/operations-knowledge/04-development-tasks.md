@@ -160,3 +160,11 @@ A 的迁移上线切换依赖 B、C 写入和读取兼容完成，编码期间�
 ```json
 {"source":"wiki","sourceId":"published-excerpts","endpoint":"https://holmes-wiki.internal"}
 ```
+
+## AI 知识文档与问答
+
+**OK-T90**
+
+`web/src/views/wiki/wiki.ts` 负责按钮位置；`web/src/views/wiki/wiki-tools.ts` 负责弹窗、对话、当前过滤条件及引用。服务端沿用 `api/internal/portal/routes.go` 和 `api/internal/wiki/` 的鉴权、Holmes 选择及既有模型回退。
+
+[测试用例](05-unit-test-cases.md#ai-知识文档与问答)

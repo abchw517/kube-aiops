@@ -222,3 +222,11 @@ kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings --
 kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic --patch-file deploy/examples/holmes/api-bindings.patch
 kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api
 ```
+
+## 诊断助手与 AI 深度调查
+
+**DC-T90**
+
+告警组件 `web/src/views/diagnosis/health-investigation.ts` 调用 `POST /api/v1/diagnostics/health/{source}/{sourceId}/{id}/investigate`。Finding 继续使用 `/api/v1/admin/finding-analysis` 的 `assess` 和 `chat`。故障事件走既有 RCA 路由。联调重点为受控绑定、真实告警和模型回退，见[部署指南](../install-deployment.md#部署-holmesgpt)。
+
+[测试用例](05-unit-test-cases.md#诊断助手与-ai-深度调查)
