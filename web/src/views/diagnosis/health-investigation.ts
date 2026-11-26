@@ -26,6 +26,7 @@ export function bindHealthInvestigation(root: HTMLElement, rows: RecordRow[], li
       <section><h3>${escapeHtml(row.title)}</h3><dl>${fields.map(([name, value]) => `<dt>${name}</dt><dd>${escapeHtml(value || "—")}</dd>`).join("")}</dl>
       <h3>AI 深度调查</h3><p>根据本条告警及其授权范围内的只读证据分析。</p>
       <div class="system-actions"><button type="button" class="button" data-run ${sourceId ? "" : "disabled"}>发起 AI 深度调查</button><button type="button" class="button secondary" data-cancel hidden>取消调查</button></div>
+      <p data-skills hidden></p>
       <p data-result role="status">${sourceId ? "尚未发起" : "缺少来源实例，请刷新告警列表。"}</p></section>`;
     root.append(dialog);
     let investigation: AbortController | undefined;
@@ -38,8 +39,9 @@ export function bindHealthInvestigation(root: HTMLElement, rows: RecordRow[], li
     }, {once: true});
     const run = dialog.querySelector<HTMLButtonElement>("[data-run]");
     const result = dialog.querySelector<HTMLElement>("[data-result]");
+    const skills = dialog.querySelector<HTMLElement>("[data-skills]");
     const cancel = dialog.querySelector<HTMLButtonElement>("[data-cancel]");
-    if (!run || !result || !cancel) { dialog.remove(); return; }
+    if (!run || !result || !cancel || !skills) { dialog.remove(); return; }
     cancel.addEventListener("click", () => investigation?.abort());
     run.addEventListener("click", async () => {
       if (!sourceId || run.disabled) return;
@@ -47,10 +49,15 @@ export function bindHealthInvestigation(root: HTMLElement, rows: RecordRow[], li
       investigation = controller;
       run.disabled = true;
       cancel.hidden = false;
+      skills.hidden = true;
       result.textContent = "正在调查，关闭窗口可结束本次请求。";
       try {
         const response = await createOverviewClient(AbortSignal.any([controller.signal, lifetime])).investigateHealthAlert({source: row.source, sourceId, id: row.id});
         result.textContent = response.analysis;
+        if (response.appliedSkills?.length) {
+          skills.textContent = `已应用技能 ${response.appliedSkills.join("、")}`;
+          skills.hidden = false;
+        }
       } catch (err) {
         if (lifetime.aborted) return;
         if (controller.signal.aborted) {

@@ -62,7 +62,7 @@ function quickSections(doc: WikiDocument): string {
     `<section class="wiki-preview-block"><h3>${label}</h3><p class="wiki-document-body">${h(text)}</p></section>`).join("");
 }
 
-function renderDocument(id: string, doc: WikiDocument, query: URLSearchParams, canDraft: boolean): string {
+function renderDocument(id: string, doc: WikiDocument, query: URLSearchParams, canDraft: boolean, admin = false): string {
   const metadata = doc.metadata;
   const keys = wikiSectionKeys(doc);
   const requested = query.get("section") ?? "";
@@ -72,7 +72,9 @@ function renderDocument(id: string, doc: WikiDocument, query: URLSearchParams, c
   const back = listQuery(new URLSearchParams(query.get("return") ?? ""));
   return `<article class="panel wiki-card wiki-reading"><div class="wiki-toolbar">
     <a class="button secondary" href="${h(resultsHref(back))}">返回检索结果</a>
-    ${canDraft ? `<a class="button secondary" href="#/wiki/draft/new?knowledgeId=${h(id)}">创建修订</a>` : ""}</div>
+    ${canDraft ? `<a class="button secondary" href="#/wiki/draft/new?knowledgeId=${h(id)}">创建修订</a>` : ""}
+    ${admin && doc.documentType === "排障手册" && (!doc.currentRevision || doc.currentRevision === doc.revision) ?
+      `<a class="button secondary" href="#/ai/skills?manual=${encodeURIComponent(id)}">转化为 AI 技能</a>` : ""}</div>
     <header class="wiki-reading-head"><h2>${h(doc.title)}</h2><div class="wiki-result-meta">${metadataLine(doc)}</div></header>
     ${doc.currentRevision && doc.currentRevision !== doc.revision ? `<p class="system-notice">这是历史版本。<a href="${h(documentHref(id, undefined, undefined, back))}">查看当前版本</a></p>` : ""}
     ${metadata?.reviewBy ? `<p class="muted">下次复核 ${h(metadata.reviewBy)}</p>` : ""}
@@ -208,7 +210,7 @@ export async function renderWiki(hash: string, admin: boolean, access?: WikiAcce
   if (response.status === 401) return null;
   if (response.status === 403) return authorizationDeniedState();
   if (!response.ok) return `<section class="panel wiki-card" role="alert">无法读取知识库内容。<a href="${h(resultsHref(id ? back : startAtFirstPage(active)))}">返回检索结果</a></section>`;
-  return id ? renderDocument(id, await response.json() as WikiDocument, query, admin || access?.draft === true) :
+  return id ? renderDocument(id, await response.json() as WikiDocument, query, admin || access?.draft === true, admin) :
     renderSearch(await response.json() as WikiPage, active, admin, access);
 }
 

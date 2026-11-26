@@ -247,6 +247,11 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	go admin.RunAuditRetention(ctx)
 	bundle.Authenticator, bundle.Authorizer = sessions, admin
 	wikis := wiki.New(store, admin, admin.Origin())
+	workspace, err := holmes.OpenWorkspace(store.DB)
+	if err != nil {
+		return nil, err
+	}
+
 	if managed != nil {
 		wikis.SetTargetResolver(managed.wikiTarget)
 	}
@@ -268,7 +273,7 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 		incidents.ModelAvailable = func(i incident.Incident) bool { return provider(i).Enabled() }
 		incidents.Model = func(ctx context.Context, i incident.Incident, prompt string, data []byte) (string, error) {
 			scope := holmes.Scope{Source: "incident", SourceID: i.Scope.ClusterID, Environment: i.Scope.EnvironmentID, Business: i.Scope.BusinessID, Cluster: i.Scope.ClusterID, Namespace: i.Scope.Namespace}
-			if answer, err := holmes.Chat(ctx, scope, prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
+			if answer, err := holmes.Chat(holmes.WithWorkspace(ctx, workspace, nil), scope, prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
 				return answer, nil
 			}
 			return provider(i).AnalyzeIncident(ctx, prompt, data)
@@ -293,6 +298,17 @@ func configureIdentityHandler(ctx context.Context, bundle *security.Bundle, stor
 	}
 	go wikis.RunSchedule(ctx)
 	return func(next http.Handler) http.Handler {
-		return sessions.Wrap(wrapAdmin(admin, wikis, sessions, next, review, managed, incidents))
+		handler := wrapAdmin(admin, wikis, sessions, next, review, managed, incidents)
+		return sessions.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := holmes.WithWorkspace(r.Context(), workspace, func(ctx context.Context, id string, revision int, scope holmes.Scope) bool {
+				actor, err := sessions.Authenticate(ctx, r)
+				if err != nil {
+					return false
+				}
+				_, err = wikis.SkillManual(ctx, actor, id, revision, scope.Cluster, scope.Namespace)
+				return err == nil
+			})
+			handler.ServeHTTP(w, r.WithContext(ctx))
+		}))
 	}, nil
 }

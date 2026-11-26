@@ -338,6 +338,8 @@ P1，依赖 T04、T05、T07。更新平台动作目录和 Wiki 读入口，分�
 
 **SM-T90**
 
-`api/internal/portal/ai_services.go` 提供状态与检查接口，`routes.go` 授权，`api/internal/holmes/client.go` 投影绑定和发起检查。`web/src/views/ai/services.ts` 渲染环境、服务和技能页。配置由现有 Secret 管理，现场操作见[部署指南](../install-deployment.md#部署-holmesgpt)。
+- `api/internal/portal/ai_services.go`、`ai_skills.go` 提供管理员工作区和操作接口，`api/internal/holmes/workspace.go` 负责 SQLite 版本化持久化和调查匹配，`discovery.go` 发现部署侧已注册的模型。
+- `api/internal/wiki/skill_manual.go` 校验来源手册的发布版本、可见性和适用范围。`web/src/views/ai/` 实现配置和技能页面，运维知识库手册详情提供转化入口。
+- 发布模型配置时重新校验别名，使用版本比较写入生效配置。模型和服务凭据由部署流程维护，见[部署指南](../install-deployment.md#部署-holmesgpt)。
 
 [测试用例](05-unit-test-cases.md#ai-服务管理)

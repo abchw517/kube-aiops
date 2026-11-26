@@ -2389,6 +2389,10 @@ components:
       properties:
         analysis:
           type: string
+        appliedSkills:
+          type: array
+          items:
+            type: string
     ObservabilityAlert:
       type: object
       additionalProperties: false

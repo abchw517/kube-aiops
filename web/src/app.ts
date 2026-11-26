@@ -1,4 +1,5 @@
-import { bindAIServices, loadAIServices, renderAISkills } from "./views/ai/services.ts";
+import { bindAISkills, loadAISkills } from "./views/ai/skills.ts";
+import { bindAIServices, loadAIServices } from "./views/ai/services.ts";
 import { bindKnowledgeAsk, renderKnowledgeAsk, type AssistantFinding } from "./views/wiki/wiki-tools.ts";
 import { bindResourceCatalog } from "./views/resources/catalog-workspace.ts";
 import type { Catalog, CatalogFilters } from "./views/resources/catalog-model.ts";
@@ -233,16 +234,19 @@ export class PortalApp {
           this.renderShell(authorizationDeniedState());
           return;
         }
-        if (path === "#/ai/skills") {
-          this.renderShell(renderAISkills());
-          return;
-        }
         this.renderShell(loadingState("正在读取 AI 服务配置。"));
         try {
-          const page = await loadAIServices();
-          if (generation !== this.renderGeneration) return;
-          this.renderShell(page.html);
-          bindAIServices(this.root, page.models, () => void this.route());
+          if (path === "#/ai/skills") {
+            const page = await loadAISkills();
+            if (generation !== this.renderGeneration) return;
+            this.renderShell(page.html);
+            bindAISkills(this.root, page.data, page.scopes, () => void this.route());
+          } else {
+            const page = await loadAIServices();
+            if (generation !== this.renderGeneration) return;
+            this.renderShell(page.html);
+            bindAIServices(this.root, page.data, () => void this.route());
+          }
         } catch {
           if (generation === this.renderGeneration) this.renderShell(errorState("无法加载 AI 服务配置。"));
         }
