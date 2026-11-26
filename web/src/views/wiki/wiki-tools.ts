@@ -1,3 +1,4 @@
+import { escapeHtml as h } from "../../components/html.ts";
 import { knowledgeLink, wikiSectionLabel } from "./governance.ts";
 import { bindWikiRuns, renderWikiRuns } from "./wiki-runs.ts";
 
@@ -33,13 +34,22 @@ async function wikiRequest(url: string, method: string, body?: unknown, signal?:
   return response;
 }
 
-export function renderWikiTools(admin: boolean): string {
-  return `<dialog class="wiki-dialog" data-wiki-dialog aria-labelledby="wiki-ask-title"><header class="wiki-toolbar"><h2 id="wiki-ask-title">AI 知识问答</h2><button type="button" data-close-wiki-ask class="button secondary">关闭</button></header>
+export type AssistantFinding = { id: string; cluster: string; namespace?: string };
+
+export function renderKnowledgeAsk(assistant = false, context?: AssistantFinding): string {
+  return `<dialog class="wiki-dialog${assistant ? " ai-assistant-drawer" : ""}" data-wiki-dialog aria-labelledby="${assistant ? "assistant-title" : "wiki-ask-title"}"><header class="wiki-toolbar"><h2 id="${assistant ? "assistant-title" : "wiki-ask-title"}">${assistant ? "诊断助手" : "AI 知识问答"}</h2><button type="button" data-close-wiki-ask class="button secondary">关闭</button></header>
+    ${assistant ? '<p>从授权的已发布运维知识查找排障建议。</p><nav class="system-actions" aria-label="诊断快捷入口"><a class="button secondary" href="#/diagnostics">诊断总览</a><a class="button secondary" href="#/wiki">知识检索</a></nav>' : ""}
+    ${context ? `<p data-assistant-context>当前诊断 · ${h(context.cluster)}${context.namespace ? ` / ${h(context.namespace)}` : ""} · ${h(context.id)}</p>
+      <button type="button" class="button secondary" data-assistant-clear>清除诊断上下文</button>` : ""}
     <div data-wiki-dialog-log role="log"></div>
     <form data-wiki-ask class="wiki-import-form">
       <label>问题<textarea name="question" rows="4" required maxlength="2000" placeholder="例如：如何排查镜像拉取失败？"></textarea></label>
       <p role="status"></p><div><button type="submit" class="button">发送</button></div>
-    </form></dialog>
+    </form></dialog>`;
+}
+
+export function renderWikiTools(admin: boolean): string {
+  return `${renderKnowledgeAsk()}
   <details class="panel wiki-tool"><summary>批量导入</summary><form data-wiki-batch class="wiki-import-form">
     <label>集群实例<input name="cluster" required value="local"></label><label>命名空间<input name="namespace" required></label>
 
@@ -63,17 +73,35 @@ export function renderWikiTools(admin: boolean): string {
   </form>${renderWikiRuns()}</details>`;
 }
 
-export function bindWikiTools(root: HTMLElement): void {
+export function bindKnowledgeAsk(root: HTMLElement, finding?: AssistantFinding): void {
   const dialog = root.querySelector<HTMLDialogElement>("[data-wiki-dialog]");
   const log = root.querySelector<HTMLElement>("[data-wiki-dialog-log]");
   const prior: string[] = [];
   let pending: AbortController | undefined;
+  let context = finding;
+  const conversation: {role: "user" | "assistant"; text: string}[] = [];
+  const clear = root.querySelector<HTMLButtonElement>("[data-assistant-clear]");
+  clear?.addEventListener("click", () => {
+    pending?.abort();
+    context = undefined;
+    conversation.length = 0;
+    prior.length = 0;
+    log?.replaceChildren();
+    root.querySelector("[data-assistant-context]")?.remove();
+    clear.remove();
+  });
   dialog?.addEventListener("close", () => pending?.abort());
-  root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", () => dialog?.showModal());
+  root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", () => {
+    const field = dialog?.querySelector<HTMLTextAreaElement>("textarea");
+    const search = root.querySelector<HTMLInputElement>("#wiki-search-term");
+    if (field && !field.value && search?.value) field.value = search.value;
+    dialog?.showModal();
+    field?.focus();
+  });
   root.querySelector("[data-close-wiki-ask]")?.addEventListener("click", () => dialog?.close());
   bindWikiTool(root, "[data-wiki-ask]", async (fields, status) => {
     const location = window.location.hash;
-    const query = new URLSearchParams(location.split("?", 2)[1]);
+    const query = new URLSearchParams(location.startsWith("#/wiki") ? location.split("?", 2)[1] : "");
     const question = String(fields.get("question"));
     const controller = new AbortController();
     pending = controller;
@@ -81,19 +109,30 @@ export function bindWikiTools(root: HTMLElement): void {
     window.addEventListener("hashchange", cancel, { once: true });
     let data: {answer: string; citations: {knowledgeId: string; title: string; revision: number; section?: string}[]};
     try {
-      const response = await wikiRequest("/api/v1/wiki/ask", "POST", {
-        question, prior: prior.slice(-8), environment: query.get("environment") ?? "",
-        business: query.get("business") ?? "", documentType: query.get("documentType") ?? "",
-        resourceType: query.get("resourceType") ?? "",
-      }, controller.signal);
-      data = await response.json() as typeof data;
+      if (context) {
+        const endpoint = `/api/v1/admin/finding-analysis?${new URLSearchParams({id: context.id, cluster: context.cluster})}`;
+        const details = await wikiRequest(endpoint, "GET", undefined, controller.signal);
+        const { history } = await details.json() as {history: {revision: number}[]};
+        const messages = [...conversation.slice(-18), {role: "user", text: question}];
+        const response = await wikiRequest(endpoint, "POST", {action: "chat", revision: history[0]?.revision ?? 0, messages}, controller.signal);
+        const { reply } = await response.json() as {reply: string};
+        data = {answer: reply, citations: []};
+      } else {
+        const response = await wikiRequest("/api/v1/wiki/ask", "POST", {
+          question, prior: prior.slice(-8), environment: query.get("environment") ?? "",
+          business: query.get("business") ?? "", documentType: query.get("documentType") ?? "",
+          resourceType: query.get("resourceType") ?? "",
+        }, controller.signal);
+        data = await response.json() as typeof data;
+      }
     } finally {
       window.removeEventListener("hashchange", cancel);
       pending = undefined;
       if (controller.signal.aborted) status.textContent = "";
     }
     if (controller.signal.aborted || !dialog?.open || !status.isConnected || window.location.hash !== location) return;
-    prior.push(question);
+    if (context) conversation.push({role: "user", text: question}, {role: "assistant", text: data.answer.slice(0, 2000)});
+    else prior.push(question);
     const item = document.createElement("section");
     const prompt = document.createElement("p");
     prompt.textContent = question;
@@ -108,10 +147,15 @@ export function bindWikiTools(root: HTMLElement): void {
       item.append(link, document.createTextNode(" "));
     }
     log?.append(item);
+    if (log) log.scrollTop = log.scrollHeight;
     const field = root.querySelector<HTMLTextAreaElement>("[data-wiki-ask] textarea");
     if (field) field.value = "";
     status.textContent = "";
   });
+}
+
+export function bindWikiTools(root: HTMLElement): void {
+  bindKnowledgeAsk(root);
   bindWikiTool(root, "[data-wiki-batch]", async (fields, status) => {
     const response = await wikiRequest("/api/v1/wiki/imports/files", "POST", fields);
     const rows = await response.json() as {filename: string; error?: string; document?: {title: string; body: string}}[];

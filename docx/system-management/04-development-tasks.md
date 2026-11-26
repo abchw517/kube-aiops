@@ -333,3 +333,11 @@ P0 先冻结 T04 的裁决契约及 T07 的数据格式，可并行开发前端�
 **Wiki 只读试点** · [AC-US08](03-user-stories.md#ac-us08) · [AC-UT08](05-unit-test-cases.md#ac-ut08)
 
 P1，依赖 T04、T05、T07。更新平台动作目录和 Wiki 读入口，分别启用组与资源目标。与知识库 PRD 的可见版本规则联调，记录试点范围、回退操作及验证结果。
+
+## AI 服务管理
+
+**SM-T90**
+
+`api/internal/portal/ai_services.go` 提供状态与检查接口，`routes.go` 授权，`api/internal/holmes/client.go` 投影绑定和发起检查。`web/src/views/ai/services.ts` 渲染环境、服务和技能页。配置由现有 Secret 管理，现场操作见[部署指南](../install-deployment.md#部署-holmesgpt)。
+
+[测试用例](05-unit-test-cases.md#ai-服务管理)

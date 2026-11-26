@@ -854,6 +854,8 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 ### 5. 在页面验收并扩展到其他来源
 
+管理员可进入 **AI 服务 → AI 服务配置** 读取当前绑定和模型别名，按环境筛选并点「测试连接」确认 Holmes 已就绪。此检查对应服务的就绪端点。模型推理和权限仍按以下步骤验收。
+
 给试点账号授予目标范围的数据源读取权限和 `diagnosis.health.investigate`。打开 **诊断总览 → 告警详情 → AI 深度调查**，确认有分析结果。对比启用前后总览的相同筛选条件，统计和最近诊断仍来自原数据源。
 
 扩展时，在 `bindings.json` 数组追加对应记录，重新执行第 4 步的 Secret 更新命令。字段按实际值精确匹配，表中未列出的范围字段可以省略。

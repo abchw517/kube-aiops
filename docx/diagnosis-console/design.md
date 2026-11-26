@@ -216,3 +216,9 @@ Content-Type: application/json
 ## 诊断关联与只读证据
 
 现有 Kubernetes 事件、时序、日志与告警通过固定查询模板提供关联证据。按 Finding 的实际范围先授权，再以独立时间窗与请求预算读取。单源超时保留其他来源及明确状态。部署兼容与早期交付记录见[Phase 2 关联设计](../phase-2-correlation-design.md)。
+
+## 诊断助手与 AI 深度调查
+
+诊断总览继续聚合 Finding、故障事件及监控告警。健康告警调用受范围限制的 Holmes 调查，Finding 沿用诊断复核，故障事件进入已有 RCA 工作区。助手优先使用当前已授权 Finding 的追问能力，清除上下文后可使用[授权知识问答](../operations-knowledge/design.md#ai-知识文档与问答)。
+
+[需求](00-prd.md#诊断助手与-ai-深度调查) · [页面](01-pages.md#诊断助手与-ai-深度调查) · [验收](05-unit-test-cases.md#诊断助手与-ai-深度调查)

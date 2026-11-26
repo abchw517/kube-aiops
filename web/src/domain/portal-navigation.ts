@@ -16,13 +16,17 @@ export interface PortalNavigationState {
   diagnosticPolicies?: boolean;
 }
 
-const modules = { diagnosis: "diagnostics", resources: "resources", knowledge: "wiki", system: "admin" } as const;
+const modules = { diagnosis: "diagnostics", resources: "resources", knowledge: "wiki", ai: "ai", system: "admin" } as const;
 type PortalModule = typeof modules[keyof typeof modules];
 type PageLink = { href: string; label: string; active: boolean };
 type PageGroup = { label: string; links: PageLink[] };
 
 function currentPage(path: string, state: PortalNavigationState): [string, string] {
   if (state.mustChangePassword) return ["system.password", "system.password"];
+  if (path === "#/ai" || path === "#/ai/skills") {
+    const page = path.endsWith("/skills") ? "ai.skills" : "ai.configuration";
+    return [page, page];
+  }
   if (/^#\/admin(?:\/|$)/.test(path)) {
     if (path === "#/admin/access/catalog") return ["system.catalog", state.identityAdmin ? "system.access" : "system.catalog"];
     if (/^#\/admin\/(?:access|policy)(?:\/|$)/.test(path)) return ["system.access", "system.access"];
@@ -67,6 +71,7 @@ export function resolvePortalNavigation(state: PortalNavigationState, registry: 
     ...(!state.demoMode ? ["knowledge.search"] : []),
     ...(state.wikiGovernance ? ["knowledge.manage"] : []),
     ...(state.identityAdmin ? ["system.ldap", "system.users", "system.access"] : state.permissionCatalog ? ["system.catalog"] : []),
+    ...(state.identityAdmin && !state.demoMode ? ["ai.configuration", "ai.skills"] : []),
     ...(state.canChangePassword ? ["system.password"] : []),
     ...(state.auditRead ? ["system.audit"] : []),
   ].map((id) => pageTrail(id, registry)).filter((trail) => trail.length > 0).sort(comparePageTrails);

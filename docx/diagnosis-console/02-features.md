@@ -98,3 +98,11 @@
 | --- | --- |
 | 诊断数据 | `GET /api/v1/diagnostics/zabbix/problems`，按环境、业务及恢复状态返回经权限裁剪的问题与来源健康状态。 |
 | 授权与审计 | 复用 `diagnosis.connector.read/write/test`。主机授权只匹配环境、业务。保存变更和手动触发同步记录不含凭据的审计事件。 |
+
+## 诊断助手与 AI 深度调查
+
+**DC-F90**
+
+有 `diagnosis.health.investigate` 及数据源读取权限的用户才能对健康告警发起调查。服务端按真实来源和范围重取告警，再匹配 Holmes 绑定。Finding 追问携带既有结论版本及对话，后端独立校验权限。取消健康告警中断本次请求，可以重新发起。
+
+[用户故事](03-user-stories.md#诊断助手与-ai-深度调查)

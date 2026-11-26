@@ -304,6 +304,18 @@ try {
     }
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) => text.includes("K8sGPT 原始说明") && text.includes("AI 复核") && !text.includes("正在复核关联证据"), "AI review was missing or started automatically");
+    await cdp.send("Runtime.evaluate", {expression: `(() => {
+      document.querySelector(".ai-assistant-trigger").click();
+      const form = document.querySelector(".ai-assistant-drawer [data-wiki-ask]");
+      form.elements.question.value = "当前诊断下一步是什么？";
+      form.requestSubmit();
+    })()`});
+    await assertDOM(cdp, 'document.querySelector(".ai-assistant-drawer [role=log]")?.textContent.includes("最近一次镜像拉取事件")',
+      "Diagnostic assistant did not use the current Finding");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-assistant-clear]").click()'});
+    await assertDOM(cdp, '!document.querySelector("[data-assistant-context]") && !document.querySelector(".ai-assistant-drawer [role=log]")?.textContent',
+      "Diagnostic assistant retained data after clearing context");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector(".ai-assistant-drawer [data-close-wiki-ask]").click()'});
     const observationReady = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = (input, init) => {
@@ -387,6 +399,19 @@ try {
     })()` });
     await assertText(cdp, (text) => text.includes("知识治理") && text.includes("待审核") && text.includes("镜像拉取案例草稿"),
       "Draft did not enter the review queue");
+    await assertPage(cdp, "http://127.0.0.1:4173/#/ai",
+      text => text.includes("AI 服务配置") && text.includes("accurate-model"), "AI service configuration did not show the configured mapping");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-probe]").click()'});
+    await assertText(cdp, text => text.includes("服务已就绪"), "AI service probe did not update the row");
+    await cdp.send("Runtime.evaluate", {expression: `(() => {
+      document.querySelector(".ai-assistant-trigger").click();
+      const form = document.querySelector(".ai-assistant-drawer [data-wiki-ask]");
+      form.elements.question.value = "镜像拉取怎么排查？";
+      form.requestSubmit();
+    })()`});
+    await assertDOM(cdp, 'document.querySelector(".ai-assistant-drawer [role=log] a")?.href.includes("section=checks")',
+      "Diagnostic assistant did not render the cited chapter");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector(".ai-assistant-drawer [data-close-wiki-ask]").click()'});
     await assertPage(cdp, "http://127.0.0.1:4173/#/wiki?q=ImagePullBackOff",
       (text) => text.includes("运维知识库") && text.includes("镜像拉取排障") && text.includes("新建知识"),
       "Wiki search did not load the knowledge list");
@@ -766,8 +791,8 @@ try {
       };
     })()`, returnByValue: true });
     const navigation = nav.result?.value;
-    if (navigation?.labels !== "诊断控制台/资源管理/运维知识库/系统管理" || navigation.indents !== 1) {
-      throw new Error("The four modules must be peers in the workspace navigation");
+    if (navigation?.labels !== "诊断控制台/资源管理/运维知识库/AI 服务/系统管理" || navigation.indents !== 1) {
+      throw new Error("The five modules must be peers in the workspace navigation");
     }
     if (navigation.current !== "资源管理" || navigation.selectedBackground === navigation.inactiveBackground) {
       throw new Error("Workspace navigation must distinguish the active resource module");

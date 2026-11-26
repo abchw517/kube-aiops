@@ -228,8 +228,14 @@ createServer(async (request, response) => {
     incidents: incidentMode, incidentCreate: incidentMode,
     diagnosticDatasources: incidentMode, diagnosticDatasourceWrite: incidentMode, diagnosticDatasourceTest: incidentMode,
     diagnosticPolicies: incidentMode, diagnosticPolicyWrite: incidentMode,
-    findingAI: true, manageEnvironments: true, manageBusinessLines: true,
+    wikiAsk: true, findingChat: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true,
   });
+  if (url.pathname === "/api/v1/admin/ai-services" && adminSession) {
+    if (request.method === "POST") return json(response, 200, {ready: true});
+    return json(response, 200, {status: "configured", models: [
+      {source: "zabbix", sourceId: "fixture-monitor", environmentId: "testing", businessId: "ops", model: "accurate-model"},
+    ]});
+  }
   if (url.pathname === "/api/v1/admin/finding-analysis" && adminSession && url.searchParams.get("id") === "finding-critical") {
     if (request.method === "GET") return json(response, 200, { original: "原始诊断结论", history: reviewHistory, canPublish: true });
     const chunks = [];
@@ -253,6 +259,9 @@ createServer(async (request, response) => {
         evidenceState: "available", sources: [{ source: "prometheus", state: "unavailable" }],
         citations: [{ knowledgeId: "fixture-knowledge", revision: 1, title: "镜像拉取案例" }],
       });
+    }
+    if (input.action === "chat" && input.messages?.at(-1)?.text === "当前诊断下一步是什么？") {
+      return json(response, 200, {reply: "先核对该 Pod 最近一次镜像拉取事件。"});
     }
     if (input.action === "save" && input.observation === "人工确认：镜像仓库拒绝访问") {
       reviewHistory.unshift({ revision: input.revision + 1, conclusion: input.observation });

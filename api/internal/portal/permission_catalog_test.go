@@ -82,6 +82,7 @@ func TestPermissionCatalogAndExactWikiActions(t *testing.T) {
 		return w
 	}
 	call("GET", "/api/v1/admin/permission-catalog", "", nil, 401)
+	call("GET", "/api/v1/admin/ai-services", "", nil, 401)
 	login := call("POST", "/api/v1/auth/login", `{"provider":"ldap","username":"editor","password":"fixture-password"}`, nil, 204)
 	cookie := login.Result().Cookies()[0]
 	result := call("GET", "/api/v1/admin/permission-catalog", "", cookie, 200)
@@ -100,6 +101,8 @@ func TestPermissionCatalogAndExactWikiActions(t *testing.T) {
 	call("PUT", "/api/v1/admin/operations", `{"low":1,"medium":5,"high":9}`, cookie, 403)
 	call("POST", "/api/v1/admin/access", `{"action":"role-save","name":"unexpected"}`, cookie, 403)
 	call("POST", "/api/v1/wiki/ask", `{"question":"why?"}`, cookie, 403)
+	call("GET", "/api/v1/admin/ai-services", "", cookie, 403)
+	call("POST", "/api/v1/admin/ai-services", `{}`, cookie, 403)
 
 	for _, fixture := range []struct{ id, cluster string }{{"test-draft", "test"}, {"prod-draft", "prod"}} {
 		doc, _ := json.Marshal(map[string]string{"cluster": fixture.cluster, "namespace": "pay", "title": "旧草稿", "documentType": "排障手册"})

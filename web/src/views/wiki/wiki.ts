@@ -139,14 +139,14 @@ function renderSearch(data: WikiPage, query: URLSearchParams, admin: boolean, ac
     <section class="panel wiki-search" aria-label="检索知识">
       <div class="wiki-toolbar"><label for="wiki-search-term">按症状、报错或事件 Reason 查找排障知识</label>
         <div class="system-actions">
-          ${admin || access?.ask !== false ? '<button type="button" class="button secondary" data-open-wiki-ask>AI 知识问答</button>' : ""}
           ${admin || access?.draft ? '<a class="button secondary" href="#/wiki/draft/new">新建知识</a>' : ""}
           ${admin || access?.candidates || access?.governance ? '<a class="button secondary" href="#/wiki/governance">知识治理</a>' : ""}
         </div>
       </div>
       <form data-wiki-search class="wiki-search-form" role="search">
         <input type="search" id="wiki-search-term" aria-label="搜索知识" name="q" maxlength="512" value="${h(term)}" placeholder="例如 CrashLoopBackOff、内存、网关 5xx">
-        <button type="submit" class="button">搜索</button>
+        <button type="submit" class="button secondary">搜索</button>
+          ${admin || access?.ask !== false ? '<button type="button" class="button" data-open-wiki-ask>AI 知识问答</button>' : ""}
       </form>
       <div class="wiki-suggestions"><small>常用关键词</small>${keywords.map(keyword => {
         const next = startAtFirstPage(query);
@@ -273,7 +273,7 @@ function bindPreview(workspace: HTMLElement, query: URLSearchParams, reload: () 
 }
 
 export function bindWiki(root: HTMLElement, reload: () => void): void {
-  bindWikiTools(root);
+  bindWikiTools(root.querySelector<HTMLElement>("#portal-content") ?? root);
   bindWikiFeedback(root);
   const query = new URLSearchParams(window.location.hash.split("?", 2)[1]);
   const section = query.get("section") ?? "";
