@@ -1,0 +1,47 @@
+/* Semantic tokens for the warm white and sage Portal theme. */
+:root {
+  --ink: #203a34;
+  --muted: #516960;
+  --surface: #fffefa;
+  --surface-soft: #f1f6ef;
+  --surface-raised: #f8fbf5;
+  --field-bg: #fbfdfa;
+  --bg: #f3f6f2;
+  --line: #dfe9e1;
+  --control-line: #9ab3a5;
+  --accent: #275f52;
+  --accent-hover: #1e5144;
+  --accent-soft: #e1efe5;
+  --accent-line: #b8d7c6;
+  --focus: #477d69;
+  --teal: #176861;
+  --red: #8d3f35;
+  --critical-surface: #fae8e1;
+  --critical-ink: #8d3f35;
+  --warning-surface: #f8edd8;
+  --warning-ink: #7f501c;
+  --info-surface: #e4f1eb;
+  --info-ink: #265b4c;
+  --ai-surface: #f0ebf7;
+  --ai-ink: #5b4878;
+  --text-body: 1rem;
+  --text-control: .9375rem;
+  --text-label: .875rem;
+  --text-meta: .8125rem;
+  --text-title: clamp(1.75rem, 3.4vw, 2.375rem);
+  --control-radius: .8125rem;
+  --section-radius: 1.125rem;
+  --panel-radius: 1.5625rem;
+  --dialog-radius: 1.625rem;
+  --pill-radius: 999px;
+  --panel-shadow: 0 18px 42px -33px rgb(33 76 59 / 42%);
+  --dialog-shadow: 0 21px 72px rgb(25 59 51 / 27%);
+  --backdrop: rgb(35 63 54 / 46%);
+  --topbar-height: 67px;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-synthesis: none;
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--bg);
+  scroll-padding-block-start: calc(var(--topbar-height) + 12px);
+}

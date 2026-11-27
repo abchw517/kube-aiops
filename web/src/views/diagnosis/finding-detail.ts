@@ -6,7 +6,7 @@ import { findingReviewPanel, findingReviewTrigger } from "./finding-review.ts";
 
 const reviewPrefix = "AI 复核结论\n\n";
 
-export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null, returnView: DiagnosticListView = "findings", incidentCreate = false): string {
+export function renderFindingDetail(finding: Finding, reviewEnabled = false, returnQuery: string | null = null, returnView: DiagnosticListView = "findings", incidentCreate = false, assistantEnabled = false): string {
   const query = returnQuery ?? new URLSearchParams({ cluster: finding.cluster }).toString();
   const namespace = finding.namespace ?? finding.resource.namespace;
   const createQuery = namespace && incidentCreate ? new URLSearchParams({
@@ -34,7 +34,10 @@ export function renderFindingDetail(finding: Finding, reviewEnabled = false, ret
         </dl>
       </section>
       <section class="panel detail-copy">
-        <div class="detail-heading"><h2>诊断说明</h2>${reviewEnabled ? findingReviewTrigger() : ""}</div>
+        <div class="detail-heading"><h2>诊断说明</h2><div class="finding-review-actions">
+          ${assistantEnabled ? '<button class="button secondary finding-review-trigger" type="button" data-findings-assistant aria-haspopup="dialog">用诊断助手追问</button>' : ""}
+          ${reviewEnabled ? findingReviewTrigger() : ""}
+        </div></div>
         <h3>K8sGPT 原始说明</h3>
         <p class="detail-text" data-finding-explanation tabindex="-1">${escapeHtml((finding.originalDetails ?? finding.details) || "暂无补充诊断说明。")}</p>
         <div data-review-saved aria-live="polite"${finding.originalDetails === undefined ? " hidden" : ""}>${finding.originalDetails === undefined ? "" :

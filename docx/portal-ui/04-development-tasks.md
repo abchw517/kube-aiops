@@ -2,19 +2,19 @@
 
 [设计方案](design.md) · [PRD](00-prd.md) · [页面拆解](01-pages.md) · [功能拆解](02-features.md) · [用户故事](03-user-stories.md) · [测试用例](05-unit-test-cases.md) · [交互原型](prototype.html) · [文档维护规则](../development-standard.md)
 
-全站外框、导航、视觉和登录是本模块的维护范围。业务页面流程分别维护在对应模块中。当前以全站白色布局与最新登录背景为准。
+全站外框、导航、视觉和登录是本模块的维护范围。业务页面流程分别维护在对应模块中。当前以暖白、柔绿和大圆角的全站原型为视觉基准。
 
 ## 登录页
 
 | 任务 | 改动 | 验收 |
 | --- | --- | --- |
-| DWL-DEV-06 | 接入登录背景和响应式布局，清理画布观察器 | DWL-TC-09、DWL-TC-10 |
+| DWL-DEV-06 | 接入双栏登录与窄屏堆叠，使用 CSS 装饰并移除画布监听 | DWL-TC-09、DWL-TC-10 |
 
 ## 全站布局与共享工作区
 
 | 任务 | 实施内容 | 代码入口 | 验收用例 |
 | --- | --- | --- | --- |
-| DEV-01 | 收敛全局色板、字号、圆角和阴影；建立白色导航与当前选中态 | styles.css、components/portal-shell.css | TC-01、TC-02 |
+| DEV-01 | 收敛全局色板、字号、圆角和阴影；建立暖白导航与柔绿选中态 | components/theme.css、styles.css、components/portal-shell.css | TC-01、TC-02 |
 | DEV-02 | 登录卡片、LDAP 选择与状态提示按操作顺序重排 | components/states.ts、components/portal-shell.css | TC-03 |
 | DEV-03 | 总览指标卡、独立趋势与严重度环图；用 CSSOM 应用比例 | views/diagnosis/unified-overview.ts、unified-overview.css | TC-04 至 TC-06 |
 | DEV-04 | 资源列表、切换标签、配置弹窗与详情侧栏对齐；集成集群复选框和 Zabbix 关闭修复 | views/resources、views/clusters、views/diagnosis/zabbix-sources.ts | TC-07 至 TC-09 |

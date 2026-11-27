@@ -87,7 +87,7 @@
   box-shadow: var(--dialog-shadow);
   color: var(--ink);
 }
-.audit-dialog::backdrop { background: #10233588; }
+.audit-dialog::backdrop { background: var(--backdrop); }
 .audit-dialog[open], .audit-dialog > form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .audit-dialog:has(> form) { grid-template-rows: minmax(0, 1fr); }
 .audit-dialog :is(.audit-dialog-header, .audit-dialog-body, .audit-dialog-footer) { padding: 14px clamp(12px, 3vw, 20px); }
@@ -110,7 +110,7 @@
 .audit-batch-table td { max-width: 16rem; overflow-wrap: anywhere; }
 .audit-batch-table td:nth-child(2) { white-space: nowrap; }
 .audit-batch-table :is(th, td):last-child { text-align: start; }
-.system-badge[data-audit-risk="低"] { background: var(--accent-soft); color: var(--blue); }
+.system-badge[data-audit-risk="低"] { background: var(--accent-soft); color: var(--accent); }
 .system-badge[data-audit-risk="中"], .system-badge[data-audit-result="部分成功"] { background: #fff2d8; color: #865a16; }
 .system-badge[data-audit-risk="高"] { background: #fff1f2; color: var(--red); }
 

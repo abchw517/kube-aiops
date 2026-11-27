@@ -210,12 +210,13 @@ try {
     for (const width of [1280, 390]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 760, deviceScaleFactor: 1, mobile: false });
       await assertDOM(cdp, `(() => {
-        const scene = document.querySelector(".login-scene canvas");
         const form = document.querySelector("[data-login]");
+        const overview = document.querySelector(".login-overview").getBoundingClientRect();
+        const card = document.querySelector(".login-card").getBoundingClientRect();
         const checkbox = form.elements.provider.getBoundingClientRect();
         const label = form.elements.provider.labels[0].getBoundingClientRect();
-        return scene.getBoundingClientRect().width > 0 && scene.hasAttribute("height") &&
-          getComputedStyle(scene.parentElement).pointerEvents === "none" &&
+        return (${width} > 680 ? card.left >= overview.right : card.top >= overview.bottom) &&
+          getComputedStyle(document.querySelector(".login-layout")).backgroundColor === "rgb(255, 254, 250)" &&
           Math.abs(checkbox.top + checkbox.bottom - label.top - label.bottom) < 2 &&
           form.querySelector('[type="submit"]').getBoundingClientRect().bottom <= innerHeight &&
           document.documentElement.scrollWidth <= document.documentElement.clientWidth;
@@ -305,8 +306,10 @@ try {
     await assertPage(cdp, "http://127.0.0.1:4173/#/findings/finding-critical",
       (text) => text.includes("K8sGPT 原始说明") && text.includes("AI 复核") && !text.includes("正在复核关联证据"), "AI review was missing or started automatically");
     await cdp.send("Runtime.evaluate", {expression: `(() => {
-      document.querySelector(".ai-assistant-trigger").click();
+      document.querySelector("[data-findings-assistant]").click();
       const form = document.querySelector(".ai-assistant-drawer [data-wiki-ask]");
+      document.querySelector("[data-assistant-finding-prompts] button").click();
+      if (form.elements.question.value !== "当前证据说明了什么？") throw new Error("Assistant prompt did not populate the composer");
       form.elements.question.value = "当前诊断下一步是什么？";
       form.requestSubmit();
     })()`});
@@ -315,6 +318,14 @@ try {
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-assistant-clear]").click()'});
     await assertDOM(cdp, '!document.querySelector("[data-assistant-context]") && !document.querySelector(".ai-assistant-drawer [role=log]")?.textContent',
       "Diagnostic assistant retained data after clearing context");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 760, deviceScaleFactor: 1, mobile: false });
+    await assertDOM(cdp, `(() => {
+      const drawer = document.querySelector(".ai-assistant-drawer");
+      const submit = drawer.querySelector('[type="submit"]').getBoundingClientRect();
+      return drawer.open && drawer.getBoundingClientRect().right <= innerWidth &&
+        submit.bottom <= innerHeight && !drawer.querySelector("[data-assistant-knowledge]").hidden;
+    })()`, "The diagnostic assistant overflowed at 390px or hid its composer");
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector(".ai-assistant-drawer [data-close-wiki-ask]").click()'});
     const observationReady = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const originalFetch = window.fetch.bind(window);
@@ -529,8 +540,9 @@ try {
       const card = getComputedStyle(document.querySelector(".resource-list-panel"));
       const input = getComputedStyle(document.querySelector('.resource-filters input[type="search"]'));
       return parseFloat(shell.fontSize) === 16 && parseFloat(nav.borderTopLeftRadius) >= 10 &&
-        parseFloat(card.borderTopLeftRadius) === 20 && parseFloat(input.fontSize) === 15 &&
-        parseFloat(input.borderTopLeftRadius) === 12;
+        nav.backgroundColor === "rgb(225, 239, 229)" && card.backgroundColor === "rgb(255, 254, 250)" &&
+        parseFloat(card.borderTopLeftRadius) === 25 && parseFloat(input.fontSize) === 15 &&
+        parseFloat(input.borderTopLeftRadius) === 13;
     })()`, "Resource workspace does not use the shared type and corner scales");
     const clusterLabels = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `[
       document.querySelector('.portal-sidebar a[aria-current="page"]')?.textContent,
@@ -961,7 +973,7 @@ try {
     await assertText(cdp, (text) => text.includes("分配用户组或角色") && text.includes("授权对象"), "Account assignment did not open from associations");
     await assertPage(cdp, "http://127.0.0.1:4173/#/admin/ldap",
       (text) => text.includes("LDAP 连接配置") && text.includes("30 分钟"), "Authentication summaries did not render");
-    await assertAuthenticationLayout(cdp, 1440, 232);
+    await assertAuthenticationLayout(cdp, 1440, 188);
     await assertAuthenticationLayout(cdp, 390, 0);
     await cdp.send("Emulation.clearDeviceMetricsOverride");
     await cdp.send("Runtime.evaluate", { expression: `(() => {
@@ -1956,7 +1968,7 @@ async function assertRemainingDiagnosticPages(cdp) {
       return dialog.querySelector('[name="method"]:checked').value === "token" &&
         !!dialog.querySelector(".zabbix-scope-wait") && dialog.querySelector("[data-zabbix-save]").disabled &&
         left.contains(dialog.querySelector('[name="environmentId"]')) && left.contains(dialog.querySelector('[name="sourceName"]')) &&
-        parseFloat(getComputedStyle(dialog).borderTopLeftRadius) === 24 &&
+        parseFloat(getComputedStyle(dialog).borderTopLeftRadius) === 26 &&
         panel.left >= 0 && panel.right <= innerWidth && footer.bottom <= innerHeight &&
         (innerWidth > 760 ? left.offsetTop === right.offsetTop : left.offsetTop < right.offsetTop);
     })()` });

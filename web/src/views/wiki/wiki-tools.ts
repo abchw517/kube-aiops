@@ -37,15 +37,42 @@ async function wikiRequest(url: string, method: string, body?: unknown, signal?:
 export type AssistantFinding = { id: string; cluster: string; namespace?: string };
 
 export function renderKnowledgeAsk(assistant = false, context?: AssistantFinding): string {
-  return `<dialog class="wiki-dialog${assistant ? " ai-assistant-drawer" : ""}" data-wiki-dialog aria-labelledby="${assistant ? "assistant-title" : "wiki-ask-title"}"><header class="wiki-toolbar"><h2 id="${assistant ? "assistant-title" : "wiki-ask-title"}">${assistant ? "诊断助手" : "AI 知识问答"}</h2><button type="button" data-close-wiki-ask class="button secondary">关闭</button></header>
-    ${assistant ? '<p>从授权的已发布运维知识查找排障建议。</p><nav class="system-actions" aria-label="诊断快捷入口"><a class="button secondary" href="#/diagnostics">诊断总览</a><a class="button secondary" href="#/wiki">知识检索</a></nav>' : ""}
-    ${context ? `<p data-assistant-context>当前诊断 · ${h(context.cluster)}${context.namespace ? ` / ${h(context.namespace)}` : ""} · ${h(context.id)}</p>
-      <button type="button" class="button secondary" data-assistant-clear>清除诊断上下文</button>` : ""}
-    <div data-wiki-dialog-log role="log"></div>
+  const titleId = assistant ? "assistant-title" : "wiki-ask-title";
+  const header = `<header class="wiki-toolbar"><h2 id="${titleId}">${assistant ? "诊断助手" : "AI 知识问答"}</h2><button type="button" data-close-wiki-ask class="button secondary">关闭</button></header>`;
+  const history = '<div data-wiki-dialog-log role="log" aria-label="对话记录"></div>';
+  const form = `
     <form data-wiki-ask class="wiki-import-form">
-      <label>问题<textarea name="question" rows="4" required maxlength="2000" placeholder="例如：如何排查镜像拉取失败？"></textarea></label>
+      <label>问题<textarea name="question" rows="${assistant ? 2 : 4}" required maxlength="2000" placeholder="例如：如何排查镜像拉取失败？"></textarea></label>
       <p role="status"></p><div><button type="submit" class="button">发送</button></div>
-    </form></dialog>`;
+    </form>`;
+  if (!assistant) return `<dialog class="wiki-dialog" data-wiki-dialog aria-labelledby="${titleId}">${header}${history}${form}</dialog>`;
+
+  return `<dialog class="wiki-dialog ai-assistant-drawer" data-wiki-dialog aria-labelledby="${titleId}">${header}
+    <div class="assistant-scroll">
+      <section class="assistant-scope">
+        <div data-assistant-knowledge${context ? " hidden" : ""}>
+          <h3>运维知识问答</h3><p>从授权的已发布运维知识查找排障建议。</p>
+          <nav class="system-actions" aria-label="诊断快捷入口"><a class="button secondary" href="#/diagnostics">诊断总览</a><a class="button secondary" href="#/wiki">知识检索</a></nav>
+        </div>
+        ${context ? `<div data-assistant-context><h3>当前诊断</h3>
+          <p>${h(context.cluster)}${context.namespace ? ` / ${h(context.namespace)}` : ""} · ${h(context.id)}</p>
+          <button type="button" class="button secondary" data-assistant-clear>清除诊断上下文</button></div>` : ""}
+      </section>
+      <div class="assistant-prompts" aria-label="示例问题">
+        <div data-assistant-general-prompts${context ? " hidden" : ""}>
+          <button type="button" class="button secondary" data-assistant-prompt>网关 5xx 如何定位？</button>
+          <button type="button" class="button secondary" data-assistant-prompt>主机内存压力怎么排查？</button>
+          <button type="button" class="button secondary" data-assistant-prompt>服务副本不可用先看什么？</button>
+        </div>
+        ${context ? `<div data-assistant-finding-prompts>
+          <button type="button" class="button secondary" data-assistant-prompt>当前证据说明了什么？</button>
+          <button type="button" class="button secondary" data-assistant-prompt>接下来要核对哪些证据？</button>
+        </div>` : ""}
+      </div>
+      ${history}
+    </div>
+    ${form}
+  </dialog>`;
 }
 
 export function renderWikiTools(admin: boolean): string {
@@ -73,9 +100,10 @@ export function renderWikiTools(admin: boolean): string {
   </form>${renderWikiRuns()}</details>`;
 }
 
-export function bindKnowledgeAsk(root: HTMLElement, finding?: AssistantFinding): void {
+export function bindKnowledgeAsk(root: HTMLElement, finding?: AssistantFinding, findingTrigger?: HTMLElement | null): void {
   const dialog = root.querySelector<HTMLDialogElement>("[data-wiki-dialog]");
   const log = root.querySelector<HTMLElement>("[data-wiki-dialog-log]");
+  const field = dialog?.querySelector<HTMLTextAreaElement>("textarea");
   const prior: string[] = [];
   let pending: AbortController | undefined;
   let context = finding;
@@ -88,15 +116,24 @@ export function bindKnowledgeAsk(root: HTMLElement, finding?: AssistantFinding):
     prior.length = 0;
     log?.replaceChildren();
     root.querySelector("[data-assistant-context]")?.remove();
-    clear.remove();
+    root.querySelector("[data-assistant-finding-prompts]")?.remove();
+    for (const panel of root.querySelectorAll<HTMLElement>("[data-assistant-knowledge], [data-assistant-general-prompts]")) panel.hidden = false;
+    if (field) { field.value = ""; field.focus(); }
   });
   dialog?.addEventListener("close", () => pending?.abort());
-  root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", () => {
-    const field = dialog?.querySelector<HTMLTextAreaElement>("textarea");
+  const open = () => {
+    if (!dialog || dialog.open) return;
     const search = root.querySelector<HTMLInputElement>("#wiki-search-term");
     if (field && !field.value && search?.value) field.value = search.value;
-    dialog?.showModal();
+    dialog.showModal();
     field?.focus();
+  };
+  root.querySelector("[data-open-wiki-ask]")?.addEventListener("click", open);
+  findingTrigger?.addEventListener("click", open);
+  for (const prompt of root.querySelectorAll("[data-assistant-prompt]")) prompt.addEventListener("click", () => {
+    if (!field) return;
+    field.value = prompt.textContent?.trim() ?? "";
+    field.focus();
   });
   root.querySelector("[data-close-wiki-ask]")?.addEventListener("click", () => dialog?.close());
   bindWikiTool(root, "[data-wiki-ask]", async (fields, status) => {
@@ -135,20 +172,24 @@ export function bindKnowledgeAsk(root: HTMLElement, finding?: AssistantFinding):
     else prior.push(question);
     const item = document.createElement("section");
     const prompt = document.createElement("p");
+    prompt.className = "assistant-question";
     prompt.textContent = question;
+    const reply = document.createElement("div");
+    reply.className = "assistant-reply";
     const answer = document.createElement("p");
     answer.className = "wiki-document-body";
     answer.textContent = data.answer;
-    item.append(prompt, answer);
+    reply.append(answer);
+    item.append(prompt, reply);
     for (const citation of data.citations) {
       const link = document.createElement("a");
       link.href = knowledgeLink(citation.knowledgeId, citation.revision, citation.section);
       link.textContent = `${citation.title} · v${citation.revision}${citation.section ? ` · ${wikiSectionLabel(citation.section)}` : ""}`;
-      item.append(link, document.createTextNode(" "));
+      reply.append(link, document.createTextNode(" "));
     }
     log?.append(item);
-    if (log) log.scrollTop = log.scrollHeight;
-    const field = root.querySelector<HTMLTextAreaElement>("[data-wiki-ask] textarea");
+    const scrollArea = log?.closest<HTMLElement>(".assistant-scroll") ?? log;
+    if (scrollArea) scrollArea.scrollTop = scrollArea.scrollHeight;
     if (field) field.value = "";
     status.textContent = "";
   });
