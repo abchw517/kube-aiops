@@ -245,7 +245,7 @@ export class PortalApp {
             const page = await loadAIServices();
             if (generation !== this.renderGeneration) return;
             this.renderShell(page.html);
-            bindAIServices(this.root, page.data, () => void this.route());
+            bindAIServices(this.root, page.data, () => void this.route(), hash);
           }
         } catch {
           if (generation === this.renderGeneration) this.renderShell(errorState("无法加载 AI 服务配置。"));
@@ -453,7 +453,7 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(page.html, false, true);
         bindDatasourcesWorkspace(this.root, page, {
-          write: this.diagnosticSettings.datasourceWrite, test: this.diagnosticSettings.datasourceTest, createIncident: this.incidentCreate,
+          write: this.diagnosticSettings.datasourceWrite, test: this.diagnosticSettings.datasourceTest, createIncident: this.incidentCreate, aiAdmin: this.identityAdmin,
         });
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);

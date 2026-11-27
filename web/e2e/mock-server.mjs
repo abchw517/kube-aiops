@@ -11,6 +11,7 @@ if (!contentSecurityPolicy) throw new Error("Missing Portal Content-Security-Pol
 const longRegistryURL = `https://registry.example.com/v2/library/${"registry-path".repeat(28)}/manifests/1.36?ns=docker.io`;
 
 let aiConnection;
+let aiBinding;
 let aiSkills = [];
 const reviewHistory = [];
 let observationRequests = 0;
@@ -235,13 +236,24 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/admin/ai-services" && adminSession) {
     const model = {source: "finding", sourceId: "local", environmentId: "", businessId: "", clusterId: "local", namespace: "default", model: "accurate-model", service: "https://holmes.example"};
     const {model: _model, service: _service, ...scope} = model;
-    if (request.method === "GET") return json(response, 200, {status: "configured", models: [model], connections: aiConnection ? [aiConnection] : []});
+    if (request.method === "GET") return json(response, 200, {
+      status: "configured", pilot: { status: "ready", address: "http://holmes-pilot-holmes.holmes-pilot.svc" },
+      models: aiBinding ? [model, aiBinding] : [model], connections: aiConnection ? [aiConnection] : [],
+    });
     const action = url.searchParams.get("action");
-    if (action === "discover") return json(response, 200, {models: ["fast-model", "accurate-model"]});
+    if (action === "discover" || action === "discover-binding") return json(response, 200, {models: ["fast-model", "accurate-model"]});
     if (action === "recheck") return json(response, 200, {ready: true});
     const bytes = [];
     for await (const chunk of request) bytes.push(chunk);
     const input = JSON.parse(Buffer.concat(bytes).toString());
+    if (action === "bind") {
+      if (!zabbixSourceFixture || input.source !== "zabbix" || input.sourceId !== zabbixSourceFixture.id ||
+          input.environmentId !== "production" || input.businessId !== "ops" || input.model !== "accurate-model") {
+        return json(response, 409, {});
+      }
+      aiBinding = {...input, managed: true, service: "http://holmes-pilot-holmes.holmes-pilot.svc"};
+      return json(response, 200, {bound: true});
+    }
     if (action === "save") {
       aiConnection = {id: "model-conf", version: 1, data:{scope, desired: input.config, effective: {}, effectiveVersion: 0}};
     } else if (action === "publish") {

@@ -313,7 +313,7 @@ LDAP 连接配置分为常用连接参数、可折叠的用户与组搜索和证
 
 **SM-F90**
 
-- `GET /api/v1/admin/ai-services` 返回部署绑定和 Portal 配置。对应 `POST` 的 `recheck`、`discover`、`save`、`publish` 分别用于检查 `/readyz`、核对 Holmes `/api/model`、保存草稿和发布。请求只使用已部署的精确范围，版本冲突返回 409。服务就绪及别名存在仍需通过实际推理验证。
+- `GET /api/v1/admin/ai-services` 返回试点服务状态、部署及 Portal 范围绑定和模型版本。对应 `POST` 的 `recheck`、`discover`、`save`、`publish` 分别用于检查 `/readyz`、核对 Holmes `/api/model`、保存草稿和发布。`discover-binding` 发现试点模型，`bind` 校验精确范围和别名后写 SQLite。请求只使用已部署的精确范围，版本冲突返回 409。服务就绪及别名存在仍需通过实际推理验证。
 - `GET /api/v1/admin/ai-skills` 列出技能和当前审核者身份。对应 `POST` 的 `upload`、`manual`、`approve`、`disable` 处理送审、独立审核和停用。已启用技能按精确范围和关键词匹配，手册来源对当前请求复查知识库访问权限和发布版本。
 - 管理接口要求管理员，写入校验同源并进入操作审计。模型提供商的服务地址、API Key 和工具授权由部署侧维护。
 

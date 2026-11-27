@@ -12,15 +12,19 @@ import (
 
 // DiscoverModels only contacts the operator-provisioned service bound to the exact scope.
 func DiscoverModels(ctx context.Context, scope Scope) ([]string, error) {
+	selected, err := configuredBinding(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	return discoverModels(ctx, selected)
+}
+
+func discoverModels(ctx context.Context, selected binding) ([]string, error) {
 	select {
 	case active <- struct{}{}:
 		defer func() { <-active }()
 	default:
 		return nil, ErrUnavailable
-	}
-	selected, err := configuredBinding(scope)
-	if err != nil {
-		return nil, err
 	}
 	endpoint, err := endpointFor(selected, "/api/model")
 	if err != nil {

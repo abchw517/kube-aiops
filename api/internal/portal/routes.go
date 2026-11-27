@@ -92,7 +92,14 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 			if resource == "ai-skills" {
 				a.AuditChange(w, r, p.Subject, "维护 AI 技能", "中", resource, func(w http.ResponseWriter, r *http.Request) { serveAISkills(w, r, wikis, p) })
 			} else {
-				a.AuditChange(w, r, p.Subject, "维护 AI 服务", "中", resource, serveAIServices)
+				a.AuditChange(w, r, p.Subject, "维护 AI 服务", "中", resource, func(w http.ResponseWriter, r *http.Request) {
+					serveAIServices(w, r, func(ctx context.Context, scope holmes.Scope) error {
+						if incidents == nil {
+							return incident.ErrNotFound
+						}
+						return incidents.ValidateHolmesAlertScope(ctx, p, scope)
+					})
+				})
 			}
 			return
 		}

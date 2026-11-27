@@ -22,7 +22,7 @@
 .ai-panel td { vertical-align: top; overflow-wrap: anywhere; }
 .ai-panel td small { display: block; margin-top: .25rem; }
 .ai-dialog { border-radius: var(--dialog-radius); }
-.ai-dialog .ai-form, .ai-dialog .ai-form > label { display: grid; gap: .5rem; }
+.ai-dialog .ai-form, .ai-dialog .ai-form > label, .ai-dialog [data-binding-fields], .ai-dialog [data-binding-fields] > label { display: grid; gap: .5rem; }
 .ai-dialog .ai-form > label:has(input[type="checkbox"]) { display: flex; align-items: center; }
 .ai-dialog .ai-form :is(textarea, input[type="text"], select) { max-width: 100%; }
 .ai-dialog .ai-form textarea { resize: vertical; }

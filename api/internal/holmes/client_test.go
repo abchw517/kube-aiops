@@ -58,7 +58,7 @@ func TestConfiguredModelProjectionAndReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOLMES_BINDINGS_FILE", path)
-	models, err := ConfiguredModels()
+	models, err := ConfiguredModels(t.Context())
 	if err != nil || len(models) != 1 || models[0].Model != "accurate" || models[0].Scope != scope {
 		t.Fatalf("unexpected model projection: %+v, %v", models, err)
 	}

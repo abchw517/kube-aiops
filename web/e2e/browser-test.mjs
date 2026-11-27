@@ -2048,6 +2048,19 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertPage(cdp, "about:blank", text => text === "", "Could not unload the datasource page");
   await assertPage(cdp, `${origin}/#/resources/datasources`,
     text => text.includes("生产运维 Zabbix") && text.includes("同步正常"), "Zabbix source name did not survive reloading");
+  await cdp.send("Runtime.evaluate", {expression: `document.querySelector('[data-source-row="zabbix:zabbix-fixture"] a[href*="bindSource=zabbix"]').click()`});
+  await assertDOM(cdp, 'document.querySelector("[data-ai-dialog] [name=sourceId]")?.value === "zabbix-fixture"',
+    "Data source action did not preselect the configured source");
+  await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-binding-discover]").click()'});
+  await assertText(cdp, text => text.includes("已发现 2 个模型别名"), "Binding form did not load models");
+  await cdp.send("Runtime.evaluate", {expression: `(() => {
+    const form = document.querySelector("[data-ai-dialog] form");
+    form.elements.model.value = "accurate-model";
+    form.requestSubmit();
+  })()`});
+  await assertText(cdp, text => text.includes("试点服务已就绪") && text.includes("production / ops / zabbix-fixture") && text.includes("Portal 绑定"),
+    "The saved scope did not appear in AI service configuration");
+  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("生产运维 Zabbix"), "Could not return to data sources");
   const groupCollapse = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     document.querySelector('[data-source-filter="grouped"]').click();
     const toggle = () => document.querySelector('[data-source-group="monitor:zabbix"]');

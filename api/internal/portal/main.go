@@ -185,7 +185,7 @@ func Run() {
 		}()
 	}
 
-	if os.Getenv("HOLMES_BINDINGS_FILE") != "" {
+	if managed != nil || os.Getenv("HOLMES_BINDINGS_FILE") != "" {
 		writeTimeout = max(writeTimeout, 55*time.Second)
 	}
 	server := &http.Server{

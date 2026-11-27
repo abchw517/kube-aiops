@@ -782,7 +782,7 @@ toolsets:
   robusta: {enabled: false}
   internet: {enabled: false}
   prometheus/metrics: {enabled: false}
-  runbook: {enabled: false}
+  skills: {enabled: false}
   connectivity_check: {enabled: false}
   bash: {enabled: false}
 additionalEnvVars:
@@ -795,15 +795,15 @@ modelList:
   accurate-model:
     model: openai/glm-5.2
     api_base: https://open.bigmodel.cn/api/paas/v4
-    api_key: "{{ env.ZHIPU_API_KEY }}"
+    api_key: envRef:ZHIPU_API_KEY
 ```
 
-`openai/` 表示使用 OpenAI 兼容接口，实际请求发往 `api_base` 指定的智谱地址。兼容客户端会追加 `/chat/completions`。使用 OpenAI 时，在第 1 步填写 OpenAI 的密钥，配置中把两处 `ZHIPU_API_KEY` 改成 `OPENAI_API_KEY`，模型改成 `openai/gpt-4.1` 并删除 `api_base` 行。[HolmesGPT OpenAI 兼容配置](https://holmesgpt.dev/0.24.3/ai-providers/openai-compatible/) · [智谱 GLM-5.2 接口](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2)
+`openai/` 表示使用 OpenAI 兼容接口，实际请求发往 `api_base` 指定的智谱地址。兼容客户端会追加 `/chat/completions`。使用 OpenAI 时，在第 1 步填写 OpenAI 的密钥，配置中把两处 `ZHIPU_API_KEY` 改成 `OPENAI_API_KEY`，模型改成 `openai/gpt-4.1` 并删除 `api_base` 行。[HolmesGPT OpenAI 兼容配置](https://holmesgpt.dev/0.48.0/ai-providers/openai-compatible/) · [智谱 GLM-5.2 接口](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2)
 
 ```bash
 helm repo add robusta https://robusta-charts.storage.googleapis.com
 helm repo update robusta
-helm upgrade --install holmes-pilot robusta/holmes --version 0.24.3 \
+helm upgrade --install holmes-pilot robusta/holmes --version 0.48.0 \
   -n holmes-pilot -f holmes-values.yaml --atomic --timeout 5m
 kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=180s
 kubectl -n holmes-pilot get pods,svc
@@ -821,7 +821,7 @@ kubectl -n holmes-pilot exec deployment/holmes-pilot-holmes -- \
   -d '{"ask":"请只回复 OK","model":"accurate-model"}'
 ```
 
-两条请求均返回 `HTTP 200`，且第二条返回的 JSON 中 `analysis` 有内容后，再配置 Portal。`bindings.json` 和 Portal 的模型档位填写 Holmes 别名 `accurate-model`。试点只配置了这一个别名时，页面的两个档位都可以选它。用于 Finding 初步复核和事件 RCA 时，还要用实际模型验证 `response_format`。如需让 Holmes 查询实时指标或日志，按试点范围单独配置只读数据源和凭据。[Chart 配置](https://holmesgpt.dev/0.24.3/reference/helm-configuration/) · [HTTP API](https://holmesgpt.dev/0.24.3/reference/http-api/)
+两条请求均返回 `HTTP 200`，且第二条返回的 JSON 中 `analysis` 有内容后，再配置 Portal。Portal 通过 Holmes 的模型列表发现别名 `accurate-model`。试点只配置了这一个别名时，页面的两个档位都可以选它。用于 Finding 初步复核和事件 RCA 时，还要用实际模型验证 `response_format`。如需让 Holmes 查询实时指标或日志，按试点范围单独配置只读数据源和凭据。[Chart 配置](https://holmesgpt.dev/0.48.0/reference/helm-configuration/) · [HTTP API](https://holmesgpt.dev/0.48.0/reference/http-api/)
 
 仅轮换 Secret 中的密钥时，保存后重启 Deployment，再复跑模型验证。
 
@@ -832,80 +832,36 @@ kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=
 
 使用内网 vLLM 时，按实际模型和 OpenAI 兼容 API 地址修改 Chart 配置，再复跑本节检查。
 
-### 3. 从 Portal 找到一条告警的真实 ID
+### 3. 在页面添加数据范围绑定
 
-1. 登录 Portal，打开 **诊断控制台 → 诊断总览**，找到一条要测试的 Zabbix 告警。
-2. 按 F12 打开浏览器开发者工具，切到 **网络（Network）**，刷新总览。在筛选框搜索 `zabbix/problems`。
-3. 点击该 GET 请求，在 **响应（Response）** 中按告警标题找到对应记录。记下该条的 `sourceId` 和 `scope.environmentId`、`scope.businessId`。须复制返回的 ID，页面上的环境名、业务名和告警的 `id` 不能代替它们。
+升级 kube-aiops API 和 Web 到包含页面绑定的版本。已经运行 Holmes 0.48.0 的 `holmes-pilot` 可直接使用。API 默认探测 `http://holmes-pilot-holmes.holmes-pilot.svc/readyz`，不需要 Kubernetes Service 列表权限。
 
-### 4. 写入绑定并启用 Portal
+1. 以平台管理员登录 **AI 服务 → AI 服务配置**。Holmes 服务卡片分别展示试点服务就绪状态和已绑定范围数。使用「重新读取配置」复查。
+2. 点击「新增范围绑定」。Zabbix 和 Alertmanager 可以从已启用的数据源中选择，页面带出范围 ID。也可以在 **资源管理 → 数据源管理** 的目标数据源操作菜单中点击「绑定 Holmes」，直接带入该数据源。
+3. Alertmanager 告警有 `namespace` 时填写该值，只有告警没有此字段时才留空。点击「发现模型」，选中 `accurate-model`，再点击「保存并启用绑定」。绑定写入 Portal 的 SQLite，后续请求生效，无需创建 `bindings.json`、更新 Secret 或重启 Pod。
+4. 可选调整档位。打开连接的「编辑」或「新增模型连接」，发现模型、设置档位并保存草稿，再点击「发布配置」。试点只配置一个别名时，两个档位都可选择它。发布校验失败时继续使用上一个生效版本。
 
-执行 `nano bindings.json`。首次部署时，粘贴下面的 JSON。已有绑定时，打开发布时使用的 `bindings.json`，在原数组中追加本条记录。将 `zbx-prod`、`prod`、`orders` 换成上一步找到的三个 ID。服务名、命名空间和模型名沿用前面示例时，`endpoint` 和 `model` 可以原样使用。Portal API 会自动给 `endpoint` 追加 `/api/chat`。
+| 绑定类型 | 范围匹配 |
+| --- | --- |
+| Zabbix | 选择数据源，由页面带出数据源 ID、环境和业务。 |
+| Alertmanager | 选择数据源，由页面带出数据源 ID、环境、业务和集群。填写告警自身的命名空间。 |
+| Finding | 填写 Finding 的集群 ID 和命名空间。 |
+| 事件 RCA | 填写事件详情中的环境、业务、集群 ID 和命名空间。 |
+| 知识问答 | 使用固定范围和独立的 Holmes 实例。通过 API Deployment 的 `HOLMES_WIKI_ENDPOINT` 指向该实例。 |
 
-```json
-[
-  {
-    "source": "zabbix",
-    "sourceId": "zbx-prod",
-    "environmentId": "prod",
-    "businessId": "orders",
-    "endpoint": "http://holmes-pilot-holmes.holmes-pilot.svc",
-    "model": "accurate-model"
-  }
-]
-```
+页面新增的诊断范围使用共享的无工具试点实例。自定义 Service 名称、命名空间或内网 HTTPS 时，在 API Deployment 设置 `HOLMES_PILOT_ENDPOINT` 为对应服务根地址。开启 Holmes HTTP 鉴权时，从 Secret 注入 `HOLMES_PILOT_API_KEY`，Wiki 使用 `HOLMES_WIKI_API_KEY`。这些凭据用于 Portal 到 Holmes 的 HTTP 鉴权。智谱 API Key 仍由 Holmes 的模型 Secret 提供。
 
-在 nano 中按 Ctrl+O 保存、Enter 确认文件名、Ctrl+X 退出。装有 `jq` 时，可用 `jq -e 'type == "array"' bindings.json` 检查文件，预期输出 `true`。试点先添加一条告警范围，完成页面验收。
+既有 `HOLMES_BINDINGS_FILE` 部署绑定继续兼容，可用于按范围配置各自的只读取证工具、凭据和独立 Holmes 地址。每个 Holmes 实例使用独立命名空间，Chart 的 Service 通过 `app: holmes` 选择 Pod。Wiki 实例仅接收 Portal 已授权的发布章节，关闭外部查询、MCP 和执行工具。使用现有 PVC 保留 Portal SQLite，备份时一并保留数据库。
 
-试点使用上面的内部 ClusterIP 地址。生产使用内部 HTTPS 时，填实际网关根地址，确保 API 信任证书。若网关要求 `X-API-Key`，对应条目追加 `apiKey`，并通过 Secret 管理该文件。
+### 4. 在诊断页面验收
 
-```bash
-kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings \
-  --from-file=bindings.json=./bindings.json --dry-run=client -o yaml |
-  kubectl apply -f -
-kubectl -n kube-aiops-system patch deployment kube-aiops-api --type=strategic \
-  --patch-file deploy/examples/holmes/api-bindings.patch
-kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
-```
+给试点账号授予目标范围的数据源读取权限和 `diagnosis.health.investigate`。打开 **诊断总览 → 告警详情 → AI 深度调查**，确认返回分析结果。对比启用前后总览的相同筛选条件，统计和最近诊断仍来自原数据源。
 
-补丁会挂载 Secret 并设置 API 读取路径。后续通过 GitOps 或流水线发布时，将补丁中的挂载和配置合入正式 Deployment，否则下一次发版可能覆盖本次设置。健康告警调查最多等待 Holmes 45 秒。若实际入口超时更短，为 `/api/v1/diagnostics/health/` 留足等待时间，例如 Gateway 后端 55 秒、请求 60 秒，前置 NGINX 读取超时至少 60 秒。
-
-### 5. 在页面验收并扩展到其他来源
-
-管理员可进入 **AI 服务 → AI 服务配置** 查看当前绑定，按环境筛选并测试服务和模型列表。选择「新增连接」，选定已部署范围，点击「发现模型」，设置 fast-model 和 accurate-model 并保存草稿。点击「发布配置」后，Portal 会再次校验 Holmes 的模型列表，再将版本写为生效。发布校验失败时保留上一个版本。以上操作使用 Holmes 已注册的模型别名；模型提供商的实际地址、API Key 和模型定义仍在 Helm 部署侧配置。
+健康告警调查最多等待 Holmes 45 秒。若入口代理超时更短，为 `/api/v1/diagnostics/health/` 留足等待时间，例如 Gateway 后端 55 秒、请求 60 秒，前置 NGINX 读取超时至少 60 秒。
 
 在 **AI 服务 → AI 技能** 上传 SKILL.md，或从已发布的排障手册转化并提交审核。由另一位管理员审核通过后，匹配范围的调查会使用该技能作为参考。
 
-给试点账号授予目标范围的数据源读取权限和 `diagnosis.health.investigate`。打开 **诊断总览 → 告警详情 → AI 深度调查**，确认有分析结果。对比启用前后总览的相同筛选条件，统计和最近诊断仍来自原数据源。
-
-扩展时，在 `bindings.json` 数组追加对应记录，重新执行第 4 步的 Secret 更新命令。字段按实际值精确匹配，表中未列出的范围字段可以省略。
-
-| `source` | `sourceId` | 需要填写的范围 |
-| --- | --- | --- |
-| `zabbix` | 告警响应的 `sourceId` | `environmentId`、`businessId` |
-| `alertmanager` | 在浏览器网络面板搜索 `observability/alerts`，取告警的 `sourceId` | `scope` 中的 `environmentId`、`businessId`、`clusterId`，告警的 `namespace` 有值时也要填写 |
-| `finding` | Finding 所在集群 ID，与 `clusterId` 一致 | `clusterId`、实际 `namespace` |
-| `incident` | 事件所在集群 ID，与 `clusterId` 一致 | `environmentId`、`businessId`、`clusterId`、实际 `namespace` |
-| `wiki` | 固定为 `published-excerpts` | 使用独立 Holmes 实例的 `endpoint`，禁用外部查询、MCP 和执行工具 |
-
-例如 Alertmanager 条目可以写成下面这样。把返回的 ID 和命名空间逐个替换，条目与已有 Zabbix 对象之间加一个逗号。
-
-```json
-{
-  "source": "alertmanager",
-  "sourceId": "am-prod",
-  "environmentId": "prod",
-  "businessId": "orders",
-  "clusterId": "prod-sh-01",
-  "namespace": "orders",
-  "endpoint": "http://holmes-pilot-holmes.holmes-pilot.svc",
-  "model": "accurate-model"
-}
-```
-
-这个地址适用于同一个无工具试点实例。如果两个范围配置了不同的取证工具和凭据，则分别部署并填写各自的服务地址。每个实例用独立命名空间，重复第 1–2 步时替换命名空间和 release 名称。这个 Chart 的 Service 通过 `app: holmes` 匹配 Pod，同一命名空间的多套 release 会混用后端。Wiki 应只接收 Portal 已授权的发布章节。任何启用了只读数据源工具的实例，其凭据和访问范围要与绑定一致。
-
-### 6. 排错与回滚
+### 5. 排错与回滚
 
 ```bash
 kubectl -n holmes-pilot get pods,svc,endpointslice
@@ -916,11 +872,13 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --since=10m --tail=1
 | 现象 | 检查 |
 | --- | --- |
 | Holmes 容器未就绪 | 用 `kubectl -n holmes-pilot get events --sort-by=.lastTimestamp` 查看镜像拉取和 Secret 挂载错误。 |
-| `HOLMES_SCOPE_UNCONFIGURED` | 对照告警的来源 ID、环境、业务、集群和命名空间，确认 Secret 已更新。 |
+| 试点服务已就绪，尚无数据范围绑定 | 在页面为目标数据源新增范围绑定，再检查告警命名空间是否精确一致。 |
+| Portal 显示试点服务不可达或未就绪 | 检查 API 到 Holmes Service 的 DNS 和网络策略。如 Helm release 或命名空间有变动，核对 `HOLMES_PILOT_ENDPOINT`。 |
+| `HOLMES_SCOPE_UNCONFIGURED` | 对照页面绑定中的来源 ID、环境、业务、集群和命名空间。 |
 | `HOLMES_UNAVAILABLE` 或调用超时 | 先重跑第 2 步检查模型，再核对 Service 地址、NetworkPolicy、模型别名和入口代理时限。 |
 | 账号无法发起调查 | 核对数据源读取权限和 `diagnosis.health.investigate` 的范围。 |
 
-撤掉某个范围时，从绑定数组删掉该条并重新应用 Secret，等待挂载更新后在页面复验。只部署了本例一个范围时，可以将文件内容改成 `[]` 再重新应用。已有 Finding、事件 RCA 和 Wiki 可回到各自的既有模型路径。健康告警继续显示，发起调查时会提示该范围未配置。
+暂停某个范围时，在连接编辑页勾选「暂停此范围的 Holmes 调用」，保存草稿并发布。Finding、事件 RCA 和 Wiki 使用各自的回退路径，健康告警仍在总览显示。
 
 ## 排查与清理
 
