@@ -20,7 +20,7 @@ const pickerDescriptions: Record<string, string> = { zabbix: "同步主机问题
 const familyNames: Record<Family, string> = { zabbix: "Zabbix", observability: "观测数据源", assets: "资产数据源" };
 type Data = { records: SourceRecord[]; legacy?: string[]; next?: string };
 type Filters = { query?: string; environment?: string; kind?: string; state?: string; grouped?: boolean };
-type Permissions = { write: boolean; test: boolean; createIncident: boolean };
+type Permissions = { write: boolean; test: boolean; createIncident: boolean; aiAdmin?: boolean };
 
 async function readFamily(family: Family, cursor?: string): Promise<Data> {
   if (family === "zabbix") {
@@ -126,7 +126,7 @@ function listRow(row: SourceRecord, permissions: Permissions, scopes: ZabbixScop
   const key = h(sourceKey(row));
   const name = h(sourceName(row));
   const recent = sourceActivity(row);
-  const menu = editActions(row, permissions, working) + lifecycle(row, permissions, working);
+  const menu = editActions(row, permissions, working) + lifecycle(row, permissions, working) + holmesBindingLink(row, permissions);
   return `<tr data-source-row="${key}"><td><button type="button" class="resource-name" data-source-action="detail" data-source-key="${key}">${name}</button>
       <small>${h(typeNames[sourceKind(row)])}${row.family === "assets" && row.source.config.kind === "zabbix" ? " · 存量资产" : ""}</small></td>
     ${resourceCell("所属范围", h(sourceScope(row, scopes)))}
@@ -134,6 +134,13 @@ function listRow(row: SourceRecord, permissions: Permissions, scopes: ZabbixScop
     ${resourceCell("最近活动", `${recent.time}<small>${recent.label}</small>`)}
     <td><div class="catalog-actions">${mainAction(row, permissions, working, failure)}
       ${menu ? `<details class="resource-row-menu"><summary aria-label="${name}的更多操作">⋯</summary><div>${menu}</div></details>` : ""}</div></td></tr>`;
+}
+
+function holmesBindingLink(row: SourceRecord, permissions: Permissions): string {
+  if (!permissions.aiAdmin || !row.source.enabled) return "";
+  if (row.family !== "zabbix" && (row.family !== "observability" || row.source.kind !== "alertmanager")) return "";
+  const params = new URLSearchParams({bindSource: row.family === "zabbix" ? "zabbix" : "alertmanager", sourceId: row.source.id});
+  return `<a class="button secondary" href="#/ai?${h(params.toString())}">绑定 Holmes</a>`;
 }
 
 function detailBody(row: SourceRecord, failure: string | undefined): string {

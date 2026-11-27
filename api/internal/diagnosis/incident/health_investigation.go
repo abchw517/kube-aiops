@@ -114,3 +114,43 @@ func (s *Server) investigateHealth(w http.ResponseWriter, r *http.Request, p ide
 	}{cleanText(analysis, 64<<10), *skills})
 	return nil
 }
+
+// ValidateHolmesAlertScope checks the current source record before an administrator binds it.
+func (s *Server) ValidateHolmesAlertScope(ctx context.Context, p identity.Principal, scope holmes.Scope) error {
+	switch scope.Source {
+	case "zabbix":
+		if s.Zabbix == nil {
+			return ErrNotFound
+		}
+		d, err := s.sourceZabbix(ctx, p, scope.SourceID, ConnectorRead)
+		if err != nil {
+			return err
+		}
+		if d.Enabled && d.Scope.Environment == scope.Environment && d.Scope.Business == scope.Business {
+			return nil
+		}
+	case "alertmanager":
+		if s.Observability == nil {
+			return ErrNotFound
+		}
+		d, err := s.Store.obsByID(ctx, scope.SourceID)
+		if err != nil {
+			return err
+		}
+		if !d.Enabled || d.Kind != "alertmanager" || !s.obsAllowed(d.ObservabilitySource) ||
+			d.Scope.Environment != scope.Environment || d.Scope.Business != scope.Business || d.Scope.Cluster != scope.Cluster {
+			return ErrBadScope
+		}
+		if err := s.obsScope(ctx, p, ConnectorRead, d.Scope); err != nil {
+			return err
+		}
+		ok, err := s.Observability.AlertNamespace(ctx, d.Scope, scope.Namespace)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+	}
+	return ErrBadScope
+}

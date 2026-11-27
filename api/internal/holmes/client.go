@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -27,6 +28,7 @@ type binding struct {
 	Endpoint string `json:"endpoint"`
 	APIKey   string `json:"apiKey,omitempty"`
 	Model    string `json:"model,omitempty"`
+	Managed  bool   `json:"-"`
 }
 
 var ErrUnavailable = errors.New("Holmes investigation unavailable")
@@ -44,16 +46,24 @@ type ConfiguredModel struct {
 	Model      string `json:"model"`
 	Service    string `json:"service,omitempty"`
 	Credential string `json:"credential,omitempty"`
+	Managed    bool   `json:"managed,omitempty"`
 }
 
-func ConfiguredModels() ([]ConfiguredModel, error) {
-	bindings, err := readBindings()
-	if err != nil {
-		return nil, err
+func ConfiguredModels(ctx context.Context) ([]ConfiguredModel, error) {
+	bindings, legacyErr := readBindings()
+	if w := WorkspaceFrom(ctx); w != nil {
+		entries, err := ListEntries[scopeBinding](ctx, w, "binding")
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			bindings = slices.DeleteFunc(bindings, func(b binding) bool { return b.Scope == entry.Data.Scope })
+			bindings = append(bindings, entry.Data.resolve())
+		}
 	}
 	out := make([]ConfiguredModel, 0, len(bindings))
 	for _, entry := range bindings {
-		view := ConfiguredModel{Scope: entry.Scope, Model: entry.Model, Credential: "集群内连接"}
+		view := ConfiguredModel{Scope: entry.Scope, Model: entry.Model, Credential: "集群内连接", Managed: entry.Managed}
 		if endpoint, err := endpointFor(entry, ""); err == nil {
 			view.Service = (&url.URL{Scheme: endpoint.Scheme, Host: endpoint.Host}).String()
 		}
@@ -62,7 +72,10 @@ func ConfiguredModels() ([]ConfiguredModel, error) {
 		}
 		out = append(out, view)
 	}
-	return out, nil
+	if errors.Is(legacyErr, ErrUnconfigured) {
+		legacyErr = nil
+	}
+	return out, legacyErr
 }
 
 func readBindings() ([]binding, error) {
@@ -81,7 +94,20 @@ func readBindings() ([]binding, error) {
 	return bindings, nil
 }
 
-func configuredBinding(scope Scope) (binding, error) {
+func configuredBinding(ctx context.Context, scope Scope) (binding, error) {
+	if w := WorkspaceFrom(ctx); w != nil {
+		entry, err := GetEntry[scopeBinding](ctx, w, "binding", ScopeID(scope))
+		if err != nil {
+			return binding{}, err
+		}
+		if entry.Version > 0 {
+			return entry.Data.resolve(), nil
+		}
+	}
+	return legacyBinding(scope)
+}
+
+func legacyBinding(scope Scope) (binding, error) {
 	bindings, err := readBindings()
 	if err != nil {
 		return binding{}, err
@@ -113,15 +139,19 @@ func endpointFor(selected binding, path string) (*url.URL, error) {
 
 // CheckService verifies Holmes readiness without forwarding user input to a model.
 func CheckService(ctx context.Context, scope Scope) error {
+	selected, err := configuredBinding(ctx, scope)
+	if err != nil {
+		return err
+	}
+	return checkService(ctx, selected)
+}
+
+func checkService(ctx context.Context, selected binding) error {
 	select {
 	case active <- struct{}{}:
 		defer func() { <-active }()
 	default:
 		return ErrUnavailable
-	}
-	selected, err := configuredBinding(scope)
-	if err != nil {
-		return err
 	}
 	endpoint, err := endpointFor(selected, "/readyz")
 	if err != nil {
@@ -147,7 +177,7 @@ func CheckService(ctx context.Context, scope Scope) error {
 }
 
 func Chat(ctx context.Context, scope Scope, prompt string, evidence any, format any) (string, error) {
-	selected, err := configuredBinding(scope)
+	selected, err := configuredBinding(ctx, scope)
 	if err != nil {
 		return "", err
 	}

@@ -1,3 +1,4 @@
+import { apiClient } from "../../api/client.ts";
 import { escapeHtml as h } from "../../components/html.ts";
 
 export const endpoint = "/api/v1/admin/ai-services";
@@ -7,11 +8,12 @@ const sources: Record<string, string> = {
 };
 
 export type Scope = { source: string; sourceId: string; environmentId: string; businessId: string; clusterId?: string; namespace?: string };
-type Model = Scope & { model: string; service?: string; credential?: string };
+type Model = Scope & { model: string; service?: string; credential?: string; managed?: boolean };
 type Settings = { name: string; provider: string; fast: string; accurate: string; disabled: boolean };
 type Connection = { scope: Scope; desired: Settings; effective: Settings; effectiveVersion: number; publishedAt?: string };
 export type Entry<T> = { id: string; version: number; data: T };
-type ServiceStatus = { status: "configured" | "unconfigured" | "invalid"; models: Model[]; connections?: Entry<Connection>[] };
+type ServiceStatus = { status: "configured" | "unconfigured" | "invalid"; models: Model[]; connections?: Entry<Connection>[];
+  pilot?: { address?: string; status: "ready" | "unreachable" | "invalid" } };
 const providers = ["vLLM", "Ollama", "OpenAI", "DeepSeek", "智谱 AI", "OpenAI 兼容"];
 
 export async function requestAI<T>(path: string, body?: unknown): Promise<T> {
@@ -25,7 +27,7 @@ export async function requestAI<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export function scopeOf({ source, sourceId, environmentId, businessId, clusterId, namespace }: Scope): Scope {
-  return { source, sourceId, environmentId, businessId, clusterId, namespace };
+  return { source, sourceId, environmentId, businessId, clusterId: clusterId || undefined, namespace: namespace || undefined };
 }
 
 export function scopeText(m: Scope): string {
@@ -39,13 +41,15 @@ function connectionFor(data: ServiceStatus, model: Model) {
 export async function loadAIServices() {
   const data = await requestAI<ServiceStatus>(endpoint);
   const environments = [...new Set(data.models.map(m => m.environmentId).filter(Boolean))].sort();
-  const label = { configured: "已接入部署绑定", unconfigured: "尚未绑定", invalid: "配置读取失败" }[data.status];
+  const bindingStatus = data.models.length ? `已绑定 ${data.models.length} 个范围` : "尚无数据范围绑定";
+  const pilotStatus = data.pilot && { ready: "试点服务已就绪", unreachable: "试点服务不可达或未就绪",
+    invalid: "试点服务地址无效" }[data.pilot.status];
   const rows = data.models.map((m, index) => {
     const entry = connectionFor(data, m);
     const current = entry?.data.effective;
     const desired = entry?.data.desired;
     const pending = entry && (entry.data.effectiveVersion === 0 || JSON.stringify(current) !== JSON.stringify(desired));
-    return `<tr data-ai-model-row="${h(m.environmentId)}"><td><strong>${h(desired?.name ?? sources[m.source] ?? m.source)}</strong><small>${h(desired?.provider ?? "Holmes 部署绑定")}</small></td>
+    return `<tr data-ai-model-row="${h(m.environmentId)}"><td><strong>${h(desired?.name ?? sources[m.source] ?? m.source)}</strong><small>${h(desired?.provider ?? (m.managed ? "Portal 绑定" : "部署绑定"))}</small></td>
       <td>${h(m.service ?? "由部署提供")}<small>${h(scopeText(m))}</small></td><td>${h(m.credential ?? "由部署提供")}</td>
       <td>${h(current?.fast || m.model || "Holmes 默认模型")}${current?.accurate && current.accurate !== current.fast ? ` · ${h(current.accurate)}` : ""}</td>
       <td><span role="status">${pending ? "待发布" : current?.disabled ? "已暂停" : entry ? "已发布" : "待检查"}</span></td>
@@ -59,16 +63,19 @@ export async function loadAIServices() {
       <button class="button secondary" type="button" data-ai-architecture>查看架构</button>
       <button class="button secondary" type="button" data-ai-refresh>重新读取配置</button>
     </div></section>
-    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>HolmesGPT 服务</h2><span>${label}</span></header><dl>
+    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>HolmesGPT 服务</h2><span>${h(bindingStatus)}</span></header><dl>
+      <dt>服务状态</dt><dd>${h(pilotStatus ?? "待检查")}${data.pilot?.address ? ` · ${h(data.pilot.address)}` : ""}</dd>
       <dt>部署形态</dt><dd>独立内部服务，经 Portal API 鉴权</dd>
       <dt>接入端点</dt><dd>HolmesGPT /api/chat</dd>
       <dt>能力入口</dt><dd><a href="#/resources/datasources">数据源管理</a> · <a href="#/ai/skills">AI 技能</a></dd>
       <dt>模型回退</dt><dd>Finding 复核、事件 RCA 和知识问答沿用既有回退规则</dd>
     </dl></section>
-    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>模型连接</h2>
-      <button class="button" type="button" data-ai-add ${data.models.length ? "" : "disabled"}>新增连接</button></header>
-      <p>通过已部署的 Holmes 发现模型。服务地址和凭据由部署绑定维护。</p><p data-ai-action-status role="status"></p>
-      ${rows ? `<div class="table-wrap"><table><thead><tr><th>提供商 / 类型</th><th>服务地址</th><th>凭据</th><th>生效模型</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>请先部署 Holmes 并添加范围绑定。</p>"}
+    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>数据范围绑定与模型连接</h2>
+      <div class="system-actions"><button class="button" type="button" data-ai-bind>新增范围绑定</button>
+      <button class="button secondary" type="button" data-ai-add ${data.models.length ? "" : "disabled"}>新增模型连接</button></div></header>
+      <p>先绑定需要 AI 调查的数据范围，再按需设置模型档位。</p>
+      ${data.status === "invalid" ? '<p role="alert">部分绑定配置读取失败，请检查 API 日志或部署配置。</p>' : ""}<p data-ai-action-status role="status"></p>
+      ${rows ? `<div class="table-wrap"><table><thead><tr><th>提供商 / 类型</th><th>服务地址</th><th>凭据</th><th>生效模型</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>从「新增范围绑定」选择已接入的数据源，或指定集群和命名空间。</p>"}
     </section>
     <section class="panel ai-panel"><h2>模型档位与发布版本</h2>
       <p>fast-model 用于知识问答和增强复核，accurate-model 用于告警调查、初步复核和 RCA。可按绑定暂停 Holmes 调用。</p>
@@ -121,7 +128,7 @@ function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () =
   if (!scope.options.length) { save.disabled = true; discover.disabled = true; status.textContent = "现有范围已配置，可在列表编辑。"; }
   const source = form.querySelector("[data-ai-connection-source]");
   const showSource = () => {
-    const selected = data.models[Number(scope.value)];
+    const selected = scope.value === "" ? undefined : data.models[Number(scope.value)];
     if (source) source.textContent = selected ? `服务地址 ${selected.service ?? "由部署提供"} · 凭据 ${selected.credential ?? "由部署提供"}` : "";
   };
   showSource();
@@ -157,12 +164,20 @@ function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () =
   });
 }
 
-export function bindAIServices(root: HTMLElement, data: ServiceStatus, reload: () => void): void {
+export function bindAIServices(root: HTMLElement, data: ServiceStatus, reload: () => void, hash = ""): void {
   const dialog = root.querySelector<HTMLDialogElement>("[data-ai-dialog]");
   if (!dialog) return;
   root.querySelector("[data-ai-refresh]")?.addEventListener("click", reload);
   root.querySelector("[data-ai-architecture]")?.addEventListener("click", () => aiDialog(dialog,
     "HolmesGPT 部署与调用路径", "<p>Web Portal → Go API → 范围绑定的 HolmesGPT 服务 → 已部署的模型提供商。</p><p>发布后，新请求按绑定使用对应档位。模型服务地址和凭据在部署侧配置。</p>"));
+  root.querySelector("[data-ai-bind]")?.addEventListener("click", () => void openBinding(dialog, reload));
+  const params = new URLSearchParams(hash.split("?")[1]);
+  const source = params.get("bindSource");
+  const sourceId = params.get("sourceId");
+  if ((source === "zabbix" || source === "alertmanager") && sourceId) {
+    history.replaceState(null, "", "#/ai");
+    void openBinding(dialog, reload, source, sourceId);
+  }
   root.querySelector("[data-ai-add]")?.addEventListener("click", () => openEditor(dialog, data, reload));
   const filter = root.querySelector<HTMLSelectElement>("[data-ai-environment]");
   filter?.addEventListener("change", () => {
@@ -197,4 +212,96 @@ export function bindAIServices(root: HTMLElement, data: ServiceStatus, reload: (
       }
     });
   }
+}
+
+type SourceChoice = { scope: Scope; name: string };
+
+async function openBinding(dialog: HTMLDialogElement, reload: () => void, initialSource = "zabbix", initialID = "") {
+  aiDialog(dialog, "新增范围绑定", `<form class="ai-form">
+    <label>绑定类型<select name="source">${Object.entries(sources).map(([code, name]) =>
+      `<option value="${h(code)}" ${code === initialSource ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>
+    <div data-binding-fields></div>
+    <div class="system-actions"><button class="button secondary" type="button" data-binding-discover>发现模型</button></div>
+    <label>模型别名<select name="model" required><option value="">请先发现模型</option></select></label>
+    <p role="status"></p><div class="system-actions"><button class="button" type="submit">保存并启用绑定</button></div>
+  </form>`);
+  const form = dialog.querySelector<HTMLFormElement>("form");
+  const fields = form?.querySelector<HTMLElement>("[data-binding-fields]");
+  const source = form?.querySelector<HTMLSelectElement>("[name=source]");
+  const model = form?.querySelector<HTMLSelectElement>("[name=model]");
+  const discover = form?.querySelector<HTMLButtonElement>("[data-binding-discover]");
+  const save = form?.querySelector<HTMLButtonElement>("[type=submit]");
+  const status = form?.querySelector("[role=status]");
+  if (!form || !fields || !source || !model || !discover || !save || !status) return;
+  let choices: SourceChoice[] = [];
+  let loading = false;
+  let selectionVersion = 0;
+  const changeSource = async (selectedID = "") => {
+    const version = ++selectionVersion;
+    const kind = source.value;
+    choices = [];
+    model.replaceChildren(new Option("请先发现模型", ""));
+    status.textContent = "";
+    if (kind === "zabbix" || kind === "alertmanager") {
+      loading = true;
+      fields.textContent = "正在读取已接入的数据源…";
+      try {
+        const records = kind === "zabbix" ? (await apiClient.listZabbixSources()).items :
+          (await apiClient.listObservabilitySources()).items.filter(item => item.kind === "alertmanager");
+        if (version !== selectionVersion || !form.isConnected) return;
+        choices = records.filter(item => item.enabled).map(item => ({
+          scope: {source: kind, sourceId: item.id, ...item.scope}, name: item.name || item.id,
+        }));
+        if (!choices.length) {
+          fields.innerHTML = '<p>当前没有已启用的数据源。<a href="#/resources/datasources">打开数据源管理</a></p>';
+          return;
+        }
+        fields.innerHTML = `<label>数据源<select name="sourceId" required><option value="">请选择</option>
+          ${choices.map(({scope, name}) => `<option value="${h(scope.sourceId)}">${h(name)} · ${h(scopeText(scope))}</option>`).join("")}</select></label>
+          ${kind === "alertmanager" ? '<label>告警命名空间<input name="namespace" maxlength="128" placeholder="告警没有 namespace 时留空"></label>' : ""}`;
+        const picker = fields.querySelector<HTMLSelectElement>("[name=sourceId]");
+        if (picker && choices.some(choice => choice.scope.sourceId === selectedID)) picker.value = selectedID;
+      } catch {
+        if (version === selectionVersion) fields.textContent = "无法读取数据源。请检查数据源管理的权限与接入状态。";
+      } finally {
+        if (version === selectionVersion) loading = false;
+      }
+      return;
+    }
+    loading = false;
+    fields.innerHTML = kind === "wiki" ? "<p>知识问答使用部署侧配置的独立 Holmes 服务。</p>" :
+      `<label>集群 ID<input name="clusterId" required maxlength="128"></label>
+       <label>命名空间<input name="namespace" maxlength="128" placeholder="记录没有命名空间时留空"></label>
+       ${kind === "incident" ? '<label>环境 ID<input name="environmentId" maxlength="128"></label><label>业务 ID<input name="businessId" maxlength="128"></label>' : ""}`;
+  };
+  source.addEventListener("change", () => void changeSource());
+  discover.addEventListener("click", () => void showResult(discover, status, async () => {
+    const version = selectionVersion;
+    const { models } = await requestAI<{models: string[]}>(`${endpoint}?action=discover-binding`, {source: source.value});
+    if (version !== selectionVersion || !form.isConnected) return;
+    model.replaceChildren(...(models.length ? models.map(alias => new Option(alias, alias)) : [new Option("Holmes 未返回别名", "")]));
+    status.textContent = models.length ? `已发现 ${models.length} 个模型别名` : "请先在 Holmes 中配置模型。";
+  }));
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    void showResult(save, status, async () => {
+      const kind = source.value;
+      const values = new FormData(form);
+      const field = (name: string) => String(values.get(name) ?? "").trim();
+      const picked = choices.find(choice => choice.scope.sourceId === field("sourceId"));
+      if (loading || ((kind === "zabbix" || kind === "alertmanager") && !picked)) {
+        throw new Error("请选择已接入并启用的数据源。");
+      }
+      const scope: Scope = picked ? {...picked.scope} : {
+        source: kind, sourceId: kind === "wiki" ? "published-excerpts" : field("clusterId"),
+        environmentId: field("environmentId"), businessId: field("businessId"), clusterId: field("clusterId"),
+      };
+      scope.namespace = field("namespace");
+      await requestAI(`${endpoint}?action=bind`, {...scope, model: model.value});
+      if (!form.isConnected) return;
+      dialog.close();
+      reload();
+    });
+  });
+  await changeSource(initialID);
 }

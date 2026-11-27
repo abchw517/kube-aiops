@@ -47,8 +47,8 @@ func serveAISkills(w http.ResponseWriter, r *http.Request, wikis *wiki.Service, 
 		}
 		action := r.URL.Query().Get("action")
 		if action == "manual" || action == "upload" {
-			models, err := holmes.ConfiguredModels()
-			if err != nil || input.Scope.Source == "wiki" || !slices.ContainsFunc(models, func(m holmes.ConfiguredModel) bool { return m.Scope == input.Scope }) {
+			models, _ := holmes.ConfiguredModels(ctx)
+			if input.Scope.Source == "wiki" || !slices.ContainsFunc(models, func(m holmes.ConfiguredModel) bool { return m.Scope == input.Scope }) {
 				http.Error(w, "请先选择有效的诊断范围绑定", 400)
 				return
 			}
@@ -99,7 +99,7 @@ func serveAISkills(w http.ResponseWriter, r *http.Request, wikis *wiki.Service, 
 				Scope: input.Scope, Name: name, Body: body, Applies: sanitizer.WikiText(input.Applies, 320), Keyword: strings.TrimSpace(input.Keyword),
 				ManualID: input.ManualID, ManualRevision: revision, Author: actor.Subject, Status: "review",
 			}}
-			if err = holmes.SaveEntry(ctx, workspace, "skill", entry); err != nil {
+			if err := holmes.SaveEntry(ctx, workspace, "skill", entry); err != nil {
 				writeAIError(w, err)
 				return
 			}
@@ -144,7 +144,7 @@ func serveAISkills(w http.ResponseWriter, r *http.Request, wikis *wiki.Service, 
 			}
 			skill.Status = "disabled"
 		}
-		if err = holmes.SaveEntry(ctx, workspace, "skill", entry); err != nil {
+		if err := holmes.SaveEntry(ctx, workspace, "skill", entry); err != nil {
 			writeAIError(w, err)
 			return
 		}

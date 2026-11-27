@@ -51,7 +51,7 @@ const fields = document.getElementById("fields");
 const feedback = document.getElementById("feedback");
 const submit = document.getElementById("submit");
 const example = {name:"生产 Holmes", provider:"vLLM", fast:"qwen-fast", accurate:"qwen-accurate"};
-const state = {environment:"prod", desired:null, effective:example, version:1, live:1, status:"", skills:[]};
+const state = {environment:"prod", desired:null, effective:example, version:1, live:1, status:"", skills:[], bindings:[]};
 const esc = value => String(value).replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 document.getElementById("close").onclick = () => modal.close();
 function openDialog(heading, content, label, save) {
@@ -69,12 +69,14 @@ function openDialog(heading, content, label, save) {
 function configuration() {
   const model = state.desired || state.effective;
   return '<h1>AI 服务配置</h1><section class="bar"><label>环境 <select id="environment"><option value="prod">生产</option><option value="uat">验收</option></select></label><button data-action="architecture">查看架构</button></section>' +
-    '<section><h2>HolmesGPT 服务</h2><p>独立内部服务，Portal API 按绑定调用 /api/chat。</p><p>Finding 复核、事件 RCA 和知识问答沿用既有回退规则。</p></section>' +
-    '<section><div class="bar between"><h2>模型连接</h2><button class="primary" data-action="add" ' + (state.environment === "uat" ? "disabled" : "") + '>新增连接</button></div>' +
-    (state.environment === "uat" ? '<p>请先部署 Holmes 并添加范围绑定。</p>' :
+    '<section><h2>HolmesGPT 服务</h2><p>试点服务已就绪</p><p>' + ("已绑定 " + ((state.environment === "prod" ? 1 : 0) + state.bindings.filter(row => row.environment === state.environment).length) + " 个范围") + '</p></section>' +
+    '<section><div class="bar between"><h2>数据范围绑定与模型连接</h2><div class="bar"><button class="primary" data-action="bind">新增范围绑定</button><button data-action="add" ' + (state.environment === "uat" ? "disabled" : "") + '>新增模型连接</button></div></div>' +
+    (state.environment === "uat" ? '<p>从已接入的数据源选择需要调查的范围。</p>' :
     '<div class="table"><table><thead><tr><th>提供商 / 类型</th><th>服务地址</th><th>凭据</th><th>生效模型</th><th>操作</th></tr></thead><tbody><tr><td>' + esc(model.name) + ' · ' + esc(model.provider) +
     '</td><td>https://holmes.example</td><td>部署绑定凭据</td><td>' + esc(state.effective.fast) + ' · ' + esc(state.effective.accurate) + '</td><td class="bar"><button data-action="probe">测试连接</button><button data-action="edit">编辑</button>' +
-    (state.desired ? '<button class="primary" data-action="publish">发布配置</button>' : '') + '</td></tr></tbody></table></div><p role="status">' + esc(state.status) + '</p>') + '</section>' +
+    (state.desired ? '<button class="primary" data-action="publish">发布配置</button>' : '') + '</td></tr></tbody></table></div><p role="status">' + esc(state.status) + '</p>') +
+    '<ul>' + state.bindings.filter(row => row.environment === state.environment).map(row => '<li>' + esc(row.source) + ' · ' +
+      esc(row.scope) + ' · ' + esc(row.model) + ' · 已绑定</li>').join("") + '</ul></section>' +
     '<section><h2>模型档位与发布版本</h2><p>期望 v' + state.version + ' · 生效 v' + state.live + '</p></section>';
 }
 function skills() {
@@ -101,6 +103,35 @@ page.onclick = event => {
   if (!button) return;
   const action = button.dataset.action;
   if (action === "architecture") openDialog("HolmesGPT 部署与调用路径", "<p>Web Portal → Go API → 范围绑定的 HolmesGPT → 模型提供商</p>");
+  if (action === "bind") {
+    openDialog("新增范围绑定",
+      '<label>数据源<select name="source"><option>生产 Zabbix</option><option>预发 Alertmanager</option></select></label>' +
+      '<p id="scope-preview"></p><label id="namespace-field">告警命名空间<input name="namespace"></label>' +
+      '<button type="button" id="discover-binding">发现模型</button><label>模型别名<select name="model" required></select></label>',
+      "保存并启用绑定", values => {
+        const isZabbix = values.get("source") === "生产 Zabbix";
+        state.environment = isZabbix ? "prod" : "uat";
+        const scope = fields.querySelector("#scope-preview").textContent;
+        state.bindings.push({source: values.get("source"), scope: [scope, values.get("namespace")].filter(Boolean).join(" / "),
+          model: values.get("model"), environment: state.environment});
+        modal.close();
+        render();
+      });
+    const source = form.elements.namedItem("source");
+    if (state.environment === "uat") source.selectedIndex = 1;
+    const showScope = () => {
+      const isZabbix = source.selectedIndex === 0;
+      fields.querySelector("#scope-preview").textContent = isZabbix ? "生产 / 运维" : "验收 / 应用 / uat-k8s";
+      fields.querySelector("#namespace-field").hidden = isZabbix;
+      form.elements.namedItem("namespace").disabled = isZabbix;
+    };
+    source.onchange = showScope;
+    showScope();
+    fields.querySelector("#discover-binding").onclick = () => {
+      form.elements.namedItem("model").replaceChildren(new Option("accurate-model", "accurate-model"));
+      feedback.textContent = "已发现 1 个模型别名。";
+    };
+  }
   if (action === "probe") { state.status = "服务已就绪 · 2 个模型"; render(); }
   if (action === "add" || action === "edit") {
     const model = state.desired || state.effective;
