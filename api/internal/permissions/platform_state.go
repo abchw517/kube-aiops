@@ -336,9 +336,16 @@ func RecordDiagnosticOperation(ctx context.Context, tx *sql.Tx, actor, action, t
 		"merged": "归并故障", "merged_into": "接收归并故障", "split": "拆分故障", "split_created": "创建拆分故障",
 		"topology_changed": "维护故障拓扑", "rca_queued": "启动根因分析", "rca_completed": "完成根因分析",
 		"rca_canceled": "取消根因分析", "rca_saved": "保存根因分析结论", "signal_received": "接收连接器信号",
-		"datasource_saved": "维护诊断数据源", "datasource_checked": "测试诊断数据源", "policy_saved": "维护诊断策略",
+		"datasource_saved": "维护诊断数据源", "datasource_deleted": "删除资产数据源",
+		"zabbix_source_saved": "维护 Zabbix 数据源", "zabbix_source_deleted": "删除 Zabbix 数据源",
+		"observability.delete": "删除观测数据源", "datasource_checked": "测试诊断数据源", "policy_saved": "维护诊断策略",
 	}[action]
-	return writeOperation(ctx, tx, operation{Actor: actor, Action: label, Risk: "中", Target: target})
+	risk := "中"
+	switch action {
+	case "datasource_deleted", "zabbix_source_deleted", "observability.delete":
+		risk = "高"
+	}
+	return writeOperation(ctx, tx, operation{Actor: actor, Action: label, Risk: risk, Target: target})
 }
 
 func (a *Admin) OperationGroupExists(ctx context.Context, id string) (bool, error) {

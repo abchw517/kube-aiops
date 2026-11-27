@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 697b5982 5a3f94c2 b58e9861 19889a13 5da4cb15 c96ac69b deb27bc9 cf155b20
+// Contract source SHA-256 groups: 4ce29a03 a726fc19 116f53dd 1e644062 93ebb59c 56ef4d89 f35d4a25 8f86bfb8
 
 export interface ObservabilityScope {
   "environmentId": string;
@@ -195,6 +195,7 @@ export interface ZabbixSelection {
 }
 
 export interface ZabbixChange {
+  "name"?: string;
   "draft"?: string;
   "groupIds"?: Array<string>;
   "enabled"?: boolean;
@@ -908,6 +909,11 @@ export interface CreateDiagnosticDatasourceParams {
   "body": DatasourceInput;
 }
 
+export interface DeleteDiagnosticDatasourceParams {
+  "datasourceId": string;
+  "If-Match": string;
+}
+
 export interface UpdateDiagnosticDatasourceParams {
   "datasourceId": string;
   "If-Match": string;
@@ -946,6 +952,11 @@ export interface CreateZabbixSourceParams {
   "body": ZabbixSelection;
 }
 
+export interface DeleteZabbixSourceParams {
+  "sourceId": string;
+  "If-Match": string;
+}
+
 export interface UpdateZabbixSourceParams {
   "sourceId": string;
   "If-Match": string;
@@ -977,6 +988,11 @@ export interface CreateObservabilitySourceParams {
 
 export interface ProbeObservabilitySourceParams {
   "body": ObservabilityInput;
+}
+
+export interface DeleteObservabilitySourceParams {
+  "sourceId": string;
+  "If-Match": string;
 }
 
 export interface UpdateObservabilitySourceParams {
@@ -1304,6 +1320,13 @@ export class KubeAIOpsApiClient {
     return this.request<DiagnosticDatasource>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
   }
 
+  async deleteDiagnosticDatasource(params: DeleteDiagnosticDatasourceParams): Promise<void> {
+    let path = `/api/v1/diagnostics/datasources/${encodeURIComponent(String(params["datasourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    return this.request<void>(path, { method: "DELETE", headers });
+  }
+
   async updateDiagnosticDatasource(params: UpdateDiagnosticDatasourceParams): Promise<DiagnosticDatasource> {
     let path = `/api/v1/diagnostics/datasources/${encodeURIComponent(String(params["datasourceId"]))}`;
     const headers: Record<string, string> = {};
@@ -1371,6 +1394,13 @@ export class KubeAIOpsApiClient {
     return this.request<ZabbixSource>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
   }
 
+  async deleteZabbixSource(params: DeleteZabbixSourceParams): Promise<void> {
+    let path = `/api/v1/diagnostics/zabbix/sources/${encodeURIComponent(String(params["sourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    return this.request<void>(path, { method: "DELETE", headers });
+  }
+
   async updateZabbixSource(params: UpdateZabbixSourceParams): Promise<ZabbixSource> {
     let path = `/api/v1/diagnostics/zabbix/sources/${encodeURIComponent(String(params["sourceId"]))}`;
     const headers: Record<string, string> = {};
@@ -1428,6 +1458,13 @@ export class KubeAIOpsApiClient {
     const headers: Record<string, string> = {};
     headers["Content-Type"] = "application/json";
     return this.request<ObservabilityPreview>(path, { method: "POST", headers, body: JSON.stringify(params.body) });
+  }
+
+  async deleteObservabilitySource(params: DeleteObservabilitySourceParams): Promise<void> {
+    let path = `/api/v1/diagnostics/observability/sources/${encodeURIComponent(String(params["sourceId"]))}`;
+    const headers: Record<string, string> = {};
+    headers["If-Match"] = String(params["If-Match"]);
+    return this.request<void>(path, { method: "DELETE", headers });
   }
 
   async updateObservabilitySource(params: UpdateObservabilitySourceParams): Promise<ObservabilitySource> {

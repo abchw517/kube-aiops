@@ -15,7 +15,7 @@ export function zabbixError(error: unknown): string {
 
 const scopeWaiting = '<p class="zabbix-scope-wait">测试连接成功后，可选择主机组并预览问题。</p>';
 
-type Mode = "add" | "rotate" | "scope";
+type Mode = "add" | "rotate" | "scope" | "edit";
 type Wizard = {
   mode: Mode;
   source?: ZabbixSource;
@@ -30,7 +30,7 @@ type Wizard = {
 const value = (form: HTMLFormElement, name: string) => String(new FormData(form).get(name) ?? "");
 const option = (id: string, name: string) => `<option value="${h(id)}">${h(name)}</option>`;
 
-export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: ZabbixSource) => void, onConflict: () => void) {
+export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: ZabbixSource, mode: Mode) => void, onConflict: () => void) {
   let current: Wizard | undefined;
   let saving = false;
   const guard = bindDirtyDialog(dialog, '[data-zabbix-action="close"]', () => saving, { confirmOnButtonClose: false });
@@ -40,11 +40,26 @@ export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: Za
     const wizard: Wizard = { mode, source, revision: 0, previewRevision: 0, groups: [],
       selected: new Set(source?.groups.map(group => group.groupid)), scopes: [], previewOK: false };
     current = wizard;
+    dialog.dataset.mode = mode;
+    if (mode === "edit" && source) {
+      dialog.innerHTML = `<form data-zabbix-form>
+        <header class="zabbix-dialog-head"><div><h2 id="zabbix-dialog-title">编辑 Zabbix 数据源</h2>
+          <p>可修改显示名称。采集范围和认证信息在「调整主机组」与「更换凭据」中维护。</p></div>
+          <button type="button" class="zabbix-close" aria-label="关闭" data-zabbix-action="close">×</button></header>
+        <div class="zabbix-setup-grid"><section aria-label="基本信息">
+          <label>名称<input name="sourceName" required maxlength="120" value="${h(source.name)}" autofocus></label>
+          <p class="zabbix-hint">${h(source.endpoint)}</p>
+        </section></div>
+        <footer class="zabbix-dialog-footer"><p role="status" data-zabbix-save-result></p>
+          <div class="zabbix-dialog-actions"><button type="button" class="button secondary" data-zabbix-action="close">取消</button>
+          <button type="submit" class="button" data-zabbix-save>保存</button></div></footer></form>`;
+      dialog.showModal();
+      return;
+    }
     const title = mode === "add" ? "接入 Zabbix" : mode === "scope" ? "调整采集主机组" : "更换 Zabbix 凭据";
     const password = source?.authMethod === "password";
     const description = mode === "add" ? "连接成功后在同一页选择采集范围和预览问题。" :
       mode === "scope" ? "选择主机组并预览这个数据源的采集范围。" : "验证新凭据后保存，平台将重新同步问题。";
-    dialog.dataset.mode = mode;
     dialog.innerHTML = `<form data-zabbix-form novalidate>
       <header class="zabbix-dialog-head">
         <div><h2 id="zabbix-dialog-title">${title}</h2><p>${description}</p></div>
@@ -149,6 +164,7 @@ export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: Za
   }
 
   function updateSaveHint(form: HTMLFormElement, wizard: Wizard) {
+    if (wizard.mode === "edit") return;
     const hasConnection = wizard.mode === "scope" || Boolean(wizard.draft);
     const ready = wizard.mode === "rotate" ? hasConnection : wizard.previewOK;
     setText(form, "[data-zabbix-save-result]", !hasConnection ? "先测试连接" :
@@ -227,8 +243,8 @@ export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: Za
 
   function updateSave(form: HTMLFormElement, wizard: Wizard) {
     const button = form.querySelector<HTMLButtonElement>("[data-zabbix-save]");
-    const missingName = wizard.mode === "add" && !value(form, "sourceName").trim();
-    if (button) button.disabled = saving || missingName || (wizard.mode === "rotate" ? !wizard.draft : !wizard.previewOK);
+    const missingName = (wizard.mode === "add" || wizard.mode === "edit") && !value(form, "sourceName").trim();
+    if (button) button.disabled = saving || missingName || (wizard.mode === "rotate" ? !wizard.draft : wizard.mode !== "edit" && !wizard.previewOK);
   }
 
   async function test(form: HTMLFormElement, wizard: Wizard, button: HTMLButtonElement) {
@@ -277,13 +293,14 @@ export function bindZabbixEditor(dialog: HTMLDialogElement, onSaved: (source: Za
       const groupIds = [...wizard.selected];
       const updated = wizard.source
         ? await apiClient.updateZabbixSource({ sourceId: wizard.source.id, "If-Match": `"${wizard.source.version}"`,
-          body: wizard.mode === "rotate" ? { draft: wizard.draft } : { groupIds } })
+          body: wizard.mode === "edit" ? { name: value(form, "sourceName").trim() } :
+            wizard.mode === "rotate" ? { draft: wizard.draft } : { groupIds } })
         : await apiClient.createZabbixSource({ body: { name: value(form, "sourceName").trim(), draft: wizard.draft,
           scope: selectedScope(form, wizard), groupIds } });
       if (current !== wizard) return;
       guard.clean();
       dialog.close();
-      onSaved(updated);
+      onSaved(updated, wizard.mode);
     } catch (error) {
       if (current === wizard) {
         setText(form, "[data-zabbix-save-result]", zabbixError(error));

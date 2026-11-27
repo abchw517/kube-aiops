@@ -107,6 +107,7 @@ func (s *Server) registerZabbix(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/diagnostics/zabbix/sources", s.protect(s.zabbixSources))
 	mux.HandleFunc("POST /api/v1/diagnostics/zabbix/sources", s.protect(s.createZabbix))
 	mux.HandleFunc("PATCH /api/v1/diagnostics/zabbix/sources/{sourceId}", s.protect(s.updateZabbix))
+	mux.HandleFunc("DELETE /api/v1/diagnostics/zabbix/sources/{sourceId}", s.protect(s.deleteZabbix))
 	mux.HandleFunc("POST /api/v1/diagnostics/zabbix/sources/{sourceId}/sync", s.protect(s.queueZabbix))
 	mux.HandleFunc("POST /api/v1/diagnostics/zabbix/test", s.protect(s.testZabbix))
 	mux.HandleFunc("POST /api/v1/diagnostics/zabbix/preview", s.protect(s.previewZabbix))
@@ -338,6 +339,7 @@ type zabbixSelection struct {
 }
 
 type zabbixChange struct {
+	Name     *string   `json:"name,omitempty"`
 	Draft    string    `json:"draft,omitempty"`
 	GroupIDs *[]string `json:"groupIds,omitempty"`
 	Enabled  *bool     `json:"enabled,omitempty"`
@@ -445,6 +447,14 @@ func (s *Server) zabbixSelection(ctx context.Context, p identity.Principal, inpu
 	return d, credential, err
 }
 
+func zabbixSourceName(value string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsFunc(name, unicode.IsControl) {
+		return "", httpError{400, "ZABBIX_INVALID_NAME", "数据源名称应为 1 至 120 个字符，且不能包含控制字符。"}
+	}
+	return name, nil
+}
+
 func (s *Server) createZabbix(w http.ResponseWriter, r *http.Request, p identity.Principal) error {
 	ctx := r.Context()
 	var input zabbixSelection
@@ -453,9 +463,10 @@ func (s *Server) createZabbix(w http.ResponseWriter, r *http.Request, p identity
 	}
 	var name string
 	if input.Name != nil {
-		name = strings.TrimSpace(*input.Name)
-		if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsFunc(name, unicode.IsControl) {
-			return httpError{400, "ZABBIX_INVALID_NAME", "数据源名称应为 1 至 120 个字符，且不能包含控制字符。"}
+		var err error
+		name, err = zabbixSourceName(*input.Name)
+		if err != nil {
+			return err
 		}
 	}
 	d, credential, err := s.zabbixSelection(ctx, p, input)
@@ -510,8 +521,22 @@ func (s *Server) updateZabbix(w http.ResponseWriter, r *http.Request, p identity
 		return ErrVersion
 	}
 	var input zabbixChange
-	if !adminhttp.Decode(w, r, &input) || input.Draft == "" && input.Enabled == nil && input.GroupIDs == nil {
+	if !adminhttp.Decode(w, r, &input) || input.Draft == "" && input.Enabled == nil && input.GroupIDs == nil && input.Name == nil {
 		return zabbixBadInput
+	}
+	if input.Name != nil {
+		d.Name, err = zabbixSourceName(*input.Name)
+		if err != nil {
+			return err
+		}
+		if input.Enabled == nil && input.GroupIDs == nil && input.Draft == "" {
+			out, err := s.Store.renameZabbix(ctx, d, p.Subject)
+			if err != nil {
+				return err
+			}
+			adminhttp.WriteJSON(w, out)
+			return nil
+		}
 	}
 	if input.Enabled != nil {
 		d.Enabled = *input.Enabled

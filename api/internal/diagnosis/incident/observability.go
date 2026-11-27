@@ -132,6 +132,7 @@ func (s *Server) registerObservability(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/diagnostics/observability/sources", s.protect(s.saveObservability))
 	mux.HandleFunc("PUT /api/v1/diagnostics/observability/sources/{sourceId}", s.protect(s.saveObservability))
 	mux.HandleFunc("PATCH /api/v1/diagnostics/observability/sources/{sourceId}", s.protect(s.toggleObservability))
+	mux.HandleFunc("DELETE /api/v1/diagnostics/observability/sources/{sourceId}", s.protect(s.deleteObservability))
 	mux.HandleFunc("POST /api/v1/diagnostics/observability/sources/{sourceId}/sync", s.protect(s.queueObservability))
 	mux.HandleFunc("GET /api/v1/diagnostics/observability/alerts", s.protect(s.listObservabilityAlerts))
 	mux.HandleFunc("GET /api/v1/diagnostics/observability/dashboards", s.protect(s.listObservabilityDashboards))

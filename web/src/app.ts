@@ -85,7 +85,7 @@ export class PortalApp {
   private incidentsAvailable = false;
   private incidentCreate = false;
   private overviewRequest?: AbortController;
-  private diagnosticSettings = { datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
+  private diagnosticSettings = { datasourceWrite: false, datasourceDelete: false, datasourceTest: false, policies: false, policyWrite: false };
   private mustChangePassword = false;
   private canChangePassword = false;
   private superAdministrator = false;
@@ -162,7 +162,7 @@ export class PortalApp {
     this.overviewRequest?.abort();
     this.incidentsAvailable = false;
     this.incidentCreate = false;
-    this.diagnosticSettings = { datasourceWrite: false, datasourceTest: false, policies: false, policyWrite: false };
+    this.diagnosticSettings = { datasourceWrite: false, datasourceDelete: false, datasourceTest: false, policies: false, policyWrite: false };
     if (!demoMode) {
       const isAuthenticationRoute = window.location.hash === "#/admin/ldap";
       try {
@@ -198,6 +198,7 @@ export class PortalApp {
         this.incidentCreate = status.incidentCreate === true;
         this.diagnosticSettings = {
           datasourceWrite: status.diagnosticDatasourceWrite === true,
+          datasourceDelete: status.diagnosticDatasourceDelete === true,
           datasourceTest: status.diagnosticDatasourceTest === true, policies: status.diagnosticPolicies === true,
           policyWrite: status.diagnosticPolicyWrite === true,
         };
@@ -451,7 +452,7 @@ export class PortalApp {
         if (generation !== this.renderGeneration) return;
         this.renderShell(page.html, false, true);
         bindDatasourcesWorkspace(this.root, page, {
-          write: this.diagnosticSettings.datasourceWrite, test: this.diagnosticSettings.datasourceTest, createIncident: this.incidentCreate, aiAdmin: this.identityAdmin,
+          write: this.diagnosticSettings.datasourceWrite, remove: this.diagnosticSettings.datasourceDelete, test: this.diagnosticSettings.datasourceTest, createIncident: this.incidentCreate, aiAdmin: this.identityAdmin,
         });
       } else {
         const page = await loadPoliciesPage(hash, this.diagnosticSettings.policyWrite);

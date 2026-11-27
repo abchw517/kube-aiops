@@ -54,7 +54,7 @@ func wrapAdmin(a *permissions.Admin, wikis *wiki.Service, s *identity.Sessions, 
 				status["incidentCreate"], _ = incidents.Authorize(r.Context(), p, incident.CreatePermission, incident.Scope{}, true)
 				for field, code := range map[string]string{
 					"diagnosticDatasources": incident.ConnectorRead, "diagnosticDatasourceWrite": incident.ConnectorWrite,
-					"diagnosticDatasourceTest": incident.ConnectorTest, "diagnosticPolicies": incident.PolicyRead,
+					"diagnosticDatasourceTest": incident.ConnectorTest, "diagnosticDatasourceDelete": incident.ConnectorDelete, "diagnosticPolicies": incident.PolicyRead,
 					"diagnosticPolicyWrite": incident.PolicyWrite,
 				} {
 					status[field], _ = incidents.Authorize(r.Context(), p, code, incident.Scope{}, true)

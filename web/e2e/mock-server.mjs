@@ -230,7 +230,7 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v1/admin/status" && adminSession) return json(response, 200, {
     admin: catalogMode !== "readonly", superAdministrator: fixtureSuperAdministrator, canChangePassword: fixtureSuperAdministrator,
     incidents: incidentMode, incidentCreate: incidentMode,
-    diagnosticDatasources: incidentMode, diagnosticDatasourceWrite: incidentMode, diagnosticDatasourceTest: incidentMode,
+    diagnosticDatasources: incidentMode, diagnosticDatasourceWrite: incidentMode, diagnosticDatasourceDelete: incidentMode, diagnosticDatasourceTest: incidentMode,
     diagnosticPolicies: incidentMode, diagnosticPolicyWrite: incidentMode,
     wikiAsk: true, findingChat: true, findingAI: true, manageEnvironments: true, manageBusinessLines: true,
   });
@@ -787,6 +787,19 @@ async function incidents(request, response, url) {
         authMethod: "token", upstreamVersion: "6.0.36", enabled: true, version: 1, health: "available",
         environmentName: "生产", businessName: "运维", hostCount: 1, problemCount: 1, syncedAt: new Date().toISOString() };
       return json(response, 201, zabbixSourceFixture);
+    }
+    if (path === "/zabbix/sources/zabbix-fixture" && zabbixSourceFixture) {
+      if (request.headers["if-match"] !== `"${zabbixSourceFixture.version}"`) return json(response, 412, {});
+      if (method === "PATCH") {
+        const input = await readIncidentBody(request);
+        zabbixSourceFixture = { ...zabbixSourceFixture, name: input.name, version: zabbixSourceFixture.version + 1 };
+        return json(response, 200, zabbixSourceFixture);
+      }
+      if (method === "DELETE") {
+        zabbixSourceFixture = undefined;
+        response.writeHead(204).end();
+        return;
+      }
     }
     if (path === "/zabbix/problems" && method === "GET") {
       return json(response, 200, { items: zabbixSourceFixture && url.searchParams.get("metadataOnly") !== "true" ? [problem] : [],

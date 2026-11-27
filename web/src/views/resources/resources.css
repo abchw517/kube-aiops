@@ -41,11 +41,11 @@
 .cluster-directory th:nth-child(5) { width: 12%; }
 .cluster-directory th:nth-child(6) { width: 14%; }
 .cluster-directory th:last-child { width: 14%; }
-.datasource-directory th:first-child { width: 29%; }
-.datasource-directory th:nth-child(2) { width: 20%; }
+.datasource-directory th:first-child { width: 27%; }
+.datasource-directory th:nth-child(2) { width: 18%; }
 .datasource-directory th:nth-child(3) { width: 15%; }
-.datasource-directory th:nth-child(4) { width: 19%; }
-.datasource-directory th:last-child { width: 17%; }
+.datasource-directory th:nth-child(4) { width: 18%; }
+.datasource-directory th:last-child { width: 22%; }
 .resource-name { padding: 0; border: 0; background: none; color: var(--accent); text-align: left; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; }
 .resource-name:hover { text-decoration: underline; }
 .resource-table small { display: block; font-size: 12px; color: var(--muted); }

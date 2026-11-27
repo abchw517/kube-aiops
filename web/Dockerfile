@@ -14,6 +14,10 @@ RUN npm run build
 
 FROM ${NGINX_RUNTIME_IMAGE}
 
+USER root
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+
 COPY config/web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder --chown=101:101 /src/web/dist /usr/share/nginx/html
 
