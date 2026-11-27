@@ -217,91 +217,161 @@ export function bindAIServices(root: HTMLElement, data: ServiceStatus, reload: (
 type SourceChoice = { scope: Scope; name: string };
 
 async function openBinding(dialog: HTMLDialogElement, reload: () => void, initialSource = "zabbix", initialID = "") {
-  aiDialog(dialog, "新增范围绑定", `<form class="ai-form">
-    <label>绑定类型<select name="source">${Object.entries(sources).map(([code, name]) =>
-      `<option value="${h(code)}" ${code === initialSource ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>
-    <div data-binding-fields></div>
-    <div class="system-actions"><button class="button secondary" type="button" data-binding-discover>发现模型</button></div>
-    <label>模型别名<select name="model" required><option value="">请先发现模型</option></select></label>
-    <p role="status"></p><div class="system-actions"><button class="button" type="submit">保存并启用绑定</button></div>
+  aiDialog(dialog, "新增范围绑定", `<form class="ai-form ai-binding-form">
+    <fieldset>
+      <legend>数据范围</legend>
+      <label>绑定类型<select name="source">${Object.entries(sources).map(([code, name]) =>
+        `<option value="${h(code)}" ${code === initialSource ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>
+      <div data-binding-fields></div>
+    </fieldset>
+    <fieldset>
+      <legend>Holmes 模型</legend>
+      <div class="ai-binding-model">
+        <label>模型别名<select name="model" required disabled><option value="">请先发现模型</option></select></label>
+        <button class="button secondary" type="button" data-binding-discover>发现模型</button>
+      </div>
+      <p class="ai-binding-feedback" role="status"></p>
+    </fieldset>
+    <footer class="ai-binding-footer"><button class="button secondary" type="button" data-binding-cancel>取消</button>
+      <button class="button" type="submit" disabled>保存并启用绑定</button></footer>
   </form>`);
-  const form = dialog.querySelector<HTMLFormElement>("form");
+  const form = dialog.querySelector<HTMLFormElement>(".ai-binding-form");
   const fields = form?.querySelector<HTMLElement>("[data-binding-fields]");
   const source = form?.querySelector<HTMLSelectElement>("[name=source]");
   const model = form?.querySelector<HTMLSelectElement>("[name=model]");
   const discover = form?.querySelector<HTMLButtonElement>("[data-binding-discover]");
   const save = form?.querySelector<HTMLButtonElement>("[type=submit]");
-  const status = form?.querySelector("[role=status]");
+  const status = form?.querySelector<HTMLElement>("[role=status]");
   if (!form || !fields || !source || !model || !discover || !save || !status) return;
+  form.querySelector("[data-binding-cancel]")?.addEventListener("click", () => dialog.close());
   let choices: SourceChoice[] = [];
-  let loading = false;
   let selectionVersion = 0;
+  let saving = false;
+  const feedback = (message: string, state = "") => {
+    status.textContent = message;
+    status.dataset.state = state;
+  };
+  const updateSave = () => {
+    const needsSource = source.value === "zabbix" || source.value === "alertmanager";
+    const picker = fields.querySelector<HTMLSelectElement>("[name=sourceId]");
+    save.disabled = saving || !model.value || (needsSource && !picker?.value) || !form.checkValidity();
+  };
+  const resetModel = (placeholder: string) => {
+    model.replaceChildren(new Option(placeholder, ""));
+    model.disabled = true;
+    updateSave();
+  };
   const changeSource = async (selectedID = "") => {
     const version = ++selectionVersion;
     const kind = source.value;
     choices = [];
-    model.replaceChildren(new Option("请先发现模型", ""));
-    status.textContent = "";
+    resetModel("请先发现模型");
+    feedback("");
     if (kind === "zabbix" || kind === "alertmanager") {
-      loading = true;
       fields.textContent = "正在读取已接入的数据源…";
       try {
         const records = kind === "zabbix" ? (await apiClient.listZabbixSources()).items :
           (await apiClient.listObservabilitySources()).items.filter(item => item.kind === "alertmanager");
         if (version !== selectionVersion || !form.isConnected) return;
         choices = records.filter(item => item.enabled).map(item => ({
-          scope: {source: kind, sourceId: item.id, ...item.scope}, name: item.name || item.id,
+          scope: {source: kind, sourceId: item.id, ...item.scope}, name: item.name || "未命名数据源",
         }));
         if (!choices.length) {
           fields.innerHTML = '<p>当前没有已启用的数据源。<a href="#/resources/datasources">打开数据源管理</a></p>';
           return;
         }
-        fields.innerHTML = `<label>数据源<select name="sourceId" required><option value="">请选择</option>
-          ${choices.map(({scope, name}) => `<option value="${h(scope.sourceId)}">${h(name)} · ${h(scopeText(scope))}</option>`).join("")}</select></label>
+        fields.innerHTML = `<label>数据源<select name="sourceId" required><option value="">请选择数据源</option>
+          ${choices.map(({scope, name}) => `<option value="${h(scope.sourceId)}">${h(name)}${scope.environmentId ? ` · ${h(scope.environmentId)}` : ""}</option>`).join("")}</select></label>
+          <dl class="ai-binding-scope" data-binding-scope hidden></dl>
           ${kind === "alertmanager" ? '<label>告警命名空间<input name="namespace" maxlength="128" placeholder="告警没有 namespace 时留空"></label>' : ""}`;
         const picker = fields.querySelector<HTMLSelectElement>("[name=sourceId]");
-        if (picker && choices.some(choice => choice.scope.sourceId === selectedID)) picker.value = selectedID;
+        const summary = fields.querySelector<HTMLElement>("[data-binding-scope]");
+        if (picker && summary) {
+          const renderScope = () => {
+            const scope = choices.find(choice => choice.scope.sourceId === picker.value)?.scope;
+            summary.hidden = !scope;
+            summary.innerHTML = scope ? [
+              ["环境", scope.environmentId], ["业务", scope.businessId],
+              ["集群", scope.clusterId], ["数据源 ID", scope.sourceId],
+            ].filter(([, value]) => value).map(([name, value]) => `<dt>${h(name)}</dt><dd>${h(value)}</dd>`).join("") : "";
+            updateSave();
+          };
+          if (choices.some(choice => choice.scope.sourceId === selectedID)) picker.value = selectedID;
+          picker.addEventListener("change", renderScope);
+          renderScope();
+        }
       } catch {
         if (version === selectionVersion) fields.textContent = "无法读取数据源。请检查数据源管理的权限与接入状态。";
-      } finally {
-        if (version === selectionVersion) loading = false;
       }
       return;
     }
-    loading = false;
     fields.innerHTML = kind === "wiki" ? "<p>知识问答使用部署侧配置的独立 Holmes 服务。</p>" :
       `<label>集群 ID<input name="clusterId" required maxlength="128"></label>
        <label>命名空间<input name="namespace" maxlength="128" placeholder="记录没有命名空间时留空"></label>
        ${kind === "incident" ? '<label>环境 ID<input name="environmentId" maxlength="128"></label><label>业务 ID<input name="businessId" maxlength="128"></label>' : ""}`;
   };
+  form.addEventListener("input", updateSave);
+  form.addEventListener("change", updateSave);
   source.addEventListener("change", () => void changeSource());
-  discover.addEventListener("click", () => void showResult(discover, status, async () => {
+  discover.addEventListener("click", async () => {
     const version = selectionVersion;
-    const { models } = await requestAI<{models: string[]}>(`${endpoint}?action=discover-binding`, {source: source.value});
-    if (version !== selectionVersion || !form.isConnected) return;
-    model.replaceChildren(...(models.length ? models.map(alias => new Option(alias, alias)) : [new Option("Holmes 未返回别名", "")]));
-    status.textContent = models.length ? `已发现 ${models.length} 个模型别名` : "请先在 Holmes 中配置模型。";
-  }));
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-    void showResult(save, status, async () => {
-      const kind = source.value;
-      const values = new FormData(form);
-      const field = (name: string) => String(values.get(name) ?? "").trim();
-      const picked = choices.find(choice => choice.scope.sourceId === field("sourceId"));
-      if (loading || ((kind === "zabbix" || kind === "alertmanager") && !picked)) {
-        throw new Error("请选择已接入并启用的数据源。");
+    discover.disabled = true;
+    resetModel("正在读取模型…");
+    feedback("正在连接 Holmes…");
+    try {
+      const { models } = await requestAI<{models: string[]}>(`${endpoint}?action=discover-binding`, {source: source.value});
+      if (version !== selectionVersion || !form.isConnected) return;
+      if (!models.length) {
+        resetModel("暂无模型别名");
+        feedback("Holmes 返回的模型列表为空。请检查其 modelList 配置后重新发现。", "error");
+        return;
       }
-      const scope: Scope = picked ? {...picked.scope} : {
-        source: kind, sourceId: kind === "wiki" ? "published-excerpts" : field("clusterId"),
-        environmentId: field("environmentId"), businessId: field("businessId"), clusterId: field("clusterId"),
-      };
-      scope.namespace = field("namespace");
+      model.replaceChildren(...models.map(alias => new Option(alias, alias)));
+      model.value = models.includes("accurate-model") ? "accurate-model" : models[0] ?? "";
+      model.disabled = false;
+      feedback(`已发现 ${models.length} 个模型别名`, "success");
+      updateSave();
+    } catch (error) {
+      if (version !== selectionVersion || !form.isConnected) return;
+      resetModel("模型发现失败");
+      feedback(error instanceof Error ? error.message : "无法读取模型，请重试。", "error");
+    } finally {
+      discover.disabled = false;
+    }
+  });
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (save.disabled) return;
+    const kind = source.value;
+    const values = new FormData(form);
+    const field = (name: string) => String(values.get(name) ?? "").trim();
+    const picked = choices.find(choice => choice.scope.sourceId === field("sourceId"));
+    if ((kind === "zabbix" || kind === "alertmanager") && !picked) {
+      feedback("请选择已接入并启用的数据源。", "error");
+      return;
+    }
+    const scope: Scope = picked ? {...picked.scope} : {
+      source: kind, sourceId: kind === "wiki" ? "published-excerpts" : field("clusterId"),
+      environmentId: field("environmentId"), businessId: field("businessId"), clusterId: field("clusterId"),
+    };
+    scope.namespace = field("namespace");
+    saving = true;
+    updateSave();
+    const groups = form.querySelectorAll("fieldset");
+    for (const group of groups) group.disabled = true;
+    feedback("正在保存绑定…");
+    try {
       await requestAI(`${endpoint}?action=bind`, {...scope, model: model.value});
       if (!form.isConnected) return;
       dialog.close();
       reload();
-    });
+    } catch (error) {
+      feedback(error instanceof Error ? error.message : "保存失败，请重试。", "error");
+    } finally {
+      saving = false;
+      for (const group of groups) group.disabled = false;
+      updateSave();
+    }
   });
   await changeSource(initialID);
 }

@@ -336,6 +336,8 @@ P1，依赖 T04、T05、T07。更新平台动作目录和 Wiki 读入口，分�
 
 ## AI 服务管理
 
+更新 Holmes 模型列表解析、范围绑定表单和移动宽度回归，验收失败后的重试与保存门槛。
+
 **SM-T90**
 
 - `api/internal/portal/ai_services.go`、`ai_skills.go` 提供管理员工作区和操作接口，`api/internal/holmes/workspace.go` 负责 SQLite 版本化持久化和调查匹配。`bindings.go` 保存精确范围与默认模型别名，`discovery.go` 发现部署侧已注册的模型。

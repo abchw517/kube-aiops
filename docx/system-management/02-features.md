@@ -311,6 +311,8 @@ LDAP 连接配置分为常用连接参数、可折叠的用户与组搜索和证
 
 ## AI 服务管理
 
+发现模型兼容响应中的原生数组及 0.48.0 使用的字符串编码数组。界面提示鉴权、地址、响应格式或空列表问题。
+
 **SM-F90**
 
 - `GET /api/v1/admin/ai-services` 返回试点服务状态、部署及 Portal 范围绑定和模型版本。对应 `POST` 的 `recheck`、`discover`、`save`、`publish` 分别用于检查 `/readyz`、核对 Holmes `/api/model`、保存草稿和发布。`discover-binding` 发现试点模型，`bind` 校验精确范围和别名后写 SQLite。请求只使用已部署的精确范围，版本冲突返回 409。服务就绪及别名存在仍需通过实际推理验证。

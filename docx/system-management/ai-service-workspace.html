@@ -28,7 +28,14 @@
   th { background: #f4f6fb; }
   dialog { width: min(34rem, calc(100vw - 2rem)); border-radius: 1rem; padding: 1rem; }
   dialog::backdrop { background: #18243a66; }
-  dialog label { display: grid; gap: .25rem; margin: .6rem 0; }
+  dialog label { display: grid; grid-template-columns: minmax(0, 1fr); gap: .25rem; margin: .6rem 0; }
+  dialog fieldset { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; margin: .75rem 0; border: 1px solid #dce3ef; border-radius: .75rem; }
+  dialog legend { font-weight: 650; }
+  dialog :is(select,input) { width: 100%; min-width: 0; }
+  dialog [hidden] { display: none; }
+  #scope-preview { overflow-wrap: anywhere; padding: .5rem; background: #f4f6fb; border-radius: .5rem; }
+  dialog footer { display: flex; justify-content: flex-end; }
+  button:disabled { opacity: .55; cursor: default; }
   @media (max-width: 640px) { .layout { display: block; } aside { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; } aside a { margin: 0; } }
 </style>
 </head>
@@ -40,7 +47,7 @@
 </div>
 <dialog id="modal" aria-labelledby="modal-title"><form id="form">
 <div class="bar between"><h2 id="modal-title"></h2><button id="close" type="button">关闭</button></div>
-<div id="fields"></div><p id="feedback" role="status"></p><button class="primary" id="submit" type="submit"></button>
+<div id="fields"></div><p id="feedback" role="status"></p><footer><button class="primary" id="submit" type="submit"></button></footer>
 </form></dialog>
 <script>
 const page = document.getElementById("page");
@@ -59,6 +66,7 @@ function openDialog(heading, content, label, save) {
   fields.innerHTML = content;
   feedback.textContent = "";
   submit.hidden = !save;
+  submit.disabled = false;
   submit.textContent = label || "";
   form.onsubmit = event => {
     event.preventDefault();
@@ -105,9 +113,9 @@ page.onclick = event => {
   if (action === "architecture") openDialog("HolmesGPT 部署与调用路径", "<p>Web Portal → Go API → 范围绑定的 HolmesGPT → 模型提供商</p>");
   if (action === "bind") {
     openDialog("新增范围绑定",
-      '<label>数据源<select name="source"><option>生产 Zabbix</option><option>预发 Alertmanager</option></select></label>' +
-      '<p id="scope-preview"></p><label id="namespace-field">告警命名空间<input name="namespace"></label>' +
-      '<button type="button" id="discover-binding">发现模型</button><label>模型别名<select name="model" required></select></label>',
+      '<fieldset><legend>数据范围</legend><label>数据源<select name="source"><option>生产 Zabbix</option><option>预发 Alertmanager</option></select></label>' +
+      '<p id="scope-preview"></p><label id="namespace-field">告警命名空间<input name="namespace"></label></fieldset>' +
+      '<fieldset><legend>Holmes 模型</legend><label>模型别名<select name="model" required disabled><option value="">请先发现模型</option></select></label><div><button type="button" id="discover-binding">发现模型</button></div></fieldset>',
       "保存并启用绑定", values => {
         const isZabbix = values.get("source") === "生产 Zabbix";
         state.environment = isZabbix ? "prod" : "uat";
@@ -117,6 +125,7 @@ page.onclick = event => {
         modal.close();
         render();
       });
+    submit.disabled = true;
     const source = form.elements.namedItem("source");
     if (state.environment === "uat") source.selectedIndex = 1;
     const showScope = () => {
@@ -128,7 +137,10 @@ page.onclick = event => {
     source.onchange = showScope;
     showScope();
     fields.querySelector("#discover-binding").onclick = () => {
-      form.elements.namedItem("model").replaceChildren(new Option("accurate-model", "accurate-model"));
+      const model = form.elements.namedItem("model");
+      model.replaceChildren(new Option("accurate-model", "accurate-model"));
+      model.disabled = false;
+      submit.disabled = false;
       feedback.textContent = "已发现 1 个模型别名。";
     };
   }

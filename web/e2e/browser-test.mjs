@@ -2051,8 +2051,24 @@ async function assertRemainingDiagnosticPages(cdp) {
   await cdp.send("Runtime.evaluate", {expression: `document.querySelector('[data-source-row="zabbix:zabbix-fixture"] a[href*="bindSource=zabbix"]').click()`});
   await assertDOM(cdp, 'document.querySelector("[data-ai-dialog] [name=sourceId]")?.value === "zabbix-fixture"',
     "Data source action did not preselect the configured source");
+  const layoutCheck = `(() => {
+    const dialog = document.querySelector("[data-ai-dialog]");
+    const picker = dialog.querySelector("[name=sourceId]");
+    picker.selectedOptions[0].textContent = "生产全局监控".repeat(60);
+    const id = dialog.querySelector("[data-binding-scope] dd:last-child");
+    id.textContent = "VULS37GACIR2MXC32GOMUXK7".repeat(8);
+    return dialog.scrollWidth <= dialog.clientWidth + 1 && dialog.querySelector("select").getBoundingClientRect().right < dialog.getBoundingClientRect().right;
+  })()`;
+  await assertDOM(cdp, layoutCheck, "Long data source names overflowed the binding dialog");
+  await cdp.send("Emulation.setDeviceMetricsOverride", {width: 375, height: 700, deviceScaleFactor: 1, mobile: false});
+  await assertDOM(cdp, layoutCheck, "The binding dialog overflowed at a mobile viewport");
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
   await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-binding-discover]").click()'});
-  await assertText(cdp, text => text.includes("已发现 2 个模型别名"), "Binding form did not load models");
+  await assertDOM(cdp, `document.querySelector(".ai-binding-feedback[data-state=error]")?.textContent.includes("HTTP 401") &&
+    document.querySelector(".ai-binding-form [type=submit]").disabled &&
+    document.querySelector(".ai-binding-form [name=sourceId]").value === "zabbix-fixture"`, "Discovery failure lost the scope or enabled save");
+  await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-binding-discover]").click()'});
+  await assertText(cdp, text => text.includes("已发现 2 个模型别名"), "Binding form did not recover after discovery retry");
   await cdp.send("Runtime.evaluate", {expression: `(() => {
     const form = document.querySelector("[data-ai-dialog] form");
     form.elements.model.value = "accurate-model";

@@ -874,6 +874,7 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --since=10m --tail=1
 | Holmes 容器未就绪 | 用 `kubectl -n holmes-pilot get events --sort-by=.lastTimestamp` 查看镜像拉取和 Secret 挂载错误。 |
 | 试点服务已就绪，尚无数据范围绑定 | 在页面为目标数据源新增范围绑定，再检查告警命名空间是否精确一致。 |
 | Portal 显示试点服务不可达或未就绪 | 检查 API 到 Holmes Service 的 DNS 和网络策略。如 Helm release 或命名空间有变动，核对 `HOLMES_PILOT_ENDPOINT`。 |
+| 服务已就绪，但发现模型失败 | `/readyz` 与 `/api/model` 独立。Holmes 0.48.0 可返回字符串编码的模型数组，需使用兼容此格式的 Portal API。HTTP 401/403 时检查 Portal 到 Holmes 的 HTTP 鉴权密钥。模型列表为空时检查 Helm 的 `modelList` 及 Holmes 日志。 |
 | `HOLMES_SCOPE_UNCONFIGURED` | 对照页面绑定中的来源 ID、环境、业务、集群和命名空间。 |
 | `HOLMES_UNAVAILABLE` 或调用超时 | 先重跑第 2 步检查模型，再核对 Service 地址、NetworkPolicy、模型别名和入口代理时限。 |
 | 账号无法发起调查 | 核对数据源读取权限和 `diagnosis.health.investigate` 的范围。 |
