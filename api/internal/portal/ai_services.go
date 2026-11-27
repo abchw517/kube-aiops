@@ -65,7 +65,7 @@ func serveAIServices(w http.ResponseWriter, r *http.Request, validateAlert alert
 				return
 			}
 			if err != nil {
-				http.Error(w, "无法读取 Holmes 模型。请检查服务网络、访问凭据和模型配置。", 503)
+				writeDiscoveryError(w, err)
 				return
 			}
 			adminhttp.WriteJSON(w, map[string]any{"models": aliases})
@@ -89,7 +89,7 @@ func serveAIServices(w http.ResponseWriter, r *http.Request, validateAlert alert
 					http.Error(w, err.Error(), 409)
 					return
 				}
-				writeAIError(w, err)
+				writeDiscoveryError(w, err)
 				return
 			}
 			adminhttp.WriteJSON(w, map[string]bool{"bound": true})
@@ -102,7 +102,7 @@ func serveAIServices(w http.ResponseWriter, r *http.Request, validateAlert alert
 		case "discover":
 			aliases, err := holmes.DiscoverModels(ctx, input.Scope)
 			if err != nil {
-				http.Error(w, "无法读取 Holmes 模型列表", 503)
+				writeDiscoveryError(w, err)
 				return
 			}
 			adminhttp.WriteJSON(w, map[string]any{"models": aliases})
@@ -148,7 +148,11 @@ func serveAIServices(w http.ResponseWriter, r *http.Request, validateAlert alert
 				cfg := entry.Data.Desired
 				if !cfg.Disabled {
 					aliases, err := holmes.DiscoverModels(ctx, input.Scope)
-					if err != nil || !slices.Contains(aliases, cfg.Fast) || !slices.Contains(aliases, cfg.Accurate) {
+					if err != nil {
+						writeDiscoveryError(w, err)
+						return
+					}
+					if !slices.Contains(aliases, cfg.Fast) || !slices.Contains(aliases, cfg.Accurate) {
 						http.Error(w, "发布校验失败，Holmes 未返回所选模型。现行版本继续生效。", 409)
 						return
 					}
@@ -173,6 +177,15 @@ func serveAIServices(w http.ResponseWriter, r *http.Request, validateAlert alert
 
 func validAIProvider(value string) bool {
 	return slices.Contains([]string{"vLLM", "Ollama", "OpenAI", "DeepSeek", "智谱 AI", "OpenAI 兼容"}, value)
+}
+
+func writeDiscoveryError(w http.ResponseWriter, err error) {
+	var failure *holmes.DiscoveryError
+	if errors.As(err, &failure) {
+		http.Error(w, failure.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeAIError(w, err)
 }
 
 func writeAIError(w http.ResponseWriter, err error) {

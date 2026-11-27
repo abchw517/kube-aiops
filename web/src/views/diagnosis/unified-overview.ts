@@ -5,7 +5,8 @@ import { escapeHtml } from "../../components/html.ts";
 import { diagnosticListPaths } from "../../domain/diagnostic-routes.ts";
 import { aggregateDiagnostics, diagnosticLevels, incidentLevel, maxOverviewPageSize, overviewDays, overviewLevel, overviewPageSize, overviewPageSizes,
   overviewRecordPage, overviewSearch, type OverviewDays } from "../../domain/unified-diagnostics.ts";
-import { incidentHref, incidentStatusLabels } from "./incident-filters.ts";
+import { incidentHref } from "./incident-filters.ts";
+import { filterRecent, recentFilters, recentLevels, recentSources, recordDate, recordStatus, recordTags, recordTarget, type RecentRecord } from "./recent-records.ts";
 import { bindOverviewTrend, renderOverviewTrend, type Trend } from "./unified-trend.ts";
 import { zabbixHealth } from "../resources/datasource-rows.ts";
 
@@ -47,10 +48,6 @@ function choices(entries: [string, string][], selected: string): string {
 }
 
 type Overview = ReturnType<typeof aggregateDiagnostics>;
-const observedTime = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: "Asia/Shanghai", dateStyle: "short", timeStyle: "medium", hourCycle: "h23",
-});
-
 function overviewHref(query: URLSearchParams, changes: Record<string, string>): string {
   const next = new URLSearchParams(query);
   for (const [key, value] of Object.entries(changes)) {
@@ -127,7 +124,7 @@ const coverageLabels: Record<Coverage, string> = {
   complete: "", partial: "覆盖不完整", unavailable: "暂不可用", restricted: "当前权限无法读取",
 };
 
-export async function loadUnifiedOverview(hash: string, canReadIncidents: boolean, signal: AbortSignal, canReadZabbix = false) {
+export async function loadUnifiedOverview(hash: string, canReadIncidents: boolean, signal: AbortSignal, canReadZabbix = false, findingAI = false, reviewAccess = false) {
   const query = overviewSearch(new URLSearchParams(hash.split("?")[1]));
   const cluster = query.get("clusterId");
   const severity = overviewLevel(query.get("severity"));
@@ -218,7 +215,9 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
   const renderWindow = (days: OverviewDays) => renderOverviewTrend(trend, days,
     window => overviewHref(query, { trendDays: String(window) })) + (alertCoverage.length
     ? `<p class="overview-chart-note">Alertmanager 从 ${new Date(Math.min(...alertCoverage) * 1000).toLocaleString("zh-CN")} 起有平台采集记录。</p>` : "");
-  const renderRecords = () => renderRecent(data.records, query, canReadIncidents, incomplete, hasData);
+  const canReview = (row: RecentRecord) => row.cluster === "local" ? findingAI : reviewAccess && byCluster.get(row.cluster)?.reviewEnabled === true;
+  const recentTotal = () => filterRecent(data.records, query).length;
+  const renderRecords = () => renderRecent(data.records, query, canReadIncidents, incomplete, hasData, canReview);
   const html = `<section class="unified-overview" aria-label="诊断概况">
     ${renderScope(catalog, query, severity, canReadZabbix, sourceScopes)}${notice}${renderMetrics(counts, query, severity)}
     <div class="overview-analytics">
@@ -228,9 +227,9 @@ export async function loadUnifiedOverview(hash: string, canReadIncidents: boolea
     <div data-overview-record-page>${renderRecords()}</div>
   </section>`;
   return { html, bind: (root: HTMLElement, lifetime: AbortSignal) => {
-    bindUnifiedOverview(root, trend, query, renderWindow, renderRecords);
+    bindUnifiedOverview(root, trend, query, renderWindow, renderRecords, recentTotal);
     const section = root.querySelector<HTMLElement>(".unified-overview");
-    if (section) bindHealthInvestigation(section, data.records, lifetime);
+    if (section) bindHealthInvestigation(section, data.records, lifetime, query, canReview);
   } };
 }
 
@@ -273,9 +272,10 @@ function renderDistribution(data: Overview | undefined, query: URLSearchParams, 
   </section>`;
 }
 
-function renderRecent(rows: Overview["records"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean) {
+function renderRecent(rows: Overview["records"], query: URLSearchParams, canReadIncidents: boolean, incomplete: boolean, available: boolean,
+  canReview: (row: RecentRecord) => boolean) {
   const eventQuery = new URLSearchParams(query);
-  for (const key of ["trendDays", "source", "recent", "alertRecent", "recentPage", "recentPageSize"]) eventQuery.delete(key);
+  for (const key of ["trendDays", "source", "recent", "alertRecent", "recentPage", "recentPageSize", ...recentFilters]) eventQuery.delete(key);
   const findingsQuery = new URLSearchParams();
   const cluster = query.get("clusterId");
   const severity = overviewLevel(query.get("severity"));
@@ -285,55 +285,58 @@ function renderRecent(rows: Overview["records"], query: URLSearchParams, canRead
     const entry = Object.entries(incidentLevel).find(([, level]) => level === severity);
     if (entry) eventQuery.set("severity", entry[0]);
   }
-  const { page, pages, size, start, end } = overviewRecordPage(query, rows.length);
-  const items = rows.slice(start, end).map((row, index) => {
-    const investigate = `<button type="button" class="button secondary" data-health-record="${start + index}">查看详情与 AI 调查</button>`;
-    const at = row.time === undefined ? "—" : `<time datetime="${escapeHtml(row.observed)}">${escapeHtml(observedTime.format(row.time))}</time>`;
-    const level = `<span class="overview-badge overview-${row.severity}">${row.severity ? diagnosticLevels[row.severity] : "未映射"}</span>`;
-    if (row.problem) {
-      const problem = renderZabbixProblem(row.problem);
-      return { ...problem, link: problem.link + investigate, at, level };
-    }
-    if (row.alert) {
-      const state = { active: "活动", suppressed: "静默或抑制", unprocessed: "待处理", departed: "已离开当前列表" }[row.alert.state];
-      return { link: `<details><summary>${escapeHtml(row.title)}</summary><p>${state} · 原始级别 ${escapeHtml(row.alert.rawSeverity || "—")}</p></details>${investigate}`,
-        level, status: state, source: "Alertmanager", instance: escapeHtml(row.cluster), at };
-    }
-    const params = new URLSearchParams({ cluster: row.cluster, from: "overview", return: query.toString() });
-    const target = row.source === "incident" ? incidentHref(row.id, query.toString(), true) :
-      href(`${diagnosticListPaths.findings}/${encodeURIComponent(row.id)}`, params);
-    return {
-      link: `<a data-overview-return href="${escapeHtml(target)}">${escapeHtml(row.title)}</a>`,
-      level,
-      status: row.status ? escapeHtml(incidentStatusLabels[row.status]) : "—",
-      source: escapeHtml(row.source === "incident" ? `故障事件 · ${row.origin}` : row.origin),
-      instance: escapeHtml(row.cluster || "—"),
-      at,
-    };
-  });
-  return `<section class="panel overview-records" aria-labelledby="overview-recent-title"><header class="overview-heading overview-record-heading">
-    <div><h2 id="overview-recent-title" tabindex="-1">最近诊断</h2><p>按首次发现时间倒序 · UTC+8</p></div><div class="overview-actions">
-    <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.events, canReadIncidents ? eventQuery : findingsQuery))}">查看故障事件</a>
-    <a class="button secondary" href="${escapeHtml(href(diagnosticListPaths.findings, findingsQuery))}">查看原有诊断结果</a></div></header>
-    ${items.length ? `<div class="overview-table-wrap unified-recent" tabindex="0" role="region" aria-label="最近诊断记录"><table>
-      <thead><tr><th scope="col">问题</th><th scope="col">级别</th><th scope="col">处置状态</th><th scope="col">来源</th><th scope="col">主机或实例</th><th scope="col">首次发现</th></tr></thead>
-      <tbody>${items.map((item) => `<tr><td>${item.link}</td><td>${item.level}</td><td>${item.status}</td><td>${item.source}</td><td>${item.instance}</td><td>${item.at}</td></tr>`).join("")}</tbody>
-    </table></div><ul class="overview-record-cards" aria-label="最近诊断记录">${items.map((item) => `<li>${item.link}<div class="overview-card-details">
-      ${item.level}<span>${item.source}</span><span>${item.instance}</span>${item.status === "—" ? "" : `<span>${item.status}</span>`}<span>${item.at}</span>
-      </div></li>`).join("")}</ul>`
-    : `<div class="overview-empty"><strong>${!available ? "最近诊断暂不可用" : incomplete ? "当前范围尚未取得诊断记录" : "当前范围暂无诊断记录"}</strong>${available ? `<a href="${clearScope(query)}">清除筛选</a>` : ""}</div>`}
-    ${items.length ? renderRecordPager(page, pages, size, start, end, rows.length, incomplete) : ""}
-  </section>`;
+  const filtered = filterRecent(rows, query);
+  const { page, pages, size, start, end } = overviewRecordPage(query, filtered.length);
+  const select = (key: string, label: string, choices: Record<string,string>) =>
+    `<select data-recent-filter="${key}" aria-label="${label}"><option value="">全部${label}</option>${Object.entries(choices).map(([value, text]) =>
+      `<option value="${escapeHtml(value)}"${query.get(key) === value ? " selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select>`;
+  const results = filtered.slice(start, end).map(({row,index}) => {
+    const date = recordDate(row).split(" ");
+    const origin = recentSources[row.source];
+    const full = row.source === "incident" ? incidentHref(row.id, query.toString(), true) : row.source === "finding" ?
+      href(`${diagnosticListPaths.findings}/${encodeURIComponent(row.id)}`, new URLSearchParams({cluster:row.cluster,from:"overview",return:query.toString()})) : "";
+    const title = full ? `<a href="${escapeHtml(full)}" data-overview-return class="problem" data-recent-record="${index}">${escapeHtml(row.title)}</a>` :
+      `<button type="button" class="problem" data-recent-record="${index}" aria-label="${escapeHtml(row.title)}，${escapeHtml(recordTarget(row))}">${escapeHtml(row.title)}</button>`;
+    const ai = row.source === "finding" ? "AI 复核" : row.source === "incident" ? "事件 RCA" : "AI 调查";
+    return `<div class="record" role="listitem">
+      <div>${title}<div class="chips">${recordTags(row)}</div></div>
+      <div><span class="origin">${origin}</span><small>${escapeHtml(recordTarget(row))}</small></div>
+      <div class="time"><time datetime="${escapeHtml(row.observed)}">${escapeHtml(date[0])}<small>${escapeHtml(date[1])}</small></time></div>
+      <div class="actions"><button type="button" class="btn" data-recent-record="${index}">查看详情</button>
+        ${row.source !== "finding" || canReview(row) ? `<button type="button" class="btn ai" data-recent-record="${index}" data-recent-ai>${ai}</button>` : ""}</div>
+    </div>`;
+  }).join("");
+  return `<section class="overview-records recent-workspace" aria-labelledby="overview-recent-title">
+    <header class="head overview-record-heading row between"><div><h2 id="overview-recent-title" tabindex="-1">最近诊断</h2><p class="subtitle">按首次发现时间倒序 · UTC+8</p></div><div class="actions overview-actions">
+      <a class="btn" href="${escapeHtml(href(diagnosticListPaths.events, canReadIncidents ? eventQuery : findingsQuery))}">查看故障事件</a>
+      <a class="btn" href="${escapeHtml(href(diagnosticListPaths.findings, findingsQuery))}">查看原有诊断结果</a></div></header>
+    <div class="hero row between"><div><strong>先核对告警与证据，再发起 AI 调查</strong><p>选择记录查看原始问题、所属范围和关联证据。</p></div>
+      <div class="row" data-recent-count aria-live="polite">${recentCount(filtered, available, incomplete)}</div></div>
+    <section class="panel recent-list" aria-label="最近诊断记录">
+      <div class="filters"><input type="search" data-recent-filter="recentText" aria-label="搜索诊断" placeholder="搜索问题、主机或实例" maxlength="120" value="${escapeHtml(query.get("recentText"))}">
+        ${select("recentSource","来源",recentSources)}${select("recentLevel","级别",recentLevels)}
+        ${select("recentStatus","状态",Object.fromEntries([...new Set(rows.map(recordStatus))].map(label => [label,label])))}
+        <button class="btn quiet reset" type="button" data-recent-clear>清除筛选</button></div>
+      <div data-recent-items>${results ? `<div class="table-head" aria-hidden="true"><span>问题 / 级别与状态</span><span>来源 / 主机或实例</span><span>首次发现</span><span>操作</span></div>
+        <div class="unified-recent" role="list" aria-label="按首次发现倒序的诊断记录">${results}</div>` : `<div class="empty"><p>${!available ? "最近诊断暂不可用" : rows.length ? "没有符合当前筛选的诊断记录。" : incomplete ? "当前范围尚未取得诊断记录" : "当前范围暂无诊断记录"}</p>
+        ${available && rows.length ? '<button class="btn" type="button" data-recent-clear>清除筛选</button>' : available ? `<a href="${clearScope(query)}">清除总览筛选</a>` : ""}</div>`}</div>
+      <div data-recent-pager>${results ? renderRecordPager(page, pages, size, start, end, filtered.length, incomplete) : ""}</div>
+    </section></section>`;
+}
+
+function recentCount(filtered: ReturnType<typeof filterRecent>, available: boolean, incomplete: boolean) {
+  return available ? `<span class="summary-num"><b>${filtered.length}</b> 条${incomplete ? "已获取" : ""}记录</span>
+    <span class="summary-num"><b>${filtered.filter(({row}) => row.severity === "critical").length}</b> 条严重</span>` : '<span class="summary-num">数据暂不可用</span>';
 }
 
 function renderRecordPager(page: number, pages: number, size: number, start: number, end: number, total: number, incomplete: boolean): string {
   const choices = [...new Set<number>([...overviewPageSizes, size])].sort((a, b) => a - b);
-  return `<footer class="audit-list-footer overview-record-footer">
+  return `<footer class="pager row between">
     <span class="muted">显示第 ${start + 1}–${end} 条 · ${incomplete ? "已获取" : "共"} ${total} 条</span>
     <nav class="audit-pagination" aria-label="最近诊断分页">
-      <button class="button secondary" type="button" aria-label="上一页" data-overview-page="${page - 1}"${page <= 1 ? " disabled" : ""}>‹</button>
+      <button class="btn" type="button" aria-label="上一页" data-overview-page="${page - 1}"${page <= 1 ? " disabled" : ""}>上一页</button>
       <span class="audit-page-number">第 ${page} / ${pages} 页</span>
-      <button class="button secondary" type="button" aria-label="下一页" data-overview-page="${page + 1}"${page >= pages ? " disabled" : ""}>›</button>
+      <button class="btn" type="button" aria-label="下一页" data-overview-page="${page + 1}"${page >= pages ? " disabled" : ""}>下一页</button>
       <select data-overview-limit aria-label="每页条数" aria-controls="overview-custom-limit">${choices.map(count =>
         `<option value="${count}"${count === size ? " selected" : ""}>${count} 条/页</option>`).join("")}
         <option value="custom">自定义…</option></select>
@@ -349,28 +352,8 @@ function renderRecordPager(page: number, pages: number, size: number, start: num
   </footer>`;
 }
 
-function renderZabbixProblem(problem: NonNullable<Overview["records"][number]["problem"]>) {
-  const start = Date.parse(problem.startedAt);
-  const end = problem.recoveredAt ? Date.parse(problem.recoveredAt) : Date.now();
-  const duration = Number.isFinite(start) && Number.isFinite(end) ? ` · 持续 ${Math.max(0, Math.floor((end - start) / 60_000))} 分钟` : "";
-  const labels = ["未分类", "信息", "警告", "一般", "严重", "灾难"];
-  const tags = (problem.tags ?? []).map(({ tag, value }) => `${escapeHtml(tag)}＝${escapeHtml(value)}`).join("、");
-  const originalURL = problem.originalURL && /^https?:\/\//i.test(problem.originalURL) ? problem.originalURL : undefined;
-  const recovery = problem.recoveredAt ? Date.parse(problem.recoveredAt) : NaN;
-  return {
-    link: `<details><summary>${escapeHtml(problem.title)}</summary><p>事件编号 ${escapeHtml(problem.eventId)}</p>
-      <p>Zabbix ${labels[problem.rawSeverity] ?? "未知级别"} · ${problem.acknowledged ? "已确认" : "未确认"}${duration}</p>
-      ${Number.isFinite(recovery) ? `<p>恢复于 ${escapeHtml(observedTime.format(recovery))}</p>` : ""}
-      ${tags ? `<p>${tags}</p>` : ""}
-      ${originalURL ? `<a href="${escapeHtml(originalURL)}" target="_blank" rel="noopener noreferrer">查看 Zabbix 原始问题</a>` : ""}</details>`,
-    status: problem.recovered ? "已恢复" : "未恢复",
-    source: "Zabbix",
-    instance: escapeHtml(problem.hosts.map(host => host.name).join("、") || "—"),
-  };
-}
-
 function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchParams,
-  renderWindow: (days: OverviewDays) => string, renderRecords: () => string): void {
+  renderWindow: (days: OverviewDays) => string, renderRecords: () => string, recentTotal: () => number): void {
   const form = root.querySelector<HTMLFormElement>("[data-unified-filters]");
   const chart = root.querySelector<HTMLElement>("[data-overview-trend]");
   const overview = root.querySelector<HTMLElement>(".unified-overview");
@@ -396,7 +379,7 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
     heading?.focus({ preventScroll: true });
     heading?.scrollIntoView({ block: "start" });
   });
-  bindOverviewRecords(overview, trend.data.total, query, renderRecords);
+  bindOverviewRecords(overview, recentTotal, query, renderRecords);
   bindOverviewTrend(chart, trend, overviewDays(query.get("trendDays")));
   chart.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -414,10 +397,10 @@ function bindUnifiedOverview(root: HTMLElement, trend: Trend, query: URLSearchPa
   });
 }
 
-function bindOverviewRecords(root: HTMLElement, total: number, query: URLSearchParams, renderRecords: () => string): void {
+function bindOverviewRecords(root: HTMLElement, total: () => number, query: URLSearchParams, renderRecords: () => string): void {
   const section = root.querySelector<HTMLElement>("[data-overview-record-page]");
   if (!section) return;
-  const current = () => overviewRecordPage(query, total);
+  const current = () => overviewRecordPage(query, total());
   const setPage = (page: number) => {
     if (page > 1) query.set("recentPage", String(page));
     else query.delete("recentPage");
@@ -462,9 +445,33 @@ function bindOverviewRecords(root: HTMLElement, total: number, query: URLSearchP
       select.focus();
     }
   };
+  function refreshFiltered() {
+    setPage(1);
+    history.replaceState(history.state, "", address());
+    const template = document.createElement("template");
+    template.innerHTML = renderRecords();
+    for (const selector of ["[data-recent-count]", "[data-recent-items]", "[data-recent-pager]"]) {
+      const target = section?.querySelector(selector);
+      const update = template.content.querySelector(selector);
+      if (target && update) target.replaceWith(update);
+    }
+  }
+
+  function setFilter(input: HTMLInputElement | HTMLSelectElement) {
+    const key = recentFilters.find(field => field === input.dataset.recentFilter);
+    if (!key) return;
+    if (input.value) query.set(key, input.value);
+    else query.delete(key);
+    refreshFiltered();
+  }
+  section.addEventListener("input", event => {
+    if (event.target instanceof HTMLInputElement && event.target.hasAttribute("data-recent-filter")) setFilter(event.target);
+  });
   section.addEventListener("change", event => {
     const select = event.target;
-    if (!(select instanceof HTMLSelectElement) || !select.hasAttribute("data-overview-limit")) return;
+    if (!(select instanceof HTMLSelectElement)) return;
+    if (select.hasAttribute("data-recent-filter")) { setFilter(select); return; }
+    if (!select.hasAttribute("data-overview-limit")) return;
     const size = overviewPageSize(select.value);
     if (size) {
       showPage(1, size, "[data-overview-limit]");
@@ -483,6 +490,13 @@ function bindOverviewRecords(root: HTMLElement, total: number, query: URLSearchP
   });
   section.addEventListener("click", event => {
     if (!(event.target instanceof HTMLButtonElement)) return;
+    if (event.target.hasAttribute("data-recent-clear")) {
+      for (const key of recentFilters) query.delete(key);
+      for (const input of section.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-recent-filter]")) input.value = "";
+      refreshFiltered();
+      section.querySelector<HTMLElement>('[data-recent-filter="recentText"]')?.focus();
+      return;
+    }
     if (event.target.hasAttribute("data-overview-cancel-limit")) cancelLimit();
     const page = Number(event.target.dataset.overviewPage);
     if (page >= 1 && page <= current().pages && !event.target.disabled) {

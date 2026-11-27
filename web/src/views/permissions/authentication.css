@@ -4,24 +4,24 @@
 .auth-session-summary { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 16px; border-radius: var(--panel-radius); list-style: none; cursor: pointer; font-weight: 700; }
 .auth-session-summary::-webkit-details-marker { display: none; }
 .auth-session-summary:focus-visible { outline-offset: -3px; }
-.auth-session-summary:hover { background: #f5f9ff; }
+.auth-session-summary:hover { background: var(--surface-soft); }
 .auth-session-summary::after { content: ""; flex: none; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 :is(.auth-session-card, .auth-ldap-card)[open] > .auth-session-summary { border-bottom: 1px solid var(--line); }
 :is(.auth-session-card, .auth-ldap-card)[open] > .auth-session-summary::after { transform: rotate(225deg); }
 .auth-session-current { margin-inline-start: auto; color: var(--muted); font-size: 13px; font-weight: 400; }
-.auth-session-current strong { color: var(--blue); white-space: nowrap; }
+.auth-session-current strong { color: var(--accent); white-space: nowrap; }
 .auth-session-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
 .auth-session-settings, .auth-session-scope { padding: 13px 16px; }
-.auth-session-scope { border-inline-start: 1px solid var(--line); background: #f5f8fd; }
+.auth-session-scope { border-inline-start: 1px solid var(--line); background: var(--surface-soft); }
 .auth-session-scope h2 { margin: 0; font-size: 1rem; }
 .auth-session-scope p, .auth-session-settings p { margin: 0; }
 .auth-session-settings label { display: block; margin-bottom: 5px; font-weight: 650; }
 .auth-policy-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.auth-policy-controls input { width: 85px; min-height: 34px; padding: 5px 10px; border: 1px solid #b8c6d7; border-radius: var(--control-radius); color: var(--ink); background: var(--surface); }
+.auth-policy-controls input { width: 85px; min-height: 34px; padding: 5px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: var(--surface); }
 .auth-policy-controls input[aria-invalid="true"] { border-color: #af3546; }
-.auth-policy-controls .button { min-height: 34px; padding: 5px 10px; border-radius: 5px; background: var(--blue); }
-.auth-policy-controls .button:hover:not(:disabled) { background: #005ab3; }
-.auth-policy-controls .button:disabled { border-color: var(--line); background: #e8eef6; color: var(--muted); cursor: default; }
+.auth-policy-controls .button { min-height: 34px; padding: 5px 10px; border-radius: 5px; background: var(--accent); }
+.auth-policy-controls .button:hover:not(:disabled) { background: var(--accent); }
+.auth-policy-controls .button:disabled { border-color: var(--line); background: var(--surface-soft); color: var(--muted); cursor: default; }
 .auth-session-settings .auth-policy-hint { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .auth-policy-error { color: #af3546; }
 .auth-policy-status { color: #176c55; }
@@ -38,12 +38,12 @@
 .auth-ldap-field { display: grid; min-width: 0; gap: 5px; font-weight: 650; }
 .auth-ldap-field :is(input, select) { width: 100%; min-width: 0; min-height: 42px; padding: 6px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: white; font: inherit; font-weight: 400; }
 .auth-ldap-plain { display: flex; align-items: center; gap: 8px; }
-.auth-ldap-plain input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--blue); }
+.auth-ldap-plain input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
 .auth-ldap-advanced { min-width: 0; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
 .auth-ldap-advanced summary { cursor: pointer; font-weight: 650; }
 .auth-ldap-advanced p { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .auth-ldap-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; margin-block: 10px; }
-.auth-ldap-verification { background: #f5f8fd; }
+.auth-ldap-verification { background: var(--surface-soft); }
 .auth-ldap-verification .button { justify-self: start; }
 .auth-ldap-steps { min-width: 0; padding: 8px 10px 10px; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .auth-ldap-steps legend { color: var(--muted); padding-inline: 4px; }

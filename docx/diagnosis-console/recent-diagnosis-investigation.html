@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>最近诊断与 AI 调查 · kube-aiops</title>
+<style>
+:root{color-scheme:light;--bg:#f3f6f4;--paper:#fffefa;--ink:#213a35;--muted:#536b62;--line:#e0e9e3;--primary:#275f52;--mint:#e2f0e8;--lilac:#f0ebf8;--violet:#5a4978;--sand:#f8edd9;--amber:#80511e;--rose:#fae9e6;--red:#923e36;--shadow:0 18px 44px -34px #193a2b68;font:15px/1.55 "PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+*{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}h1,h2,h3,p,dl,dd{margin:0}h1{font-size:clamp(28px,3.1vw,37px);letter-spacing:-.035em;line-height:1.16}h2{font-size:21px;line-height:1.3}h3{font-size:16px}p,dd{overflow-wrap:anywhere}button,input,select,textarea{font:inherit;color:inherit}button,summary{cursor:pointer}button:disabled{cursor:default;opacity:.5}a{color:var(--primary)}:focus-visible{outline:3px solid #629b88;outline-offset:3px}
+.top{background:#fffdf8;border-bottom:1px solid var(--line)}.top-inner,.layout{max-width:1460px;margin:auto}.top-inner{display:flex;align-items:center;gap:17px;padding:13px clamp(16px,4vw,50px)}.brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:760;white-space:nowrap}.mark{display:grid;place-items:center;width:37px;height:37px;border-radius:13px;background:var(--primary);color:#fff}.product{background:var(--mint);color:var(--primary);padding:7px 13px;border-radius:999px;font-weight:650;font-size:13px}.demo{margin-left:auto;white-space:nowrap}
+.layout{display:grid;grid-template-columns:166px minmax(0,1fr);gap:23px;padding:26px clamp(16px,4vw,50px) 36px}.rail{padding-top:6px;display:grid;align-content:start;gap:7px}.rail h2{font-size:15px;margin:0 10px 7px}.rail button{border:0;border-radius:14px;background:transparent;padding:9px 11px;font-weight:650;text-align:left;color:var(--muted)}.rail button[aria-current]{background:var(--mint);color:var(--primary)}
+main{min-width:0}.row,.actions,.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.between{justify-content:space-between}.muted,small{color:var(--muted)}.crumb{color:var(--muted);font-size:13px;margin-bottom:8px}.head{margin-bottom:15px;gap:12px}.subtitle{color:var(--muted);margin-top:7px}
+.hero{position:relative;isolation:isolate;overflow:hidden;border-radius:26px;padding:15px 19px;margin-bottom:15px;background:radial-gradient(ellipse at 90% 0%,#dcefe4,transparent 64%),linear-gradient(110deg,#f3f5e5,#eaf4ed);border:1px solid #dae9df}.hero::after{content:"";position:absolute;inset:-145px -60px auto auto;width:310px;height:232px;border-radius:44% 56% 61% 39%;z-index:-1;box-shadow:0 0 0 20px #fff5,0 0 0 40px #7cae9a24;transform:rotate(-18deg);pointer-events:none}.hero strong{font-size:16px}.hero p{font-size:13px;margin-top:3px;color:var(--muted)}.summary-num{padding:5px 11px;border-radius:999px;background:#ffffffa8;font-size:13px;white-space:nowrap}.summary-num b{font-size:16px;margin-right:4px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:25px;box-shadow:var(--shadow);padding:16px 19px;min-width:0}.btn{display:inline-flex;justify-content:center;align-items:center;gap:5px;min-height:37px;padding:6px 12px;border:1px solid #d6e4dc;border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;white-space:nowrap;font-weight:650;font-size:13px}.btn:hover:enabled{background:#eff6f0}.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.primary:hover:enabled{background:#1d5144}.btn.ai{color:var(--violet);background:var(--lilac);border-color:#e7ddf2}.btn.ai:hover:enabled{background:#e7dcf2}.btn.quiet{border-color:transparent;background:transparent}.btn.danger{color:var(--red);border-color:#efd7d2;background:#fff8f5}
+.filters{display:grid;grid-template-columns:minmax(135px,1.6fr) repeat(3,minmax(95px,auto)) auto;gap:8px;align-items:center;margin-bottom:10px}
+input,select,textarea{min-height:38px;max-width:100%;min-width:0;border:1px solid #d6e4dd;border-radius:12px;background:#fbfdfa;padding:7px 10px}textarea{width:100%;resize:vertical}select{text-overflow:ellipsis}
+.table-head,.record{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,.85fr) minmax(104px,.6fr) minmax(0,172px);gap:12px;align-items:center}.table-head{background:#f3f7f3;padding:6px 11px;border-radius:12px;color:var(--muted);font-size:13px}.record{padding:11px;border-bottom:1px solid #ecf0ed}.record:hover{background:#f8faf6}.record:last-child{border-bottom:0}.problem{appearance:none;background:none;border:0;color:var(--ink);padding:0;text-align:left;font-weight:730;font-size:15px;line-height:1.4;overflow-wrap:anywhere}.problem:hover{text-decoration:underline;text-underline-offset:3px}.record .actions{justify-content:flex-start;gap:5px}.record .actions .btn{padding-inline:8px}.record small{display:block;margin-top:3px;overflow-wrap:anywhere}.record .chips{margin-top:5px}.pill{display:inline-flex;gap:5px;align-items:center;font-weight:650;font-size:11px;line-height:1.35;border-radius:999px;padding:4px 8px;background:#edf2ef;color:#496257}.pill.good{background:var(--mint);color:var(--primary)}.pill.warn{background:var(--sand);color:var(--amber)}.pill.bad{background:var(--rose);color:var(--red)}.pill.ai{background:var(--lilac);color:var(--violet)}.pill.good::before,.pill.bad::before,.pill.warn::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}.time{font-size:13px;font-variant-numeric:tabular-nums}.origin{font-weight:650;font-size:13px}.pager{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px}.empty{padding:36px 12px;text-align:center;color:var(--muted)}.empty p{margin-bottom:10px}.footnote{margin-top:15px;color:var(--muted);font-size:13px}.footnote p{margin-top:5px}.notice{border-radius:14px;padding:10px 12px;background:var(--mint);color:var(--primary);font-size:14px}.notice.bad{background:var(--rose);color:var(--red)}.notice.warn{background:var(--sand);color:var(--amber)}.notice a{color:inherit}
+dialog{padding:0;border:1px solid var(--line);color:var(--ink);background:var(--paper);box-shadow:0 19px 70px #19392f45}
+dialog::backdrop{background:#1d3c3473}
+#workbench{position:fixed;inset:8px 8px 8px auto;margin:0;width:min(700px,calc(100% - 16px));max-width:none;height:calc(100dvh - 16px);max-height:none;border-radius:26px;overflow:hidden}
+#workbench[open]{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto}
+.drawer-top{padding:17px 20px 12px;background:linear-gradient(135deg,#f1f8ed,#fdfcf9 68%);border-bottom:1px solid var(--line)}.drawer-top h2{font-size:clamp(18px,3.4vw,25px);overflow-wrap:anywhere;margin:5px 0 7px}.drawer-top .chips{gap:5px}.drawer-top .row{align-items:flex-start}.drawer-tabs{display:flex;align-items:center;gap:7px;padding:9px 19px;border-bottom:1px solid var(--line);background:#fffefa}.drawer-tabs button{border:0;border-radius:999px;background:#f1f4f0;padding:7px 13px;font-weight:650;font-size:13px}.drawer-tabs button[aria-pressed=true]{background:var(--mint);color:var(--primary)}.drawer-tabs button[data-tab=ai][aria-pressed=true]{background:var(--lilac);color:var(--violet)}
+.drawer-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:15px 19px;display:grid;align-content:start;gap:11px}.drawer-foot{padding:10px 19px;border-top:1px solid var(--line);background:#fffefa}.drawer-foot .btn{min-height:40px}.card{border:1px solid var(--line);border-radius:18px;padding:12px 14px;background:#fff;min-width:0}.card h3{margin-bottom:6px}.card p+p{margin-top:6px}.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:5px 15px;font-size:14px}.meta dt{color:var(--muted)}.meta dd{overflow-wrap:anywhere}.pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:10px 12px;border-radius:12px;background:#f1f6f2;font:13px/1.55 ui-monospace,monospace}.evidence{border:1px solid var(--line);border-radius:13px;margin-top:7px;background:#f9fbf8;overflow:hidden}.evidence summary{padding:8px 10px;font-size:13px;font-weight:650}.evidence .inside{padding:0 10px 9px}.result{display:grid;gap:8px}.result h3{margin-bottom:3px}.ref{display:block;border:1px solid #dce9e1;border-radius:11px;width:100%;text-align:left;padding:7px 9px;margin-top:5px;background:#f5f9f6;color:var(--primary);font-size:13px;overflow-wrap:anywhere}.ref:hover{background:#e8f3ec}.cycle{font-size:12px;color:var(--muted)}.pulse{display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:50%;background:#8f77aa;animation:pulse 1.5s infinite}@keyframes pulse{50%{opacity:.35}}.obs label{display:block;font-weight:650;margin-bottom:5px}
+#aux{width:min(520px,calc(100% - 24px));border-radius:24px;padding:18px;max-height:calc(100dvh - 24px)}#aux-body{display:grid;gap:10px;margin-top:10px}#aux label{display:grid;gap:6px}#aux select{width:100%}.aux-list{display:grid;gap:7px}
+@media(max-width:1100px){.layout{grid-template-columns:135px minmax(0,1fr);gap:12px}.table-head,.record{grid-template-columns:minmax(0,1.5fr) minmax(0,.8fr) minmax(85px,.55fr) 148px;gap:8px}.record .actions .btn{font-size:12px}}
+@media(max-width:845px){.layout{grid-template-columns:minmax(0,1fr)}.rail{display:none}.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.filters input{grid-column:1/3}.filters .reset{grid-column:3;grid-row:1}}
+@media(max-width:640px){.top-inner{gap:8px}.brand{font-size:16px}.mark{width:32px;height:32px}.product{display:none}.layout{padding-top:17px}.panel{padding:11px 12px}.hero{padding:12px 13px}.table-head{display:none}.record{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px;padding:11px 2px}.record>div:first-child,.record>.actions{grid-column:1/-1}.record .actions{margin-top:3px}.record .actions .btn{min-height:39px;font-size:13px}.record .time{text-align:right}.drawer-top,.drawer-tabs,.drawer-body,.drawer-foot{padding-inline:12px}.drawer-top{padding-top:10px}.drawer-top h2{max-height:4.1em;overflow:auto}.drawer-foot .actions{width:100%;justify-content:flex-end}.head .actions{gap:5px}}
+@media(prefers-reduced-motion:reduce){.pulse{animation:none}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-inner">
+  <div class="brand"><span class="mark" aria-hidden="true">K</span>kube-aiops</div>
+  <span class="product">诊断控制台</span>
+  <button class="btn quiet demo" type="button" data-action="scenario">演示场景</button>
+</div></header>
+<div class="layout"><nav class="rail" aria-label="诊断控制台">
+  <h2>诊断控制台</h2>
+  <button type="button" aria-current="page" data-action="overview">诊断总览</button>
+  <button type="button" data-action="events">故障事件</button>
+  <button type="button" data-action="findings">原有诊断结果</button>
+</nav><main>
+  <p class="crumb">诊断控制台 / 诊断总览</p>
+  <header class="head row between"><div><h1>最近诊断</h1><p class="subtitle">按首次发现倒序 · UTC+8</p></div>
+    <div class="actions"><button class="btn" type="button" data-action="events">查看故障事件</button><button class="btn" type="button" data-action="findings">查看原有诊断结果</button></div></header>
+  <section class="hero row between" aria-label="最近诊断摘要">
+    <div><strong>先核对告警与证据，再发起 AI 调查</strong><p>选择记录查看原始问题、所属范围和关联证据。</p></div>
+    <div class="row" id="counts" aria-live="polite"></div>
+  </section>
+  <section class="panel" aria-label="最近诊断记录">
+    <div class="filters"><input id="query" type="search" aria-label="搜索诊断" placeholder="搜索问题、主机或实例">
+      <select id="source" aria-label="来源"><option value="">全部来源</option><option>Zabbix</option><option>Alertmanager</option><option>K8sGPT</option><option>故障事件</option></select>
+      <select id="level" aria-label="级别"><option value="">全部级别</option><option>严重</option><option>警告</option><option>提示</option></select>
+      <select id="status" aria-label="状态"><option value="">全部状态</option><option>未恢复</option><option>已恢复</option><option>活动</option><option>处理中</option><option>未提供</option></select>
+      <button class="btn quiet reset" type="button" data-action="reset">清除筛选</button></div>
+    <div id="records"></div>
+    <footer class="pager row between" id="pager"></footer>
+    <form class="row" id="custom" hidden><label>自定义每页条数 <input name="size" required type="number" min="1" max="100" placeholder="1–100" style="width:95px"></label>
+      <button class="btn" type="submit">应用</button><button class="btn quiet" type="button" data-action="cancel-size">取消</button></form>
+  </section>
+  <details class="footnote"><summary>原型说明与实现依据</summary><p>记录、证据和 AI 响应均为模拟数据。列表和工作台可以在浏览器离线操作，刷新会重置演示。</p>
+    <p>实现依据见 <a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/diagnosis/unified-overview.ts" target="_blank" rel="noopener">诊断总览</a>、
+      <a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/diagnosis/health-investigation.ts" target="_blank" rel="noopener">健康告警调查</a>、
+      <a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/diagnosis/finding-review.ts" target="_blank" rel="noopener">Finding AI 复核</a>和
+      <a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/diagnosis/incident-rca.ts" target="_blank" rel="noopener">事件诊断</a>。</p>
+  </details>
+</main></div>
+<dialog id="workbench" aria-labelledby="record-title">
+  <header class="drawer-top" id="record-head"></header>
+  <nav class="drawer-tabs" aria-label="记录工作台"><button type="button" aria-pressed="true" data-tab="detail">详情与证据</button><button type="button" aria-pressed="false" data-tab="ai">AI 调查</button></nav>
+  <div class="drawer-body" id="record-body"></div>
+  <footer class="drawer-foot row between" id="record-foot"></footer>
+</dialog>
+<dialog id="aux" aria-labelledby="aux-title"><header class="row between"><h2 id="aux-title"></h2><button class="btn quiet" type="button" data-action="close-aux">关闭</button></header><div id="aux-body"></div></dialog>
+<script>
+const $ = (s,r=document) => r.querySelector(s);
+const safe = (value="") => String(value).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const diag = $("#workbench"), aux = $("#aux"), body = $("#record-body");
+const records = [
+  {id:"ZBX-117",source:"Zabbix",title:"Windows 可用内存低于 1 GB",raw:"Windows: High memory utilization (available memory <1 GB)",level:"警告",status:"未恢复",target:"餐饮微平台 WEB · WH138.188",time:"2026/11/27 10:43:28",scope:"生产 / 餐饮",metric:"可用内存 0.73 GB，告警阈值 1 GB。",gap:"当前快照缺少进程工作集和分页速率，无法确认是哪一个进程占用内存。",next:"在主机只读查看进程工作集与 Memory\\Pages/sec，对照告警前后的 15 分钟。"},
+  {id:"ZBX-116",source:"Zabbix",title:"IIS 站点 weretail-mall-frontend 刚刚重启",raw:"IIS: weretail-mall-frontend site has just restarted",level:"警告",status:"未恢复",target:"零售微平台 API · WI139.208",time:"2026/11/27 10:40:11",scope:"生产 / 零售",metric:"IIS 站点运行时间重置，Zabbix 已记录重启。",gap:"缺少 IIS 事件日志和应用池回收记录。",next:"对照 Windows 事件日志、应用池回收计划和最近发布时刻。"},
+  {id:"ZBX-115",source:"Zabbix",title:"Windows 可用内存低于 1 GB",raw:"Windows: High memory utilization (available memory <1 GB)",level:"警告",status:"未恢复",target:"餐饮微平台 WEB · WI139.214",time:"2026/11/27 10:13:43",scope:"生产 / 餐饮",metric:"可用内存 0.88 GB，告警阈值 1 GB。",gap:"缺少此实例的进程明细。",next:"按该主机实例核对最近 15 分钟的进程和分页指标。"},
+  {id:"F-114",source:"K8sGPT",title:"Pod 容器异常退出（Error）",raw:"the last termination reason is Error container=demo pod=crashloop-demo-d8d87c886-ndhd5",level:"警告",status:"未提供",target:"local / k8sgpt-demo",time:"2026/11/27 04:33:40",scope:"研发 / local / k8sgpt-demo",metric:"Kubernetes 事件记录 BackOff，容器最近一次终止原因为 Error。",gap:"没有上次退出的容器日志，不能确认应用自身错误。",next:"核对该 Pod 上一实例的退出码和最近部署变更。"},
+  {id:"F-113",source:"K8sGPT",title:"Deployment 有 1 个副本，当前可用副本为 0",raw:"Deployment k8sgpt-demo/crashloop-demo has 1 replicas but 0 are available with status running",level:"警告",status:"未提供",target:"local / k8sgpt-demo",time:"2026/11/27 00:06:56",scope:"研发 / local / k8sgpt-demo",metric:"Deployment 的 availableReplicas 为 0。",gap:"缺少 readiness 探针详情与 Pod 日志。",next:"关联 ReplicaSet 及 Pod 事件，确认哪个条件阻塞 Ready。"},
+  {id:"AM-112",source:"Alertmanager",title:"网关 5xx 错误率超过 5%",raw:"GatewayHigh5xx — error ratio above 5% for 10m",level:"严重",status:"活动",target:"prod-sh-01 / gateway-system",time:"2026/11/26 23:54:17",scope:"生产 / 基础平台 / prod-sh-01 / gateway-system",metric:"网关 5xx 告警活动超过 10 分钟。",gap:"缺少路由级别和上游服务维度的 5xx 分布。",next:"对照 Envoy 的 route、upstream 统计及发布记录。"},
+  {id:"INC-111",source:"故障事件",title:"支付回调延迟升高",raw:"支付回调 P99 由 230 ms 升至 1.8 s",level:"严重",status:"处理中",target:"prod-sh-01 / payments",time:"2026/11/26 22:19:08",scope:"生产 / 支付 / prod-sh-01 / payments",metric:"故障事件已关联支付回调告警和发布变更记录。",gap:"需要确认发布与延迟变化的时间先后关系。",next:"进入事件 RCA，核对支付下游和调用链，再记录验证结论。"},
+  {id:"ZBX-110",source:"Zabbix",title:"磁盘可用空间恢复到阈值以上",raw:"Filesystem free space has recovered above threshold",level:"提示",status:"已恢复",target:"日志采集 · LOG-02",time:"2026/11/26 21:02:52",scope:"生产 / 平台运维",metric:"最近快照显示磁盘可用空间 22%。",gap:"缺少本次回升对应的变更记录。",next:"核对日志保留周期和清理任务的执行记录。"}
+];
+const byId = id => records.find(row=>row.id===id);
+const finding = row => row.source==="K8sGPT";
+const incident = row => row.source==="故障事件";
+const mode = row => finding(row) ? "Finding AI 复核" : incident(row) ? "事件 RCA" : "AI 深度调查";
+const tag = (label,tone="") => `<span class="pill ${tone}">${safe(label)}</span>`;
+const button = (action,label,kind="",id="") => `<button type="button" class="btn ${kind}" data-action="${action}" data-id="${safe(id)}">${label}</button>`;
+const state = {page:1,size:5,row:null,tab:"detail",scenario:"success",flows:new Map(),opener:null};
+const getFlow = row => {
+  if (!state.flows.has(row.id)) state.flows.set(row.id,{phase:"idle",obs:"",outcomes:0,result:null,saved:"",timer:0});
+  return state.flows.get(row.id);
+};
+const permissionText = {
+  unbound:"当前告警范围尚未绑定 Holmes。请联系管理员在 AI 服务配置核对该数据源与命名空间。",
+  forbidden:"当前账号缺少该范围的 AI 调查权限。仍可查看已有授权的原始记录与证据。",
+};
+function matching() {
+  const query = $("#query").value.trim().toLowerCase();
+  return records.filter(row=>["source","level","status"].every(key=>!$("#"+key).value||row[key]===$("#"+key).value)
+    && [row.title,row.target,row.raw,row.id].join(" ").toLowerCase().includes(query));
+}
+function tags(row) {
+  return tag(row.level,row.level==="严重"?"bad":row.level==="警告"?"warn":"")
+    + tag(row.status,row.status==="已恢复"?"good":"");
+}
+function renderList() {
+  const rows=matching(), pages=Math.max(1,Math.ceil(rows.length/state.size));
+  state.page=Math.min(state.page,pages);
+  const start=(state.page-1)*state.size, visible=rows.slice(start,start+state.size);
+  $("#counts").innerHTML = `<span class="summary-num"><b>${rows.length}</b> 条记录</span><span class="summary-num"><b>${rows.filter(row=>row.level==="严重").length}</b> 条严重</span>`;
+  $("#records").innerHTML = rows.length ? `
+    <div class="table-head" aria-hidden="true"><span>问题 / 级别与状态</span><span>来源 / 主机或实例</span><span>首次发现</span><span>操作</span></div>
+    <div role="list" aria-label="按首次发现倒序的诊断记录">${visible.map(row=>`<article class="record" role="listitem">
+      <div><button class="problem" type="button" data-action="detail" data-id="${row.id}" aria-label="${safe(row.title)}，${safe(row.target)}">${safe(row.title)}</button><div class="chips">${tags(row)}</div></div>
+      <div><span class="origin">${safe(row.source)}</span><small>${safe(row.target)}</small></div>
+      <div class="time">${row.time.split(" ")[0]}<small>${row.time.split(" ")[1]}</small></div>
+      <div class="actions">${button("detail","查看详情","",row.id)}${button("ai",incident(row)?"事件 RCA":finding(row)?"AI 复核":"AI 调查","ai",row.id)}</div>
+    </article>`).join("")}</div>` : `<div class="empty"><p>没有符合当前筛选的诊断记录。</p>${button("reset","清除筛选")}</div>`;
+  $("#pager").innerHTML = rows.length ? `<span class="muted" role="status">显示第 ${start+1}–${start+visible.length} 条 · 共 ${rows.length} 条</span>
+    <nav class="row" aria-label="最近诊断分页">
+      <button class="btn" type="button" data-action="prev" ${state.page===1?"disabled":""}>上一页</button><span>第 ${state.page} / ${pages} 页</span>
+      <button class="btn" type="button" data-action="next" ${state.page===pages?"disabled":""}>下一页</button>
+      <select id="page-size" aria-label="每页条数">${[...new Set([5,10,15,state.size])].sort((a,b)=>a-b).map(size=>`<option value="${size}" ${size===state.size?"selected":""}>${size} 条/页</option>`).join("")}<option value="custom">自定义…</option></select>
+    </nav>` : "";
+}
+function detailRows(pairs) {
+  return pairs.map(([name,value])=>`<dt>${safe(name)}</dt><dd>${safe(value||"—")}</dd>`).join("");
+}
+function evidence(row,key="") {
+  const eventName=finding(row)?"Kubernetes 事件":incident(row)?"关联告警与变更":row.source+" 告警快照";
+  return `<section class="card" aria-label="关联证据"><h3>关联证据</h3>
+    <details class="evidence" id="source-observed"${key==="observed"?" open":""}><summary>${safe(eventName)} · 1 条</summary>
+      <div class="inside"><p>${safe(row.metric)}</p><small>${safe(row.time)} · UTC+8 · ${safe(row.target)}</small></div></details>
+    <details class="evidence" id="source-missing"><summary>${finding(row)?"容器日志与指标":"补充日志与指标"} · 未取得</summary>
+      <div class="inside"><p>${safe(row.gap)}</p></div></details></section>`;
+}
+function detailView(row,key) {
+  return `<section class="card"><h3>问题详情</h3><dl class="meta">${detailRows([
+    ["记录编号",row.id],["来源",row.source],["主机或实例",row.target],["所属范围",row.scope],
+    ["首次发现",row.time+" · UTC+8"],["处置状态",row.status],
+  ])}</dl></section>
+  <section class="card"><h3>${finding(row)?"K8sGPT 原始诊断":incident(row)?"事件记录":"原始告警"}</h3><pre class="pre">${safe(row.raw)}</pre></section>
+  ${evidence(row,key)}`;
+}
+function resultView(row,flow) {
+  return `<div class="result">
+    <section class="card"><div class="row between"><h3>当前判断</h3>${tag("证据不足","warn")}</div>
+      <p>${safe(flow.result.judgment)}</p><small>分析参考 · ${safe(mode(row))} · 模拟结果</small></section>
+    <section class="card"><h3>证据引用</h3>
+      <button type="button" class="ref" data-action="jump-evidence">${safe(row.source)} · ${safe(row.time)} · 查看告警或事件证据</button></section>
+    <section class="card"><h3>待验证</h3><p>${safe(row.gap)}</p></section>
+    <section class="card"><h3>下一步</h3><p>${safe(row.next)}</p></section>
+    ${finding(row)?`<section class="card obs"><label for="conclusion">人工复核结论</label>
+      <textarea id="conclusion" rows="3" maxlength="8192" placeholder="填写已验证的复核结论">${safe(flow.saved||"")}</textarea>
+      <div class="actions">${button("save-review","保存复核结论")}${flow.saved?'<span class="muted">当前会话已保存</span>':""}</div></section>`:""}
+  </div>`;
+}
+function aiView(row,flow) {
+  const blocked = (state.scenario==="forbidden" || (state.scenario==="unbound" && !finding(row) && !incident(row))) ? state.scenario : "";
+  const actionLabel=finding(row)?"发起 AI 复核":incident(row)?"运行事件 RCA":"发起 AI 深度调查";
+  const feedback = blocked ? `<p class="notice bad" role="status">${permissionText[blocked]}</p>` :
+    flow.phase==="running" ? '<p class="notice" role="status"><span class="pulse" aria-hidden="true"></span>正在读取证据并生成分析…</p>' :
+    flow.phase==="timeout" ? '<p class="notice warn" role="status">模型响应超时。可重试本次调查。</p>' :
+    flow.phase==="cancelled" ? '<p class="notice warn" role="status">调查已取消，可重新发起。</p>' : "";
+  return {
+    html:`<section class="card"><div class="row between"><h3>${mode(row)}</h3>${tag("只读证据","ai")}</div>
+      <p class="muted">${finding(row)?"基于当前 Finding 和关联证据复核，可补充现场观察。":incident(row)?"按事件范围核对关联告警、变更和时间线。":"使用当前告警及其授权范围内的证据。"}</p>
+      <p class="cycle">${safe(row.scope)} · ${safe(row.target)}</p></section>
+      ${feedback}
+      ${finding(row)&&!blocked?`<section class="card obs"><label for="obs">现场观察（选填）</label>
+        <textarea id="obs" rows="3" maxlength="4000" ${flow.phase==="running"?"readonly":""} placeholder="例如：10 分钟前同一 Pod 仍在 CrashLoopBackOff">${safe(flow.obs)}</textarea></section>`:""}
+      ${!blocked&&flow.result?resultView(row,flow):""}`,
+    action:blocked?"":flow.phase==="running"?button("cancel","取消调查","danger"):
+      button("run",flow.phase==="timeout"?"重试调查":flow.result?"重新调查":actionLabel,"primary"),
+  };
+}
+function renderDrawer(key="") {
+  const row=state.row, flow=getFlow(row), isAI=state.tab==="ai";
+  $("#record-head").innerHTML = `<div class="row between"><p class="crumb">${safe(row.source)} · ${safe(row.id)}</p>
+    ${button("close","关闭","quiet")}</div><h2 id="record-title">${safe(row.title)}</h2>
+    <div class="chips">${tags(row)}<span class="pill">${safe(row.target)}</span></div>`;
+  diag.querySelectorAll("[data-tab]").forEach(tab=>tab.setAttribute("aria-pressed",String(tab.dataset.tab===state.tab)));
+  const view=isAI?aiView(row,flow):{html:detailView(row,key),action:button("switch-ai",mode(row),"ai")};
+  body.innerHTML=view.html;
+  body.scrollTop=0;
+  $("#record-foot").innerHTML = `<small>${safe(row.time)} · UTC+8</small><div class="actions">
+    ${button(isAI?"switch-detail":"close",isAI?"返回详情":"返回列表","quiet")}${view.action}</div>`;
+  if (key) {
+    const evidenceGroup=$("#source-"+key);
+    evidenceGroup?.scrollIntoView({block:"nearest"});
+    $("summary",evidenceGroup)?.focus({preventScroll:true});
+  }
+}
+function openRecord(id,tab,opener) {
+  const row=byId(id);
+  if (!row) return;
+  state.row=row; state.tab=tab; state.opener=opener;
+  renderDrawer();
+  diag.showModal();
+  $("#record-head [data-action=close]").focus();
+}
+function setTab(tab) {
+  state.tab=tab; renderDrawer();
+  $(`[data-tab=${tab}]`).focus();
+}
+function cancel(row,draw=true) {
+  const flow=getFlow(row);
+  if (flow.phase!=="running") return;
+  clearTimeout(flow.timer); flow.timer=0; flow.phase="cancelled";
+  if (draw) { renderDrawer(); $("#record-foot [data-action=run]")?.focus(); }
+}
+function run() {
+  const row=state.row, flow=getFlow(row);
+  if (flow.phase==="running") return;
+  flow.phase="running"; flow.result=null; renderDrawer();
+  $("#record-foot [data-action=cancel]")?.focus();
+  flow.timer=setTimeout(()=>{
+    if (state.scenario==="timeout"&&flow.outcomes===0) {
+      flow.phase="timeout";
+    } else {
+      flow.phase="success";
+      flow.result={judgment:`${row.metric} 现有证据支持这一现象，具体原因仍待核实。`};
+    }
+    flow.outcomes++; flow.timer=0;
+    if (diag.open&&state.row===row&&state.tab==="ai") {
+      renderDrawer();
+      $("#record-foot [data-action=run]")?.focus();
+    }
+  },1800);
+}
+function showAux(title,html) {
+  $("#aux-title").textContent=title; $("#aux-body").innerHTML=html; aux.showModal();
+}
+function showRelated(source) {
+  const title=source==="故障事件"?"故障事件":"原有诊断结果";
+  showAux(title,`<p class="muted">当前原型中的${title}，选择一条查看。</p><div class="aux-list">${records.filter(row=>row.source===source)
+    .map(row=>button("aux-record",safe(row.title),"",row.id)).join("")}</div>`);
+}
+function showScenario() {
+  showAux("切换演示场景",`<form id="scenario-form" class="aux-list"><label>调查场景<select name="scene">
+    ${[["success","正常调查"],["timeout","首次模型超时，重试成功"],["unbound","告警范围未绑定 Holmes"],["forbidden","缺少调查权限"]]
+      .map(([value,name])=>`<option value="${value}"${value===state.scenario?" selected":""}>${name}</option>`).join("")}</select></label>
+    <p class="muted">应用后重置本次会话的模拟调查状态。</p><div class="actions"><button type="submit" class="btn primary">应用场景</button></div></form>`);
+  $("#scenario-form").onsubmit=event=>{
+    event.preventDefault();
+    state.scenario=new FormData(event.currentTarget).get("scene"); state.flows.clear(); aux.close();
+  };
+}
+function reset() {
+  for (const id of ["query","source","level","status"]) $("#"+id).value="";
+  state.page=1; renderList();
+  $("#query").focus();
+}
+diag.onclose=()=>{
+  cancel(state.row,false);
+  if (state.opener?.isConnected) state.opener.focus({preventScroll:true});
+  else $("#query").focus({preventScroll:true});
+};
+diag.addEventListener("input",event=>{
+  if (event.target.id==="obs") getFlow(state.row).obs=event.target.value;
+});
+document.addEventListener("click",event=>{
+  const el=event.target.closest("[data-action],[data-tab]");
+  if (!el) return;
+  const {action,id,tab}=el.dataset;
+  if (tab) { setTab(tab); return; }
+  switch(action) {
+    case "overview": $("#query").focus(); break;
+    case "detail": openRecord(id,"detail",el); break;
+    case "ai": openRecord(id,"ai",el); break;
+    case "close": diag.close(); break;
+    case "switch-detail": setTab("detail"); break;
+    case "switch-ai": setTab("ai"); break;
+    case "jump-evidence": state.tab="detail"; renderDrawer("observed"); break;
+    case "run": run(); break;
+    case "cancel": cancel(state.row); break;
+    case "save-review": {
+      const input=$("#conclusion"), value=input.value.trim();
+      if (!value) { input.setCustomValidity("请填写已验证的复核结论。"); input.reportValidity(); input.oninput=()=>input.setCustomValidity(""); return; }
+      getFlow(state.row).saved=value; renderDrawer(); $("#conclusion").focus(); break;
+    }
+    case "prev": state.page--; renderList(); $(".pager nav")?.querySelector("button:not(:disabled)")?.focus(); break;
+    case "next": state.page++; renderList(); $(".pager nav")?.querySelector("[data-action=next]:not(:disabled), [data-action=prev]:not(:disabled)")?.focus(); break;
+    case "cancel-size": $("#custom").hidden=true; $("#page-size").value=String(state.size); $("#page-size").focus(); break;
+    case "reset": reset(); break;
+    case "events": showRelated("故障事件"); break;
+    case "findings": showRelated("K8sGPT"); break;
+    case "scenario": showScenario(); break;
+    case "close-aux": aux.close(); break;
+    case "aux-record": aux.close(); openRecord(id,"detail",null); break;
+  }
+});
+for (const id of ["query","source","level","status"]) $("#"+id).addEventListener(id==="query"?"input":"change",()=>{
+  state.page=1; $("#custom").hidden=true; renderList();
+});
+$("#pager").addEventListener("change",event=>{
+  if (event.target.id!=="page-size") return;
+  $("#custom").hidden=event.target.value!=="custom";
+  if (event.target.value==="custom") { $("#custom input").focus(); return; }
+  state.size=Number(event.target.value); state.page=1; renderList(); $("#page-size").focus();
+});
+$("#custom").onsubmit=event=>{
+  event.preventDefault();
+  state.size=Number(new FormData(event.currentTarget).get("size"));
+  state.page=1; event.currentTarget.hidden=true; renderList(); $("#page-size").focus();
+};
+renderList();
+</script>
+</body>
+</html>

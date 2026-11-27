@@ -103,9 +103,11 @@ def source_bundle(entry):
                 return f'href={quote}#{quote} data-prototype-target={quote}{child}{quote}'
             return f'srcdoc={quote}__PROTOTYPE_FRAME__{child}__END_FRAME__{quote}'
 
-        html = ATTRIBUTE.sub(rewrite, (DOCS / path).read_text(encoding="utf-8"))
+        source = full_portal() if path == "portal-ui/full-portal.html" else (DOCS / path).read_text(encoding="utf-8")
+        html = source if path == "portal-ui/full-portal.html" else ATTRIBUTE.sub(rewrite, source)
         # File-origin blob documents need History API navigation for fragments.
-        html = HASH_ASSIGNMENT.sub(r"window.__kubeAIOpsPrototypeNavigate(\1);", html)
+        if path != "portal-ui/full-portal.html":
+            html = HASH_ASSIGNMENT.sub(r"window.__kubeAIOpsPrototypeNavigate(\1);", html)
         if not HEAD.search(html):
             html, inserted = HTML.subn(lambda match: match[0] + "<head>", html, count=1)
             if not inserted:
@@ -204,7 +206,7 @@ TEMPLATE = r"""<!doctype html>
     }
     html = html.replace(/__PROTOTYPE_FRAME__(.+?)__END_FRAME__/g, (_, child) => escapeAttribute(documentHTML(child)));
     const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; frame-src 'self' blob:; form-action 'none'; base-uri 'none'">`;
-    return html.replace(/<head\b[^>]*>/i, head => head + policy + bridge);
+    return html.replace(/<head\b[^>]*>/i, head => head + policy + (path === "portal-ui/full-portal.html" ? "" : bridge));
   }
 
   function resolveFrame(target) {
@@ -253,12 +255,144 @@ TEMPLATE = r"""<!doctype html>
 """
 
 
+FULL_PORTAL_BRIDGE = r"""<style>
+html,body { background:transparent!important; }
+.top,.rail,.footnote { display:none!important; }
+.layout { display:block!important; max-width:none!important; padding:0!important; }
+body > main { max-width:none!important; padding:0!important; }
+main { min-width:0; overflow-wrap:anywhere; }
+body.prototype-dialog-open > main,body.prototype-dialog-open > .layout { visibility:hidden; }
+</style>
+<script>
+(() => {
+  const main = document.querySelector("main");
+  const send = (portalPrototype, fields = {}) => parent.postMessage({portalPrototype,...fields}, "*");
+  const syncHeight = () => {
+    const height = Math.ceil(main.getBoundingClientRect().height);
+    if (height > 0) send("height", {height});
+  };
+  if (main) new ResizeObserver(syncHeight).observe(main);
+  const dialogs = [...document.querySelectorAll("dialog")];
+  const syncDialog = () => {
+    const open = dialogs.some(dialog => dialog.open);
+    document.body.classList.toggle("prototype-dialog-open", open);
+    send("overlay", {open});
+    if (!open) syncHeight();
+  };
+  const observer = new MutationObserver(syncDialog);
+  for (const dialog of dialogs) observer.observe(dialog, {attributes:true,attributeFilter:["open"]});
+  if (typeof updateFullPortalScope === "function") updateFullPortalScope();
+  document.addEventListener("click", event => {
+    const go = event.target.closest("a[href]");
+    const href = go?.getAttribute("href");
+    if (href === "#configuration" || href === "#skills") {
+      event.preventDefault();
+      send("route", {route: href === "#skills" ? "ai/skills" : "ai"});
+    }
+  });
+  addEventListener("message", event => {
+    if (event.source !== parent || !event.data?.portalPrototype) return;
+    const {portalPrototype:type} = event.data;
+    if (type === "scenario") document.querySelector(".demo[data-action=scenario]")?.click();
+    if (type === "recent-filter" && typeof updateFullPortalScope === "function") updateFullPortalScope(event.data);
+    if (type === "ai-tab" && typeof window.setFullPortalTab === "function") window.setFullPortalTab(event.data.tab,event.data.manual,event.data.binding);
+    syncHeight();
+  });
+  syncHeight();
+  send("ready", typeof updateFullPortalScope === "function" ? {
+    records:records.map(({source,scope,level,time}) => ({source,scope,level,time})),
+  } : {});
+})();
+</script>"""
+
+RECENT_PORTAL = r"""<script>
+const baseMatching = matching;
+const baseRenderDrawer = renderDrawer;
+let fullPortalScope = {};
+renderDrawer = key => {
+  baseRenderDrawer(key);
+  const row = state.row;
+  if (finding(row)) {
+    $("#record-foot .actions").insertAdjacentHTML("beforeend", button("assistant", "用诊断助手追问", "quiet", row.id));
+  }
+};
+diag.addEventListener("click", event => {
+  const trigger = event.target.closest('[data-action="assistant"]');
+  if (!trigger || !state.row || !finding(state.row)) return;
+  diag.close();
+  parent.postMessage({portalPrototype:"assistant-finding", id:state.row.id}, "*");
+});
+matching = () => baseMatching().filter(row => {
+  const {source,environment,level} = fullPortalScope;
+  return (!source || row.source === source) && (!environment || row.scope.split(" / ")[0] === environment) && (!level || row.level === level);
+});
+function updateFullPortalScope(scope = {}) {
+  const next = {source:scope.source || "",environment:scope.environment || "",level:scope.level || ""};
+  const changed = JSON.stringify(next) !== JSON.stringify(fullPortalScope);
+  fullPortalScope = next;
+  if (changed) state.page = 1;
+  renderList();
+}
+</script>"""
+
+AI_PORTAL = r"""<script>
+let fullPortalManual, fullPortalBinding;
+window.setFullPortalTab = (tab, manual, binding) => {
+  window.__fullPortalAITab = tab;
+  render();
+  if (tab === "skills" && manual && fullPortalManual !== manual) {
+    fullPortalManual = manual;
+    showSkillDraft("manual");
+    const select = form.elements.manual;
+    select.value = manual === "w2" ? "memory" : manual === "w1" ? "gateway" : "";
+    if (select.value) select.dispatchEvent(new Event("change"));
+  }
+  if (!manual) fullPortalManual = undefined;
+  if (tab === "configuration" && ["zabbix","alertmanager"].includes(binding) && fullPortalBinding !== binding) {
+    fullPortalBinding = binding;
+    showBinding();
+    const kind = form.elements.kind;
+    kind.value = binding;
+    kind.dispatchEvent(new Event("change"));
+    const source = form.elements.source;
+    source.value = binding === "zabbix" ? "zbx-prod" : "am-prod";
+    source.dispatchEvent(new Event("change"));
+  }
+  if (!binding) fullPortalBinding = undefined;
+};
+</script>"""
+
+
+def full_portal():
+    """Embed the approved recent-diagnosis and AI prototypes in the full shell."""
+    shell = (DOCS / "portal-ui/full-portal.html").read_text(encoding="utf-8")
+    form_handler = '<script id="prototype-form-handler">' + shell.split(
+        '<script id="prototype-form-handler">', 1
+    )[1].split("</script>", 1)[0] + "</script>"
+    feature_paths = {
+        "recent": "diagnosis-console/recent-diagnosis-investigation.html",
+        "ai": "system-management/ai-service-workspace.html",
+    }
+    frames = {}
+    for name, path in feature_paths.items():
+        content = (DOCS / path).read_text(encoding="utf-8")
+        feature = RECENT_PORTAL if name == "recent" else AI_PORTAL
+        if name == "ai":
+            content = content.replace('location.hash === "#skills"', '(window.__fullPortalAITab ? window.__fullPortalAITab === "skills" : location.hash === "#skills")')
+        frames[name] = content.replace("</body>", form_handler + feature + FULL_PORTAL_BRIDGE + "</body>", 1)
+    encoded = json.dumps(frames, ensure_ascii=False).replace("<", "\\u003c")
+    return shell.replace("__APPROVED_PROTOTYPES__", encoded, 1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", type=Path, help="directory for the five standalone HTML files")
+    parser.add_argument("output", type=Path, help="directory for the full portal and the five module HTML files")
     parser.add_argument("--source-ref", default="main", help="GitHub source ref for implementation references")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    portal = args.output / "kube-aiops-full-portal-prototype.html"
+    portal.write_text(full_portal(), encoding="utf-8")
+    print(portal)
     for module in SOURCES:
         bundle = source_bundle(f"{module}/prototype.html")
         bundle["bridge"] = BRIDGE

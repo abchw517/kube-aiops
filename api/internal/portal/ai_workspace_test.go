@@ -119,13 +119,14 @@ func TestPortalHolmesBindingWithoutFile(t *testing.T) {
 	t.Setenv("HOLMES_WIKI_ENDPOINT", "")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != "internal-auth" {
-			t.Error("missing Holmes credential")
+			http.Error(w, "fixture sensitive body", http.StatusUnauthorized)
+			return
 		}
 		switch r.URL.Path {
 		case "/readyz":
 			w.WriteHeader(http.StatusOK)
 		case "/api/model":
-			_, _ = w.Write([]byte(`{"model_name":["accurate-model"]}`))
+			_, _ = w.Write([]byte(`{"model_name":"[\"accurate-model\"]"}`))
 		case "/api/chat":
 			var input struct{ Model string }
 			if json.NewDecoder(r.Body).Decode(&input) != nil || input.Model != "accurate-model" {
@@ -170,6 +171,12 @@ func TestPortalHolmesBindingWithoutFile(t *testing.T) {
 	if !strings.Contains(read, `"status":"unconfigured"`) || !strings.Contains(read, `"status":"ready"`) || strings.Contains(read, "internal-auth") {
 		t.Fatalf("service readiness should be visible independently: %s", read)
 	}
+	t.Setenv("HOLMES_PILOT_API_KEY", "")
+	failure := call("POST", "discover-binding", `{"source":"alertmanager"}`, 503)
+	if !strings.Contains(failure, "HTTP 401") || strings.Contains(failure, "fixture sensitive body") {
+		t.Fatalf("expected a safe authentication error: %s", failure)
+	}
+	t.Setenv("HOLMES_PILOT_API_KEY", "internal-auth")
 	call("POST", "discover-binding", `{"source":"alertmanager"}`, 200)
 	call("POST", "discover-binding", `{"source":"wiki"}`, 409)
 	body := `{"source":"alertmanager","sourceId":"am-prod","environmentId":"prod","businessId":"orders","clusterId":"sh-01","namespace":"orders","model":"accurate-model"}`

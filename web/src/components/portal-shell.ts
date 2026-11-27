@@ -14,6 +14,7 @@ export function renderPortalShell(content: string, state: PortalShellState): str
   return `<div class="portal-console">
     <a class="skip-link" href="#portal-content" data-action="skip-content">跳到主要内容</a>
     <header class="topbar">
+      <div class="topbar-inner">
       <a class="brand" href="${diagnosticListPaths.overview}" aria-label="kube-aiops 诊断首页">
         <span class="brand-mark" aria-hidden="true">K</span><span class="brand-name" translate="no">kube-aiops</span>
       </a>
@@ -26,9 +27,9 @@ export function renderPortalShell(content: string, state: PortalShellState): str
       </div>
       ${showSidebar ? `<button class="portal-menu-toggle" type="button" data-action="toggle-portal-menu"
         aria-expanded="false" aria-controls="portal-sidebar">栏目</button>` : ""}
+      </div>
     </header>
     <div class="portal-layout${showSidebar ? "" : " portal-layout-single"}${state.signedOut ? " portal-signed-out" : ""}">
-      ${state.signedOut ? '<div class="login-scene" aria-hidden="true"><canvas></canvas></div>' : ""}
       ${showSidebar ? `<nav class="portal-sidebar" id="portal-sidebar" aria-label="模块栏目">
         <h2>${moduleLabel}</h2>${groups.map(({ label, links }) => `<p>${label}</p>${links.map((link) =>
           `<a href="${link.href}"${link.active ? ' aria-current="page"' : ""}>${link.label}</a>`).join("")}`).join("")}

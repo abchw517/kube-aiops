@@ -29,38 +29,41 @@ export function incidentSubview(id: string, tab: "" | "rca" | "topology", hash: 
   return `${incidentPrefix}${encodeURIComponent(id)}${tab ? `/${tab}` : ""}${params.size ? `?${params}` : ""}`;
 }
 
-export async function loadRcaPage(id: string, hash: string) {
-  const detail = await apiClient.getIncident({ id });
+type RcaWorkspace = { client?: typeof apiClient; embedded?: boolean };
+
+export async function loadRcaPage(id: string, hash: string, workspace: RcaWorkspace = {}) {
+  const client = workspace.client ?? apiClient;
+  const detail = await client.getIncident({ id });
   const caps = detail.actions.rca ?? {};
   const params = new URLSearchParams(hash.split("?")[1]);
   const after = params.get("runsFrom") || undefined;
-  const history = caps.read ? await apiClient.listRcaRuns({ id, limit: 20, continue: after }) : { items: [], pagination: {} };
+  const history = caps.read ? await client.listRcaRuns({ id, limit: 20, continue: after }) : { items: [], pagination: {} };
   const selected = params.get("run") || history.items[0]?.id;
-  const job = selected && caps.read ? await apiClient.getRcaRun({ id, runId: selected }) : undefined;
-  const available = caps.run ? (await apiClient.listIncidentEvidence({ id, limit: 25 })).items : [];
+  const job = selected && caps.read ? await client.getRcaRun({ id, runId: selected }) : undefined;
+  const available = caps.run ? (await client.listIncidentEvidence({ id, limit: 25 })).items : [];
   const next = history.pagination.continue;
-  const html = `<section class="panel incident-header">
+  const html = `${workspace.embedded ? "" : `<section class="panel incident-header">
     <a href="${escapeHtml(incidentSubview(id, "", hash))}">← 返回故障详情</a>
     <h2>${escapeHtml(detail.incident.title)}</h2>
     <p>${escapeHtml(detail.incident.displayKey)} · 根因分析</p>
-  </section>
-  ${caps.run ? analysisForm(available, job) : ""}
-  <section class="panel incident-header" data-rca-task aria-live="polite">${taskMarkup(job, caps, hash)}</section>
+  </section>`}
+  ${caps.run ? analysisForm(available, job, workspace.embedded) : ""}
+  <section class="panel incident-header" data-rca-task aria-live="polite">${taskMarkup(job, caps, hash, workspace.embedded)}</section>
   ${caps.read ? `<section class="panel incident-header"><h2>运行记录</h2>
     ${history.items.length ? `<ul class="incident-timeline-list">${history.items.map((item) => `<li>
-      <a href="${escapeHtml(incidentSubview(id, "rca", hash, { run: item.id, ...(after ? { runsFrom: after } : {}) }))}">
+      <a ${workspace.embedded ? "data-embedded-rca-link" : ""} href="${escapeHtml(incidentSubview(id, "rca", hash, { run: item.id, ...(after ? { runsFrom: after } : {}) }))}">
         ${formatTimestamp(item.createdAt)} · ${states[item.state]}</a>
       <span> · ${escapeHtml(item.actor)}</span>
     </li>`).join("")}</ul>` : "<p>暂无分析任务。</p>"}
-    ${after ? `<a class="button secondary" href="${escapeHtml(incidentSubview(id, "rca", hash))}">返回最新任务</a>` : ""}
-    ${next ? `<a class="button secondary" href="${escapeHtml(incidentSubview(id, "rca", hash, { runsFrom: next }))}">更早任务</a>` : ""}
+    ${after ? `<a class="button secondary" ${workspace.embedded ? "data-embedded-rca-link" : ""} href="${escapeHtml(incidentSubview(id, "rca", hash))}">返回最新任务</a>` : ""}
+    ${next ? `<a class="button secondary" ${workspace.embedded ? "data-embedded-rca-link" : ""} href="${escapeHtml(incidentSubview(id, "rca", hash, { runsFrom: next }))}">更早任务</a>` : ""}
   </section>` : ""}`;
   return { html, caps, job };
 }
 
-function analysisForm(available: IncidentEvidence[], job?: RCATask): string {
+function analysisForm(available: IncidentEvidence[], job?: RCATask, embedded = false): string {
   const selected = new Set(job?.evidence.map(({ id }) => id) ?? available.slice(0, 5).map(({ id }) => id));
-  return `<section class="panel incident-header"><h2>发起分析</h2>
+  return `<section class="panel incident-header">${embedded ? `<details data-rca-options ${job?.state === "succeeded" ? "" : "open"}><summary>人工观察与证据</summary>` : "<h2>发起分析</h2>"}
     <form data-rca-start>
       <label>人工观察<textarea name="observation" rows="4" maxlength="1300">${escapeHtml(job?.observation)}</textarea></label>
       <details class="incident-actions"><summary>选择证据（最多 12 条）</summary>
@@ -70,11 +73,11 @@ function analysisForm(available: IncidentEvidence[], job?: RCATask): string {
       </details>
       <p data-form-status role="status"></p>
       <button class="button" type="submit">发起根因分析</button>
-    </form>
+    </form>${embedded ? "</details>" : ""}
   </section>`;
 }
 
-function taskMarkup(job: RCATask | undefined, caps: Record<string, boolean>, hash: string): string {
+function taskMarkup(job: RCATask | undefined, caps: Record<string, boolean>, hash: string, embedded = false): string {
   if (!job) return "<p>选择一项运行记录查看详情。</p>";
   const conclusion = job.revisions[0]?.conclusion;
   const status = `<h2>任务状态 · ${states[job.state]}</h2>
@@ -83,25 +86,30 @@ function taskMarkup(job: RCATask | undefined, caps: Record<string, boolean>, has
     ${job.observation ? `<p class="incident-description">人工观察 · ${escapeHtml(job.observation)}</p>` : ""}
     ${caps.cancel && active(job) ? '<button type="button" data-rca-cancel class="button secondary">取消任务</button><p role="status" data-rca-cancel-status></p>' : ""}`;
   if (!conclusion) return status;
-  return `${status}<h3>当前结论</h3>${conclusionMarkup(conclusion, job, hash)}
+  return `${status}${embedded ? "" : "<h3>当前结论</h3>"}${conclusionMarkup(conclusion, job, hash, embedded)}
     ${caps.save ? editConclusion(conclusion) : ""}
     ${job.revisions.length > 1 ? `<h3>历史版本</h3>${job.revisions.slice(1).map((item) =>
       `<details class="incident-actions"><summary>版本 ${item.version} · ${escapeHtml(item.actor)} · ${formatTimestamp(item.at)}</summary>
-        ${conclusionMarkup(item.conclusion, job, hash)}</details>`).join("")}` : ""}`;
+        ${conclusionMarkup(item.conclusion, job, hash, embedded)}</details>`).join("")}` : ""}`;
 }
 
-function conclusionMarkup(value: RCAConclusion, job: RCATask, hash: string): string {
+function conclusionMarkup(value: RCAConclusion, job: RCATask, hash: string, embedded = false): string {
   const status = { supported: "有证据支持", insufficient: "证据不足", conflicting: "证据冲突" }[value.state];
-  return `
+  const refs = value.references.length ? `<ul>${value.references.map((id) => {
+    const ref = job.evidence.find((item) => item.id === id);
+    if (!ref) return "";
+    const href = incidentSubview(job.incidentId, "", hash, { evidence: id });
+    return `<li><a ${embedded ? 'class="ref" data-embedded-rca-link' : ""} href="${escapeHtml(href)}">${escapeHtml(ref.source)} · ${escapeHtml(ref.summary || ref.kind)}</a></li>`;
+  }).join("")}</ul>` : "";
+  return embedded ? `<div class="result">
+    <section class="card"><div class="row between"><h3>当前判断</h3><span class="pill">${status ?? ""}</span></div><p>${escapeHtml(value.judgment)}</p></section>
+    <section class="card"><h3>证据引用</h3>${refs || "<p>没有可定位的证据引用。</p>"}</section>
+    <section class="card"><h3>待验证</h3><p>${escapeHtml(value.gaps)}</p></section>
+    <section class="card"><h3>下一步</h3><p>${escapeHtml(value.next)}</p></section></div>` : `
     <dl class="rca-conclusion"><dt>判断</dt><dd>${status ?? ""} · ${escapeHtml(value.judgment)}</dd>
       <dt>待验证项</dt><dd>${escapeHtml(value.gaps)}</dd>
-      <dt>只读验证建议</dt><dd>${escapeHtml(value.next)}</dd></dl>
-    ${value.references.length ? `<ul>${value.references.map((id) => {
-      const ref = job.evidence.find((item) => item.id === id);
-      if (!ref) return "";
-      const href = incidentSubview(job.incidentId, "", hash, { evidence: id });
-      return `<li><a href="${escapeHtml(href)}">${escapeHtml(ref.source)} · ${escapeHtml(ref.summary || ref.kind)}</a></li>`;
-    }).join("")}</ul>` : ""}`;
+      <dt>只读验证建议</dt><dd>${escapeHtml(value.next)}</dd></dl>${refs}`;
+
 }
 
 function editConclusion(value: RCAConclusion): string {
@@ -116,14 +124,16 @@ function editConclusion(value: RCAConclusion): string {
 
 const active = (job: RCATask) => job.state === "queued" || job.state === "running";
 
-export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: Awaited<ReturnType<typeof loadRcaPage>>): void {
+export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: Awaited<ReturnType<typeof loadRcaPage>>, workspace: RcaWorkspace = {}): void {
+  const client = workspace.client ?? apiClient;
   const region = root.querySelector<HTMLElement>("[data-rca-task]");
   if (!region) return;
   let job = page.job;
   const render = (value: RCATask) => {
     if (!region.isConnected) return;
     job = value;
-    region.innerHTML = taskMarkup(value, page.caps, hash);
+    region.innerHTML = taskMarkup(value, page.caps, hash, workspace.embedded);
+    if (workspace.embedded && value.state === "succeeded") root.querySelector("[data-rca-options]")?.removeAttribute("open");
     bindTaskActions(value);
   };
   const poll = (value: RCATask) => {
@@ -131,7 +141,7 @@ export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: A
     window.setTimeout(async () => {
       if (!region.isConnected || value.id !== job?.id || value.version !== job.version) return;
       try {
-        const next = await apiClient.getRcaRun({ id, runId: value.id });
+        const next = await client.getRcaRun({ id, runId: value.id });
         if (job?.id !== value.id || job.version !== value.version || !region.isConnected) return;
         if (next.version !== value.version) render(next);
         poll(next);
@@ -148,8 +158,8 @@ export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: A
       if (cancel.disabled) return;
       cancel.disabled = true;
       try {
-        await apiClient.cancelRcaRun({ id, runId: value.id });
-        const next = page.caps.read ? await apiClient.getRcaRun({ id, runId: value.id }) : { ...value, state: "canceled" as const };
+        await client.cancelRcaRun({ id, runId: value.id });
+        const next = page.caps.read ? await client.getRcaRun({ id, runId: value.id }) : { ...value, state: "canceled" as const };
         if (region?.isConnected) render(next);
       } catch (error) {
         if (cancel.isConnected) {
@@ -165,9 +175,9 @@ export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: A
       const conclusion = value.revisions[0]?.conclusion;
       if (!conclusion) return;
       await submit(edit, async (fields) => {
-        await apiClient.saveRcaConclusion({ id, runId: value.id, "If-Match": `"${value.version}"`,
+        await client.saveRcaConclusion({ id, runId: value.id, "If-Match": `"${value.version}"`,
           body: { ...conclusion, judgment: String(fields.get("judgment")), gaps: String(fields.get("gaps")), next: String(fields.get("next")) } });
-        if (edit.isConnected) render(await apiClient.getRcaRun({ id, runId: value.id }));
+        if (edit.isConnected) render(await client.getRcaRun({ id, runId: value.id }));
       });
     });
   }
@@ -189,10 +199,13 @@ export function bindRcaPage(root: HTMLElement, id: string, hash: string, page: A
         lastInput = input;
         key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
       }
-      const result = await apiClient.startRcaRun({ id, body, "Idempotency-Key": key });
+      const result = await client.startRcaRun({ id, body, "Idempotency-Key": key });
       if (!start.isConnected) return;
-      if (page.caps.read) window.location.hash = incidentSubview(id, "rca", hash, { run: result.id });
-      else render(result);
+      if (page.caps.read && !workspace.embedded) window.location.hash = incidentSubview(id, "rca", hash, { run: result.id });
+      else {
+        render(result);
+        poll(result);
+      }
     });
   });
 }

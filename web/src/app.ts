@@ -25,7 +25,6 @@ import { bindAudit, loadAudit } from "./views/permissions/audit.ts";
 import { apiClient } from "./api/client.ts";
 import { diagnosticListPaths, diagnosticListView } from "./domain/diagnostic-routes.ts";
 import { renderPortalShell } from "./components/portal-shell.ts";
-import { mountLoginScene } from "./components/login-scene.ts";
 import {
   authenticationConfigError,
   authenticationRequiredState,
@@ -91,7 +90,6 @@ export class PortalApp {
   private canChangePassword = false;
   private superAdministrator = false;
   private showLogout = !demoMode;
-  private stopLoginScene?: () => void;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -239,12 +237,12 @@ export class PortalApp {
           if (path === "#/ai/skills") {
             const page = await loadAISkills();
             if (generation !== this.renderGeneration) return;
-            this.renderShell(page.html);
+            this.renderShell(page.html, false, true);
             bindAISkills(this.root, page.data, page.scopes, () => void this.route());
           } else {
             const page = await loadAIServices();
             if (generation !== this.renderGeneration) return;
-            this.renderShell(page.html);
+            this.renderShell(page.html, false, true);
             bindAIServices(this.root, page.data, () => void this.route(), hash);
           }
         } catch {
@@ -368,7 +366,7 @@ export class PortalApp {
       this.overviewRequest = request;
       try {
         const overview = await loadUnifiedOverview(currentHash, this.incidentsAvailable,
-          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources);
+          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources, this.findingAI, this.reviewAccess);
         if (generation === this.renderGeneration) {
           this.renderShell(overview.html);
           overview.bind(this.root, request.signal);
@@ -570,7 +568,7 @@ export class PortalApp {
       const view = diagnosticListView(hash);
       const returnView = params.get("from") === "overview" ? "overview" : view;
       const assistantFinding = reviewEnabled && this.canChatFinding ? { id, cluster: finding.cluster, namespace: finding.namespace } : undefined;
-      this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()), false, false, assistantFinding);
+      this.renderShell(renderFindingDetail(finding, reviewEnabled, params.get("return"), returnView, this.incidentCreate, Boolean(assistantFinding)) + renderCorrelationSection(id) + (demoMode ? "" : findingKnowledgePanel()), false, false, assistantFinding);
       if (!demoMode) bindFindingKnowledge(this.root, id, finding.cluster, finding.reviewRevision);
       if (reviewEnabled) bindFindingReview(this.root, id, finding.cluster);
       if (finding.namespace) void this.loadObservabilityDashboards(generation, { clusterId: finding.cluster,
@@ -635,7 +633,6 @@ export class PortalApp {
 
   /** 更新统一外框，并恢复仍然存在的全局导航焦点。 */
   private renderShell(content: string, signedOut = false, contentOwnsHeading = false, assistantFinding?: AssistantFinding): void {
-    this.stopLoginScene?.();
     const active = document.activeElement;
     const activeLink = active instanceof HTMLAnchorElement && this.root.contains(active) &&
       active.closest(".topbar, .portal-sidebar, .skip-link") ? active : null;
@@ -657,11 +654,10 @@ export class PortalApp {
     if ((this.canUseAssistant || assistantFinding) && !signedOut && !this.mustChangePassword) {
       const assistant = document.createElement("div");
       assistant.className = "portal-ai-assistant";
-      assistant.innerHTML = `<button type="button" class="button ai-assistant-trigger" data-open-wiki-ask aria-haspopup="dialog">诊断助手</button>${renderKnowledgeAsk(true, assistantFinding)}`;
+      assistant.innerHTML = `<button type="button" class="button ai-assistant-trigger" data-open-wiki-ask aria-haspopup="dialog"><span aria-hidden="true">✦</span>诊断助手</button>${renderKnowledgeAsk(true, assistantFinding)}`;
       this.root.append(assistant);
-      bindKnowledgeAsk(assistant, assistantFinding);
+      bindKnowledgeAsk(assistant, assistantFinding, this.root.querySelector<HTMLElement>("[data-findings-assistant]"));
     }
-    this.stopLoginScene = signedOut ? mountLoginScene(this.root) : undefined;
     if (mainFocused) this.root.querySelector<HTMLElement>("#portal-content")?.focus({ preventScroll: true });
     if (activeLink) {
       const links = Array.from(this.root.querySelectorAll<HTMLAnchorElement>(".topbar a, .portal-sidebar a, .skip-link"));

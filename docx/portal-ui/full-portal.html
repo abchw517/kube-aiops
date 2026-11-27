@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kube-aiops · 全站交互原型</title>
+<style>
+:root{color-scheme:light;--canvas:#f3f6f2;--paper:#fffefa;--soft:#f1f6ef;--mint:#e1efe5;--ink:#203a34;--muted:#516960;--green:#275f52;--deep:#193f36;--line:#dfe9e1;--sand:#f8edd8;--amber:#7f501c;--rose:#fae8e1;--red:#8d3f35;--lilac:#f0ebf7;--violet:#5b4878;--shadow:0 20px 44px -35px #214c3b80;--radius:25px;font:15px/1.55 "PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;color:var(--ink);background:var(--canvas)}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0}h1,h2,h3,p,dl,dd{margin:0}h1{font-size:clamp(28px,3.4vw,38px);line-height:1.18;letter-spacing:-.039em}h2{font-size:20px;line-height:1.32}h3{font-size:16px}p,dd,code{overflow-wrap:anywhere}small,.muted{color:var(--muted)}button,input,select,textarea{font:inherit;color:inherit}button,summary{cursor:pointer}button:disabled{cursor:default;opacity:.5}a{color:var(--green)}:focus-visible{outline:3px solid #689784;outline-offset:3px}.row,.actions,.chips{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.between{justify-content:space-between}
+.header{position:sticky;top:0;z-index:3;background:#fffdf9;border-bottom:1px solid var(--line)}.top{max-width:1550px;margin:auto;display:flex;align-items:center;gap:24px;min-height:67px;padding:10px clamp(15px,3vw,40px)}.brand{display:inline-flex;align-items:center;gap:10px;font-weight:775;font-size:19px;letter-spacing:-.02em;white-space:nowrap;text-decoration:none;color:var(--ink)}.mark,.icon{display:grid;place-items:center;flex:none}.mark{width:37px;height:37px;border-radius:13px;background:var(--green);color:white;font-size:16px;box-shadow:0 5px 13px #275f5234}.icon{width:41px;height:41px;border-radius:15px;background:var(--mint);color:var(--green);font-weight:720}.icon.sand{background:var(--sand);color:var(--amber)}.icon.lilac{background:var(--lilac);color:var(--violet)}
+.top nav{display:flex;gap:4px;flex-wrap:wrap}.top nav a{white-space:nowrap;color:var(--muted);text-decoration:none;font-weight:650;border-radius:999px;padding:8px 11px;font-size:14px}.top nav a:hover,.top nav a[aria-current]{background:var(--mint);color:var(--green)}.user{margin-left:auto;display:flex;align-items:center;gap:8px}.avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--sand);color:var(--amber);font-weight:750}.work{max-width:1550px;margin:auto;display:grid;grid-template-columns:188px minmax(0,1fr);gap:22px;padding:25px clamp(15px,3vw,40px) 36px}.rail{min-width:0}.rail nav{position:sticky;top:94px;display:grid;gap:4px}.rail h2{margin:0 10px 9px;font-size:16px}.rail-label{margin:9px 10px 2px;color:var(--muted);font-size:12px}.rail a{padding:9px 11px;border-radius:14px;text-decoration:none;color:var(--muted);font-weight:600;font-size:14px}.rail a:hover,.rail a[aria-current]{background:var(--mint);color:var(--green)}.content{min-width:0}.crumb{font-size:13px;margin-bottom:9px;color:var(--muted)}.heading{margin-bottom:17px;align-items:flex-end}.heading p{margin-top:6px;color:var(--muted)}.stack{display:grid;gap:14px;min-width:0}.grouped{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,1fr);gap:15px;align-items:start}.panel{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:17px 20px}.panel-head{margin-bottom:12px}.hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 98% -10%,#dceee2,transparent 63%),linear-gradient(105deg,#f5f7e8,#ecf5ed 55%,#eff4e9);border:1px solid #dce9df;border-radius:29px;padding:19px 22px;margin-bottom:16px}.hero::after{position:absolute;z-index:-1;content:"";right:-43px;top:-139px;width:295px;height:230px;border-radius:42% 58% 54% 46%;box-shadow:0 0 0 22px #ffffff45,0 0 0 44px #79a9931b;pointer-events:none;transform:rotate(-17deg)}.hero h2{margin-bottom:5px}.hero p{color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:39px;padding:7px 13px;border:1px solid #d9e6dc;border-radius:999px;background:#fff;color:var(--ink);text-decoration:none;font-size:13px;font-weight:670;white-space:nowrap}.btn:hover:enabled,.btn[href]:hover{background:var(--soft)}.btn.primary{background:var(--green);border-color:var(--green);color:white}.btn.primary:hover:enabled{background:#1e5144}.btn.quiet{border-color:transparent;background:transparent}.btn.ai{border-color:#e6ddef;background:var(--lilac);color:var(--violet)}.btn.danger{border-color:#efd9d2;color:var(--red);background:#fff9f6}.btn.small{min-height:34px;padding:5px 10px;font-size:12px}.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:#edf2ee;color:#455e54;font-weight:650;font-size:12px;line-height:1.35;white-space:normal}.pill.good{background:var(--mint);color:var(--green)}.pill.warn{background:var(--sand);color:var(--amber)}.pill.bad{background:var(--rose);color:var(--red)}.pill.ai{background:var(--lilac);color:var(--violet)}.pill.good::before,.pill.warn::before,.pill.bad::before{content:"";width:6px;height:6px;background:currentColor;border-radius:50%;flex:none}
+input,select,textarea{min-height:40px;max-width:100%;min-width:0;background:#fbfdfa;border:1px solid #d5e2d8;border-radius:13px;padding:7px 11px}input[type=checkbox]{min-height:auto;width:auto;accent-color:var(--green)}textarea{width:100%;resize:vertical}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-grid label,.form-label{display:grid;gap:5px;min-width:0;font-weight:650}.form-grid label>*{width:100%;font-weight:400}.form-grid .full{grid-column:1/-1}.checkline{display:flex;align-items:center;gap:8px}.filters{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}.filters input{flex:1 1 170px}.filters select{max-width:min(100%,220px)}.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:0;border-radius:999px;background:#eef3ee;color:var(--muted);font-size:13px;font-weight:650;min-height:36px;padding:6px 12px}.tabs button[aria-pressed=true]{background:var(--mint);color:var(--green)}
+.list{display:grid}.item{display:grid;grid-template-columns:auto minmax(0,1.55fr) minmax(0,1fr) auto;align-items:center;gap:11px;padding:13px 3px;border-top:1px solid #eaf0eb}.item h3{overflow-wrap:anywhere}.item p{font-size:13px;color:var(--muted);margin-top:3px}.item .actions{justify-content:flex-end}.item .details{color:var(--muted);font-size:13px}.item .title{background:none;border:0;padding:0;text-align:left;font-weight:700;font-size:15px;line-height:1.4;overflow-wrap:anywhere}.item .title:hover{color:var(--green);text-decoration:underline}.listfoot{font-size:13px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted)}.empty{text-align:center;color:var(--muted);padding:29px 12px;border-top:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:15px}.stat{background:var(--paper);border:1px solid var(--line);border-radius:21px;padding:13px 15px;text-align:left}.stat[aria-pressed=true]{background:var(--mint);border-color:#b8d7c6}.stat strong{display:block;font-size:25px;line-height:1.15}.stat small{display:block;margin-top:3px}.chart{display:grid;grid-template-columns:repeat(var(--bars,7),minmax(0,1fr));gap:4px;align-items:end;padding:7px 0 4px}.bar{border:0;background:transparent;display:grid;grid-template-rows:1fr 20px;align-items:end;justify-items:center;color:var(--muted);font-size:11px;min-width:0;padding:0}.bar i{border-radius:7px 7px 3px 3px;background:#a8cebb;width:max(3px,min(26px,78%));display:block}.bar[aria-pressed=true] i,.bar:hover i{background:var(--green)}.bar b{font-weight:600}.chart-note{font-size:13px;color:var(--muted);margin-top:6px}.distribution{display:grid;gap:7px}.distribution button{background:var(--soft);border:0;border-radius:13px;padding:8px 10px;text-align:left;color:var(--ink)}.distribution button[aria-pressed=true]{outline:2px solid #82b39b}.split-scroll{margin-top:16px}.jump{margin-bottom:12px}.iframe{display:block;width:100%;border:0;background:transparent}.frame-slot{min-width:0}.iframe.overlay{position:fixed;inset:0;width:100%;height:100dvh!important;z-index:12}.password-gate{grid-template-columns:minmax(0,700px);justify-content:center}
+.scope{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:5px 13px;padding:11px 13px;background:#f1f6ef;border-radius:14px;font-size:14px}.scope dt{color:var(--muted)}.block{border:1px solid var(--line);border-radius:18px;padding:12px 14px;background:#fff;min-width:0}.block h3{margin-bottom:5px}.block p+p{margin-top:6px}.fold{border:1px solid var(--line);border-radius:15px;padding:10px 12px;background:#fafcf8}.fold summary{font-weight:680}.fold[open]>div,.fold[open]>form{margin-top:10px}.read{white-space:pre-wrap;overflow-wrap:anywhere}.notice{border-radius:13px;padding:9px 11px;background:var(--mint);color:var(--green)}.notice.bad{background:var(--rose);color:var(--red)}.notice.warn{background:var(--sand);color:var(--amber)}.notice:empty{display:none}.aside-note{padding:12px 13px;background:#f8f6eb;border-radius:15px;font-size:13px;color:var(--muted)}
+dialog{width:min(650px,calc(100% - 22px));max-height:calc(100dvh - 18px);border:1px solid var(--line);border-radius:26px;padding:0;background:var(--paper);color:var(--ink);box-shadow:0 21px 72px #193b3345}dialog::backdrop{background:#233f3675}dialog[data-mode=drawer]{position:fixed;inset:8px 8px 8px auto;margin:0;height:calc(100dvh - 16px);width:min(660px,calc(100% - 16px));max-height:none}dialog[open]>form{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 20px);min-height:0}dialog[data-mode=drawer]>form{height:100%}.dialog-head,.dialog-foot{padding:13px 18px;background:#f8fbf5;position:sticky}.dialog-head{top:0;border-bottom:1px solid var(--line)}.dialog-foot{bottom:0;border-top:1px solid var(--line);justify-content:flex-end}.dialog-body{padding:15px 18px;overflow:auto;min-height:0;display:grid;align-content:start;gap:11px}.toast{position:fixed;z-index:5;bottom:16px;right:16px;padding:11px 14px;border-radius:15px;background:var(--green);color:white;box-shadow:0 8px 28px #203a3440;max-width:calc(100% - 32px)}.foot{font-size:12px;color:var(--muted);margin-top:16px}.foot a{margin-right:10px}
+.login-page{min-height:calc(100dvh - 67px);padding:clamp(29px,8vh,95px) clamp(18px,5vw,72px);display:grid;place-items:center;background:radial-gradient(ellipse at 9% 91%,#e2eddb,transparent 57%),radial-gradient(ellipse at 88% 4%,#e9f1e5,transparent 58%),#f7f7ec}.login-layout{width:min(1050px,100%);display:grid;grid-template-columns:minmax(0,1.22fr) minmax(0,.87fr);border:1px solid #e1eddf;border-radius:34px;background:var(--paper);overflow:hidden;box-shadow:0 28px 90px -48px #29483a78}.login-story{position:relative;isolation:isolate;overflow:hidden;display:grid;align-content:center;padding:clamp(26px,5vw,60px);background:radial-gradient(ellipse at 80% 15%,#e5f1e7,transparent 60%),linear-gradient(145deg,#edf4e5,#f5f5e6 85%);min-height:510px}.login-story::after{content:"";position:absolute;z-index:-1;right:-71px;bottom:-77px;width:310px;height:290px;border:1px solid #5c917648;border-radius:58% 42% 54% 46%;box-shadow:0 0 0 31px #6ba88b19,0 0 0 62px #ffffff50,0 0 0 93px #6ba88b14;transform:rotate(-14deg)}.login-story h1{max-width:420px;font-size:clamp(34px,5vw,57px)}.login-story p{color:var(--muted);margin-top:12px;max-width:360px}.login-card{padding:clamp(24px,4vw,42px);align-self:center}.login-card h2{font-size:28px}.login-card .muted{margin:7px 0 17px}.login-card form{display:grid;gap:10px}.login-card input:not([type=checkbox]){width:100%;min-height:44px}.login-card form .btn.primary{min-height:45px}.login-preview{max-width:350px;margin-top:24px;background:#ffffff8c;border:1px solid #fff;border-radius:19px;padding:12px 13px}.login-preview .mini{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:9px;margin:0}.login-preview .mini+.mini{margin-top:9px}.login-preview .icon{width:31px;height:31px;border-radius:11px}.menu{display:none}
+@media(max-width:1060px){.work{grid-template-columns:155px minmax(0,1fr);gap:14px}.top{gap:12px}.top nav a{padding-inline:8px}.grouped{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.top{gap:7px 12px;flex-wrap:wrap}.top nav{order:3;width:100%;gap:2px}.top nav a{font-size:12px;padding:6px 7px}.top nav a:first-child{padding-left:8px}.work{grid-template-columns:minmax(0,1fr);padding-top:15px}.rail{display:none}.rail.open{display:block}.rail nav{position:static;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:9px}.menu{display:inline-flex}.avatar{display:none}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:13px 14px}.item{grid-template-columns:auto minmax(0,1fr);align-items:start;gap:7px 9px}.item .details,.item .actions{grid-column:2;justify-content:flex-start}.item .icon{width:34px;height:34px;border-radius:12px}.heading{gap:10px}.login-page{padding:20px 14px}.login-layout{grid-template-columns:minmax(0,1fr);border-radius:25px}.login-story{min-height:0;padding:23px 24px}.login-preview{display:none}.login-story h1{font-size:32px}.form-grid{grid-template-columns:minmax(0,1fr)}.dialog-head,.dialog-body,.dialog-foot{padding-inline:12px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.assistant-launch{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:4;gap:7px;padding-inline:16px;min-height:44px;box-shadow:0 9px 26px #275f5243}
+.assistant-launch span{font-size:16px;color:#cde6d4}#assistant-launch:not([hidden])~.toast{bottom:70px}
+#assistant{width:min(510px,calc(100% - 16px))}
+#assistant>form{grid-template-rows:auto minmax(0,1fr) auto}
+.assistant-body{background:#fbfcf7}.assistant-body nav{margin-top:9px}.assistant-log{display:grid;gap:9px}
+.assistant-pair{display:grid;gap:8px}.assistant-question{justify-self:end;max-width:90%;background:var(--mint);border-radius:17px 17px 5px 17px;padding:9px 12px;white-space:pre-wrap}.assistant-reply{border-radius:5px 17px 17px 17px}.assistant-reply .actions{margin-top:9px}.assistant-reply small{display:block;margin-bottom:4px}
+.assistant-compose{display:grid;gap:8px}.assistant-compose textarea{min-height:52px;max-height:24dvh}.assistant-compose .actions{justify-content:space-between}
+</style>
+</head>
+<body>
+<header class="header"><div id="top" class="top"></div></header>
+<main class="login-page" id="preview-fallback"><section class="panel">
+  <h1>kube-aiops 全站交互原型</h1>
+  <p>如果这里没有显示登录表单，请下载 HTML 文件，并在浏览器中打开。</p>
+</section></main>
+<section id="login" class="login-page" hidden></section>
+<div id="work" class="work" hidden><aside class="rail" id="rail"></aside><main class="content" id="content">
+  <div id="page"></div><div class="frame-slot" id="recent-frame" hidden></div><div class="frame-slot" id="ai-frame" hidden></div>
+  <footer id="foot" class="foot"></footer>
+</main></div>
+<dialog id="dialog" aria-labelledby="dialog-title"><form>
+  <header class="dialog-head row between"><h2 id="dialog-title"></h2><button class="btn quiet" type="button" data-do="close">关闭</button></header>
+  <div class="dialog-body"></div><footer class="dialog-foot row"><button class="btn" type="button" data-do="close">返回</button><button class="btn primary" id="save" type="submit" hidden></button></footer>
+</form></dialog>
+<button type="button" id="assistant-launch" class="btn primary assistant-launch" data-do="assistant-open" aria-haspopup="dialog" aria-controls="assistant" hidden><span aria-hidden="true">✦</span>诊断助手</button>
+<dialog id="assistant" data-mode="drawer" aria-labelledby="assistant-title"><form id="assistant-form">
+  <header class="dialog-head row between"><h2 id="assistant-title">诊断助手</h2><button class="btn quiet" type="button" data-do="assistant-close">关闭</button></header>
+  <div class="dialog-body assistant-body">
+    <div class="block" id="assistant-scope"></div>
+    <div id="assistant-suggestions" class="chips" aria-label="示例问题"></div>
+    <div id="assistant-log" class="assistant-log" role="log" aria-label="对话记录"></div>
+  </div>
+  <footer class="dialog-foot assistant-compose">
+    <label class="form-label">问题<textarea name="question" rows="2" maxlength="2000" required placeholder="输入想核对的现象或问题"></textarea></label>
+    <div class="actions"><small>演示回答</small><button type="submit" class="btn primary">发送</button></div>
+  </footer>
+</form></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+<script id="prototype-form-handler">
+(() => {
+  // Prototypes handle form data locally, including in previews that block native submission.
+  const submitSelector = 'button[type="submit"]';
+  document.addEventListener("click", event => {
+    const button = event.target.closest(submitSelector);
+    if (!button?.form || event.defaultPrevented) return;
+    event.preventDefault();
+    if (button.form.reportValidity()) {
+      button.form.dispatchEvent(new SubmitEvent("submit", {bubbles:true,cancelable:true,submitter:button}));
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || event.isComposing || event.defaultPrevented) return;
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || !["text","password","email","number","search","tel","url"].includes(input.type)) return;
+    const button = input.form?.querySelector(submitSelector + ":not([hidden]):not(:disabled)");
+    if (!button) return;
+    event.preventDefault();
+    button.click();
+  });
+})();
+</script>
+<script id="approved-prototypes" type="application/json">__APPROVED_PROTOTYPES__</script>
+<script>
+"use strict";
+const $ = (s,r=document)=>r.querySelector(s);
+const safe = (v="")=>String(v).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const btn = (action,label,tone="",id="")=>`<button class="btn ${tone}" type="button" data-do="${action}" data-id="${safe(id)}">${safe(label)}</button>`;
+const link = (target,label,tone="")=>`<a class="btn ${tone}" href="#/${target}">${safe(label)}</a>`;
+const badge = (label,tone="")=>`<span class="pill ${tone}">${safe(label)}</span>`;
+const icon = (label,tone="")=>`<span class="icon ${tone}" aria-hidden="true">${safe(label)}</span>`;
+const option = (value,label=value,selected="")=>`<option value="${safe(value)}"${value===selected?" selected":""}>${safe(label)}</option>`;
+const scope = pairs=>`<dl class="scope">${pairs.map(([k,v])=>`<dt>${safe(k)}</dt><dd>${safe(v||"—")}</dd>`).join("")}</dl>`;
+const field = (label,name,value="",type="text",full=false)=>`<label class="${full?"full":""}">${label}<input name="${name}" type="${type}" value="${safe(value)}" required></label>`;
+const choice = (label,name,choices,value="")=>`<label>${label}<select name="${name}">${choices.map(i=>option(i,i,value)).join("")}</select></label>`;
+const textArea = (label,name,value="")=>`<label class="full">${label}<textarea name="${name}" rows="4" required>${safe(value)}</textarea></label>`;
+const empty = () => '<div class="empty">当前筛选下没有记录。<br>'+btn("reset","清除筛选","small")+'</div>';
+const registry = [
+  ["诊断控制台","diagnostics",[["诊断工作区",[["diagnostics","诊断总览"],["diagnostics/events","故障事件"],["findings","原有诊断结果"]]],["诊断配置",[["diagnostics/policies","诊断策略"]]]]],
+  ["资源管理","resources/clusters",[["集群资源",[["resources/clusters","Kubernetes 集群管理"]]],["平台目录",[["resources/environments","环境管理"],["resources/business-lines","业务线管理"],["resources/datasources","数据源管理"]]]]],
+  ["运维知识库","wiki",[["知识工作区",[["wiki","知识检索"],["wiki/governance","知识治理"]]]]],
+  ["AI 服务","ai",[["服务配置",[["ai","AI 服务配置"]]],["能力管理",[["ai/skills","AI 技能"]]]]],
+  ["系统管理","admin/ldap",[["身份与访问",[["admin/ldap","认证配置"],["admin/users","用户管理"],["admin/access","权限管理"],["admin/password","修改密码"]]],["审计",[["admin/operations","操作审计"]]]]],
+];
+const labels = Object.fromEntries(registry.flatMap(([, ,groups])=>groups.flatMap(([,links])=>links)));
+const s = { signedIn:false,forcePassword:false,user:"",page:"diagnostics",menu:false,filters:{},tabs:{},toast:0 };
+const envs = ["研发","测试","预发布","生产"];
+const db = {
+  incidents:[
+    {id:"INC-108",name:"生产网关 5xx 错误率升高",env:"生产",status:"处理中",risk:"严重",meta:"prod-sh-01 / gateway-system",at:"11/27 10:42"},
+    {id:"INC-107",name:"订单服务副本不可用",env:"生产",status:"待处理",risk:"警告",meta:"prod-sh-01 / orders",at:"11/27 10:28"},
+    {id:"INC-106",name:"批处理队列延迟已恢复",env:"预发布",status:"已恢复",risk:"提示",meta:"stage-01 / platform",at:"11/27 09:10"},
+  ],
+  findings:[
+    {id:"F-114",name:"Pod 容器异常退出（Error）",env:"研发",status:"警告",meta:"local / k8sgpt-demo",at:"11/27 04:33"},
+    {id:"F-113",name:"Deployment 有 1 个副本，当前可用副本为 0",env:"研发",status:"警告",meta:"local / k8sgpt-demo",at:"11/27 00:06"},
+    {id:"F-112",name:"建议为工作负载补充内存 requests",env:"测试",status:"提示",meta:"test-01 / platform",at:"11/26 19:44"},
+  ],
+  policies:[{id:"policy-1",name:"生产网关根因分析",env:"生产",status:"已启用",meta:"证据驱动 RCA · gateway-system"},{id:"policy-2",name:"预发布应用复核",env:"预发布",status:"已停用",meta:"按范围收集事件与指标"}],
+  clusters:[{id:"prod-sh-01",name:"生产自建集群",env:"生产",status:"运行正常",meta:"自建 Kubernetes · v1.34 · 28 节点"},{id:"prod-ack-01",name:"生产 ACK 集群",env:"生产",status:"运行正常",meta:"阿里云 ACK · v1.34 · 16 节点"},{id:"stage-01",name:"预发布集群",env:"预发布",status:"待验证",meta:"直连 API Server · 8 节点"},{id:"local",name:"本地诊断实例",env:"研发",status:"运行正常",meta:"本地上报 · 5 节点"}],
+  namespaces:[{id:"gateway-system",name:"gateway-system",env:"生产",status:"已关联",meta:"prod-sh-01 · 基础平台"},{id:"orders",name:"orders",env:"生产",status:"已关联",meta:"prod-sh-01 · 零售业务"},{id:"monitoring",name:"monitoring",env:"生产",status:"待关联",meta:"prod-ack-01"}],
+  environments:envs.map((name,index)=>({id:["dev","test","stage","prod"][index],name,status:"已启用",meta:["开发验证","功能与集成测试","发布前验收","承载正式业务"][index]})),
+  business:[{id:"platform",name:"平台运维",status:"已启用",meta:"共享基础设施及可观测性"},{id:"retail",name:"零售业务",status:"已启用",meta:"零售网关和订单服务"},{id:"payments",name:"支付业务",status:"已启用",meta:"支付和回调服务"}],
+  monitor:[
+    ["生产全局 Zabbix","Zabbix","运行正常"],["预发布指标服务","Prometheus","运行正常"],["生产应用日志","VictoriaLogs","运行正常"],
+    ["生产网关告警","Alertmanager","运行正常"],["生产观测大盘","Grafana","待验证"],
+  ].map(([name,type,status],i)=>({id:"monitor-"+i,name,type,env:i===1?"预发布":"生产",status,meta:type+" · 内部服务"})),
+  assets:[{id:"asset-1",name:"阿里云业务主机",type:"阿里云 ECS",env:"生产",status:"运行正常",meta:"ECS · 最近同步 10:38"},{id:"asset-2",name:"腾讯云预发主机",type:"腾讯云 CVM",env:"预发布",status:"待验证",meta:"CVM · 待同步"}],
+  wiki:[{id:"w1",name:"网关 5xx 排障手册",type:"排障手册",status:"已发布",meta:"基础平台 · v3",text:"先对齐故障时间窗、受影响路由和后端服务。核对网关与后端 5xx 的变化，再对照发布、xDS NACK 与端点状态。记录已验证证据和待排除项。"},{id:"w2",name:"主机内存压力排障手册",type:"排障手册",status:"已发布",meta:"平台运维 · v2",text:"检查可用内存、PSI 与交换区活动。对照最近的进程工作集变化和告警阈值。"},{id:"w3",name:"服务副本不可用检查清单",type:"运行规范",status:"已发布",meta:"平台运维 · v1",text:"对照控制器期望副本和 Ready 副本。检查调度条件、探针、事件与最近发布。"}],
+  drafts:[{id:"d1",name:"生产 JVM OOM 取证步骤",type:"排障手册",status:"待审核",meta:"林晓 · 草稿 v1",text:"汇总 OOM 时间、容器限制与 GC 记录，核对内核和应用日志。"}],
+  sources:[{id:"source1",name:"内部运维文档目录",type:"Markdown",status:"已启用",meta:"最近同步 11/27 10:00"}],
+  users:[{id:"u1",name:"林晓",type:"本地账号",status:"已启用",meta:"系统管理员 · 平台运维"},{id:"u2",name:"周宁",type:"LDAP",status:"已启用",meta:"运维工程师 · 平台运维"},{id:"u3",name:"访客账号",type:"本地账号",status:"已停用",meta:"只读访客"}],
+  roles:[{id:"role1",name:"系统管理员",status:"已启用",meta:"全局 · 内置角色"},{id:"role2",name:"运维工程师",status:"已启用",meta:"诊断与证据读取 · 生产范围"}],
+  groups:[{id:"group1",name:"平台运维",status:"已启用",meta:"系统管理员 · 2 位成员"},{id:"group2",name:"值班小组",status:"已启用",meta:"运维工程师 · 1 位成员"}],
+  audit:[{id:"A-501",name:"修改模型档位并发布",type:"配置变更",status:"成功",meta:"林晓 · 生产网关告警",at:"11/27 10:45"},{id:"A-500",name:"审核技能并启用",type:"审核",status:"成功",meta:"周宁 · 网关 5xx 快速取证",at:"11/27 10:38"},{id:"A-499",name:"LDAP 登录验证",type:"认证",status:"失败",meta:"测试连接 · 搜索账号阶段",at:"11/27 10:20"}],
+};
+function tone(status){return /严重|失败/.test(status)?"bad":/待|警告|处理中/.test(status)?"warn":/已启用|已恢复|成功|已发布|运行正常|已关联/.test(status)?"good":""}
+const route = ()=>location.hash.replace(/^#\/?/,"").split("?")[0] || "diagnostics";
+const topGroup = path=>registry.find(([,base,groups])=>base===path||groups.some(([,items])=>items.some(([address])=>address===path)))||registry[0];
+const display = (name,copy,actions="")=>`<div class="heading row between"><div><h1>${safe(name)}</h1><p>${safe(copy)}</p></div><div class="actions">${actions}</div></div>`;
+function notify(message){
+  const toast=$("#toast"); toast.textContent=message; toast.hidden=false;
+  clearTimeout(s.toast); s.toast=setTimeout(()=>toast.hidden=true,2900);
+}
+let submitAction=null;
+const dialog=$("#dialog");
+function say(message,kind=""){
+  const target=$("#feedback",dialog);
+  target.textContent=message;target.className="notice "+kind;
+}
+function open(title,content,action="",submit=null,mode="drawer"){
+  dialog.dataset.mode=mode;$("#dialog-title").textContent=title;
+  $(".dialog-body",dialog).innerHTML=content+'<p class="notice" id="feedback" role="status"></p>';
+  $("#save").textContent=action;$("#save").hidden=!submit;$("#save").disabled=false;
+  submitAction=submit;
+  if(!dialog.open)dialog.showModal();
+}
+function done(message){dialog.close(); render(false);notify(message)}
+$("form",dialog).addEventListener("submit",e=>{e.preventDefault();submitAction?.(new FormData(e.currentTarget))});
+function go(target){
+  const hash="#/"+target;
+  if(location.hash===hash)render();else location.hash=hash;
+}
+window.addEventListener("hashchange",()=>render());
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&s.menu&&!dialog.open){
+    s.menu=false;$("#rail").classList.remove("open");
+    const toggle=$(".menu");
+    if(toggle){toggle.setAttribute("aria-expanded","false");toggle.focus()}
+  }
+});
+</script>
+<script>
+function header(){
+  $("#top").innerHTML=`<a class="brand" href="#/${s.signedIn?"diagnostics":"login"}"><span class="mark" aria-hidden="true">K</span>kube-aiops</a>`+
+    (s.signedIn&&!s.forcePassword ? `<nav aria-label="模块导航">${registry.map(([name,to,groups])=>`<a href="#/${to}" ${topGroup(s.page)[0]===name?'aria-current="page"':""}>${safe(name)}</a>`).join("")}</nav>`:"")+
+    `<div class="user">${s.signedIn? `<span class="avatar" aria-hidden="true">${safe(s.user.slice(0,1).toUpperCase())}</span>
+      ${!s.forcePassword?`<button class="btn quiet small menu" type="button" data-do="menu" aria-expanded="${s.menu}" aria-controls="rail">栏目</button>`:""}${btn("logout","退出登录","small")}` : '<span class="muted">全站交互原型</span>'}</div>`;
+}
+function signIn(name){
+  s.signedIn=true;s.user=name;s.forcePassword=name==="first-login"&&!s.passwords?.[name];s.menu=false;
+  go(s.forcePassword?"admin/password":"diagnostics");
+}
+function login(){
+  $("#login").hidden=false; $("#work").hidden=true;
+  $("#login").innerHTML=`<div class="login-layout">
+    <div class="login-story"><h1>运维诊断控制台</h1><p>从告警发现到证据核对，在同一个工作区管理集群、诊断与运维知识。</p>
+      <div class="login-preview"><div class="mini">${icon("⌁")}<div><b>诊断总览</b><br><small>跟进最近诊断与待处理事件</small></div></div>
+        <div class="mini">${icon("✦","lilac")}<div><b>AI 调查</b><br><small>按授权范围读取证据</small></div></div></div>
+    </div>
+    <section class="login-card"><h2>登录控制台</h2><p class="muted">使用本地账号或 LDAP 账号登录。</p>
+      <form id="sign-in" autocomplete="off">
+        <label class="form-label">用户名<input name="name" required placeholder="输入演示用户名" spellcheck="false"></label>
+        <label class="form-label">密码<input name="password" required type="password" placeholder="输入演示密码" autocomplete="off"></label>
+        <label class="checkline"><input name="ldap" type="checkbox"> LDAP / Active Directory 登录</label>
+        <p class="notice" id="login-error" role="status"></p>
+        <button class="btn primary" type="submit">登录</button>
+        <div class="actions">${btn("demo-login","直接体验","quiet")}${btn("fill-login","填入演示账号","quiet")}</div></form>
+      <p class="foot">本页使用演示账号，请勿输入真实凭据。</p></section></div>`;
+  $("#sign-in").onsubmit=e=>{
+    e.preventDefault();const data=new FormData(e.currentTarget);
+    const name=String(data.get("name")).trim();
+    const list=data.has("ldap")?["demo-ldap"]:["demo","first-login"];
+    if (!list.includes(name)||data.get("password")!==(s.passwords?.[name]||"demo123")){
+      const field=$("#login-error");field.className="notice bad";field.textContent="演示账号或密码不匹配。可先点击「填入演示账号」。";return;
+    }
+    signIn(name);
+  };
+}
+const entry = {
+  "diagnostics/events":["incidents","故障事件","按影响范围跟进处置进度和调查记录。","创建事件"],
+  "findings":["findings","原有诊断结果","查看 K8sGPT 原始诊断及关联证据。",""],
+  "diagnostics/policies":["policies","诊断策略","按环境与资源范围管理诊断策略和运行记录。","新增策略"],
+  "resources/environments":["environments","环境管理","维护集群、数据源和诊断共用的环境目录。","新增环境"],
+  "resources/business-lines":["business","业务线管理","统一业务线和资源归属的命名。","新增业务线"],
+  "admin/users":["users","用户管理","查看账号状态、关联角色及授权来源。","新增用户"],
+};
+const localFilter = () => s.filters[s.page] ||= {text:"",status:"",env:""};
+function listMarkup(kind,items=db[kind],records=true){
+  const f=localFilter();
+  const selected=items.filter(row=> (!f.status||row.status===f.status)&&(!f.env||row.env===f.env)&&
+    [row.name,row.id,row.type,row.meta,row.text].join(" ").toLowerCase().includes(f.text.trim().toLowerCase()));
+  const toolbar=`<div class="filters"><input type="search" id="filter-text" aria-label="搜索记录" placeholder="搜索名称、编号或关键词" value="${safe(f.text)}">
+    ${items.some(item=>item.env)?`<select id="filter-env" aria-label="环境"><option value="">全部环境</option>${envs.map(env=>option(env,env,f.env)).join("")}</select>`:""}
+    <select id="filter-status" aria-label="状态"><option value="">全部状态</option>${[...new Set(items.map(item=>item.status))].map(status=>option(status,status,f.status)).join("")}</select>
+    ${btn("reset","清除筛选","quiet")}</div>`;
+  return `${records?toolbar:""}<div id="list-results"><div class="list">${selected.length ? selected.map(row=>{
+    const avatar=row.type?.slice(0,1)||({incidents:"!",findings:"K",clusters:"K",namespaces:"N",users:"人",roles:"权",groups:"组",wiki:"书",drafts:"书",audit:"记"})[kind]||"◦";
+    const rowAction=kind==="findings"?btn("row-ai","AI 复核","ai small",row.id):kind==="incidents"?btn("row-ai","AI 调查","ai small",row.id):
+      kind==="monitor"||kind==="assets"?btn("test-source","测试","small",row.id):kind==="policies"?btn("policy-run","运行记录","small",row.id):"";
+    return `<article class="item">
+      ${icon(avatar,kind==="wiki"||kind==="drafts"?"lilac":tone(row.status)==="warn"?"sand":"")}
+      <div><button class="title" type="button" data-do="row" data-id="${safe(row.id)}">${safe(row.name)}</button><p>${safe(row.meta)}</p></div>
+      <div class="chips">${row.risk?badge(row.risk,tone(row.risk)):""}${badge(row.status,tone(row.status))}${row.env?'<small>'+safe(row.env)+'</small>':""}${row.at?'<small>'+safe(row.at)+'</small>':""}</div>
+      <div class="actions">${btn("row","查看详情","small",row.id)}${rowAction}</div></article>`;
+  }).join(""):empty()}</div><div class="listfoot">显示 ${selected.length} 条 · 共 ${items.length} 条</div></div>`;
+}
+function listPanel(kind,items=db[kind]){
+  return `<section class="panel" data-list="${kind}">${listMarkup(kind,items)}</section>`;
+}
+const pairTabs=(options,current)=>`<div class="tabs" aria-label="分类">${options.map(([id,name])=>`<button type="button" data-do="tab" data-id="${id}" aria-pressed="${id===current}">${safe(name)}</button>`).join("")}</div>`;
+const getTab = (defaultValue)=>s.tabs[s.page]||defaultValue;
+function diagOverview(){
+  const windowSize=s.windowSize||7;
+  const edited=s.scopeLevel||"";
+  const filtered=(s.overviewRecords||[]).filter(row=>(!s.diagEnv||row.scope.split(" / ")[0]===s.diagEnv)&&
+    (!s.diagSource||row.source===s.diagSource));
+  const shown=filtered.filter(row=>!edited||row.level===edited);
+  const count=name=>(name?filtered.filter(row=>row.level===name):shown).length;
+  const dates=Array.from({length:windowSize},(_,index)=>new Date(Date.UTC(2026,10,27-(windowSize-index-1))).toISOString().slice(0,10).replaceAll("-","/"));
+  const vals=dates.map(day=>shown.filter(row=>row.time.startsWith(day)).length);
+  const activeDay=s.activeDay??windowSize-1;
+  const activeTime=dates[activeDay].slice(5);
+  return display("诊断总览","按当前范围查看诊断统计、趋势和最近诊断。",btn("jump-recent","跳到最近诊断","primary"))+
+    `<section class="hero row between"><div><h2>当前诊断范围</h2><p>当前环境 ${safe(s.diagEnv||"全部环境")} · ${safe(s.diagSource||"全部来源")} · UTC+8</p></div>
+      <form id="diag-filter" class="actions"><select name="env" aria-label="总览环境"><option value="">全部环境</option>${envs.map(i=>option(i,i,s.diagEnv)).join("")}</select>
+      <select name="source" aria-label="总览来源"><option value="">全部来源</option>${["Zabbix","Alertmanager","K8sGPT","故障事件"].map(i=>option(i,i,s.diagSource)).join("")}</select><button class="btn" type="submit">应用筛选</button></form></section>
+    <div class="stats" aria-label="诊断指标">${[["","诊断记录"],["严重","严重"],["警告","警告"],["提示","提示"]].map(([key,name])=>`<button type="button" class="stat" data-do="diag-level" data-id="${key}" aria-pressed="${edited===key}"><strong>${count(key)}</strong><small>${name}</small></button>`).join("")}</div>
+    <div class="grouped"><section class="panel"><div class="row between panel-head"><h2>诊断趋势</h2><div class="tabs" style="margin:0" aria-label="趋势时间窗">${[7,14,30].map(i=>`<button type="button" data-do="trend-window" data-id="${i}" aria-pressed="${i===windowSize}">${i} 天</button>`).join("")}</div></div>
+      <div class="chart" style="--bars:${windowSize}" aria-label="首次发现日趋势">${vals.map((n,i)=>{
+        const date=dates[i].slice(5);
+        const visible=windowSize===7||i===0||i===windowSize-1||i%Math.ceil(windowSize/5)===0;
+        return `<button class="bar" style="height:122px" type="button" data-do="trend-point" data-id="${i}" aria-label="${date}，${n} 条" aria-pressed="${i===activeDay}"><i style="height:${Math.max(4,n/Math.max(...vals,1)*93)}px"></i><b>${visible?date:""}</b></button>`;
+      }).join("")}</div><p class="chart-note" role="status">${activeTime} · 新增 ${vals[activeDay]} 条 · 按首次发现时间 · UTC+8</p></section>
+      <section class="panel"><h2 class="panel-head">严重度分布</h2><div class="distribution">${["严重","警告","提示"].map(name=>`<button type="button" class="row between" aria-pressed="${edited===name}" data-do="diag-level" data-id="${name}">${badge(name,tone(name))}<b>${count(name)} 条</b></button>`).join("")}</div><p class="chart-note">点击级别筛选最近诊断。</p></section></div>`;
+}
+function askContent(){
+  return `<section class="block"><h3>AI 知识问答</h3><p class="muted">输入问题，从已发布的运维知识查找依据。</p></section>
+    <label class="form-label">问题<input id="question" placeholder="例如：网关 5xx 如何定位？" required></label>
+    <div id="ask-result"></div>`;
+}
+function authPage(){
+  return display("认证配置","管理登录会话与 LDAP / Active Directory 连接。")+
+    `<div class="stack">
+    <section class="panel"><h2>登录会话</h2><p class="muted panel-head">管理平台会话时长。</p>
+      <details class="fold"><summary>会话策略 · ${s.minutes||60} 分钟</summary><div><form id="session-form" class="row">
+      <label>会话时长（分钟） <input name="minutes" type="number" min="5" max="1440" value="${s.minutes||60}" required></label><button class="btn primary" type="submit">保存会话策略</button></form></div></details></section>
+    <section class="panel"><h2>LDAP / Active Directory</h2><p class="muted panel-head">验证连接后保存认证参数。</p>
+      <details class="fold"${s.authOpen?" open":""}><summary>LDAP 连接配置 · ${s.ldap?"已配置":"待配置"}</summary>
+      <div><form id="ldap-form" class="stack"><div class="form-grid">${field("LDAP URL","url",s.ldap?.url||"ldaps://directory.example.internal:636","url",true)}
+      ${field("搜索 DN","bind",s.ldap?.bind||"cn=reader,dc=example,dc=internal")}${field("搜索密码","secret","","password")}
+      ${field("基础 DN","base",s.ldap?.base||"dc=example,dc=internal", "text",true)}</div>
+      <p class="notice" id="ldap-state" role="status"></p><div class="actions">${btn("ldap-test","测试连接")}<button class="btn primary" id="ldap-save" type="submit" disabled>保存 LDAP 配置</button></div></form></div>
+      </details></section></div>`;
+}
+function passwordPage(){
+  return display("修改密码",s.forcePassword?"临时密码登录后，请先修改密码。":"修改当前演示本地账号的密码。")+
+    `<section class="panel"><form id="password-form" class="stack"><div class="form-grid">${field("当前密码","old","","password",true)}${field("新密码","next","","password")}${field("确认新密码","confirm","","password")}</div>
+      <p class="notice" id="password-state" role="status"></p><div class="actions"><button class="btn primary" type="submit">更新密码</button></div></form></section>`;
+}
+function listKey(){
+  if(entry[s.page])return entry[s.page][0];
+  switch(s.page){
+    case "resources/clusters":return getTab("clusters");
+    case "resources/datasources":return getTab("monitor");
+    case "wiki":return "wiki";
+    case "wiki/governance":return getTab("drafts");
+    case "admin/access":return getTab("roles");
+    case "admin/operations":return "audit";
+    default:return "";
+  }
+}
+function renderPage(){
+  if(entry[s.page]){
+    const [kind,title,copy,create]=entry[s.page];
+    return display(title,copy,create?btn("create","＋ "+create,"primary"):"")+listPanel(kind);
+  }
+  switch(s.page){
+    case "diagnostics":return diagOverview();
+    case "resources/clusters":return display(labels[s.page],"按环境查看集群、连接状态和命名空间归属。",btn("create",getTab("clusters")==="clusters"?"＋ 接入集群":"修改命名空间归属","primary"))+
+      pairTabs([["clusters","集群列表"],["namespaces","命名空间"]],getTab("clusters"))+listPanel(listKey());
+    case "resources/datasources":return display(labels[s.page],"接入诊断信号和云资产，查看验证与同步状态。",btn("create","＋ 新增数据源","primary"))+
+      pairTabs([["monitor","监控与诊断"],["assets","资产数据源"]],getTab("monitor"))+listPanel(listKey());
+    case "wiki":return display("知识检索","搜索已发布的排障手册与运行规范。",btn("ask","✦ 知识问答","ai"))+
+      `<div class="grouped">${listPanel("wiki")}<aside class="stack"><section class="panel"><div class="row"><span class="icon lilac">✦</span><h2>按证据排障</h2></div><p class="muted" style="margin:8px 0 12px">查看知识版本，也可从已发布手册转化为 AI 技能。</p>${link("wiki/governance","知识治理","small")}</section></aside></div>`;
+    case "wiki/governance":return display("知识治理","审核待发布内容，管理知识来源与同步。",btn("create",listKey()==="drafts"?"＋ 新建知识草稿":"＋ 新增知识来源","primary"))+
+      pairTabs([["drafts","待审核知识"],["sources","来源与同步"]],getTab("drafts"))+listPanel(listKey());
+    case "admin/ldap":return authPage();
+    case "admin/password":return passwordPage();
+    case "admin/access":return display("权限管理","按现有角色、用户组和权限目录维护授权。",btn("catalog","权限目录")+btn("create",listKey()==="roles"?"＋ 新建角色":"＋ 新建用户组","primary"))+
+      pairTabs([["roles","角色配置"],["groups","用户组"]],getTab("roles"))+listPanel(listKey());
+    case "admin/operations":return display("操作审计","按账号或操作检索记录，查看变更与结果。")+listPanel("audit");
+    default:return "";
+  }
+}
+const configurations = {
+  incidents:["创建事件","事件标题"],policies:["新增诊断策略","策略名称"],clusters:["接入 Kubernetes 集群","集群名称"],
+  namespaces:["修改命名空间归属","命名空间"],environments:["新增环境","环境名称"],business:["新增业务线","业务线名称"],
+  monitor:["新增监控数据源","数据源名称"],assets:["新增资产数据源","数据源名称"],drafts:["新建知识草稿","文档标题"],
+  sources:["新增知识来源","来源名称"],users:["新增本地用户","账号名称"],roles:["新建角色","角色名称"],groups:["新建用户组","用户组名称"],
+};
+function openCreate(kind,original){
+  const cfg=configurations[kind];
+  if(!cfg)return;
+  const [title,name]=cfg;
+  let markup=field(name,"name",original?.name||"","text",true);
+  if(["incidents","policies","clusters","namespaces","monitor","assets"].includes(kind))markup+=choice("环境","env",envs,original?.env||"生产");
+  if(kind==="incidents")markup+=choice("级别","risk",["提示","警告","严重"],original?.risk||"警告");
+  if(kind==="clusters")markup+=choice("接入方式","type",["直连 API Server","本地上报"],original?.type)+field("集群 ID","repoId",original?.id||"");
+  if(kind==="namespaces")markup+=choice("业务线","type",db.business.map(x=>x.name),original?.type)+choice("集群","repoId",db.clusters.map(x=>x.id),original?.repoId);
+  if(kind==="monitor")markup+=choice("类型","type",["Zabbix","Prometheus","VictoriaLogs","Alertmanager","Grafana"],original?.type);
+  if(kind==="assets")markup+=choice("类型","type",["阿里云 ECS","腾讯云 CVM"],original?.type);
+  if(kind==="sources")markup+=choice("来源类型","type",["Markdown","Git 仓库"],original?.type);
+  if(kind==="drafts")markup+=choice("文档类型","type",["排障手册","运行规范","案例复盘"],original?.type);
+  if(kind==="groups")markup+=choice("关联角色","type",db.roles.map(i=>i.name),original?.type);
+  if(kind==="users")markup+=choice("角色","type",db.roles.map(i=>i.name),original?.meta);
+  const network=["clusters","monitor","assets","sources"].includes(kind);
+  if(network)markup+=field("服务地址","endpoint",original?.endpoint||"https://service.example.internal","url",true);
+  if(kind==="drafts")markup+=textArea("排障步骤","text",original?.text||"");
+  else markup+=`<label class="full">说明<textarea name="meta" rows="3">${safe(original?.meta||"")}</textarea></label>`;
+  open(original?"编辑"+name.replace(/名称$/,""):title, `<div class="form-grid">${markup}</div>${network||kind==="groups"?'<div class="actions">'+btn("check-draft",kind==="groups"?"预览影响":"验证配置")+'</div>':""}`,
+    kind==="drafts"?"提交审核":"保存",values=>{
+      const label=String(values.get("name")).trim();
+      if(!label){say("请填写名称。","bad");return}
+      if(db[kind].some(i=>i!==original&&i.name===label)){say("名称已存在，请使用不同名称。","bad");return}
+      const defaultStatus={incidents:"待处理",clusters:"待验证",monitor:"待验证",assets:"待验证",namespaces:"已关联",drafts:"待审核"}[kind]||"已启用";
+      const change={name:label,env:values.get("env")||original?.env,risk:values.get("risk")||original?.risk,
+        type:values.get("type")||original?.type,meta:values.get("meta")||values.get("type")||original?.meta||"演示记录",
+        endpoint:values.get("endpoint")||original?.endpoint,text:values.get("text")||original?.text,status:original?.status||defaultStatus,repoId:values.get("repoId")};
+      if(original)Object.assign(original,change);else db[kind].unshift({id:values.get("repoId")&&kind==="clusters"?String(values.get("repoId")):kind+"-"+Date.now(),...change});
+      logChange(kind==="drafts"?"提交知识草稿":"保存"+name.replace(/名称$/,""),label);
+      done(kind==="drafts"?"草稿已送审":"已保存 "+label);
+    });
+}
+function logChange(action,name){
+  db.audit.unshift({id:"A-"+Date.now(),name:action,type:"配置变更",status:"成功",meta:s.user+" · "+name,at:"本次演示"});
+}
+function findRow(id,preferred=listKey()){
+  const supported=preferred&&db[preferred]?.find(row=>row.id===id);
+  if(supported)return [preferred,supported];
+  for(const [kind,items] of Object.entries(db)){
+    const item=items.find(row=>row.id===id);
+    if(item)return [kind,item];
+  }
+  return ["",null];
+}
+function rowDetail(kind,item,tab="detail"){
+  if(kind==="incidents"||kind==="findings"){
+    const title=kind==="incidents"?"故障详情":"诊断详情";
+    const investigation=tab==="ai";
+    const topology=tab==="topology";
+    const labels=kind==="incidents"?[["detail","详情与证据"],["ai","AI 根因分析"],["topology","关联拓扑"]]:[["detail","详情与证据"],["ai","AI 复核"]];
+    const tabs=`<div class="tabs">${labels.map(([id,name])=>`<button type="button" data-do="detail-mode" data-id="${safe(item.id)}" data-view="${id}" aria-pressed="${id===tab}">${name}</button>`).join("")}</div>`;
+    const details=scope([["发现时间",(item.at||"11/27 10:00")+" · UTC+8"],["所属环境",item.env],["主机或实例",item.meta],["处置状态",item.status]])+
+      `<details class="fold"><summary>${kind==="findings"?"Kubernetes 事件":"关联告警快照"} · 1 条</summary><div><p>${safe(item.name)}</p><small>观察到资源状态变化，需结合部署与探针核对。</small></div></details>
+      <details class="fold"><summary>指标与日志 · 等待补充</summary><div class="muted">模拟快照未提供匹配的日志，可记录缺少的证据。</div></details>`;
+    const rca=`<div class="block"><div class="row between"><h3>调查范围</h3>${badge("只读证据","ai")}</div>
+    <p class="muted">${safe(item.env)} · ${safe(item.meta)}</p></div><label class="form-label">现场观察（选填）<textarea id="observation" rows="3" placeholder="记录已核实的现象和时间">${safe(item.observation||"")}</textarea></label><div id="ai-output"></div>`;
+    const map=`<section class="block"><h3>关联拓扑</h3><p class="muted">按当前事件范围展示关系，点击节点查看对应证据。</p>
+      <div class="actions" style="margin:12px 0">${btn("topology-node","网关入口","small","入口")}${btn("topology-node","应用实例","primary small","应用")}${btn("topology-node","后端服务","small","后端")}</div><p class="notice" id="topology-info">选择节点后查看影响和上下游。</p></section>`;
+    open(title,tabs+`<div class="block"><div class="row between"><h3>${safe(item.name)}</h3>${badge(item.risk||item.status,tone(item.risk||item.status))}</div><div class="row between"><small>${safe(item.id)}</small>${kind==="findings"?btn("assistant-finding","用诊断助手追问","small",item.id):""}</div></div>`+
+      (investigation?rca:topology?map:details),
+      investigation?"发起 AI 调查":kind==="incidents"&&!topology?"更新处置状态":"",
+      investigation?()=>simulateInvestigation(item):kind==="incidents"&&!topology?()=>openStatus(item):null);
+    if(investigation&&item.analysis)showAnalysis(item);
+    return;
+  }
+  let html=`<section class="block"><div class="row between"><h3>${safe(item.name)}</h3>${badge(item.status,tone(item.status))}</div><small>${safe(item.id)}</small></section>`;
+  html+=scope([["说明",item.meta],["环境",item.env],["类型",item.type],["最近操作",item.at]]);
+  if(item.text)html+=`<section class="block"><h3>${kind==="wiki"?"正文预览":"待发布正文"}</h3><p class="read">${safe(item.text)}</p></section>`;
+  const probes=kind==="monitor"||kind==="assets"?btn("test-source","测试连接","small",item.id)+(kind==="monitor"&&["Zabbix","Alertmanager"].includes(item.type)?btn("open-ai","绑定 Holmes","ai small",item.id):""):"";
+  const other=kind==="users"?btn("user-grant","分配或撤销","small",item.id)+btn("user-audit","账号审计","small",item.id):
+    kind==="clusters"?btn("namespace","管理命名空间","small",item.id)+btn("check-row","测试连接","small",item.id):
+    kind==="sources"?btn("source-sync","立即同步","small",item.id):
+    kind==="wiki"?btn("wiki-full","阅读全文","small",item.id)+btn("skill-convert","从手册转化","ai small",item.id):
+    kind==="roles"?btn("grant-role","配置接口权限","small",item.id):"";
+  html+=`<div class="actions">${probes}${other}${["monitor","assets","policies","users","environments","business","groups"].includes(kind)?btn("toggle-row",item.status==="已停用"?"启用":"停用","danger small",item.id):""}</div>`;
+  open(kind==="wiki"?"知识预览":kind==="audit"?"审计记录":"记录详情",html,
+    kind==="drafts"?"审核并发布":configurations[kind]?"编辑":"",
+    kind==="drafts"?()=>{
+      db.drafts=db.drafts.filter(x=>x!==item);item.status="已发布";item.meta="已发布 · v1";db.wiki.unshift(item);
+      logChange("审核知识",item.name);done("知识已发布");
+    }:configurations[kind]?()=>openCreate(kind,item):null);
+}
+function openStatus(item){
+  open("更新处置状态",`<div class="form-grid">${choice("处置状态","status",["待处理","处理中","已恢复","已关闭"],item.status)}${textArea("处理说明","reason")}</div>`,"保存状态",values=>{
+    item.status=values.get("status");item.meta=item.meta.split(" · ")[0]+" · "+String(values.get("reason")).trim();logChange("更新故障状态",item.name);done("处置状态已更新");
+  });
+}
+function showAnalysis(item){
+  $("#ai-output").innerHTML=`<div class="stack">
+    <section class="block"><div class="row between"><h3>当前判断</h3>${badge("证据不足","warn")}</div><p>${safe(item.analysis)}</p></section>
+    <section class="block"><h3>证据引用</h3>${btn("detail-mode","查看关联证据","small",item.id)}</section>
+    <section class="block"><h3>待验证</h3><p>确认发布前后指标变化与探针事件是否一致。</p></section>
+    <section class="block"><h3>下一步</h3><p>核对实例状态、最近变更和已授权日志。</p></section></div>`;
+}
+function simulateInvestigation(item){
+  const output=$("#ai-output");if(!output)return;
+  item.observation=$("#observation").value;$("#save").disabled=true;
+  output.innerHTML='<p class="notice" role="status">正在读取证据…</p>'+btn("ai-cancel","取消调查","danger small");
+  clearTimeout(s.investigationTimer);
+  s.investigationTimer=setTimeout(()=>{
+    if(!output.isConnected||!dialog.open)return;
+    item.analysis="已确认当前记录的影响范围。现有快照支持异常现象，具体原因仍需结合时序证据核实。";
+    showAnalysis(item);$("#save").disabled=false;$("#save").textContent="重新调查";
+  },800);
+}
+const assistant=$("#assistant"), assistantField=$('#assistant-form textarea');
+const assistantTopics=[
+  ["网关 5xx 如何定位？","w1",/5xx|502|503|网关|envoy/i,"在同一时间窗按路由和上游服务拆分 5xx，将异常开始时间与发布、xDS NACK 和端点变化对齐。"],
+  ["主机内存压力怎么排查？","w2",/内存|memory|oom|psi/i,"取告警前后的进程工作集、PSI 和交换区活动做对照。若缺少历史进程数据，先保留告警时间窗和指标证据。"],
+  ["服务副本不可用先看什么？","w3",/副本|pod|deployment|ready|探针|容器/i,"按 Pod 逐一核对调度、容器退出与 readiness 探针事件，记录第一个阻塞 Ready 的条件。"],
+];
+const findingHints={
+  "F-114":"容器上次终止原因为 Error，事件记录显示 BackOff。先核对上一次运行的容器日志和退出码，再与探针记录和最近部署变更对齐。现有证据还无法确认应用为何退出。",
+  "F-113":"当前可用副本为 0。核对 Deployment 与 ReplicaSet 的期望副本数，再查看 Pod 调度、容器状态和 readiness 探针事件，定位阻塞 Ready 的环节。",
+  "F-112":"先核对容器工作集的历史分位数和已配置的内存 requests，再检查节点可分配资源及近期 OOM 记录，确认调整幅度。",
+};
+let assistantFinding=null, assistantTopic=null;
+function setAssistantContext(finding=null){
+  if(assistantFinding?.id===finding?.id)return;
+  assistantFinding=finding;resetAssistantChat();
+}
+function resetAssistantChat(){
+  assistantTopic=null;assistantField.value="";$("#assistant-log").replaceChildren();
+}
+function showAssistantScope(){
+  $("#assistant-scope").innerHTML=assistantFinding
+    ? `<h3>当前诊断</h3><p>${safe(assistantFinding.name)}</p><small>${safe(assistantFinding.meta)} · ${safe(assistantFinding.id)}</small><nav>${btn("assistant-clear","清除诊断上下文","small")}</nav>`
+    : '<h3>运维知识问答</h3><p class="muted">从已发布的运维知识中查找排障步骤和依据。</p><nav class="actions" aria-label="诊断快捷入口">'+link("diagnostics","诊断总览","small")+link("wiki","知识检索","small")+'</nav>';
+  const suggestions=assistantFinding?["当前证据说明了什么？","接下来要核对哪些证据？"]:assistantTopics.map(([question])=>question);
+  $("#assistant-suggestions").innerHTML=suggestions.map(question=>btn("assistant-prompt",question,"small",question)).join("");
+}
+function openAssistant(finding=null){
+  if(dialog.open)dialog.close();
+  setAssistantContext(finding);showAssistantScope();
+  if(!assistant.open)assistant.showModal();
+  assistantField.focus();
+}
+assistant.addEventListener("close",()=>{
+  const trigger=$("#assistant-launch");
+  if(!trigger.hidden&&!dialog.open)trigger.focus({preventScroll:true});
+});
+$("#assistant-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const question=assistantField.value.trim();
+  if(!question)return;
+  let answer, citation="";
+  if(assistantFinding){
+    answer=/当前证据/.test(question)
+      ? `当前记录为「${assistantFinding.name}」，范围是 ${assistantFinding.meta}。打开关联证据可核对原始事件和仍待补充的指标、日志。`
+      : findingHints[assistantFinding.id];
+    citation=btn("assistant-evidence","查看诊断证据","small",assistantFinding.id);
+  }else{
+    const followup=/^(接下来|下一步|然后|还有)/.test(question);
+    const topic=assistantTopics.find(([, ,pattern])=>pattern.test(question))
+      || (followup?assistantTopics.find(([,id])=>id===assistantTopic):null);
+    const doc=db.wiki.find(item=>item.id===topic?.[1]&&item.status==="已发布");
+    if(doc){
+      assistantTopic=doc.id;answer=followup?topic[3]:doc.text;
+      citation=btn("assistant-reference","查看引用 · "+doc.name,"small",doc.id);
+    }else answer="演示知识库中没有匹配的已发布资料。可以补充告警名称、资源类型或具体错误，再次提问。";
+  }
+  $("#assistant-log").insertAdjacentHTML("beforeend",`<section class="assistant-pair"><p class="assistant-question">${safe(question)}</p><div class="block assistant-reply"><small>诊断助手</small><p>${safe(answer)}</p>${citation?'<div class="actions">'+citation+'</div>':""}</div></section>`);
+  assistantField.value="";
+  $("#assistant-log").lastElementChild.scrollIntoView({block:"end"});
+  assistantField.focus({preventScroll:true});
+});
+const permissionGroups = [
+  ["诊断控制台",["诊断总览查询","故障事件创建","故障事件根因分析"]],
+  ["资源管理",["Kubernetes 集群查询","数据源配置编辑","数据源连接测试"]],
+  ["运维知识库",["知识检索","知识草稿编辑","知识审核"]],
+  ["系统管理",["用户管理查询","权限管理保存","操作审计查询"]],
+];
+function catalog(role){
+  open(role?"配置角色权限":"权限目录",`<label class="form-label">搜索权限<input id="permission-query" placeholder="按功能或所属模块搜索"></label>
+    <div id="permissions" class="stack">${permissionGroups.map(([label,rows])=>`<section class="block" data-permission-section><h3>${label}</h3>
+      ${rows.map(name=>`<div data-permission-row>${role?`<label class="checkline"><input name="permissions" type="checkbox" value="${safe(name)}"${role.permissions?.includes(name)?" checked":""}>${safe(name)}</label>`:`<p>${safe(name)}</p>`}</div>`).join("")}</section>`).join("")}</div>
+    ${role?'<div class="actions">'+btn("select-permissions","勾选当前结果","small")+'</div>':""}`,
+    role?"加入授权清单":"",role?values=>{
+      const requested=values.getAll("permissions").map(String);
+      open("确认保存权限",scope([["角色",role.name],["授权权限",requested.join("、")||"无"],["范围","演示环境范围"]]),
+        "确认保存",()=>{role.permissions=requested;logChange("保存角色权限",role.name);done("权限已保存")});
+    }:null);
+}
+const references = {
+  "诊断控制台":"web/src/views/diagnosis/unified-overview.ts",
+  "资源管理":"web/src/views/resources/datasource-management.ts",
+  "运维知识库":"web/src/views/wiki/wiki.ts",
+  "AI 服务":"web/src/views/ai/services.ts",
+  "系统管理":"web/src/views/permissions/platform-admin.ts",
+  "全局导航":"web/src/domain/portal-navigation.ts",
+};
+let approved={};
+try{approved=JSON.parse($("#approved-prototypes").textContent)}catch{/* Repository source resolves neighboring prototypes. */}
+const frameMap={recent:"../diagnosis-console/recent-diagnosis-investigation.html",ai:"../system-management/ai-service-workspace.html"};
+function sendFrame(which,type,data={}){
+  document.querySelector(`#${which}-frame iframe`)?.contentWindow?.postMessage({portalPrototype:type,...data},"*");
+}
+function frameMessage(which){
+  if(which==="ai"){
+    const search=new URLSearchParams(location.hash.split("?")[1]||"");
+    sendFrame(which,"ai-tab",{tab:s.page==="ai/skills"?"skills":"configuration",manual:search.get("manual"),binding:search.get("bind")});
+  } else {
+    sendFrame(which,"recent-filter",{source:s.diagSource||"",environment:s.diagEnv||"",level:s.scopeLevel||""});
+  }
+}
+function ensureFrame(which){
+  const host=$("#"+which+"-frame");
+  if(host.firstElementChild){
+    if(!approved[which]&&which==="ai"){
+      const path=frameMap[which]+(s.page==="ai/skills"?"#skills":"#configuration");
+      const frame=host.firstElementChild;
+      if(frame.getAttribute("src")!==path)frame.src=path;
+    }
+    frameMessage(which);return;
+  }
+  const frame=document.createElement("iframe");
+  frame.className="iframe";
+  frame.title=which==="ai"?"AI 服务工作区":"最近诊断与调查";
+  frame.style.height=which==="ai"?"680px":"610px";
+  frame.addEventListener("load",()=>frameMessage(which));
+  if(approved[which])frame.srcdoc=approved[which];
+  else frame.src=frameMap[which]+(which==="ai"&&s.page==="ai/skills"?"#skills":"");
+  host.append(frame);
+}
+window.addEventListener("message",event=>{
+  const which=["ai","recent"].find(key=>document.querySelector(`#${key}-frame iframe`)?.contentWindow===event.source);
+  if(!which)return;
+  const message=event.data;
+  if(message?.portalPrototype==="height"&&Number.isFinite(message.height)&&message.height>120&&message.height<5000){
+    document.querySelector(`#${which}-frame iframe`).style.height=Math.ceil(message.height)+"px";
+  }else if(message?.portalPrototype==="ready"){
+    if(which==="recent"&&Array.isArray(message.records)&&!s.overviewRecords){
+      s.overviewRecords=message.records;
+      if(s.page==="diagnostics")render(false);
+    }
+    frameMessage(which);
+  }
+  else if(message?.portalPrototype==="overlay"){
+    const frame=document.querySelector(`#${which}-frame iframe`);
+    frame.classList.toggle("overlay",Boolean(message.open));
+  }else if(which==="recent"&&s.signedIn&&s.page==="diagnostics"&&message?.portalPrototype==="assistant-finding"){
+    const item=db.findings.find(finding=>finding.id===message.id);
+    if(item)openAssistant(item);
+  }else if(message?.portalPrototype==="route"&&["ai","ai/skills","findings","diagnostics/events"].includes(message.route))go(message.route);
+});
+function render(scroll=true){
+  const previous=s.page;
+  s.page=s.signedIn?(s.forcePassword?"admin/password":labels[route()]?route():"diagnostics"):"login";
+  const canUseAssistant=s.signedIn&&!s.forcePassword&&topGroup(s.page)===registry[0];
+  $("#assistant-launch").hidden=!canUseAssistant;
+  if(previous!==s.page){
+    if(dialog.open)dialog.close();
+    if(assistant.open)assistant.close();
+    setAssistantContext();
+    if(!canUseAssistant)resetAssistantChat();
+    s.menu=false;
+  }
+  header();
+  if(!s.signedIn){login();return}
+  $("#login").hidden=true;$("#work").hidden=false;
+  const [module,,groups]=topGroup(s.page);
+  $("#rail").hidden=s.forcePassword;
+  $("#work").classList.toggle("password-gate",s.forcePassword);
+  $("#rail").classList.toggle("open",s.menu);
+  $("#rail").innerHTML=`<nav aria-label="模块栏目"><h2>${module}</h2>${groups.map(([name,items])=>
+    `<p class="rail-label">${name}</p>${items.map(([path,label])=>`<a href="#/${path}" ${path===s.page?'aria-current="page"':""}>${label}</a>`).join("")}`).join("")}</nav>`;
+  const isAI=s.page==="ai"||s.page==="ai/skills";
+  const overview=s.page==="diagnostics";
+  $("#page").innerHTML=`<p class="crumb">${module} / ${labels[s.page]}</p>`+
+    (isAI?"":renderPage())+
+    (overview?'<div class="split-scroll row jump" style="justify-content:flex-end">'+btn("recent-scenario","演示调查异常","quiet small")+'</div>':"");
+  $("#recent-frame").hidden=!overview;$("#ai-frame").hidden=!isAI;
+  if(overview)ensureFrame("recent"); if(isAI)ensureFrame("ai");
+  $("#foot").hidden=s.forcePassword;
+  $("#foot").innerHTML=`<details><summary>原型说明与实现依据</summary><p>全站使用演示数据。更改仅在本次打开期间生效。</p>
+    <a href="https://github.com/abchw517/kube-aiops/blob/main/${references[module]}" target="_blank" rel="noopener">${module}实现</a>
+    <a href="https://github.com/abchw517/kube-aiops/blob/main/${references["全局导航"]}" target="_blank" rel="noopener">全局导航与权限可见性</a></details>`;
+  if(previous!==s.page&&scroll)window.scrollTo(0,0);
+}
+function applyFilter(target){
+  const f=localFilter(),id=target.id;
+  if(id==="filter-text")f.text=target.value;
+  else if(id==="filter-status")f.status=target.value;
+  else if(id==="filter-env")f.env=target.value;
+  else return;
+  const list=$("#list-results"),kind=listKey();
+  if(!list||!kind)return;
+  const template=document.createElement("template");template.innerHTML=listMarkup(kind,db[kind],false);
+  list.replaceWith(template.content.firstElementChild);
+}
+$("#page").addEventListener("input",e=>{
+  if(e.target.id==="filter-text")applyFilter(e.target);
+  if(e.target.closest("#ldap-form")){
+    $("#ldap-save").disabled=true;$("#ldap-state").textContent="";
+  }
+});
+$("#page").addEventListener("change",e=>applyFilter(e.target));
+dialog.addEventListener("input",e=>{
+  if(e.target.id!=="permission-query")return;
+  const query=e.target.value.trim().toLowerCase();
+  dialog.querySelectorAll("[data-permission-section]").forEach(group=>{
+    const header=$("h3",group).textContent;
+    const rows=[...group.querySelectorAll("[data-permission-row]")];
+    rows.forEach(row=>row.hidden=!(header+row.textContent).toLowerCase().includes(query));
+    group.hidden=rows.every(row=>row.hidden);
+  });
+});
+$("#page").addEventListener("submit",e=>{
+  const form=e.target;
+  if(!["diag-filter","session-form","ldap-form","password-form"].includes(form.id))return;
+  e.preventDefault();const values=new FormData(form);
+  if(form.id==="diag-filter"){s.diagEnv=values.get("env");s.diagSource=values.get("source");render(false);notify("当前诊断范围已应用")}
+  if(form.id==="session-form"){s.minutes=Number(values.get("minutes"));logChange("保存会话策略",s.minutes+" 分钟");notify("会话策略已保存");$("summary",form.closest("details")).textContent="会话策略 · "+s.minutes+" 分钟"}
+  if(form.id==="ldap-form"&&!$("#ldap-save").disabled){
+    s.ldap={url:values.get("url"),bind:values.get("bind"),base:values.get("base")};s.authOpen=true;
+    logChange("保存 LDAP 配置","认证配置");render(false);notify("LDAP 配置已保存");
+  }
+  if(form.id==="password-form"){
+    const current=s.passwords?.[s.user]||"demo123", next=String(values.get("next"));
+    const feedback=$("#password-state");
+    if(values.get("old")!==current||next.length<8||next===current||next!==values.get("confirm")){
+      feedback.className="notice bad";feedback.textContent="请核对当前密码。新密码至少 8 位，需与确认密码一致且不同于当前密码。";return;
+    }
+    (s.passwords ||= {})[s.user]=next;
+    const gate=s.forcePassword;s.forcePassword=false;form.reset();logChange("更新演示密码",s.user);
+    if(gate)go("diagnostics");notify("密码已更新");
+  }
+});
+document.addEventListener("click",e=>{
+  const anchor=e.target.closest('a[href^="#/"]');
+  if(anchor){
+    // In srcdoc, fragment links can resolve against the outer viewer's URL.
+    e.preventDefault();
+    if(anchor.closest("#assistant"))assistant.close();
+    go(anchor.getAttribute("href").slice(2));return;
+  }
+  const target=e.target.closest("[data-do]");
+  if(!target)return;
+  const {do:action,id,view}=target.dataset;
+  const [kind,item]=findRow(id);
+  switch(action){
+    case "demo-login":signIn("demo");break;
+    case "assistant-open":openAssistant(assistantFinding);break;
+    case "assistant-finding":if(kind==="findings")openAssistant(item);break;
+    case "assistant-close":assistant.close();break;
+    case "assistant-clear":setAssistantContext();showAssistantScope();assistantField.focus();break;
+    case "assistant-prompt":assistantField.value=id;assistantField.focus();break;
+    case "assistant-reference":case "assistant-evidence":
+      if(item){assistant.close();rowDetail(kind,item)}
+      break;
+    case "fill-login": {const form=$("#sign-in");form.elements.name.value=form.elements.ldap.checked?"demo-ldap":"demo";form.elements.password.value="demo123";form.elements.name.focus();break}
+    case "logout": s.signedIn=false;s.forcePassword=false;s.user="";dialog.close();go("login");break;
+    case "menu": s.menu=!s.menu;$("#rail").classList.toggle("open",s.menu);target.setAttribute("aria-expanded",String(s.menu));break;
+    case "close": dialog.close();break;
+    case "reset": s.filters[s.page]={text:"",status:"",env:""};render(false);$("#filter-text")?.focus();break;
+    case "tab": s.tabs[s.page]=id;s.filters[s.page]={text:"",status:"",env:""};render(false);document.querySelector(`.tabs [data-id="${id}"]`)?.focus();break;
+    case "jump-recent": $("#recent-frame").scrollIntoView({block:"start"});break;
+    case "recent-scenario": sendFrame("recent","scenario");break;
+    case "diag-level": s.scopeLevel=s.scopeLevel===id?"":id;render(false);break;
+    case "trend-point": s.activeDay=Number(id);render(false);document.querySelector(`.chart [data-id="${id}"]`)?.focus();break;
+    case "trend-window": s.windowSize=Number(id);s.activeDay=undefined;render(false);break;
+    case "row": if(item)rowDetail(kind,item);break;
+    case "row-ai": if(item)rowDetail(kind,item,"ai");break;
+    case "detail-mode": if(item)rowDetail(kind,item,view||"detail");break;
+    case "topology-node": $("#topology-info").textContent=id+"节点已选中，可核对关联事件及上下游。";break;
+    case "ai-cancel":clearTimeout(s.investigationTimer);$("#save").disabled=false;$("#ai-output").innerHTML="<p class='notice warn'>调查已取消，现场观察已保留。</p>";break;
+    case "create": openCreate(listKey());break;
+    case "toggle-row": if(item)open(item.status==="已停用"?"启用记录":"停用记录",
+      scope([["目标记录",item.name],["当前状态",item.status]]),"确认",()=>{
+        item.status=item.status==="已停用"?"已启用":"已停用";logChange("更新状态",item.name);done("当前状态为"+item.status);
+      },"modal");break;
+    case "test-source": case "check-row":
+      if(item){
+        open("测试连接",scope([["记录",item.name],["连接类型",item.type||"集群 API"],["所属环境",item.env]]),"开始测试",()=>{
+          $("#save").disabled=true;say("正在验证演示连接…");
+          const feedback=$("#feedback",dialog);
+          setTimeout(()=>{if(!feedback.isConnected||!dialog.open)return;say("演示连接可用。");$("#save").disabled=false},650);
+        },"modal");
+      }break;
+    case "check-draft":
+      if($("form",dialog).reportValidity())say($("#dialog-title").textContent.includes("用户组")?"预览完成。组角色将由成员继承。":"演示验证通过，可以保存。");break;
+    case "namespace": dialog.close();s.tabs["resources/clusters"]="namespaces";s.filters["resources/clusters"]={text:"",status:"",env:item?.env||""};go("resources/clusters");break;
+    case "policy-run": if(item)open("策略运行记录",scope([["策略",item.name],["运行状态",item.status==="已启用"?"最近运行已完成":"策略已停用"],["作用范围",item.env]]));break;
+    case "ask": open("知识问答",askContent(),"查询",()=>{
+      const question=$("#question").value.trim();if(!question)return;
+      const doc=/内存|oom/i.test(question)?db.wiki.find(x=>x.id==="w2"):db.wiki.find(x=>x.id==="w1");
+      $("#ask-result").innerHTML=`<section class="block"><h3>排障建议</h3><p>${safe(doc.text)}</p><div class="actions">${btn("row","查看引用 · "+doc.name,"small",doc.id)}</div></section>`;
+    });break;
+    case "wiki-full": if(item)open(item.name,`<section class="block"><h3>${safe(item.type)} · ${safe(item.meta)}</h3><p class="read">${safe(item.text)}</p></section>`);break;
+    case "source-sync": if(item){item.meta="本次演示已同步";logChange("同步知识来源",item.name);done("同步完成")};break;
+    case "open-ai":dialog.close();go("ai?bind="+encodeURIComponent(item?.type==="Alertmanager"?"alertmanager":"zabbix"));break;
+    case "skill-convert":
+      dialog.close();go("ai/skills?manual="+encodeURIComponent(item?.id||""));break;
+    case "catalog": catalog(null); break;
+    case "grant-role": if(item)catalog(item); break;
+    case "select-permissions":dialog.querySelectorAll("[data-permission-row]:not([hidden]) input").forEach(box=>box.checked=true);say("已选择当前筛选出的权限。");break;
+    case "user-grant":
+      if(item)open("分配或撤销角色",`<div class="form-grid">${choice("角色","role",["撤销直接角色",...db.roles.map(role=>role.name)],item.meta.split(" · ")[0])}</div>`,"确认变更",
+        values=>{const value=values.get("role");item.meta=value==="撤销直接角色"?"无直接角色":value;logChange("变更账号授权",item.name);done("账号授权已更新")});
+      break;
+    case "user-audit": if(item){dialog.close();s.filters["admin/operations"]={text:item.name,status:"",env:""};go("admin/operations")};break;
+    case "ldap-test": {
+      const form=$("#ldap-form"), feedback=$("#ldap-state");
+      if(!form.reportValidity())return;
+      feedback.className="notice";feedback.textContent="正在验证演示连接…";target.disabled=true;
+      setTimeout(()=>{
+        if(!feedback.isConnected)return;
+        const ok=/^ldaps?:\/\//i.test(form.elements.url.value);
+        feedback.className="notice "+(ok?"":"bad");
+        feedback.textContent=ok?"网络连接、搜索账号、用户搜索和组搜索均通过演示校验。":"URL 需以 ldap:// 或 ldaps:// 开头。";
+        $("#ldap-save").disabled=!ok;target.disabled=false;
+      },550);
+      break;
+    }
+  }
+});
+render();
+$("#preview-fallback").hidden=true;
+</script>
+</body>
+</html>

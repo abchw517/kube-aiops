@@ -12,6 +12,7 @@ const longRegistryURL = `https://registry.example.com/v2/library/${"registry-pat
 
 let aiConnection;
 let aiBinding;
+let aiBindingDiscoveryAttempts = 0;
 let aiSkills = [];
 const reviewHistory = [];
 let observationRequests = 0;
@@ -241,6 +242,10 @@ createServer(async (request, response) => {
       models: aiBinding ? [model, aiBinding] : [model], connections: aiConnection ? [aiConnection] : [],
     });
     const action = url.searchParams.get("action");
+    if (action === "discover-binding" && ++aiBindingDiscoveryAttempts === 1) {
+      response.writeHead(503, {"Content-Type": "text/plain; charset=utf-8"});
+      return response.end("Holmes 模型接口鉴权失败（HTTP 401）。");
+    }
     if (action === "discover" || action === "discover-binding") return json(response, 200, {models: ["fast-model", "accurate-model"]});
     if (action === "recheck") return json(response, 200, {ready: true});
     const bytes = [];

@@ -9,12 +9,12 @@
 .catalog-id code, .catalog-editor code {
   min-width: 0;
   padding: 2px 5px;
-  background: #edf3fa;
+  background: var(--surface-soft);
   border-radius: 5px;
   color: #365674;
   overflow-wrap: anywhere;
 }
-.button.secondary.catalog-quiet { border-color: transparent; background: transparent; color: var(--blue); }
+.button.secondary.catalog-quiet { border-color: transparent; background: transparent; color: var(--accent); }
 .button.secondary.catalog-quiet:hover:not(:disabled) { background: var(--accent-soft); }
 .catalog-editor { width: min(560px, calc(100% - 24px)); }
 .catalog-editor .resource-overlay-head p:empty { display: none; }
@@ -22,7 +22,7 @@
 .catalog-editor input { width: 100%; min-height: 42px; padding: 7px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius); }
 .catalog-editor input[aria-invalid="true"] { border-color: var(--red); }
 .catalog-editor [data-catalog-id-summary], .catalog-editor [data-catalog-id-fields] { margin-top: 12px; }
-.catalog-id-box { justify-content: space-between; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: #f5f8fd; }
+.catalog-id-box { justify-content: space-between; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); }
 .catalog-id-box .button { min-height: 32px; font-size: 12px; }
 .catalog-editor #catalog-id-hint { margin: 4px 0 7px; font-size: 13px; }
 .catalog-field-error { margin: 4px 0 0; color: var(--red); font-size: 13px; }

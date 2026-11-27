@@ -14,7 +14,7 @@
 
 浏览仓库目录时，原型入口和场景 HTML 之间使用相对路径。克隆仓库或解压 GitHub 下载的完整仓库后，用浏览器打开各模块的 `prototype.html`。GitHub 源码页面用于查看文件内容。
 
-单独交付或分享原型时，从仓库根目录运行以下命令，生成五份可下载的独立 HTML。每个文件包含该模块入口和全部场景，还可以在「查看实现依据」中打开相关应用源代码。
+单独交付或分享原型时，从仓库根目录运行以下命令，生成一份全站原型和五份模块独立 HTML。全站文件 `kube-aiops-full-portal-prototype.html` 从登录进入五个模块。各模块文件包含场景目录及实现依据。
 
 ```bash
 python3 scripts/package-prototypes.py /tmp/kube-aiops-prototypes

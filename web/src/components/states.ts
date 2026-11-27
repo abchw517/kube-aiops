@@ -20,7 +20,16 @@ export function emptyState(): string {
 /** 提供带独立标题和即时状态提示的登录表单。 */
 export function authenticationRequiredState(message = ""): string {
   return `
-    <section class="state-card" aria-labelledby="login-heading" data-testid="authentication-required-state">
+    <div class="login-layout">
+    <section class="login-overview" aria-labelledby="login-overview-heading">
+      <h2 id="login-overview-heading">运维诊断控制台</h2>
+      <p>在同一个工作区跟进告警、核对证据与查阅运维知识。</p>
+      <ul class="login-capabilities">
+        <li><strong>诊断总览</strong><span>跟进最近诊断与待处理事件</span></li>
+        <li><strong>AI 调查</strong><span>按授权范围读取证据</span></li>
+      </ul>
+    </section>
+    <section class="login-card" aria-labelledby="login-heading" data-testid="authentication-required-state">
       <h1 id="login-heading" tabindex="-1">登录控制台</h1>
       <p class="login-description">此工作区需要身份认证。可使用本地账号或 LDAP 账号登录。</p>
       ${message ? `<p>${escapeHtml(message)}</p>` : ""}
@@ -31,7 +40,8 @@ export function authenticationRequiredState(message = ""): string {
         <p role="status" data-login-status></p>
         <button class="button" type="submit">登录</button>
       </form>
-    </section>`;
+    </section>
+    </div>`;
 }
 
 export function authorizationDeniedState(): string {

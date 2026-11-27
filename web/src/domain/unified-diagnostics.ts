@@ -48,6 +48,10 @@ export function overviewSearch(query: URLSearchParams): URLSearchParams {
   if (query.get("recent") === "true") result.set("recent", "true");
   if (query.get("alertRecent") === "true") result.set("alertRecent", "true");
   if (days !== 7) result.set("trendDays", String(days));
+  for (const key of ["recentText", "recentSource", "recentLevel", "recentStatus"]) {
+    const value = query.get(key)?.trim().slice(0, 120);
+    if (value) result.set(key, value);
+  }
   const page = query.get("recentPage");
   if (page && /^[1-9]\d*$/.test(page) && Number.isSafeInteger(Number(page)) && Number(page) > 1) result.set("recentPage", page);
   const size = overviewPageSize(query.get("recentPageSize"));
