@@ -1,5 +1,5 @@
 // Code generated from api/openapi.yaml by tools/openapi/contract.py. DO NOT EDIT.
-// Contract source SHA-256 groups: 000c7b9a 0e51401d 85e20550 05c2f11a f57c1a42 fecd4738 3adaed69 ed0442d9
+// Contract source SHA-256 groups: 697b5982 5a3f94c2 b58e9861 19889a13 5da4cb15 c96ac69b deb27bc9 cf155b20
 
 export interface ObservabilityScope {
   "environmentId": string;

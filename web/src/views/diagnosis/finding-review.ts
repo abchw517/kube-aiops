@@ -130,6 +130,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
         const error = await response.json().catch(() => ({})) as { code?: string; upstreamStatus?: number };
         const messages: Record<string, string> = {
           AI_PROVIDER_TIMEOUT: "模型响应超时。观察内容已保留，可以重新复核。",
+          AI_REVIEW_DEADLINE_EXCEEDED: "本次复核达到总等待时限。观察内容已保留，请重新复核。",
           AI_PROVIDER_RATE_LIMITED: "模型服务繁忙，请稍后重试。",
           AI_PROVIDER_RESPONSE_INVALID: "模型未返回完整的复核内容，请重试。",
           AI_ENGINE_PERMISSION_DENIED: "无法读取模型配置，请检查 API 的 Engine 和 Secret 读取权限。",

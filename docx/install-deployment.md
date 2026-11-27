@@ -637,11 +637,11 @@ kubectl --context "$target_context" -n kube-aiops-system rollout status deployme
 
 核对并编辑复核结论后，点击 **保存复核结论**。需沉淀知识时，从诊断详情创建故障案例草稿，再进入运维知识库按治理流程发布。若结论已被其他人更新，请先加载最新版本。
 
-诊断 AI 复核（包括补充观察后的重新复核）的模型请求默认等待 90 秒。API 容器环境变量 `FINDING_AI_PROVIDER_TIMEOUT` 支持 `5s` 到 `120s`，本地和手动接入实例共用该配置。升级前已显式配置旧值的环境需同步调整该值才能使用较长的等待时间。复核总时限为 135 秒，关联证据查询最多占 5 秒。启用诊断复核时，API 响应写入时限为 140 秒。知识库问答继续使用自身 30 秒总时限。同时启用 Holmes 时，回退模型和 Holmes 请求共用复核总预算。
+诊断 AI 复核（包括补充观察后的重新复核）的模型请求默认等待 90 秒。API 容器环境变量 `FINDING_AI_PROVIDER_TIMEOUT` 支持 `5s` 到 `120s`，本地和手动接入实例共用该配置。升级前已显式配置旧值的环境需同步调整该值才能使用较长的等待时间。复核总时限为 180 秒，包含 Holmes 最多 45 秒、Engine 回退模型最多 120 秒，以及证据和配置读取余量。关联证据查询最多占 5 秒。启用诊断复核时，API 响应写入时限为 185 秒。知识库问答继续使用自身 30 秒总时限。
 
-发布时同步更新 API、Web 和 [API HTTPRoute](../deploy/api/httproute.yaml)。该清单仅为 `/api/v1/admin/finding-analysis` 设置 150 秒请求时限和 145 秒后端时限。域名前有 NGINX 时，将同一路径的 `proxy_read_timeout` 设为至少 `150s`。如果仍超时，检查 API 日志 `AI provider request failed` 中的 `elapsed_ms` 和 `upstream_status`，分别核对 API 等待时间与上游实际返回的超时状态。
+发布时同步更新 API、Web 和 [API HTTPRoute](../deploy/api/httproute.yaml)。该清单为 `/api/v1/admin/finding-analysis` 设置 195 秒请求时限和 190 秒后端时限。域名前有 NGINX 时，将同一路径的 `proxy_read_timeout` 设为至少 `195s`。如果仍超时，检查 API 日志 `AI provider request failed` 中的 `elapsed_ms` 和 `upstream_status`，分别核对 API 等待时间与上游实际返回的超时状态。
 
-诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，现场观察内容保留，可直接重新复核。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。响应中缺少此错误码时，对照 Portal 入口代理日志和 API 请求日志判断等待发生在哪一层。
+诊断分析返回 JSON `504 AI_PROVIDER_TIMEOUT` 时，现场观察内容保留，可直接重新复核。持续超时时查看 API 日志中 `AI provider request failed` 的 `elapsed_ms`、`client_timeout_ms` 和 `upstream_status`。上游状态为 408 或 504 时，排查模型服务或它的上游网关。`finding AI falling back from Holmes` 记录 Holmes 阶段失败的信息，可按诊断 ID 与随后发生的 `finding AI review failed` 日志对照。`AI_REVIEW_DEADLINE_EXCEEDED` 表示触及整次复核的时限。入口返回 504 且缺少 Portal 错误码时，检查 Envoy Gateway 和前置代理。
 
 手动保存复核结论后，Portal 展示 SQLite 中的最新结论。原始 K8sGPT 诊断和已有复核版本可在弹窗中查看，弹窗展示最近五版。具有该诊断读取权限的用户可查看最新结论。
 
@@ -857,7 +857,7 @@ kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=
 
 给试点账号授予目标范围的数据源读取权限和 `diagnosis.health.investigate`。打开 **诊断总览 → 告警详情 → AI 深度调查**，确认返回分析结果。对比启用前后总览的相同筛选条件，统计和最近诊断仍来自原数据源。
 
-健康告警调查最多等待 Holmes 45 秒。若入口代理超时更短，为 `/api/v1/diagnostics/health/` 留足等待时间，例如 Gateway 后端 55 秒、请求 60 秒，前置 NGINX 读取超时至少 60 秒。
+健康告警调查最多等待 Holmes 45 秒。[API HTTPRoute](../deploy/api/httproute.yaml) 为 `/api/v1/diagnostics/health/` 的 POST 请求配置 50 秒后端时限与 55 秒请求时限。若域名由前置 NGINX 代理，为此路径设置至少 60 秒的 `proxy_read_timeout`。
 
 在 **AI 服务 → AI 技能** 上传 SKILL.md，或从已发布的排障手册转化并提交审核。由另一位管理员审核通过后，匹配范围的调查会使用该技能作为参考。
 
@@ -875,13 +875,19 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --since=10m --tail=1
 | 试点服务已就绪，尚无数据范围绑定 | 在页面为目标数据源新增范围绑定，再检查告警命名空间是否精确一致。 |
 | Portal 显示试点服务不可达或未就绪 | 检查 API 到 Holmes Service 的 DNS 和网络策略。如 Helm release 或命名空间有变动，核对 `HOLMES_PILOT_ENDPOINT`。 |
 | 服务已就绪，但发现模型失败 | `/readyz` 与 `/api/model` 独立。Holmes 0.48.0 可返回字符串编码的模型数组，需使用兼容此格式的 Portal API。HTTP 401/403 时检查 Portal 到 Holmes 的 HTTP 鉴权密钥。模型列表为空时检查 Helm 的 `modelList` 及 Holmes 日志。 |
-| `HOLMES_SCOPE_UNCONFIGURED` | 对照页面绑定中的来源 ID、环境、业务、集群和命名空间。 |
-| `HOLMES_UNAVAILABLE` 或调用超时 | 先重跑第 2 步检查模型，再核对 Service 地址、NetworkPolicy、模型别名和入口代理时限。 |
+| `HOLMES_SCOPE_UNCONFIGURED` | 对照页面绑定中的来源 ID、环境、业务、集群和命名空间，确认范围已启用。 |
+| `HOLMES_CHAT_AUTH_FAILED` | 核对 Portal 到 Holmes 的 HTTP 鉴权密钥。Holmes 调用模型供应商的凭据从 Holmes 模型 Secret 排查。 |
+| `HOLMES_CHAT_CONNECT_FAILED`、`HOLMES_CHAT_ENDPOINT_INVALID` 或 `HOLMES_CHAT_ROUTE_NOT_FOUND` | 核对服务根地址、DNS、TLS、NetworkPolicy 和 `POST /api/chat` 路由。 |
+| `HOLMES_CHAT_TIMEOUT` 或入口 HTTP 504 | 用 Portal API 的 `health alert investigation` 日志核对 `elapsed_ms` 与 `upstream_status`。入口 504 缺少 Portal 错误码时，检查 Gateway 和前置代理时限。 |
+| `HOLMES_CHAT_UPSTREAM_ERROR` 或 `HOLMES_CHAT_INVALID_RESPONSE` | 按同一时间点查看 Holmes 日志，检查已发布的深度模型别名、模型供应商凭据及响应。 |
+| `HOLMES_UNAVAILABLE` | 在 Portal API 日志检查范围配置和调查失败记录。 |
 | 账号无法发起调查 | 核对数据源读取权限和 `diagnosis.health.investigate` 的范围。 |
 
 暂停某个范围时，在连接编辑页勾选「暂停此范围的 Holmes 调用」，保存草稿并发布。Finding、事件 RCA 和 Wiki 使用各自的回退路径，健康告警仍在总览显示。
 
 ## 排查与清理
+
+Portal API 的应用日志使用 UTC+8，JSON 的 `time` 字段包含 `+08:00`，可直接与页面上的诊断时间对照。此设置只作用于日志记录时间，业务时间字段沿用各自的数据格式。
 
 | 现象 | 核对项 |
 | --- | --- |

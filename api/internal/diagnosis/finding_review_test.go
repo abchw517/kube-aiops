@@ -3,6 +3,7 @@ package diagnosis
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/httpapi"
 	"github.com/abchw517/kube-aiops/api/internal/permissions/authorization"
@@ -10,6 +11,7 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -266,6 +268,7 @@ func TestEvidenceAssessmentAndIndependentPublication(t *testing.T) {
 // TestFindingReviewTimeoutReturnsGatewayTimeout verifies that an operator observation can be retried.
 func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
 	t.Setenv("FINDING_AI_PROVIDER_TIMEOUT", "110s")
+	t.Setenv("HOLMES_BINDINGS_FILE", "")
 	store, err := identitystore.Open(filepath.Join(t.TempDir(), "identities.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -313,26 +316,52 @@ func TestFindingReviewTimeoutReturnsGatewayTimeout(t *testing.T) {
 		t.Fatalf("review client timeout = %v", review.client.Timeout)
 	}
 	review.client.Timeout = 25 * time.Millisecond
-	post := func(want int) string {
+	post := func(ctx context.Context, want int) string {
 		t.Helper()
 		recorder := httptest.NewRecorder()
 		body := `{"action":"assess","observation":"集群使用的是containerd","revision":0}`
-		review.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/admin/finding-analysis?id=finding-1", strings.NewReader(body)))
+		review.ServeHTTP(recorder, httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/admin/finding-analysis?id=finding-1", strings.NewReader(body)))
 		if recorder.Code != want {
 			t.Fatalf("finding-analysis returned %d %s; want %d", recorder.Code, recorder.Body.String(), want)
 		}
 		return recorder.Body.String()
 	}
-	if got := post(http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || strings.Contains(got, "upstreamStatus") {
+	if got := post(t.Context(), http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || strings.Contains(got, "upstreamStatus") {
 		t.Fatalf("unexpected local timeout response: %s", got)
 	}
 	review.client.Timeout = time.Second
 	endpoint = upstream.URL + "/gateway-timeout"
-	if got := post(http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || !strings.Contains(got, `"upstreamStatus":504`) {
+	if got := post(t.Context(), http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_PROVIDER_TIMEOUT"`) || !strings.Contains(got, `"upstreamStatus":504`) {
 		t.Fatalf("upstream timeout status lost: %s", got)
 	}
+	endpoint = upstream.URL + "/slow"
+	deadline, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if got := post(deadline, http.StatusGatewayTimeout); !strings.Contains(got, `"code":"AI_REVIEW_DEADLINE_EXCEEDED"`) {
+		t.Fatalf("review deadline was not distinguished: %s", got)
+	}
+	holmesCalled := make(chan struct{}, 1)
+	holmes := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Errorf("unexpected Holmes path: %s", r.URL.Path)
+		}
+		holmesCalled <- struct{}{}
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	defer holmes.Close()
+	bindings := filepath.Join(t.TempDir(), "bindings.json")
+	content := fmt.Sprintf(`[{"source":"finding","sourceId":"local","clusterId":"local","namespace":"dev","endpoint":%q}]`, holmes.URL)
+	if err := os.WriteFile(bindings, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOLMES_BINDINGS_FILE", bindings)
 	endpoint = upstream.URL + "/reply"
-	if got := post(http.StatusOK); !strings.Contains(got, `"judgment":"复核完成"`) {
-		t.Fatalf("retry did not complete: %s", got)
+	if got := post(t.Context(), http.StatusOK); !strings.Contains(got, `"judgment":"复核完成"`) {
+		t.Fatalf("fallback after a Holmes timeout did not complete: %s", got)
+	}
+	select {
+	case <-holmesCalled:
+	default:
+		t.Fatal("configured Holmes binding was not called")
 	}
 }

@@ -21,9 +21,9 @@ function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     if (error.status === 403) return "当前账号缺少该范围的权限。";
     if (error.status === 401) return "会话已失效，请重新登录后重试。";
-    if (error.status === 504) return "模型响应超时。可重试本次调查。";
     const body = error.body as { error?: { message?: string } } | null;
     if (body?.error?.message) return body.error.message;
+    if (error.status === 504) return "调查请求在网关等待超时。可重试本次调查，持续超时请检查入口代理时限。";
   }
   return fallback;
 }

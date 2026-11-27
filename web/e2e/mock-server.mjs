@@ -287,7 +287,8 @@ createServer(async (request, response) => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 600));
       if (input.observation && ++observationRequests === 1) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT" });
       if (input.observation && observationRequests === 2) return json(response, 504, { code: "AI_PROVIDER_TIMEOUT", upstreamStatus: 504 });
-      if (input.observation && observationRequests === 3) {
+      if (input.observation && observationRequests === 3) return json(response, 504, { code: "AI_REVIEW_DEADLINE_EXCEEDED" });
+      if (input.observation && observationRequests === 4) {
         response.writeHead(504, { "Content-Type": "text/html" }).end("<h1>Gateway Timeout</h1>");
         return;
       }

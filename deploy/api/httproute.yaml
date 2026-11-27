@@ -16,8 +16,19 @@ spec:
             type: Exact
             value: /api/v1/admin/finding-analysis
       timeouts:
-        request: 150s
-        backendRequest: 145s
+        request: 195s
+        backendRequest: 190s
+      backendRefs:
+        - name: kube-aiops-api
+          port: 8080
+    - matches:
+        - method: POST
+          path:
+            type: PathPrefix
+            value: /api/v1/diagnostics/health
+      timeouts:
+        request: 55s
+        backendRequest: 50s
       backendRefs:
         - name: kube-aiops-api
           port: 8080

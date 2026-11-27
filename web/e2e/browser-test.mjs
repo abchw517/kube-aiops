@@ -384,7 +384,10 @@ try {
     if (observation.result?.value !== "仓库返回 403") throw new Error("Review discarded the observation after failure");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("模型服务返回超时（HTTP 504）") && text.includes("观察内容已保留"),
-      "Upstream timeout was not distinguished from the app deadline");
+      "Upstream timeout was not distinguished from the provider client timeout");
+    await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
+    await assertText(cdp, (text) => text.includes("本次复核达到总等待时限") && text.includes("观察内容已保留"),
+      "The overall review deadline did not show a distinct recoverable message");
     await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-review-action="assess"]').click()` });
     await assertText(cdp, (text) => text.includes("网关等待超时") && text.includes("观察内容已保留") &&
       text.includes("已有历史事件支持排查镜像仓库") && text.includes("K8sGPT 原始说明"),

@@ -64,12 +64,18 @@ func (f *Review) assess(ctx context.Context, item finding.Finding, observation s
 采用简体中文。references 只能使用 references 中的 reference 值。按 signals 与 references 的 signalId 对照。Wiki 与人工观察只能提供线索。验证动作应匹配已知的集群运行时及工具，仍不明确就先核实，避免沿用原诊断不适用的命令。historical 表示不能证明当前状态。
 只根据可用的现场证据判断，不声称执行命令或访问未提供的数据，不给出修改资源的指令。缺乏当前证据时使用 insufficient。`
 	trace, skills := holmes.TraceSkills(ctx)
-	if answer, err := holmes.Chat(trace, findingScope(item), prompt, json.RawMessage(data), holmes.AssessmentFormat()); err == nil {
+	valid := func(answer string) bool {
 		var parsed assessment
-		if json.Unmarshal([]byte(answer), &parsed) == nil && (parsed.State == "supported" || parsed.State == "insufficient" || parsed.State == "conflicting") && parsed.Judgment != "" && parsed.Gaps != "" && parsed.Next != "" {
-			*applied = *skills
-			return answer, nil
-		}
+		return json.Unmarshal([]byte(answer), &parsed) == nil &&
+			(parsed.State == "supported" || parsed.State == "insufficient" || parsed.State == "conflicting") &&
+			strings.TrimSpace(parsed.Judgment) != "" && strings.TrimSpace(parsed.Gaps) != "" && strings.TrimSpace(parsed.Next) != ""
+	}
+	if answer, ok := tryFindingHolmes(trace, item, prompt, data, holmes.AssessmentFormat(), valid); ok {
+		*applied = *skills
+		return answer, nil
+	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
 	ai, err := f.engineAI(ctx)
 	if err != nil {
