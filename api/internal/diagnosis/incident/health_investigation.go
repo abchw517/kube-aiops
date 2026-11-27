@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/abchw517/kube-aiops/api/internal/adminhttp"
 	"github.com/abchw517/kube-aiops/api/internal/holmes"
@@ -88,14 +89,15 @@ func (s *Server) investigateHealth(w http.ResponseWriter, r *http.Request, p ide
 		return err
 	}
 	ctx, skills := holmes.TraceSkills(ctx)
+	start := time.Now()
 	analysis, err := holmes.Investigate(ctx, scope, evidence)
-	slog.InfoContext(ctx, "health alert investigation", "actor", p.Subject, "source", source, "source_id", sourceID, "record_id", id, "engine_success", err == nil)
-	if errors.Is(err, holmes.ErrUnconfigured) {
-		return httpError{503, "HOLMES_SCOPE_UNCONFIGURED", "当前数据范围尚未配置只读 Holmes 服务。"}
-	}
+	logFields := []any{"actor", p.Subject, "source", source, "source_id", sourceID, "record_id", id, "engine_success", err == nil, "elapsed_ms", time.Since(start).Milliseconds()}
 	if err != nil {
-		return httpError{503, "HOLMES_UNAVAILABLE", "调查服务暂不可用，请稍后重试。"}
+		failure, upstreamStatus := healthInvestigationFailure(err)
+		slog.WarnContext(ctx, "health alert investigation", append(logFields, "failure_code", failure.code, "upstream_status", upstreamStatus)...)
+		return failure
 	}
+	slog.InfoContext(ctx, "health alert investigation", logFields...)
 	if s.ValidateActor != nil {
 		if err = s.ValidateActor(ctx, p); err != nil {
 			return ErrForbidden
@@ -113,6 +115,21 @@ func (s *Server) investigateHealth(w http.ResponseWriter, r *http.Request, p ide
 		Skills   []string `json:"appliedSkills,omitempty"`
 	}{cleanText(analysis, 64<<10), *skills})
 	return nil
+}
+
+func healthInvestigationFailure(err error) (httpError, int) {
+	if errors.Is(err, holmes.ErrUnconfigured) {
+		return httpError{503, "HOLMES_SCOPE_UNCONFIGURED", "当前数据范围尚未配置只读 Holmes 服务，或该范围已暂停。"}, 0
+	}
+	var failure *holmes.ChatError
+	if errors.As(err, &failure) {
+		status := http.StatusServiceUnavailable
+		if failure.Code == "HOLMES_CHAT_TIMEOUT" {
+			status = http.StatusGatewayTimeout
+		}
+		return httpError{status, failure.Code, failure.Message}, failure.UpstreamStatus
+	}
+	return httpError{503, "HOLMES_UNAVAILABLE", "Portal 无法启动或完成 Holmes 调查。请检查范围配置和 API 日志后重试。"}, 0
 }
 
 // ValidateHolmesAlertScope checks the current source record before an administrator binds it.

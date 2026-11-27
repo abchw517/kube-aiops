@@ -2133,6 +2133,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          description: Holmes 调查超时
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/diagnostics/observability/dashboards:
     get:
       tags:

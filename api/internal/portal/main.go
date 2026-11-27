@@ -10,6 +10,7 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/holmes"
 	"github.com/abchw517/kube-aiops/api/internal/permissions"
 	"github.com/abchw517/kube-aiops/api/internal/wiki"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,8 +27,22 @@ import (
 	"github.com/abchw517/kube-aiops/api/internal/security"
 )
 
+// Log timestamps match the Portal's UTC+8 display without depending on the container timezone.
+func newPortalLogger(output io.Writer) *slog.Logger {
+	zone := time.FixedZone("UTC+8", 8*60*60)
+	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if len(groups) == 0 && attr.Key == slog.TimeKey && attr.Value.Kind() == slog.KindTime {
+				return slog.Time(slog.TimeKey, attr.Value.Time().In(zone))
+			}
+			return attr
+		},
+	}))
+}
+
 func Run() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := newPortalLogger(os.Stdout)
+	slog.SetDefault(logger)
 
 	if len(os.Args) > 1 {
 		var run func() error
