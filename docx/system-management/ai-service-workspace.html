@@ -3,182 +3,573 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 服务 · kube-aiops 交互原型</title>
+<title>AI 服务工作区 · kube-aiops</title>
 <style>
-  :root { font: 16px/1.55 system-ui, sans-serif; color: #18243a; background: #f4f6fb; }
-  * { box-sizing: border-box; }
-  body { margin: 0; }
-  header, aside, section, dialog { background: white; border: 1px solid #dce3ef; }
-  .top { padding: 1rem 1.5rem; display: flex; gap: 1.25rem; }
-  .layout { display: grid; grid-template-columns: minmax(10rem,18%) minmax(0,1fr); min-height: 90vh; }
-  aside, main { padding: 1.4rem; }
-  aside a { display: block; margin: .5rem 0; padding: .5rem .75rem; border-radius: .65rem; }
-  a { color: #4446ad; }
-  a[aria-current] { background: #edecff; font-weight: 650; }
-  h1, h2 { margin: 0 0 .8rem; }
-  section { padding: 1rem; margin-bottom: .9rem; border-radius: 1rem; }
-  .bar { display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; }
-  .between { justify-content: space-between; }
-  button, input, select, textarea { font: inherit; padding: .4rem .6rem; border: 1px solid #9baacc; border-radius: .55rem; }
-  button { background: #fff; color: inherit; cursor: pointer; }
-  button.primary { background: #4546bb; border-color: #4546bb; color: white; }
-  .table { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { text-align: left; padding: .65rem; border-bottom: 1px solid #dce3ef; }
-  th { background: #f4f6fb; }
-  dialog { width: min(34rem, calc(100vw - 2rem)); border-radius: 1rem; padding: 1rem; }
-  dialog::backdrop { background: #18243a66; }
-  dialog label { display: grid; grid-template-columns: minmax(0, 1fr); gap: .25rem; margin: .6rem 0; }
-  dialog fieldset { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; margin: .75rem 0; border: 1px solid #dce3ef; border-radius: .75rem; }
-  dialog legend { font-weight: 650; }
-  dialog :is(select,input) { width: 100%; min-width: 0; }
-  dialog [hidden] { display: none; }
-  #scope-preview { overflow-wrap: anywhere; padding: .5rem; background: #f4f6fb; border-radius: .5rem; }
-  dialog footer { display: flex; justify-content: flex-end; }
-  button:disabled { opacity: .55; cursor: default; }
-  @media (max-width: 640px) { .layout { display: block; } aside { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; } aside a { margin: 0; } }
+:root {
+  color-scheme: light;
+  --ink:#203a37; --muted:#516963; --line:#e1ebe5; --white:#fff;
+  --green:#246657; --mist:#e7f3eb; --sand:#f7edda; --violet:#f1edf9;
+  --shadow:0 18px 48px -36px #294b3c60;
+  font:15px/1.55 "PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--ink); background:#f6f8f4;
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; }
+button,input,select,textarea { font:inherit; color:inherit; }
+button,a { -webkit-tap-highlight-color:transparent; }
+button { cursor:pointer; }
+button:disabled { opacity:.48; cursor:default; }
+a { color:var(--green); }
+:focus-visible { outline:3px solid #588f7f; outline-offset:3px; }
+.top { background:#fffdf9; border-bottom:1px solid var(--line); }
+.top-inner { max-width:1360px; margin:auto; padding:15px clamp(16px,4vw,46px); display:flex; align-items:center; gap:34px; }
+.brand { display:flex; align-items:center; gap:10px; white-space:nowrap; font-weight:750; letter-spacing:-.025em; font-size:18px; }
+.brand-mark,.icon { display:grid; place-items:center; flex:none; }
+.brand-mark { width:38px; height:38px; border-radius:14px; background:#286458; color:white; font-size:17px; box-shadow:0 5px 14px #28645830; }
+.top nav { display:flex; gap:5px; flex-wrap:wrap; }
+.top nav a { text-decoration:none; border-radius:999px; padding:9px 15px; color:var(--muted); font-weight:600; white-space:nowrap; }
+.top nav a[aria-current] { color:#235c4e; background:var(--mist); }
+.person { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+.person select { max-width:156px; }
+main { max-width:1360px; margin:auto; padding:33px clamp(16px,4vw,46px) 42px; }
+h1,h2,h3,p,dl,dd { margin:0; }
+h1 { font-size:clamp(29px,4vw,38px); letter-spacing:-.04em; line-height:1.2; }
+h2 { font-size:20px; letter-spacing:-.02em; }
+h3 { font-size:16px; overflow-wrap:anywhere; }
+p, dd { overflow-wrap:anywhere; }
+.subtitle,.muted,small { color:var(--muted); }
+.subtitle { margin-top:8px; }
+.page-head { margin-bottom:22px; }
+.row,.actions,.chips { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+.between { justify-content:space-between; }
+.btn { display:inline-flex; justify-content:center; align-items:center; gap:6px; min-height:42px; padding:8px 15px; border:1px solid #d9e6de; background:#fff; border-radius:999px; color:var(--ink); text-decoration:none; white-space:nowrap; font-weight:650; }
+.btn:hover:enabled,.btn[href]:hover { background:#f0f6ef; }
+.btn.primary { background:var(--green); border-color:var(--green); color:#fff; }
+.btn.primary:hover:enabled { background:#1e5549; }
+.btn.quiet { background:transparent; border-color:transparent; }
+.btn.small { min-height:36px; padding:6px 11px; font-size:13px; }
+.pill,.scope-chip { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:650; background:#edf2ef; color:#48635a; }
+.pill::before { content:""; width:6px; height:6px; background:currentColor; border-radius:50%; }
+.pill.good { background:#dff0e6; color:#225c49; }
+.pill.warn { background:var(--sand); color:#82511d; }
+.pill.bad { background:#fae9e4; color:#963f30; }
+.scope-chip { font-weight:500; background:#f0f5f1; max-width:100%; overflow-wrap:anywhere; }
+.hero { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); align-items:center; gap:24px; isolation:isolate; position:relative; overflow:hidden; padding:24px 27px; border-radius:29px; border:1px solid #dceae0; background:radial-gradient(ellipse at 91% -20%,#d9ece3 3%,transparent 66%),linear-gradient(110deg,#f4f8e9,#eef7f1 58%,#f4f6e9); box-shadow:var(--shadow); margin-bottom:22px; }
+.hero::after { content:""; pointer-events:none; position:absolute; z-index:-1; width:340px; height:260px; top:-150px; right:-100px; border:1px solid #6e9e8a34; border-radius:49% 51% 62% 38%; box-shadow:0 0 0 23px #e7f3e854,0 0 0 44px #6e9e8a14; transform:rotate(-20deg); }
+.hero-head { align-items:flex-start; flex-wrap:nowrap; gap:14px; }
+.icon { width:42px; height:42px; border-radius:15px; background:var(--mist); color:#23624f; font-size:18px; font-weight:650; }
+.icon.lilac { background:var(--violet); color:#645582; }
+.icon.sand { background:var(--sand); color:#82511d; }
+.hero h2 { margin-bottom:5px; }
+.hero .end { justify-self:end; max-width:100%; }
+.inline-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+.stat { padding:8px 13px; border-radius:16px; background:#ffffffad; min-width:0; }
+.stat strong { display:block; font-size:24px; line-height:1.05; font-variant-numeric:tabular-nums; }
+.stat small { font-size:12px; white-space:nowrap; }
+.workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(225px,290px); gap:19px; align-items:start; }
+.panel { background:var(--white); border:1px solid var(--line); border-radius:25px; padding:19px 21px; box-shadow:var(--shadow); min-width:0; }
+.panel-head { margin-bottom:13px; }
+.stack { display:grid; gap:14px; }
+.filters { display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+.filters input { flex:1 1 160px; min-width:100px; }
+.filters select { max-width:100%; }
+input,select,textarea { min-height:39px; border:1px solid #d4e2da; border-radius:12px; padding:7px 10px; background:#fcfdfa; max-width:100%; min-width:0; }
+input[type="checkbox"] { width:auto; min-height:0; accent-color:var(--green); }
+input:focus,select:focus,textarea:focus { border-color:#568572; }
+textarea { resize:vertical; }
+.search { padding-left:13px; }
+.item { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:13px; padding:15px 0; border-top:1px solid #edf1ee; }
+.item .actions { justify-content:flex-end; align-self:center; }
+.item h3 { line-height:1.4; margin-bottom:4px; }
+.item .chips { gap:6px; margin-top:5px; }
+.models { margin-top:7px; display:flex; gap:6px 14px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
+.models b { color:var(--ink); font-weight:600; overflow-wrap:anywhere; }
+.side-title { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+.side-title h2 { font-size:17px; }
+.side-title .icon { width:31px; height:31px; border-radius:11px; font-size:15px; }
+.side-note { margin:8px 0 12px; color:var(--muted); font-size:14px; }
+.release { display:grid; width:100%; gap:4px; background:#faf8f1; border:1px solid #efe8d7; border-radius:15px; text-align:left; padding:11px 12px; margin:8px 0; }
+.release b { overflow-wrap:anywhere; }
+.release:hover { background:#f7efda; }
+.meta { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:7px; font-size:13px; color:var(--muted); margin-top:10px; }
+.empty { padding:26px 9px; text-align:center; border-top:1px solid var(--line); color:var(--muted); }
+.empty .actions { justify-content:center; margin-top:10px; }
+.tabs { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 12px; }
+.tabs button { border:none; background:#f1f5f2; border-radius:999px; padding:7px 11px; min-height:38px; font-weight:650; color:var(--muted); }
+.tabs button[aria-pressed="true"] { background:#dceee4; color:#225a4b; }
+dialog { border:1px solid var(--line); border-radius:28px; padding:0; background:#fffefa; color:var(--ink); width:min(680px,calc(100% - 24px)); max-height:calc(100dvh - 24px); box-shadow:0 36px 100px #21413748; }
+dialog::backdrop { background:#243d37a0; }
+dialog form { display:grid; grid-template-columns:minmax(0,1fr); }
+.dialog-head,.dialog-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:16px 21px; background:#fffefa; position:sticky; z-index:1; }
+.dialog-head { top:0; border-bottom:1px solid var(--line); }
+.dialog-foot { bottom:0; border-top:1px solid var(--line); justify-content:flex-end; }
+.dialog-body { display:grid; gap:13px; padding:17px 21px; min-width:0; }
+.dialog-body label { display:grid; grid-template-columns:minmax(0,1fr); gap:5px; font-weight:650; min-width:0; }
+.dialog-body label > :is(input,select,textarea) { font-weight:400; width:100%; text-overflow:ellipsis; }
+.dialog-body label.check { display:flex; align-items:center; }
+.dialog-body label.check input { width:auto; }
+.grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.group { display:grid; grid-template-columns:minmax(0,1fr); gap:11px; padding:13px 15px; border:1px solid var(--line); border-radius:18px; background:#fff; margin:0; min-width:0; }
+.group legend { padding:0 6px; font-weight:700; }
+.scope { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 13px; color:var(--muted); padding:9px 12px; border-radius:13px; background:#f4f8f4; font-size:13px; }
+.scope dd { color:var(--ink); }
+.discovery { align-items:end; grid-template-columns:minmax(0,1fr) auto; }
+.feedback { border-radius:12px; padding:9px 11px; background:#e7f3ed; color:#225a4b; margin:0 21px 13px; }
+.feedback:empty { display:none; }
+.feedback[data-tone="bad"] { background:#faeae4; color:#873728; }
+.preview { margin:0; padding:14px; background:#f2f6f3; border-radius:14px; white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; }
+code { overflow-wrap:anywhere; }
+.toast { position:fixed; bottom:20px; right:20px; z-index:3; border-radius:16px; padding:12px 16px; background:#275e51; color:white; box-shadow:0 10px 40px #21413744; max-width:calc(100% - 40px); }
+.footnote { margin-top:20px; font-size:13px; color:var(--muted); }
+.footnote summary { cursor:pointer; }
+@media (max-width:960px) { .workspace { grid-template-columns:minmax(0,1fr); } .workspace aside.stack { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:660px) {
+  .top-inner { gap:10px 16px; flex-wrap:wrap; } .top nav { order:3; width:100%; }
+  main { padding-top:21px; } .hero { grid-template-columns:minmax(0,1fr); gap:12px; padding:18px; border-radius:23px; }
+  .hero .end { justify-self:stretch; } .workspace aside.stack { grid-template-columns:minmax(0,1fr); }
+  .panel { padding:15px; border-radius:20px; } .page-head { align-items:flex-start; gap:13px; }
+  .item { grid-template-columns:auto minmax(0,1fr); gap:8px 11px; } .item .actions { grid-column:2; justify-content:flex-start; }
+  .grid-2 { grid-template-columns:minmax(0,1fr); } .discovery .btn { justify-self:start; } .dialog-body,.dialog-head,.dialog-foot { padding-inline:14px; }
+  .dialog-head h2 { font-size:18px; } .dialog-head .btn { min-height:36px; padding:5px 11px; }
+}
 </style>
 </head>
 <body>
-<header class="top"><strong>kube-aiops</strong><span>AI 服务</span><small>交互原型</small></header>
-<div class="layout">
-<aside aria-label="AI 服务"><strong>AI 服务</strong><a href="#configuration">AI 服务配置</a><a href="#skills">AI 技能</a></aside>
+<header class="top"><div class="top-inner">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">K</span>kube-aiops</div>
+  <nav aria-label="AI 服务"><a href="#configuration">AI 服务配置</a><a href="#skills">AI 技能</a></nav>
+  <label class="person">演示身份 <select id="actor"><option value="林晓">林晓 · 管理员</option><option value="周宁">周宁 · 管理员</option></select></label>
+</div></header>
 <main id="page"></main>
-</div>
-<dialog id="modal" aria-labelledby="modal-title"><form id="form">
-<div class="bar between"><h2 id="modal-title"></h2><button id="close" type="button">关闭</button></div>
-<div id="fields"></div><p id="feedback" role="status"></p><footer><button class="primary" id="submit" type="submit"></button></footer>
-</form></dialog>
+<dialog id="modal" aria-labelledby="dialog-title">
+  <form id="form">
+    <header class="dialog-head"><h2 id="dialog-title"></h2><button class="btn quiet" id="close" type="button">关闭</button></header>
+    <div class="dialog-body" id="fields"></div>
+    <p id="feedback" class="feedback" role="status"></p>
+    <footer class="dialog-foot"><button type="button" class="btn" id="cancel">取消</button><button type="submit" class="btn primary" id="submit"></button></footer>
+  </form>
+</dialog>
+<div id="toast" class="toast" role="status" hidden></div>
 <script>
-const page = document.getElementById("page");
-const modal = document.getElementById("modal");
-const form = document.getElementById("form");
-const title = document.getElementById("modal-title");
-const fields = document.getElementById("fields");
-const feedback = document.getElementById("feedback");
-const submit = document.getElementById("submit");
-const example = {name:"生产 Holmes", provider:"vLLM", fast:"qwen-fast", accurate:"qwen-accurate"};
-const state = {environment:"prod", desired:null, effective:example, version:1, live:1, status:"", skills:[], bindings:[]};
-const esc = value => String(value).replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
-document.getElementById("close").onclick = () => modal.close();
-function openDialog(heading, content, label, save) {
-  title.textContent = heading;
-  fields.innerHTML = content;
-  feedback.textContent = "";
-  submit.hidden = !save;
-  submit.disabled = false;
-  submit.textContent = label || "";
-  form.onsubmit = event => {
-    event.preventDefault();
-    save?.(new FormData(form));
-  };
-  modal.showModal();
+const $ = (selector, root = document) => root.querySelector(selector);
+const page = $("#page"), modal = $("#modal"), form = $("#form"), fields = $("#fields"), submit = $("#submit");
+const envNames = { prod:"生产", stage:"预发布", test:"测试" };
+const kindNames = { zabbix:"Zabbix 告警", alertmanager:"Alertmanager 告警", finding:"Finding 复核", incident:"事件 RCA", wiki:"知识问答" };
+const skillLabels = { review:"待审核", enabled:"已启用", disabled:"已停用" };
+const aliases = ["fast-model","accurate-model","accurate-backup"];
+const endpoint = "http://holmes-pilot-holmes.holmes-pilot.svc";
+const sources = [
+  { id:"zbx-prod", raw:"VULS37GACIR2MXC32GOMUXK7ZABBIXPRODUCTIONGLOBAL", name:"生产全局 Zabbix 监控", kind:"zabbix", env:"prod", business:"平台运维" },
+  { id:"am-prod", raw:"am-prod-gateway", name:"生产网关告警", kind:"alertmanager", env:"prod", business:"基础平台", cluster:"prod-sh-01" },
+  { id:"am-stage", raw:"am-stage-apps", name:"预发布应用告警", kind:"alertmanager", env:"stage", business:"应用平台", cluster:"stage-sh-01" },
+  { id:"zbx-test", raw:"zbx-test", name:"测试环境 Zabbix", kind:"zabbix", env:"test", business:"质量平台" },
+];
+const manuals = [
+  {id:"gateway", title:"网关 5xx 排障手册", version:3, body:"# 网关 5xx 排障\n\n- 核对网关与上游的 5xx 变化。\n- 对照 xDS NACK、后端端点和发布记录。\n- 写明缺失证据和下一步验证。"},
+  {id:"memory", title:"主机内存压力排障手册", version:2, body:"# 主机内存压力\n\n- 查看 PSI、swap 和主要进程的内存趋势。\n- 对齐告警发生时间和负载变化。"},
+];
+const state = {
+  actor:"林晓", service:"ready", discovery:"ok", env:"", bindingQuery:"", skillQuery:"", skillStatus:"", skillScope:"",
+  records:[
+    {...sources[0], key:"a", ns:"", model:"accurate-model", live:{name:"生产全局 Zabbix 监控",provider:"智谱 AI",fast:"fast-model",accurate:"accurate-model",paused:false}, draft:null, version:2, liveVersion:2},
+    {...sources[1], key:"b", ns:"gateway-system", model:"accurate-model", live:null, draft:{name:"生产网关告警",provider:"智谱 AI",fast:"fast-model",accurate:"accurate-model",paused:false}, version:1, liveVersion:0},
+    {...sources[2], key:"c", ns:"apps", model:"accurate-model", live:null, draft:null, version:0, liveVersion:0},
+  ],
+  skills:[
+    {id:"s1",name:"网关 5xx 快速取证",scope:"b",origin:"手册转化",manual:"网关 5xx 排障手册 · v3",status:"review",author:"周宁",keyword:"5xx",body:manuals[0].body,version:1},
+    {id:"s2",name:"主机内存压力检查",scope:"a",origin:"Markdown 上传",status:"enabled",author:"林晓",reviewer:"周宁",keyword:"内存",body:manuals[1].body,version:2},
+    {id:"s3",name:"历史网关日志检查",scope:"c",origin:"Markdown 上传",status:"disabled",author:"周宁",keyword:"日志",body:"# 历史网关日志检查\n\n- 按告警时间核对已授权日志。",version:3},
+  ],
+};
+const esc = (value = "") => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const opt = (value, name, selected) => `<option value="${esc(value)}"${value === selected ? " selected" : ""}>${esc(name)}</option>`;
+const button = (action, label, type = "", id = "") => `<button type="button" class="btn ${type}" data-action="${action}" data-id="${esc(id)}">${label}</button>`;
+const pill = (name, tone = "") => `<span class="pill ${tone}">${esc(name)}</span>`;
+const scopeText = row => [envNames[row?.env],row?.business,row?.cluster,row?.ns].filter(Boolean).join(" / ") || "全局";
+const icon = (mark, type = "") => `<span class="icon ${type}" aria-hidden="true">${mark}</span>`;
+const matched = (query, ...cells) => cells.join(" ").toLowerCase().includes(query.trim().toLowerCase());
+const byKey = key => state.records.find(row => row.key === key);
+let toastTimer, controls, dialogCycle = 0;
+function notify(message) {
+  const toast = $("#toast");
+  toast.textContent = message; toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 3600);
 }
+function feedback(message = "", tone = "") {
+  $("#feedback").textContent = message; $("#feedback").dataset.tone = tone;
+}
+function openDialog(title, html, label, onSubmit) {
+  dialogCycle++;
+  controls?.abort();
+  fields.oninput = null;
+  fields.onchange = null;
+  $("#dialog-title").textContent = title;
+  fields.innerHTML = html; feedback();
+  submit.hidden = !onSubmit; submit.disabled = false; submit.textContent = label || "";
+  $("#cancel").textContent = onSubmit ? "取消" : "返回";
+  form.onsubmit = event => { event.preventDefault(); onSubmit?.(new FormData(form)); };
+  if (!modal.open) modal.showModal();
+}
+for (const id of ["close","cancel"]) $(`#${id}`).onclick = () => modal.close();
+modal.addEventListener("close", () => { dialogCycle++; });
+$("#actor").onchange = event => { state.actor = event.target.value; render(); };
+
 function configuration() {
-  const model = state.desired || state.effective;
-  return '<h1>AI 服务配置</h1><section class="bar"><label>环境 <select id="environment"><option value="prod">生产</option><option value="uat">验收</option></select></label><button data-action="architecture">查看架构</button></section>' +
-    '<section><h2>HolmesGPT 服务</h2><p>试点服务已就绪</p><p>' + ("已绑定 " + ((state.environment === "prod" ? 1 : 0) + state.bindings.filter(row => row.environment === state.environment).length) + " 个范围") + '</p></section>' +
-    '<section><div class="bar between"><h2>数据范围绑定与模型连接</h2><div class="bar"><button class="primary" data-action="bind">新增范围绑定</button><button data-action="add" ' + (state.environment === "uat" ? "disabled" : "") + '>新增模型连接</button></div></div>' +
-    (state.environment === "uat" ? '<p>从已接入的数据源选择需要调查的范围。</p>' :
-    '<div class="table"><table><thead><tr><th>提供商 / 类型</th><th>服务地址</th><th>凭据</th><th>生效模型</th><th>操作</th></tr></thead><tbody><tr><td>' + esc(model.name) + ' · ' + esc(model.provider) +
-    '</td><td>https://holmes.example</td><td>部署绑定凭据</td><td>' + esc(state.effective.fast) + ' · ' + esc(state.effective.accurate) + '</td><td class="bar"><button data-action="probe">测试连接</button><button data-action="edit">编辑</button>' +
-    (state.desired ? '<button class="primary" data-action="publish">发布配置</button>' : '') + '</td></tr></tbody></table></div><p role="status">' + esc(state.status) + '</p>') +
-    '<ul>' + state.bindings.filter(row => row.environment === state.environment).map(row => '<li>' + esc(row.source) + ' · ' +
-      esc(row.scope) + ' · ' + esc(row.model) + ' · 已绑定</li>').join("") + '</ul></section>' +
-    '<section><h2>模型档位与发布版本</h2><p>期望 v' + state.version + ' · 生效 v' + state.live + '</p></section>';
+  const waiting = state.records.filter(row => row.draft);
+  const visible = state.records.filter(row => (!state.env || state.env === row.env)
+    && matched(state.bindingQuery,row.name,kindNames[row.kind],scopeText(row)));
+  return `<div class="page-head row between">
+    <div><h1>AI 服务配置</h1><p class="subtitle">查看 HolmesGPT 服务状态，管理数据范围和生效模型。</p></div>
+    ${button("bind","＋ 新增范围绑定","primary")}
+  </div>
+  <section class="hero" aria-label="HolmesGPT 服务状态">
+    <div class="row hero-head">${icon("✦")}
+      <div><div class="row"><h2>HolmesGPT 服务</h2>${state.service === "ready" ? pill("服务已就绪","good") : pill("服务不可达","bad")}</div>
+      <p class="muted"><code>${endpoint}</code></p></div>
+    </div>
+    <div class="end"><div class="inline-stats">
+      <div class="stat"><strong>${state.records.length}</strong><small>已绑定范围</small></div>
+      <div class="stat"><strong>${state.records.filter(row => row.live && !row.live.paused).length}</strong><small>已发布档位</small></div>
+      <div class="stat"><strong>${waiting.length}</strong><small>待发布草稿</small></div>
+    </div><div class="actions">${button("recheck","检查服务","small")}${button("service-details","服务详情","quiet small")}</div></div>
+  </section>
+  <div class="workspace">
+    <section class="panel" aria-label="范围与模型">
+      <div class="row between panel-head"><h2>范围与模型</h2><small data-binding-count>${visible.length} 个范围</small></div>
+      <div class="filters"><input class="search" id="binding-search" type="search" aria-label="搜索绑定" placeholder="搜索数据源、集群或业务" value="${esc(state.bindingQuery)}">
+        <select id="env" aria-label="环境"><option value="">全部环境</option>${Object.entries(envNames).map(([id,label]) => opt(id,label,state.env)).join("")}</select></div>
+      <div id="binding-items">${bindingRows(visible)}</div>
+    </section>
+    <aside class="stack" aria-label="配置操作">
+      <section class="panel"><div class="side-title">${icon("↑","sand")}<h2>待发布配置</h2></div>
+      ${waiting.length ? waiting.map(row => `<button type="button" class="release" data-action="publish" data-id="${esc(row.key)}"><b>${esc(row.draft.name)}</b><small>草稿 v${row.version} · 查看发布差异</small></button>`).join("") : '<p class="side-note">暂无待发布的草稿。</p>'}</section>
+      <section class="panel"><div class="side-title">${icon("⌁","lilac")}<h2>模型档位</h2></div>
+      <p class="side-note"><b>快速模型</b>用于知识问答和增强复核。<br><b>深度模型</b>用于告警调查、初步复核和事件 RCA。</p>
+      ${button("architecture","查看调用链路","small")}</section>
+    </aside>
+  </div>`;
 }
-function skills() {
-  const rows = state.skills.map((skill, i) => '<tr><td>' + esc(skill.name) + ' · ' + skill.source + '</td><td>' + (skill.live ? "v2" : "草稿") + '</td><td>生产 / ops</td><td>' + (skill.live ? '已启用' : '审核中') + '</td><td><button data-skill="' + i + '">' + (skill.live ? '查看技能' : '审核预览') + '</button></td></tr>').join("");
-  return '<h1>AI 技能</h1><section><div class="bar between"><h2>技能列表</h2><div class="bar"><button data-action="upload">上传技能</button><button class="primary" data-action="manual">从知识库手册转化</button></div></div>' +
-    '<div class="table"><table><thead><tr><th>技能 / 来源</th><th>版本</th><th>适用</th><th>状态</th><th>说明</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="5">暂无已提交技能。</td></tr>') + '</tbody></table></div></section><section><h2>生效位置</h2><p>匹配范围的 AI 深度调查可引用已启用的技能。</p></section>';
+function visibleBindings() {
+  return state.records.filter(row => (!state.env || state.env === row.env)
+    && matched(state.bindingQuery,row.name,kindNames[row.kind],scopeText(row)));
+}
+function bindingRows(rows) {
+  if (!rows.length) return '<div class="empty">当前筛选下没有范围绑定。<div class="actions">' + button("clear-bindings","清除筛选","small") + "</div></div>";
+  return rows.map(row => `<article class="item">${icon(row.kind === "alertmanager" ? "A" : row.kind === "zabbix" ? "Z" : "H",row.kind === "alertmanager" ? "sand" : "")}
+    <div><h3>${esc(row.live?.name || row.name)}</h3><small>${esc(kindNames[row.kind])}</small>
+    <div class="chips"><span class="scope-chip">${esc(scopeText(row))}</span>${row.live?.paused ? pill("已暂停","warn") : row.live ? pill("已发布","good") : pill("使用默认模型")}${row.draft ? pill("有待发布草稿","warn") : ""}</div>
+    <div class="models">${row.live && !row.live.paused ? `<span>快速 <b>${esc(row.live.fast)}</b></span><span>深度 <b>${esc(row.live.accurate)}</b></span>` : row.live?.paused ? "" : `<span>绑定模型 <b>${esc(row.model)}</b></span>`}${row.liveVersion ? `<span>生效 v${row.liveVersion}</span>` : ""}</div></div>
+    <div class="actions">${button("probe","测试","small",row.key)}${button("edit",row.live || row.draft ? "编辑档位" : "配置档位","small",row.key)}${row.draft ? button("publish","发布","primary small",row.key) : ""}</div></article>`).join("");
+}
+
+function skillsPage() {
+  const review = state.skills.filter(skill => skill.status === "review");
+  const enabled = state.skills.filter(skill => skill.status === "enabled");
+  return `<div class="page-head row between">
+    <div><h1>AI 技能</h1><p class="subtitle">把可复用的排障步骤交给 Holmes，在匹配范围的诊断中引用。</p></div>
+    <div class="actions">${button("manual","从手册转化")}${button("upload","＋ 上传技能","primary")}</div>
+  </div>
+  <section class="hero" aria-label="技能审核状态">
+    <div class="row hero-head">${icon("✧","lilac")}<div><h2>技能审核</h2>
+      <p class="muted">另一位管理员审核通过后，技能才会在对应范围内生效。</p></div>
+    </div>
+    <div class="end"><div class="inline-stats">
+      <div class="stat"><strong>${state.skills.length}</strong><small>全部技能</small></div>
+      <div class="stat"><strong>${review.length}</strong><small>待审核</small></div>
+      <div class="stat"><strong>${enabled.length}</strong><small>已启用</small></div></div>
+      <div class="actions">${button("filter-review","查看待审核","small")}</div>
+    </div>
+  </section>
+  <div class="workspace">
+    <section class="panel" aria-label="技能列表">
+      <div class="row between panel-head"><h2>技能列表</h2><small data-skill-count>${visibleSkills().length} 项</small></div>
+      <div class="tabs" aria-label="技能状态">${[["","全部"],...Object.entries(skillLabels)].map(([id,name]) =>
+        `<button type="button" aria-pressed="${state.skillStatus === id}" data-action="skill-filter" data-id="${id}">${name}</button>`).join("")}</div>
+      <div class="filters"><input class="search" type="search" id="skill-search" aria-label="搜索技能" placeholder="搜索名称、关键词或范围" value="${esc(state.skillQuery)}">
+      <select id="skill-scope" aria-label="技能范围"><option value="">全部范围</option>${state.records.filter(row => row.kind !== "wiki").map(row => opt(row.key,row.name,state.skillScope)).join("")}</select></div>
+      <div id="skill-items">${skillRows()}</div>
+    </section>
+    <aside class="stack" aria-label="技能操作">
+      <section class="panel"><div class="side-title">${icon("✓","sand")}<h2>待我审核</h2></div>
+      ${review.filter(skill => skill.author !== state.actor).map(skill => `<button type="button" class="release" data-action="skill-view" data-id="${esc(skill.id)}"><b>${esc(skill.name)}</b><small>${esc(skill.author)}提交 · ${esc(scopeText(byKey(skill.scope)))}</small></button>`).join("") || '<p class="side-note">当前身份没有待审核项。</p>'}</section>
+      <section class="panel"><div class="side-title">${icon("⌁")}<h2>技能何时生效</h2></div><p class="side-note">绑定范围与关键词匹配时，深度调查和 Finding 初步复核会引用已启用的技能。也可在 Finding 会话中按名称请求使用。</p>
+      <a href="#configuration">查看绑定范围</a></section>
+    </aside>
+  </div>`;
+}
+function visibleSkills() {
+  return state.skills.filter(skill => (!state.skillStatus || skill.status === state.skillStatus)
+    && (!state.skillScope || skill.scope === state.skillScope)
+    && matched(state.skillQuery,skill.name,skill.keyword,skill.origin,scopeText(byKey(skill.scope))));
+}
+function skillRows() {
+  const skills = visibleSkills();
+  if (!skills.length) return '<div class="empty">没有符合条件的技能。<div class="actions">' + button("clear-skills","清除筛选","small") + "</div></div>";
+  return skills.map(skill => `<article class="item">${icon(skill.origin === "手册转化" ? "≡" : "✧","lilac")}
+    <div><h3>${esc(skill.name)}</h3><small>${esc(skill.origin)} · ${esc(skill.author)}提交 · ${skill.status === "review" ? "草稿" : `v${skill.version}`}</small>
+    <div class="chips">${pill(skillLabels[skill.status],skill.status === "review" ? "warn" : skill.status === "enabled" ? "good" : "")}
+    <span class="scope-chip">${esc(scopeText(byKey(skill.scope)))}</span></div>
+    ${skill.keyword ? `<div class="models">匹配关键词 <b>${esc(skill.keyword)}</b></div>` : ""}</div>
+    <div class="actions">${button("skill-view",skill.status === "review" && skill.author !== state.actor ? "审核技能" : "查看详情",skill.status === "review" && skill.author !== state.actor ? "primary small" : "small",skill.id)}</div></article>`).join("");
 }
 function render() {
-  const showSkills = location.hash === "#skills";
-  document.querySelectorAll("aside a").forEach(link => {
-    if (link.hash === (showSkills ? "#skills" : "#configuration")) link.setAttribute("aria-current","page");
+  const skills = location.hash === "#skills";
+  document.querySelectorAll(".top nav a").forEach(link => {
+    if (link.hash === (skills ? "#skills" : "#configuration")) link.setAttribute("aria-current","page");
     else link.removeAttribute("aria-current");
   });
-  page.innerHTML = showSkills ? skills() : configuration();
-  const environment = document.getElementById("environment");
-  if (environment) {
-    environment.value = state.environment;
-    environment.onchange = () => { state.environment = environment.value; render(); };
+  page.innerHTML = (skills ? skillsPage() : configuration()) + `<details class="footnote"><summary>演示说明与实现依据</summary>
+    <p>交互使用模拟数据，刷新后恢复初始状态。</p>
+    <p>现有流程见 <a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/ai/services.ts" target="_blank" rel="noopener">服务配置</a>、<a href="https://github.com/abchw517/kube-aiops/blob/main/web/src/views/ai/skills.ts" target="_blank" rel="noopener">技能管理</a>。</p>
+    ${button("scenarios","切换服务演示状态","small")}</details>`;
+}
+
+function showBinding() {
+  openDialog("新增范围绑定", `
+    <fieldset class="group"><legend>数据范围</legend>
+      <label>绑定类型<select name="kind">${Object.entries(kindNames).map(([id,label]) => opt(id,label,"zabbix")).join("")}</select></label>
+      <div class="stack" id="scope-fields"></div>
+    </fieldset>
+    <fieldset class="group"><legend>Holmes 模型</legend><div class="grid-2 discovery">
+      <label>模型别名<select name="model" disabled><option value="">等待读取</option></select></label>
+      ${button("discover","发现模型")}
+    </div></fieldset>`, "保存并启用绑定", values => {
+    const kind = values.get("kind");
+    const source = sources.find(item => item.id === values.get("source"));
+    const model = values.get("model");
+    if (!model) return;
+    const ns = String(values.get("ns") || "").trim();
+    const cluster = String(values.get("cluster") || "").trim();
+    const info = source || {
+      kind, id:kind === "wiki" ? "published-excerpts" : cluster, name:kindNames[kind],
+      env:String(values.get("env") || ""), business:String(values.get("business") || ""), cluster,
+    };
+    if (state.records.some(row => row.kind === kind && row.id === info.id && row.env === info.env &&
+      row.business === info.business && row.ns === ns)) {
+      feedback("该范围已有绑定，可在列表中编辑模型档位。","bad"); return;
+    }
+    state.records.push({...info,key:crypto.randomUUID?.() || String(Date.now()),ns,model,live:null,draft:null,version:0,liveVersion:0});
+    state.env = info.env || ""; state.bindingQuery = "";
+    modal.close(); render(); notify("范围绑定已启用");
+  });
+  const type = form.elements.kind;
+  const model = form.elements.model;
+  function updateSave() { submit.disabled = model.disabled || !model.value || !form.checkValidity(); }
+  function updateRange() {
+    const kind = type.value;
+    const target = $("#scope-fields");
+    if (kind === "zabbix" || kind === "alertmanager") {
+      target.innerHTML = `<label>数据源<select name="source" required><option value="">选择已接入的数据源</option>
+        ${sources.filter(row => row.kind === kind).map(row => opt(row.id,row.name)).join("")}</select></label>
+        <dl id="scope-summary" class="scope" hidden></dl>
+        ${kind === "alertmanager" ? '<label>告警命名空间<input name="ns" placeholder="告警没有 namespace 时留空"></label>' : ""}`;
+      const source = form.elements.source, summary = $("#scope-summary");
+      source.onchange = () => {
+        const row = sources.find(recent => recent.id === source.value);
+        summary.hidden = !row;
+        summary.innerHTML = row ? detailRows([["环境",envNames[row.env]],["业务",row.business],["集群",row.cluster],["数据源 ID",row.raw]]) : "";
+        updateSave();
+      };
+    } else if (kind === "wiki") {
+      target.innerHTML = '<p class="muted">知识问答使用独立的 Wiki Holmes 服务，服务地址由部署配置提供。</p>';
+    } else {
+      target.innerHTML = `<div class="grid-2"><label>集群 ID<input name="cluster" required maxlength="128"></label><label>命名空间<input name="ns" maxlength="128"></label></div>
+      ${kind === "incident" ? `<div class="grid-2"><label>环境<select name="env" required><option value="">选择环境</option>${Object.entries(envNames).map(([id,label]) => opt(id,label)).join("")}</select></label><label>业务 ID<input name="business" maxlength="128"></label></div>` : ""}`;
+    }
+    model.replaceChildren(new Option("等待读取",""));
+    model.disabled = true; feedback(); updateSave();
+  }
+  type.onchange = updateRange;
+  fields.oninput = updateSave;
+  fields.onchange = updateSave;
+  fields.addEventListener("click", async function discover(event) {
+    const trigger = event.target.closest('[data-action="discover"]');
+    if (!trigger) return;
+    const cycle = dialogCycle, kind = type.value;
+    trigger.disabled = true; model.disabled = true; updateSave(); feedback("正在读取模型别名…");
+    await new Promise(resolve => setTimeout(resolve,350));
+    if (!modal.open || cycle !== dialogCycle) return;
+    trigger.disabled = false;
+    if (kind !== type.value) return;
+    if (state.service !== "ready" || state.discovery !== "ok") {
+      const message = {
+        auth:"模型接口鉴权失败（HTTP 401）。请核对 Holmes 服务访问凭据，再点击发现模型。",
+        empty:"Holmes 当前未返回模型别名。请检查部署中的 modelList 后重试。",
+        once:"模型发现超时。数据范围已保留，可直接重试。",
+      }[state.discovery];
+      feedback(state.service !== "ready" ? "Portal API 无法连接 Holmes 服务。请检查服务地址与网络后重试。" : message,"bad");
+      if (state.discovery === "once") state.discovery = "ok";
+      return;
+    }
+    model.replaceChildren(...aliases.map(name => new Option(name,name)));
+    model.value = "accurate-model"; model.disabled = false; updateSave();
+    feedback(`已发现 ${aliases.length} 个模型别名`);
+  }, {signal: dialogSignal()});
+  updateRange();
+}
+function dialogSignal() {
+  controls = new AbortController();
+  return controls.signal;
+}
+function detailRows(pairs) {
+  return pairs.filter(([,value]) => value).map(([name,value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join("");
+}
+function showEditor(row) {
+  const draft = row.draft || row.live || {name:row.name,provider:"智谱 AI",fast:row.model,accurate:row.model,paused:false};
+  openDialog(row.live || row.draft ? "编辑模型档位" : "配置模型档位", `
+    <dl class="scope">${detailRows([["绑定范围",scopeText(row)],["生效版本",row.liveVersion ? `v${row.liveVersion}` : "绑定默认模型"]])}</dl>
+    <fieldset class="group"><legend>模型档位</legend>
+      <div class="grid-2"><label>连接名称<input name="name" required maxlength="60" value="${esc(draft.name)}"></label>
+      <label>提供商<select name="provider">${["智谱 AI","vLLM","Ollama","OpenAI","DeepSeek","OpenAI 兼容"].map(name => opt(name,name,draft.provider)).join("")}</select></label></div>
+      <div class="grid-2"><label>快速模型<select name="fast" required>${aliases.map(name => opt(name,name,draft.fast)).join("")}</select></label>
+      <label>深度模型<select name="accurate" required>${aliases.map(name => opt(name,name,draft.accurate)).join("")}</select></label></div>
+      <label class="check"><input type="checkbox" name="paused" ${draft.paused ? "checked" : ""}>暂停此范围的 Holmes 调用</label>
+      <small>保存草稿后，可在发布时确认影响范围和模型差异。</small>
+    </fieldset>`, "保存草稿", values => {
+    const name = String(values.get("name")).trim();
+    if (!name) { feedback("请填写连接名称。","bad"); return; }
+    row.draft = {name,provider:values.get("provider"),fast:values.get("fast"),
+      accurate:values.get("accurate"),paused:values.has("paused")};
+    row.version++; modal.close(); render(); notify("草稿已保存，等待发布");
+  });
+}
+function showPublish(row) {
+  const draft = row.draft;
+  if (!draft) return;
+  openDialog("确认发布配置", `
+    <dl class="scope">${detailRows([["影响范围",scopeText(row)],["当前生效",row.liveVersion ? `v${row.liveVersion}` : "绑定默认模型"],["待发布",`草稿 v${row.version}`]])}</dl>
+    <fieldset class="group"><legend>生效值 → 草稿值</legend>
+      <dl class="scope">${detailRows([["快速模型",`${row.live?.fast || row.model} → ${draft.fast}`],["深度模型",`${row.live?.accurate || row.model} → ${draft.accurate}`],
+        ["调用状态",`${row.live?.paused ? "暂停" : "启用"} → ${draft.paused ? "暂停" : "启用"}`]])}</dl>
+    </fieldset>`, "确认发布", () => {
+    if (!draft.paused && (state.service !== "ready" || state.discovery !== "ok")) {
+      feedback("发布校验失败。当前生效版本继续服务，草稿可重试。","bad");
+      if (state.discovery === "once") state.discovery = "ok";
+      return;
+    }
+    row.live = draft; row.liveVersion = row.version; row.draft = null;
+    modal.close(); render(); notify(`v${row.liveVersion} 已发布`);
+  });
+}
+function showSkillDraft(mode) {
+  const ranges = state.records.filter(row => row.kind !== "wiki");
+  openDialog(mode === "upload" ? "上传 AI 技能" : "从已发布手册转化", `
+    <fieldset class="group"><legend>来源与使用范围</legend>
+      ${mode === "upload" ? '<label>Markdown 文件<input type="file" name="file" accept=".md,.markdown,text/markdown"></label><small>支持 SKILL.md，最多 12 KiB。也可直接填写正文。</small>' :
+      `<label>搜索已发布手册<input type="search" name="manual-query" placeholder="输入手册名称"></label>
+      <label>已发布手册<select name="manual" required><option value="">选择排障手册</option>${manuals.map(item => opt(item.id,`${item.title} · v${item.version}`)).join("")}</select></label>`}
+      <label>适用范围<select name="scope" required><option value="">选择已绑定范围</option>${ranges.map(row => opt(row.key,`${row.name} · ${scopeText(row)}`,state.skillScope)).join("")}</select></label>
+      ${ranges.length ? "" : '<p>请先在 <a href="#configuration" data-action="close-go">AI 服务配置</a> 添加范围。</p>'}
+    </fieldset>
+    <fieldset class="group"><legend>技能内容</legend>
+      <div class="grid-2"><label>技能名称<input name="name" required maxlength="60"></label>
+      <label>匹配关键词<input name="keyword" maxlength="40" placeholder="留空时匹配整个范围"></label></div>
+      <label>适用说明<input name="applies" maxlength="100"></label>
+      <label>排障步骤<textarea name="body" required rows="6" maxlength="12000"></textarea></label>
+    </fieldset>`, "提交审核", values => {
+    const name = String(values.get("name")).trim(), body = String(values.get("body")).trim();
+    if (!name || !body || new TextEncoder().encode(body).length > 12 * 1024) {
+      feedback("请填写名称与排障步骤，正文最多 12 KiB。","bad"); return;
+    }
+    const manual = manuals.find(item => item.id === values.get("manual"));
+    state.skills.unshift({id:crypto.randomUUID?.() || String(Date.now()),name,body,scope:values.get("scope"),status:"review",version:1,
+      author:state.actor,keyword:String(values.get("keyword")).trim(),applies:values.get("applies"),origin:manual ? "手册转化" : "Markdown 上传",
+      manual:manual ? `${manual.title} · v${manual.version}` : ""});
+    state.skillStatus = "review"; state.skillScope = ""; state.skillQuery = "";
+    modal.close(); render(); notify("已提交审核，由另一位管理员启用");
+  });
+  const cycle = dialogCycle, inputFile = form.elements.file, manualField = form.elements.manual;
+  if (inputFile) inputFile.onchange = async () => {
+    const file = inputFile.files[0];
+    if (!file) return;
+    if (file.size > 12 * 1024 || !/\.(md|markdown)$/i.test(file.name)) {
+      feedback("请选择不超过 12 KiB 的 Markdown 文件。","bad"); inputFile.value = ""; return;
+    }
+    const body = await file.text();
+    if (!modal.open || cycle !== dialogCycle || inputFile.files[0] !== file) return;
+    form.elements.body.value = body;
+    if (!form.elements.name.value) form.elements.name.value = (body.match(/^#\s+(.+)$/m)?.[1] || file.name.replace(/\.[^.]+$/,"")).slice(0,60);
+    feedback("已载入 Markdown，可编辑后提交审核。");
+  };
+  if (manualField) {
+    form.elements["manual-query"].oninput = event => {
+      const selected = manualField.value;
+      const results = manuals.filter(item => matched(event.target.value,item.title));
+      manualField.replaceChildren(new Option(results.length ? "选择排障手册" : "没有匹配手册",""),
+        ...results.map(item => new Option(`${item.title} · v${item.version}`,item.id,false,item.id === selected)));
+    };
+    manualField.onchange = () => {
+      const item = manuals.find(item => item.id === manualField.value);
+      if (!item) return;
+      form.elements.name.value = item.title; form.elements.body.value = item.body;
+      feedback(`已载入已发布手册 v${item.version}，可编辑后送审。`);
+    };
   }
 }
-page.onclick = event => {
-  const button = event.target.closest("button");
-  if (!button) return;
-  const action = button.dataset.action;
-  if (action === "architecture") openDialog("HolmesGPT 部署与调用路径", "<p>Web Portal → Go API → 范围绑定的 HolmesGPT → 模型提供商</p>");
-  if (action === "bind") {
-    openDialog("新增范围绑定",
-      '<fieldset><legend>数据范围</legend><label>数据源<select name="source"><option>生产 Zabbix</option><option>预发 Alertmanager</option></select></label>' +
-      '<p id="scope-preview"></p><label id="namespace-field">告警命名空间<input name="namespace"></label></fieldset>' +
-      '<fieldset><legend>Holmes 模型</legend><label>模型别名<select name="model" required disabled><option value="">请先发现模型</option></select></label><div><button type="button" id="discover-binding">发现模型</button></div></fieldset>',
-      "保存并启用绑定", values => {
-        const isZabbix = values.get("source") === "生产 Zabbix";
-        state.environment = isZabbix ? "prod" : "uat";
-        const scope = fields.querySelector("#scope-preview").textContent;
-        state.bindings.push({source: values.get("source"), scope: [scope, values.get("namespace")].filter(Boolean).join(" / "),
-          model: values.get("model"), environment: state.environment});
-        modal.close();
-        render();
-      });
-    submit.disabled = true;
-    const source = form.elements.namedItem("source");
-    if (state.environment === "uat") source.selectedIndex = 1;
-    const showScope = () => {
-      const isZabbix = source.selectedIndex === 0;
-      fields.querySelector("#scope-preview").textContent = isZabbix ? "生产 / 运维" : "验收 / 应用 / uat-k8s";
-      fields.querySelector("#namespace-field").hidden = isZabbix;
-      form.elements.namedItem("namespace").disabled = isZabbix;
-    };
-    source.onchange = showScope;
-    showScope();
-    fields.querySelector("#discover-binding").onclick = () => {
-      const model = form.elements.namedItem("model");
-      model.replaceChildren(new Option("accurate-model", "accurate-model"));
-      model.disabled = false;
-      submit.disabled = false;
-      feedback.textContent = "已发现 1 个模型别名。";
-    };
-  }
-  if (action === "probe") { state.status = "服务已就绪 · 2 个模型"; render(); }
-  if (action === "add" || action === "edit") {
-    const model = state.desired || state.effective;
-    openDialog(action === "add" ? "新增模型连接" : "编辑模型连接",
-      '<p>部署范围 生产 / ops</p><label>名称<input name="name" required value="' + esc(model.name) + '"></label><label>提供商<select name="provider"><option>vLLM</option><option>OpenAI 兼容</option></select></label><button type="button" id="discover">发现模型</button><label>fast-model<select name="fast" required></select></label><label>accurate-model<select name="accurate" required></select></label>',
-      "保存草稿", values => { state.desired = Object.fromEntries(values); state.version++; state.status = "草稿已保存"; modal.close(); render(); });
-    fields.querySelector("#discover").onclick = () => {
-      for (const field of ["fast", "accurate"]) form.elements.namedItem(field).replaceChildren(...["qwen-fast","qwen-accurate"].map(value => new Option(value, value, false, value === model[field])));
-      feedback.textContent = "已发现 2 个模型别名。";
-    };
-  }
-  if (action === "publish") openDialog("发布模型配置", "<p>将重新核对模型别名，校验通过后新请求使用当前版本。</p>", "发布配置", () => {
-    state.effective = state.desired; state.desired = null; state.live = state.version; state.status = "发布成功"; modal.close(); render();
-  });
-  if (action === "manual" || action === "upload") {
-    const manual = action === "manual";
-    openDialog(manual ? "从知识库手册转化" : "上传技能",
-      (manual ? '<label>已发布手册<select><option>数据库连接池排查 · v3</option></select></label>' : '<label>选择 SKILL.md<input type="file" accept=".md" id="skill-file"></label>') +
-      '<label>名称<input name="name" required value="' + (manual ? "数据库连接池分析" : "") + '"></label><label>SKILL.md 正文<textarea rows="6" name="body" required>' +
-      (manual ? "核对连接池等待、活跃连接和数据库响应。" : "") + '</textarea></label>', "提交审核", values => {
-      state.skills.push({name:values.get("name"), body:values.get("body"), source:manual ? "手册转化" : "SKILL.md 上传", live:false}); modal.close(); render();
-    });
-    if (!manual) fields.querySelector("#skill-file").onchange = async event => {
-      const file = event.target.files[0];
-      if (file) form.elements.namedItem("body").value = await file.text();
-    };
-  }
-  if (button.dataset.skill !== undefined) {
-    const item = state.skills[Number(button.dataset.skill)];
-    openDialog(item.live ? "查看技能" : "审核预览", '<h3>' + esc(item.name) + '</h3><p>' + esc(item.body) + '</p>' +
-      (item.live ? "" : "<p>以下操作演示由另一位授权管理员审核。</p>"),
-      "审核通过并启用", item.live ? undefined : () => { item.live = true; modal.close(); render(); });
-  }
+function showSkill(skill) {
+  const canReview = skill.status === "review" && skill.author !== state.actor;
+  const canDisable = skill.status === "enabled";
+  openDialog(canReview ? "审核技能" : "技能详情", `
+    <div class="row between"><h3>${esc(skill.name)}</h3>${pill(skillLabels[skill.status],canReview ? "warn" : canDisable ? "good" : "")}</div>
+    <dl class="scope">${detailRows([["适用范围",scopeText(byKey(skill.scope))],["关键词",skill.keyword || "匹配整个范围"],
+      ["来源",skill.manual || skill.origin],["提交人",skill.author],["审核人",skill.reviewer],["适用说明",skill.applies]])}</dl>
+    <fieldset class="group"><legend>排障步骤</legend><pre class="preview">${esc(skill.body)}</pre></fieldset>
+    ${skill.status === "review" && !canReview ? '<p class="muted">此技能由你提交，等待另一位管理员审核。</p>' : ""}
+    ${canDisable ? '<p class="muted">停用后，新调查将停止引用该技能。</p>' : ""}`,
+    canReview ? "审核通过并启用" : canDisable ? "停用技能" : "", canReview || canDisable ? () => {
+      skill.status = canReview ? "enabled" : "disabled";
+      if (canReview) { skill.reviewer = state.actor; skill.version++; }
+      state.skillStatus = skill.status; state.skillQuery = ""; state.skillScope = "";
+      modal.close(); render(); notify(canReview ? "技能已审核并启用" : "技能已停用");
+    } : null);
+}
+
+const simpleActions = {
+  bind:showBinding, upload:() => showSkillDraft("upload"), manual:() => showSkillDraft("manual"),
+  probe:row => openDialog("测试范围连接", `<dl class="scope">${detailRows([["范围",scopeText(row)],["服务探测",state.service === "ready" ? "就绪" : "不可达"],
+    ["模型接口",state.service === "ready" && state.discovery === "ok" ? `可读取 ${aliases.length} 个别名` : "读取失败"],["当前绑定模型",row.model]])}</dl>`),
+  edit:showEditor, publish:showPublish,
+  recheck:() => notify(state.service === "ready" ? "Holmes 服务已就绪" : "Holmes 服务不可达，请检查连接"),
+  "service-details":() => openDialog("HolmesGPT 服务详情", `<dl class="scope">${detailRows([["状态",state.service === "ready" ? "已就绪" : "不可达"],
+    ["试点版本","0.48.0"],["服务地址",endpoint],["就绪探测","/readyz"],["模型接口","/api/model"],["推理接口","/api/chat"],
+    ["凭据来源","部署配置"]])}</dl>`),
+  architecture:() => openDialog("Holmes 调用链路", '<ol><li>Portal 根据用户权限核对告警或诊断范围。</li><li>Portal API 按精确范围选择 Holmes 服务与生效模型。</li><li>Holmes 调用部署侧注册的模型，返回分析结果。</li></ol>'),
+  "clear-bindings":() => { state.env = ""; state.bindingQuery = ""; render(); },
+  "clear-skills":() => { state.skillStatus = ""; state.skillQuery = ""; state.skillScope = ""; render(); },
+  "filter-review":() => { state.skillStatus = "review"; state.skillQuery = ""; state.skillScope = ""; render(); },
+  scenarios:() => openDialog("切换演示状态", `<label>服务状态<select name="service">${opt("ready","服务已就绪",state.service)}${opt("offline","服务不可达",state.service)}</select></label>
+    <label>模型发现<select name="discovery">${[["ok","成功"],["once","首次超时，重试成功"],["auth","鉴权失败"],["empty","无可用模型"]].map(([id,name]) => opt(id,name,state.discovery)).join("")}</select></label>`,
+    "应用演示状态", values => { state.service = values.get("service"); state.discovery = values.get("discovery"); modal.close(); render(); notify("演示状态已切换"); }),
 };
-window.addEventListener("hashchange", render);
+page.addEventListener("click", event => {
+  const node = event.target.closest("[data-action]");
+  if (!node) return;
+  const {action,id} = node.dataset;
+  if (action === "skill-view") { const skill = state.skills.find(item => item.id === id); if (skill) showSkill(skill); return; }
+  if (action === "skill-filter") { state.skillStatus = id; render(); return; }
+  simpleActions[action]?.(byKey(id));
+});
+function filterBindings() {
+  const rows = visibleBindings();
+  $("#binding-items").innerHTML = bindingRows(rows);
+  $("[data-binding-count]").textContent = `${rows.length} 个范围`;
+}
+function filterSkills() {
+  $("#skill-items").innerHTML = skillRows();
+  $("[data-skill-count]").textContent = `${visibleSkills().length} 项`;
+}
+page.addEventListener("input", event => {
+  if (event.target.id === "binding-search") { state.bindingQuery = event.target.value; filterBindings(); }
+  if (event.target.id === "skill-search") { state.skillQuery = event.target.value; filterSkills(); }
+});
+page.addEventListener("change", event => {
+  if (event.target.id === "env") { state.env = event.target.value; filterBindings(); }
+  if (event.target.id === "skill-scope") { state.skillScope = event.target.value; filterSkills(); }
+});
+modal.addEventListener("click", event => { if (event.target.closest('[data-action="close-go"]')) modal.close(); });
+window.addEventListener("hashchange",render);
 render();
 </script>
 </body>

@@ -1,5 +1,6 @@
 import { apiClient } from "../../api/client.ts";
 import { escapeHtml as h } from "../../components/html.ts";
+import { aiDialogMarkup, dialogFooter, icon, options, pill, scopeDetails, searchMatches, stat, updateWorkspaceQuery } from "./workspace.ts";
 
 export const endpoint = "/api/v1/admin/ai-services";
 export const skillsEndpoint = "/api/v1/admin/ai-skills";
@@ -38,57 +39,75 @@ function connectionFor(data: ServiceStatus, model: Model) {
   return data.connections?.find(entry => JSON.stringify(scopeOf(entry.data.scope)) === JSON.stringify(scopeOf(model)));
 }
 
+export function scopeSummary(m: Scope): string {
+  return [m.environmentId, m.businessId, m.clusterId, m.namespace].filter(Boolean).join(" / ") || m.sourceId;
+}
+
+function pending(entry?: Entry<Connection>): boolean {
+  return Boolean(entry && (entry.data.effectiveVersion === 0 || JSON.stringify(entry.data.effective) !== JSON.stringify(entry.data.desired)));
+}
+
 export async function loadAIServices() {
   const data = await requestAI<ServiceStatus>(endpoint);
+  const [zabbix, observability] = await Promise.all([
+    data.models.some(model => model.source === "zabbix") ? apiClient.listZabbixSources().catch(() => undefined) : undefined,
+    data.models.some(model => model.source === "alertmanager") ? apiClient.listObservabilitySources().catch(() => undefined) : undefined,
+  ]);
+  const sourceNames = new Map<string, string | undefined>([
+    ...(zabbix?.items ?? []).map(item => [`zabbix:${item.id}`,item.name] as const),
+    ...(observability?.items ?? []).filter(item => item.kind === "alertmanager").map(item => [`alertmanager:${item.id}`,item.name] as const),
+  ]);
   const environments = [...new Set(data.models.map(m => m.environmentId).filter(Boolean))].sort();
-  const bindingStatus = data.models.length ? `已绑定 ${data.models.length} 个范围` : "尚无数据范围绑定";
-  const pilotStatus = data.pilot && { ready: "试点服务已就绪", unreachable: "试点服务不可达或未就绪",
-    invalid: "试点服务地址无效" }[data.pilot.status];
-  const rows = data.models.map((m, index) => {
-    const entry = connectionFor(data, m);
-    const current = entry?.data.effective;
-    const desired = entry?.data.desired;
-    const pending = entry && (entry.data.effectiveVersion === 0 || JSON.stringify(current) !== JSON.stringify(desired));
-    return `<tr data-ai-model-row="${h(m.environmentId)}"><td><strong>${h(desired?.name ?? sources[m.source] ?? m.source)}</strong><small>${h(desired?.provider ?? (m.managed ? "Portal 绑定" : "部署绑定"))}</small></td>
-      <td>${h(m.service ?? "由部署提供")}<small>${h(scopeText(m))}</small></td><td>${h(m.credential ?? "由部署提供")}</td>
-      <td>${h(current?.fast || m.model || "Holmes 默认模型")}${current?.accurate && current.accurate !== current.fast ? ` · ${h(current.accurate)}` : ""}</td>
-      <td><span role="status">${pending ? "待发布" : current?.disabled ? "已暂停" : entry ? "已发布" : "待检查"}</span></td>
-      <td><div class="system-actions"><button class="button secondary" type="button" data-ai-probe="${index}">测试连接</button>
-      <button class="button secondary" type="button" data-ai-edit="${index}">编辑</button>
-      ${pending ? `<button class="button" type="button" data-ai-publish="${index}">发布配置</button>` : ""}</div></td></tr>`;
-  }).join("");
-  return { html: `<div class="portal-ai-page">
-    <section class="panel ai-panel"><div class="system-actions">
-      <label>环境 <select data-ai-environment><option value="">全部环境</option>${environments.map(name => `<option value="${h(name)}">${h(name)}</option>`).join("")}</select></label>
-      <button class="button secondary" type="button" data-ai-architecture>查看架构</button>
-      <button class="button secondary" type="button" data-ai-refresh>重新读取配置</button>
-    </div></section>
-    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>HolmesGPT 服务</h2><span>${h(bindingStatus)}</span></header><dl>
-      <dt>服务状态</dt><dd>${h(pilotStatus ?? "待检查")}${data.pilot?.address ? ` · ${h(data.pilot.address)}` : ""}</dd>
-      <dt>部署形态</dt><dd>独立内部服务，经 Portal API 鉴权</dd>
-      <dt>接入端点</dt><dd>HolmesGPT /api/chat</dd>
-      <dt>能力入口</dt><dd><a href="#/resources/datasources">数据源管理</a> · <a href="#/ai/skills">AI 技能</a></dd>
-      <dt>模型回退</dt><dd>Finding 复核、事件 RCA 和知识问答沿用既有回退规则</dd>
-    </dl></section>
-    <section class="panel ai-panel"><header class="ai-panel-heading"><h2>数据范围绑定与模型连接</h2>
-      <div class="system-actions"><button class="button" type="button" data-ai-bind>新增范围绑定</button>
-      <button class="button secondary" type="button" data-ai-add ${data.models.length ? "" : "disabled"}>新增模型连接</button></div></header>
-      <p>先绑定需要 AI 调查的数据范围，再按需设置模型档位。</p>
-      ${data.status === "invalid" ? '<p role="alert">部分绑定配置读取失败，请检查 API 日志或部署配置。</p>' : ""}<p data-ai-action-status role="status"></p>
-      ${rows ? `<div class="table-wrap"><table><thead><tr><th>提供商 / 类型</th><th>服务地址</th><th>凭据</th><th>生效模型</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>从「新增范围绑定」选择已接入的数据源，或指定集群和命名空间。</p>"}
+  const pilotStatus = data.pilot && { ready: "服务已就绪", unreachable: "服务不可达或未就绪", invalid: "服务地址无效" }[data.pilot.status];
+  const rows = data.models.map((model, index) => {
+    const entry = connectionFor(data, model);
+    const live = entry?.data.effectiveVersion ? entry.data.effective : undefined;
+    const name = live?.name || entry?.data.desired.name || sourceNames.get(`${model.source}:${model.sourceId}`) || sources[model.source] || model.source;
+    return { model, entry, name, live, index, pending: pending(entry) };
+  });
+  const waiting = rows.filter(row => row.pending);
+  const layout = `<div class="portal-ai-page ai-workspace">
+    <div class="page-head row between"><div><h1>AI 服务配置</h1><p class="subtitle">查看 HolmesGPT 服务状态，管理数据范围和生效模型。</p></div>
+      <button class="btn primary" type="button" data-ai-bind>＋ 新增范围绑定</button></div>
+    <section class="hero" aria-label="HolmesGPT 服务状态">
+      <div class="row hero-head">${icon("✦")}<div><div class="row"><h2>HolmesGPT 服务</h2>${pill(pilotStatus ?? "待检查", data.pilot?.status === "ready" ? "good" : "bad")}</div>
+      <p class="muted"><code>${h(data.pilot?.address ?? "")}</code></p></div></div>
+      <div class="end"><div class="inline-stats">${stat(rows.length, "已绑定范围")}${stat(rows.filter(row => row.live && !row.live.disabled).length, "已发布档位")}${stat(waiting.length, "待发布草稿")}</div>
+        <div class="actions"><button class="btn small" type="button" data-ai-refresh>检查服务</button><button class="btn quiet small" type="button" data-ai-service-details>服务详情</button></div></div>
     </section>
-    <section class="panel ai-panel"><h2>模型档位与发布版本</h2>
-      <p>fast-model 用于知识问答和增强复核，accurate-model 用于告警调查、初步复核和 RCA。可按绑定暂停 Holmes 调用。</p>
-      ${data.connections?.length ? `<ul>${data.connections.map(e => `<li data-ai-model-row="${h(e.data.scope.environmentId)}">${h(scopeText(e.data.scope))} · 期望 v${JSON.stringify(e.data.desired) === JSON.stringify(e.data.effective) ? e.data.effectiveVersion : e.version} · 生效 ${e.data.effectiveVersion ? `v${e.data.effectiveVersion}` : "部署默认"} · fast: ${h(e.data.desired.fast || "—")} · accurate: ${h(e.data.desired.accurate || "—")}${e.data.publishedAt ? ` · 最近发布 ${h(new Date(e.data.publishedAt).toLocaleString("zh-CN"))}` : ""}</li>`).join("")}</ul>` : "<p>尚无 Portal 保存的档位配置。</p>"}
-    </section>
-    <dialog class="wiki-dialog ai-dialog" data-ai-dialog aria-labelledby="ai-dialog-title"></dialog>
-  </div>`, data };
+    ${data.status === "invalid" ? '<p role="alert">部分绑定配置读取失败，请检查 API 日志或部署配置。</p>' : ""}
+    <div class="workspace">
+      <section class="panel" aria-label="范围与模型">
+        <div class="row between panel-head"><h2>范围与模型</h2><small data-ai-count>${rows.length} 个范围</small></div>
+        <div class="filters"><input class="search" type="search" data-ai-search aria-label="搜索绑定" placeholder="搜索数据源、集群或业务"><select data-ai-environment aria-label="环境"><option value="">全部环境</option>${options(environments.map(name => [name, name]))}</select></div>
+        ${rows.map(({model, entry, name, live, index, pending: draft}) => `<article class="item" data-ai-model-row="${h(model.environmentId)}" data-ai-search-text="${h([name, scopeText(model), model.service].join(" "))}">
+          ${icon(model.source === "zabbix" ? "Z" : model.source === "alertmanager" ? "A" : "H", model.source === "alertmanager" ? "sand" : "")}
+          <div><h3>${h(name)}</h3><small>${h(sources[model.source] ?? model.source)} · ${model.managed ? "Portal 绑定" : "部署绑定"}</small>
+          <div class="chips"><span class="scope-chip">${h(scopeSummary(model))}</span>${live?.disabled ? pill("已暂停","warn") : live ? pill("已发布","good") : pill("使用默认模型")}${draft ? pill("有待发布草稿","warn") : ""}</div>
+          <div class="models">${live && !live.disabled ? `<span>快速 <b>${h(live.fast)}</b></span><span>深度 <b>${h(live.accurate)}</b></span>` : live?.disabled ? "" : `<span>绑定模型 <b>${h(model.model || "Holmes 默认模型")}</b></span>`}
+          ${entry?.data.effectiveVersion ? `<span>生效 v${entry.data.effectiveVersion}</span>` : ""}</div></div>
+          <div class="actions"><button class="btn small" type="button" data-ai-probe="${index}">测试</button>
+          <button class="btn small" type="button" data-ai-edit="${index}">${entry ? "编辑档位" : "配置档位"}</button>
+          ${draft ? `<button class="btn primary small" type="button" data-ai-publish="${index}">发布</button>` : ""}</div></article>`).join("")}
+        <div class="empty" data-ai-empty ${rows.length ? "hidden" : ""}>${rows.length ? '当前筛选下没有范围绑定。<div class="actions"><button class="btn small" type="button" data-ai-clear>清除筛选</button></div>' : "从「新增范围绑定」选择已接入的数据源，或指定集群和命名空间。"}</div>
+      </section>
+      <aside class="stack" aria-label="配置操作">
+        <section class="panel"><div class="side-title">${icon("↑","sand")}<h2>待发布配置</h2></div>
+          ${waiting.length ? waiting.map(({index, entry, name}) => `<button class="release" type="button" data-ai-publish="${index}"><b>${h(entry?.data.desired.name || name)}</b><small>草稿 v${entry?.version} · 查看发布差异</small></button>`).join("") : '<p class="side-note">暂无待发布的草稿。</p>'}
+        </section>
+        <section class="panel"><div class="side-title">${icon("⌁","lilac")}<h2>模型档位</h2></div>
+          <p class="side-note"><b>快速模型</b>用于知识问答和增强复核。<br><b>深度模型</b>用于告警调查、初步复核和事件 RCA。</p>
+          <button class="btn small" type="button" data-ai-architecture>查看调用链路</button></section>
+      </aside>
+    </div>${aiDialogMarkup}
+  </div>`;
+  return { html: layout, data };
 }
 
 export function aiDialog(dialog: HTMLDialogElement, title: string, content: string): void {
-  dialog.innerHTML = `<header class="ai-panel-heading"><h2 id="ai-dialog-title">${h(title)}</h2>
-    <button type="button" class="button secondary" data-ai-close>关闭</button></header>${content}`;
-  dialog.querySelector("[data-ai-close]")?.addEventListener("click", () => dialog.close());
+  dialog.innerHTML = `<header class="dialog-head"><h2 id="ai-dialog-title">${h(title)}</h2>
+    <button type="button" class="btn quiet" data-ai-close>关闭</button></header>${content}`;
+  for (const button of dialog.querySelectorAll("[data-ai-close], [data-ai-dismiss]")) button.addEventListener("click", () => dialog.close());
   if (!dialog.open) dialog.showModal();
 }
 
@@ -101,47 +120,33 @@ export async function showResult(button: HTMLButtonElement, status: Element, run
   finally { button.disabled = false; }
 }
 
-function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () => void, index?: number) {
-  const selected = index === undefined ? undefined : data.models[index];
-  const initial = selected && connectionFor(data, selected);
+function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () => void, index: number) {
+  const selected = data.models[index];
+  if (!selected) return;
+  const initial = connectionFor(data, selected);
   const settings = initial?.data.desired;
-  const choices = data.models.map((m, i) => index === undefined && connectionFor(data, m) ? "" :
-    `<option value="${i}" ${i === index ? "selected" : ""}>${h(scopeText(m))}</option>`).join("");
-  aiDialog(dialog, index === undefined ? "新增模型连接" : "编辑模型连接", `<form class="ai-form">
-    <label>部署范围<select name="scope" ${index === undefined ? "" : "disabled"}>${choices}</select></label>
-    <div data-ai-connection-source></div>
-    <label>连接名称<input name="name" required maxlength="60" value="${h(settings?.name ?? "")}"></label>
-    <label>提供商<select name="provider">${providers.map(name => `<option ${(settings?.provider ?? "OpenAI 兼容") === name ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>
-    <div class="system-actions"><button class="button secondary" type="button" data-ai-discover>发现模型</button></div>
-    <label>fast-model<select name="fast">${settings?.fast ? `<option>${h(settings.fast)}</option>` : ""}</select></label>
-    <label>accurate-model<select name="accurate">${settings?.accurate ? `<option>${h(settings.accurate)}</option>` : ""}</select></label>
-    <label><input type="checkbox" name="disabled" ${settings?.disabled ? "checked" : ""}> 暂停此范围的 Holmes 调用</label>
-    <p role="status"></p><div class="system-actions"><button class="button" type="submit">保存草稿</button></div>
-  </form>`);
+  const alias = selected.model;
+  aiDialog(dialog, initial ? "编辑模型档位" : "配置模型档位", `<form class="ai-form">
+    <div class="dialog-body">${scopeDetails([["绑定范围",scopeSummary(selected)],["生效版本",initial?.data.effectiveVersion ? `v${initial.data.effectiveVersion}` : "绑定默认模型"]])}
+    <fieldset class="group"><legend>模型档位</legend>
+    <div class="grid-2"><label>连接名称<input name="name" required maxlength="60" value="${h(settings?.name || sources[selected.source] || selected.sourceId)}"></label>
+    <label>提供商<select name="provider">${providers.map(name => `<option ${(settings?.provider ?? "OpenAI 兼容") === name ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label></div>
+    <div class="grid-2"><label>快速模型<select name="fast">${settings?.fast || alias ? `<option>${h(settings?.fast || alias)}</option>` : ""}</select></label>
+    <label>深度模型<select name="accurate">${settings?.accurate || alias ? `<option>${h(settings?.accurate || alias)}</option>` : ""}</select></label></div>
+    <label class="check"><input type="checkbox" name="disabled" ${settings?.disabled ? "checked" : ""}>暂停此范围的 Holmes 调用</label>
+    <div class="actions"><button class="btn small" type="button" data-ai-discover>发现模型</button></div>
+    <small>保存草稿后，可在发布时确认影响范围和模型差异。</small>
+    </fieldset><p class="feedback" role="status"></p></div>
+    ${dialogFooter('<button class="btn primary" type="submit">保存草稿</button>')}</form>`);
   const form = dialog.querySelector<HTMLFormElement>("form");
-  const scope = form?.querySelector<HTMLSelectElement>("[name=scope]");
   const discover = form?.querySelector<HTMLButtonElement>("[data-ai-discover]");
   const save = form?.querySelector<HTMLButtonElement>("[type=submit]");
   const status = form?.querySelector("[role=status]");
-  if (!form || !scope || !discover || !save || !status) return;
+  if (!form || !discover || !save || !status) return;
   const selects = [...form.querySelectorAll<HTMLSelectElement>("[name=fast], [name=accurate]")];
-  if (!scope.options.length) { save.disabled = true; discover.disabled = true; status.textContent = "现有范围已配置，可在列表编辑。"; }
-  const source = form.querySelector("[data-ai-connection-source]");
-  const showSource = () => {
-    const selected = scope.value === "" ? undefined : data.models[Number(scope.value)];
-    if (source) source.textContent = selected ? `服务地址 ${selected.service ?? "由部署提供"} · 凭据 ${selected.credential ?? "由部署提供"}` : "";
-  };
-  showSource();
-  scope.addEventListener("change", () => {
-    for (const select of selects) select.replaceChildren();
-    showSource();
-    status.textContent = "";
-  });
   discover.addEventListener("click", () => void showResult(discover, status, async () => {
-    const model = data.models[Number(scope.value)];
-    if (!model) return;
-    const {models} = await requestAI<{models: string[]}>(`${endpoint}?action=discover`, scopeOf(model));
-    if (!dialog.open || data.models[Number(scope.value)] !== model) return;
+    const {models} = await requestAI<{models: string[]}>(`${endpoint}?action=discover`, scopeOf(selected));
+    if (!dialog.open || !form.isConnected) return;
     for (const select of selects) {
       const previous = select.value;
       select.replaceChildren(...models.map(m => new Option(m, m)));
@@ -152,12 +157,10 @@ function openEditor(dialog: HTMLDialogElement, data: ServiceStatus, reload: () =
   form.addEventListener("submit", event => {
     event.preventDefault();
     void showResult(save, status, async () => {
-      const model = data.models[Number(scope.value)];
-      if (!model) return;
       const fields = new FormData(form);
       const config = {name: fields.get("name"), provider: fields.get("provider"), fast: fields.get("fast") ?? "",
         accurate: fields.get("accurate") ?? "", disabled: fields.has("disabled")};
-      await requestAI(`${endpoint}?action=save`, {...scopeOf(model),version: initial?.version ?? 0, config});
+      await requestAI(`${endpoint}?action=save`, {...scopeOf(selected),version: initial?.version ?? 0, config});
       dialog.close();
       reload();
     });
@@ -178,62 +181,96 @@ export function bindAIServices(root: HTMLElement, data: ServiceStatus, reload: (
     history.replaceState(null, "", "#/ai");
     void openBinding(dialog, reload, source, sourceId);
   }
-  root.querySelector("[data-ai-add]")?.addEventListener("click", () => openEditor(dialog, data, reload));
+  root.querySelector("[data-ai-service-details]")?.addEventListener("click", () => aiDialog(dialog, "HolmesGPT 服务详情",
+    `<div class="dialog-body">${scopeDetails([["服务地址", data.pilot?.address],["状态",data.pilot ? {ready:"已就绪",unreachable:"不可达或未就绪",invalid:"服务地址无效"}[data.pilot.status] : "待检查"], ["就绪探测","/readyz"],["模型接口","/api/model"],["推理接口","/api/chat"],["凭据来源","部署配置"]])}<a href="#/resources/datasources" data-ai-dismiss>打开数据源管理</a></div>`));
   const filter = root.querySelector<HTMLSelectElement>("[data-ai-environment]");
-  filter?.addEventListener("change", () => {
-    for (const row of root.querySelectorAll<HTMLElement>("[data-ai-model-row]")) {
-      row.hidden = Boolean(filter.value && row.dataset.aiModelRow !== filter.value);
-    }
+  const search = root.querySelector<HTMLInputElement>("[data-ai-search]");
+  const rows = [...root.querySelectorAll<HTMLElement>("[data-ai-model-row]")];
+  const update = () => {
+    for (const row of rows) row.hidden = Boolean(filter?.value && row.dataset.aiModelRow !== filter.value) ||
+      !searchMatches(search?.value ?? "", row.dataset.aiSearchText);
+    const count = rows.filter(row => !row.hidden).length;
+    const label = root.querySelector("[data-ai-count]");
+    const empty = root.querySelector<HTMLElement>("[data-ai-empty]");
+    if (label) label.textContent = `${count} 个范围`;
+    if (empty) empty.hidden = count > 0;
+  };
+  if (filter) {
+    const initial = params.get("environment") ?? "";
+    if (Array.from(filter.options).some(option => option.value === initial)) filter.value = initial;
+    filter.addEventListener("change", () => {
+      updateWorkspaceQuery("environment", filter.value);
+      update();
+    });
+  }
+  search?.addEventListener("input", update);
+  root.querySelector("[data-ai-clear]")?.addEventListener("click", () => {
+    if (filter) filter.value = "";
+    updateWorkspaceQuery("environment", "");
+    if (search) { search.value = ""; search.focus(); }
+    update();
   });
-  for (const button of root.querySelectorAll<HTMLButtonElement>("[data-ai-probe], [data-ai-edit], [data-ai-publish]")) {
-    button.addEventListener("click", () => {
-      if (button.dataset.aiEdit !== undefined) { openEditor(dialog, data, reload, Number(button.dataset.aiEdit)); return; }
-      const model = data.models[Number(button.dataset.aiProbe ?? button.dataset.aiPublish)];
-      const status = button.closest("tr")?.querySelector("[role=status]");
-      if (!model || !status) return;
-      if (button.dataset.aiProbe !== undefined) {
-        void showResult(button, status, async () => {
+  update();
+  for (const trigger of root.querySelectorAll<HTMLButtonElement>("[data-ai-probe], [data-ai-edit], [data-ai-publish]")) {
+    trigger.addEventListener("click", () => {
+      if (trigger.dataset.aiEdit !== undefined) { openEditor(dialog, data, reload, Number(trigger.dataset.aiEdit)); return; }
+      const model = data.models[Number(trigger.dataset.aiProbe ?? trigger.dataset.aiPublish)];
+      if (!model) return;
+      if (trigger.dataset.aiProbe !== undefined) {
+        aiDialog(dialog, "测试范围连接", `<div class="dialog-body">${scopeDetails([["范围", scopeSummary(model)],["服务地址",model.service],["当前绑定模型",model.model]])}
+          <p role="status" class="feedback"></p></div>`);
+        const status = dialog.querySelector("[role=status]");
+        if (status) void showResult(trigger, status, async () => {
           await requestAI(`${endpoint}?action=recheck`, scopeOf(model));
           const {models} = await requestAI<{models: string[]}>(`${endpoint}?action=discover`, scopeOf(model));
           status.textContent = `服务已就绪 · ${models.length} 个模型`;
         });
-      } else {
-        const entry = connectionFor(data, model);
-        if (!entry) return;
-        aiDialog(dialog, "发布模型配置", `<p>${h(scopeText(model))} · 草稿 v${entry.version}</p>
-          <p role="status"></p><button class="button" type="button" data-ai-confirm>发布配置</button>`);
-        const confirm = dialog.querySelector<HTMLButtonElement>("[data-ai-confirm]");
-        const feedback = dialog.querySelector("[role=status]");
-        if (confirm && feedback) confirm.addEventListener("click", () => void showResult(confirm, feedback, async () => {
-          await requestAI(`${endpoint}?action=publish`, {...scopeOf(model),version: entry.version});
-          dialog.close();
-          reload();
-        }));
+        return;
       }
+      const entry = connectionFor(data, model);
+      if (!entry) return;
+      const { desired, effective, effectiveVersion } = entry.data;
+      const before = effectiveVersion ? effective : { fast: model.model, accurate: model.model, disabled: false };
+      aiDialog(dialog, "确认发布配置", `<div class="dialog-body">${scopeDetails([["影响范围",scopeSummary(model)],
+        ["当前生效", effectiveVersion ? `v${effectiveVersion}` : "绑定默认模型"],["待发布",`草稿 v${entry.version}`]])}
+        <fieldset class="group"><legend>生效值 → 草稿值</legend>${scopeDetails([
+          ["快速模型", `${before.fast || "Holmes 默认模型"} → ${desired.fast || "—"}`],
+          ["深度模型", `${before.accurate || "Holmes 默认模型"} → ${desired.accurate || "—"}`],
+          ["调用状态", `${before.disabled ? "暂停" : "启用"} → ${desired.disabled ? "暂停" : "启用"}`],
+        ])}</fieldset><p role="status" class="feedback"></p></div>
+        ${dialogFooter('<button class="btn primary" type="button" data-ai-confirm>确认发布</button>')}`);
+      const confirm = dialog.querySelector<HTMLButtonElement>("[data-ai-confirm]");
+      const feedback = dialog.querySelector("[role=status]");
+      if (confirm && feedback) confirm.addEventListener("click", () => void showResult(confirm, feedback, async () => {
+        await requestAI(`${endpoint}?action=publish`, {...scopeOf(model),version: entry.version});
+        dialog.close();
+        reload();
+      }));
     });
   }
+
 }
 
 type SourceChoice = { scope: Scope; name: string };
 
 async function openBinding(dialog: HTMLDialogElement, reload: () => void, initialSource = "zabbix", initialID = "") {
   aiDialog(dialog, "新增范围绑定", `<form class="ai-form ai-binding-form">
-    <fieldset>
+    <div class="dialog-body"><fieldset class="group">
       <legend>数据范围</legend>
       <label>绑定类型<select name="source">${Object.entries(sources).map(([code, name]) =>
         `<option value="${h(code)}" ${code === initialSource ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>
       <div data-binding-fields></div>
     </fieldset>
-    <fieldset>
+    <fieldset class="group">
       <legend>Holmes 模型</legend>
-      <div class="ai-binding-model">
+      <div class="grid-2 discovery">
         <label>模型别名<select name="model" required disabled><option value="">请先发现模型</option></select></label>
-        <button class="button secondary" type="button" data-binding-discover>发现模型</button>
+        <button class="btn" type="button" data-binding-discover>发现模型</button>
       </div>
-      <p class="ai-binding-feedback" role="status"></p>
-    </fieldset>
-    <footer class="ai-binding-footer"><button class="button secondary" type="button" data-binding-cancel>取消</button>
-      <button class="button" type="submit" disabled>保存并启用绑定</button></footer>
+      <p class="ai-binding-feedback feedback" role="status"></p>
+    </fieldset></div>
+    <footer class="dialog-foot"><button class="btn" type="button" data-binding-cancel>取消</button>
+      <button class="btn primary" type="submit" disabled>保存并启用绑定</button></footer>
   </form>`);
   const form = dialog.querySelector<HTMLFormElement>(".ai-binding-form");
   const fields = form?.querySelector<HTMLElement>("[data-binding-fields]");
@@ -250,6 +287,7 @@ async function openBinding(dialog: HTMLDialogElement, reload: () => void, initia
   const feedback = (message: string, state = "") => {
     status.textContent = message;
     status.dataset.state = state;
+    status.dataset.tone = state === "error" ? "bad" : "";
   };
   const updateSave = () => {
     const needsSource = source.value === "zabbix" || source.value === "alertmanager";
@@ -282,7 +320,7 @@ async function openBinding(dialog: HTMLDialogElement, reload: () => void, initia
         }
         fields.innerHTML = `<label>数据源<select name="sourceId" required><option value="">请选择数据源</option>
           ${choices.map(({scope, name}) => `<option value="${h(scope.sourceId)}">${h(name)}${scope.environmentId ? ` · ${h(scope.environmentId)}` : ""}</option>`).join("")}</select></label>
-          <dl class="ai-binding-scope" data-binding-scope hidden></dl>
+          <dl class="scope" data-binding-scope hidden></dl>
           ${kind === "alertmanager" ? '<label>告警命名空间<input name="namespace" maxlength="128" placeholder="告警没有 namespace 时留空"></label>' : ""}`;
         const picker = fields.querySelector<HTMLSelectElement>("[name=sourceId]");
         const summary = fields.querySelector<HTMLElement>("[data-binding-scope]");
@@ -363,6 +401,7 @@ async function openBinding(dialog: HTMLDialogElement, reload: () => void, initia
     try {
       await requestAI(`${endpoint}?action=bind`, {...scope, model: model.value});
       if (!form.isConnected) return;
+      updateWorkspaceQuery("environment", scope.environmentId);
       dialog.close();
       reload();
     } catch (error) {

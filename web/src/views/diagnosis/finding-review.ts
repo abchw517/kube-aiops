@@ -25,17 +25,18 @@ interface Assessment {
 
 export const findingReviewTrigger = () => '<button type="button" class="button secondary finding-review-trigger" data-review-action="toggle" aria-controls="finding-review" aria-expanded="false">AI 深度调查（AI 复核）</button>';
 
-export function findingReviewPanel(): string {
+export function findingReviewPanel(embedded = false): string {
   return `<section id="finding-review" class="finding-review" aria-label="AI 深度调查" hidden>
-    <h3>AI 深度调查</h3>
-    <p data-review-status role="status"></p>
+    ${embedded ? "" : "<h3>AI 深度调查</h3>"}
+    <p data-review-status ${embedded ? 'class="notice"' : ""} role="status"></p>
     <div data-review-result></div>
-    <details data-review-input>
+    <details data-review-input ${embedded ? 'class="card" open' : ""}>
       <summary>补充观察或追问</summary>
       <label>现场观察或问题（选填）<textarea data-review-observation rows="3" maxlength="4000" placeholder="例如：10 分钟前 PVC 仍处于 Pending"></textarea></label>
-      <button type="button" class="button secondary" data-review-action="assess">重新复核</button>
+      <button type="button" class="button secondary" data-review-action="assess">${embedded ? "发起 AI 复核" : "重新复核"}</button>
+      ${embedded ? '<button type="button" class="btn danger" data-review-action="cancel" hidden>取消调查</button>' : ""}
     </details>
-    <div data-review-editor hidden>
+    <div data-review-editor ${embedded ? 'class="card"' : ""} hidden>
       <label>复核结论<textarea data-review-conclusion rows="5" maxlength="8192"></textarea></label>
       <button type="button" class="button" data-review-action="save">保存复核结论</button>
     </div>
@@ -44,25 +45,29 @@ export function findingReviewPanel(): string {
   </section>`;
 }
 
-function renderAssessment({ assessment, evidence, sources: states, evidenceState, citations, appliedSkills }: Assessment): string {
+function renderAssessment({ assessment, evidence, sources: states, evidenceState, citations, appliedSkills }: Assessment, embedded = false): string {
   const summary = evidenceState === "timeout" ? "关联证据查询超时。" :
     evidenceState === "disabled" ? "未启用关联证据采集。" : "本次未能取得关联证据。";
-  return `${appliedSkills?.length ? `<p>已应用技能 ${escapeHtml(appliedSkills.join("、"))}</p>` : ""}
-    <h3>当前判断</h3><span class="review-state" data-state="${assessment.state}">${judgments[assessment.state]}</span>
-    <p class="detail-text">${escapeHtml(assessment.judgment)}</p>
-    <h3>证据依据</h3>
-    ${evidence.length ? `<ul class="review-evidence">${evidence.map((item) => {
-      const source = item.source === "K8sGPT" ? item.source : sources[item.source];
-      return `<li><button class="link-button" type="button" data-review-jump="${escapeHtml(JSON.stringify([item.source, item.signalId ?? ""]))}">${escapeHtml(source)} · ${escapeHtml(item.title)}</button>
-        <small>${item.time ? formatTimestamp(item.time) : "时间未知"}${item.historical ? " · 历史记录" : ""}</small></li>`;
-    }).join("")}</ul>` : "<p>本次判断没有可定位的引用。</p>"}
-    <details><summary>证据来源状态</summary>${evidenceState === "available"
-      ? `<ul>${states.map(({ source, state }) => `<li>${sources[source]} · ${availability[state]}</li>`).join("")}</ul>`
-      : `<p>${summary}</p>`}</details>
-    <h3>待验证项</h3><p class="detail-text">${escapeHtml(assessment.gaps)}</p>
-    <h3>下一步</h3><p class="detail-text">${escapeHtml(assessment.next)}</p>
+  const section = (title: string, content: string) =>
+    embedded ? `<section class="card"><h3>${title}</h3>${content}</section>` : `<h3>${title}</h3>${content}`;
+  const refs = evidence.length ? `<ul class="review-evidence">${evidence.map((item) => {
+    const source = item.source === "K8sGPT" ? item.source : sources[item.source];
+    const link = escapeHtml(JSON.stringify([item.source, item.signalId ?? ""]));
+    return `<li><button class="${embedded ? "ref" : "link-button"}" type="button" data-review-jump="${link}">${escapeHtml(source)} · ${escapeHtml(item.title)}</button>
+      <small>${item.time ? formatTimestamp(item.time) : "时间未知"}${item.historical ? " · 历史记录" : ""}</small></li>`;
+  }).join("")}</ul>` : "<p>本次判断没有可定位的引用。</p>";
+  const sourceCoverage = `<details><summary>证据来源状态</summary>${evidenceState === "available"
+    ? `<ul>${states.map(({source,state}) => `<li>${sources[source]} · ${availability[state]}</li>`).join("")}</ul>`
+    : `<p>${summary}</p>`}</details>`;
+  const result = `${appliedSkills?.length ? `<p>已应用技能 ${escapeHtml(appliedSkills.join("、"))}</p>` : ""}
+    ${section("当前判断",`<span class="review-state" data-state="${assessment.state}">${judgments[assessment.state]}</span>
+      <p class="detail-text">${escapeHtml(assessment.judgment)}</p>`)}
+    ${section(embedded ? "证据引用" : "证据依据", refs + sourceCoverage)}
+    ${section(embedded ? "待验证" : "待验证项", `<p class="detail-text">${escapeHtml(assessment.gaps)}</p>`)}
+    ${section("下一步", `<p class="detail-text">${escapeHtml(assessment.next)}</p>`)}
     ${citations?.length ? `<details><summary>Wiki 参考</summary><ul>${citations.map((cite) =>
       `<li><a href="#/wiki/${encodeURIComponent(cite.knowledgeId)}?revision=${cite.revision}">${escapeHtml(cite.title)}</a> · v${cite.revision}</li>`).join("")}</ul></details>` : ""}`;
+  return embedded ? `<div class="result">${result}</div>` : result;
 }
 
 function reviewElement<T extends HTMLElement>(container: HTMLElement, selector: string): T {
@@ -71,7 +76,9 @@ function reviewElement<T extends HTMLElement>(container: HTMLElement, selector: 
   return element;
 }
 
-export function bindFindingReview(root: HTMLElement, id: string, cluster: string): void {
+export function bindFindingReview(root: HTMLElement, id: string, cluster: string, workspace?: {
+  signal: AbortSignal; onEvidence: () => void;
+}): void {
   const trigger = root.querySelector<HTMLButtonElement>('[data-review-action="toggle"]');
   const review = root.querySelector<HTMLElement>("#finding-review");
   if (!trigger || !review) return;
@@ -92,12 +99,15 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   let assessment: { input: string; controller: AbortController } | undefined;
   let stale = false;
   let dirty = false;
+  let attempted = false;
+  const cancel = panel.querySelector<HTMLButtonElement>("[data-review-action=cancel]");
 
   function updateActions() {
     const reviewingCurrentInput = assessment?.input === observation.value.trim();
     const assessButton = button("assess");
     assessButton.disabled = stale || (busy && (!assessment || reviewingCurrentInput));
-    assessButton.textContent = reviewingCurrentInput ? "复核中…" : "重新复核";
+    assessButton.textContent = reviewingCurrentInput ? "复核中…" : workspace && !attempted ? "发起 AI 复核" : "重新复核";
+    if (cancel) cancel.hidden = !assessment;
     for (const action of ["save", "refresh"]) {
       button(action).disabled = busy || (stale && action !== "refresh");
     }
@@ -108,6 +118,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   }
 
   async function request<T>(action?: string, fields = {}, signal?: AbortSignal): Promise<T> {
+    if (workspace) signal = signal ? AbortSignal.any([signal,workspace.signal]) : workspace.signal;
     const response = await fetch(url, action ? {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, revision, ...fields }), signal,
@@ -173,7 +184,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     signal.throwIfAborted();
     const data = await request<Assessment>("assess", { observation: input }, signal);
     signal.throwIfAborted();
-    result.innerHTML = renderAssessment(data);
+    result.innerHTML = renderAssessment(data,Boolean(workspace));
     conclusion.value = `${data.assessment.judgment}\n\n待验证项：${data.assessment.gaps}\n下一步：${data.assessment.next}`;
     editor.hidden = false;
     dirty = true;
@@ -195,6 +206,7 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
     updateActions();
     try {
       if (attempt) {
+        attempted = true;
         status.textContent = input ? "正在复核补充的信息…" : "正在复核关联证据…";
         await assess(attempt.input, attempt.controller.signal);
         return;
@@ -218,11 +230,11 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
         }
       }
     } catch (error) {
-      if (!attempt?.controller.signal.aborted) {
+      if (!attempt?.controller.signal.aborted && !workspace?.signal.aborted) {
         status.textContent = error instanceof Error ? error.message : "操作失败，请重试。";
       }
     } finally {
-      if (!attempt?.controller.signal.aborted) {
+      if (!attempt?.controller.signal.aborted && !workspace?.signal.aborted) {
         assessment = undefined;
         busy = false;
         updateActions();
@@ -240,8 +252,18 @@ export function bindFindingReview(root: HTMLElement, id: string, cluster: string
   panel.addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLElement)) return;
     const control = event.target.closest<HTMLButtonElement>("button");
+    if (control?.dataset.reviewAction === "cancel" && assessment) {
+      assessment.controller.abort();
+      assessment = undefined;
+      busy = false;
+      status.textContent = "调查已取消，可重新发起。";
+      updateActions();
+      button("assess").focus();
+      return;
+    }
     if (control?.dataset.reviewAction) void run(control.dataset.reviewAction);
     if (!control?.dataset.reviewJump) return;
+    workspace?.onEvidence();
     const [source, signal] = JSON.parse(control.dataset.reviewJump) as [string, string];
     const evidence = [...root.querySelectorAll<HTMLElement>("[data-evidence-signal]")]
       .find((row) => row.dataset.evidenceSignal === signal && row.dataset.evidenceSource === source);

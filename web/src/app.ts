@@ -239,12 +239,12 @@ export class PortalApp {
           if (path === "#/ai/skills") {
             const page = await loadAISkills();
             if (generation !== this.renderGeneration) return;
-            this.renderShell(page.html);
+            this.renderShell(page.html, false, true);
             bindAISkills(this.root, page.data, page.scopes, () => void this.route());
           } else {
             const page = await loadAIServices();
             if (generation !== this.renderGeneration) return;
-            this.renderShell(page.html);
+            this.renderShell(page.html, false, true);
             bindAIServices(this.root, page.data, () => void this.route(), hash);
           }
         } catch {
@@ -368,7 +368,7 @@ export class PortalApp {
       this.overviewRequest = request;
       try {
         const overview = await loadUnifiedOverview(currentHash, this.incidentsAvailable,
-          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources);
+          AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]), this.resourceAccess.datasources, this.findingAI, this.reviewAccess);
         if (generation === this.renderGeneration) {
           this.renderShell(overview.html);
           overview.bind(this.root, request.signal);

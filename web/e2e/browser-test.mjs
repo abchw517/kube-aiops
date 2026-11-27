@@ -401,9 +401,18 @@ try {
       "Draft did not enter the review queue");
     await assertPage(cdp, "http://127.0.0.1:4173/#/ai",
       text => text.includes("AI 服务配置") && text.includes("accurate-model"), "AI service configuration did not show the configured mapping");
+    await cdp.send("Runtime.evaluate", {expression: `(() => {
+      const input = document.querySelector("[data-ai-search]");
+      input.value = "没有这个绑定";
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+    })()`});
+    await assertDOM(cdp, 'document.querySelector("[data-ai-model-row]").getBoundingClientRect().height === 0 && !document.querySelector("[data-ai-empty]").hidden',
+      "Binding search did not hide unmatched records");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-clear]").click()'});
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-probe]").click()'});
-    await assertText(cdp, text => text.includes("服务已就绪"), "AI service probe did not update the row");
-    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-ai-add]").click();
+    await assertDOM(cdp, 'document.querySelector("[data-ai-dialog] [role=status]")?.textContent.includes("2 个模型")', "AI service probe did not report the alias count");
+    await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-close]").click()'});
+    await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-ai-edit]").click();
       document.querySelector("[data-ai-discover]").click()`});
     await assertText(cdp, text => text.includes("已发现 2 个"), "Model aliases were not loaded");
     await cdp.send("Runtime.evaluate", {expression: `(() => {
@@ -418,17 +427,18 @@ try {
       document.querySelector("[data-ai-confirm]").click()`});
     await assertText(cdp, text => text.includes("已发布") && text.includes("生效 v1"), "Connection draft was not published");
     await assertPage(cdp, "http://127.0.0.1:4173/#/ai/skills",
-      text => text.includes("从知识库手册转化") && text.includes("上传技能"), "Skills workspace did not load");
+      text => text.includes("从手册转化") && text.includes("上传技能"), "Skills workspace did not load");
     await cdp.send("Runtime.evaluate", {expression: `(() => {
       document.querySelector('[data-skill-new="upload"]').click();
       const form = document.querySelector("[data-ai-dialog] form");
+      form.elements.scope.value = "0";
       form.elements.name.value = "镜像检查";
       form.elements.body.value = "# 镜像检查";
       form.requestSubmit();
     })()`});
-    await assertText(cdp, text => text.includes("审核中") && text.includes("镜像检查"), "Skill was not submitted for review");
+    await assertText(cdp, text => text.includes("待审核") && text.includes("镜像检查"), "Skill was not submitted for review");
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-skill-view]").click()'});
-    await assertText(cdp, text => text.includes("另一位管理员审核"), "Skill review did not require a second administrator");
+    await assertText(cdp, text => text.includes("等待另一位管理员审核"), "Skill review did not require a second administrator");
     await cdp.send("Runtime.evaluate", {expression: 'document.querySelector("[data-ai-close]").click()'});
 
     await cdp.send("Runtime.evaluate", {expression: `(() => {
@@ -1735,17 +1745,22 @@ async function assertIncidentDashboard(cdp) {
     !text.includes("测试集群容量建议"), "Unified instance and severity scope did not apply");
   const summary = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => ({
     total: document.querySelector('[aria-label="诊断指标"] .metric-total strong').textContent,
-    links: [...document.querySelectorAll('.unified-recent td a')].map(a => a.getAttribute("href")),
+    links: [...document.querySelectorAll('.unified-recent a')].map(a => a.getAttribute("href")),
   }))()` });
   if (summary.result?.value?.total !== "1" || summary.result.value.links.length !== 1 ||
       !summary.result.value.links[0].includes("/incidents/")) throw new Error("Linked Finding was counted twice");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
-  await assertText(cdp, text => text.includes("返回诊断总览"), "Incident detail did not preserve its overview origin");
+  await assertDOM(cdp, `document.querySelector("#workbench[open] a[href*='/incidents/']")?.href.includes("trendDays%3D14")`,
+    "Incident workbench did not preserve its overview origin");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("#workbench a[href*=incidents]").click()'});
+  await assertText(cdp, text => text.includes("返回诊断总览"), "Full incident detail did not preserve its overview origin");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('main a[href="#/diagnostics?clusterId=local&severity=critical&trendDays=14"]').click()` });
   await assertText(cdp, text => text.includes("最近诊断") && text.includes("订单服务故障"), "Overview did not restore scope");
   await assertPage(cdp, `${overview}?clusterId=test-k8s&severity=info&trendDays=30`, text => text.includes("测试集群容量建议"),
     "Unified overview did not display the remote Finding");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".unified-recent a").click()' });
+  await assertText(cdp, text => text.includes("K8sGPT 原始诊断") && text.includes("测试环境容器资源建议"), "Finding workbench did not load the original detail");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("#workbench a[href*=findings]").click()'});
   await assertText(cdp, text => text.includes("返回诊断总览") && text.includes("测试环境容器资源建议"),
     "Finding detail did not preserve its cluster instance and overview origin");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector(".back-link").click()' });
@@ -1783,12 +1798,12 @@ async function assertIncidentDashboard(cdp) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     const state = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       const table = document.querySelector(".unified-recent");
-      const cards = document.querySelector(".overview-record-cards");
+      const cards = [...document.querySelectorAll(".recent-workspace .record")];
       return {
         scopeVisible: document.querySelector("[data-unified-filters]").getBoundingClientRect().height > 0,
         pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         tableVisible: getComputedStyle(table).display !== "none",
-        cardsVisible: getComputedStyle(cards).display !== "none",
+        cardsFit: cards.every(card => card.scrollWidth <= card.clientWidth + 1),
         recordsHeadingBottom: document.querySelector(".overview-record-heading").getBoundingClientRect().bottom,
         plotScrolls: document.querySelector(".overview-plot-scroll").scrollWidth >
           document.querySelector(".overview-plot-scroll").clientWidth,
@@ -1798,8 +1813,8 @@ async function assertIncidentDashboard(cdp) {
     })()` });
     const layout = state.result?.value;
     const desktop = width > 850;
-    if (!layout?.scopeVisible || layout.pageOverflow || layout.tableVisible !== desktop ||
-        layout.cardsVisible === desktop || layout.stacked === desktop ||
+    if (!layout?.scopeVisible || layout.pageOverflow || !layout.tableVisible ||
+        !layout.cardsFit || layout.stacked === desktop ||
         layout.plotScrolls === desktop || (desktop && layout.recordsHeadingBottom >= height)) {
       throw new Error(`Incident overview does not fit at ${width}px: ${JSON.stringify(layout ?? state.exceptionDetails)}`);
     }
@@ -1837,9 +1852,9 @@ async function assertIncidentDashboard(cdp) {
       return Promise.resolve(Response.json({items, pagination: {}}));
     };
   })()` });
-  await assertPage(cdp, overview + "?source=finding", text => text.includes("显示第 1–5 条") && text.includes("共 23 条"), "Recent diagnostics were not paginated");
+  await assertPage(cdp, `${overview}?source=finding`, text => text.includes("显示第 1–5 条") && text.includes("共 23 条"), "Recent diagnostics were not paginated");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-overview-page="2"]').click()` });
-  await assertDOM(cdp, `document.querySelector(".unified-recent tbody tr")?.textContent.includes("分页诊断 6") &&
+  await assertDOM(cdp, `document.querySelector(".unified-recent .record")?.textContent.includes("分页诊断 6") &&
     location.hash.includes("recentPage=2") && document.querySelector(".unified-recent a")?.href.includes("recentPage%3D2")`, "Second diagnostics page or return link was incorrect");
   await cdp.send("Runtime.evaluate", { expression: `(() => {
     const select = document.querySelector("[data-overview-limit]");
@@ -1855,7 +1870,7 @@ async function assertIncidentDashboard(cdp) {
     form.elements.limit.value = "7";
     form.requestSubmit();
   })()` });
-  await assertDOM(cdp, `document.querySelectorAll(".unified-recent tbody tr").length === 7 &&
+  await assertDOM(cdp, `document.querySelectorAll(".unified-recent .record").length === 7 &&
     location.hash.includes("recentPageSize=7") && !location.hash.includes("recentPage=2")`, "Custom limit did not return to the first page");
   await cdp.send("Runtime.evaluate", { expression: "window.fetch = window.originalPagedFetch; delete window.originalPagedFetch" });
 }
@@ -1872,6 +1887,19 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, (text) => text.includes("探针失败需要核查容器状态") && text.includes("已核对发布记录"), "RCA result missing");
   await cdp.send("Runtime.evaluate", { expression: `document.querySelector('[data-rca-task] a[href*="evidence="]').click()` });
   await assertText(cdp, (text) => text.includes("故障时间线") && text.includes("Unhealthy"), "RCA reference did not open the matching evidence");
+
+  await assertPage(cdp, `${origin}/#/diagnostics?source=incident`, text => text.includes("订单服务故障") &&
+    text.includes("最近诊断"), "Recent incident entry did not load");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("[data-recent-ai]").click()'});
+  await assertDOM(cdp, 'document.querySelector("#workbench [data-workbench=run-rca]")?.textContent === "运行事件 RCA"',
+    "The incident RCA action was not available in the workbench");
+  await assertText(cdp, text => text.includes("探针失败需要核查容器状态") && text.includes("证据引用"),
+    "The workbench did not render the saved RCA result");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("#workbench [data-embedded-rca-link][href*=evidence]").click()'});
+  await assertDOM(cdp, `document.activeElement.matches("[data-incident-ref]") &&
+    document.activeElement.closest("details").open && location.hash.includes("source=incident")`,
+    "The RCA reference did not open the matching evidence in the same workbench");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("#workbench [data-workbench=close]").click()'});
 
   await assertPage(cdp, `${origin}/#/diagnostics/incidents/fixture-p1/topology`, (text) => text.includes("资源节点") &&
     text.includes("业务主机 fixture"), "Topology page did not show affected resources");
@@ -2074,9 +2102,9 @@ async function assertRemainingDiagnosticPages(cdp) {
     form.elements.model.value = "accurate-model";
     form.requestSubmit();
   })()`});
-  await assertText(cdp, text => text.includes("试点服务已就绪") && text.includes("production / ops / zabbix-fixture") && text.includes("Portal 绑定"),
+  await assertText(cdp, text => text.includes("服务已就绪") && text.includes("production / ops") && text.includes("生产运维 Zabbix") && text.includes("Portal 绑定"),
     "The saved scope did not appear in AI service configuration");
-  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("生产运维 Zabbix"), "Could not return to data sources");
+  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("生产运维 Zabbix") && text.includes("监控与诊断") && text.includes("资产数据源"), "Could not return to data sources");
   const groupCollapse = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
     document.querySelector('[data-source-filter="grouped"]').click();
     const toggle = () => document.querySelector('[data-source-group="monitor:zabbix"]');
@@ -2090,25 +2118,40 @@ async function assertRemainingDiagnosticPages(cdp) {
   if (!groupCollapse.result?.value) throw new Error("Zabbix type group did not collapse or reopen");
   await assertText(cdp, text => text.includes("WIN-01") && text.includes("Windows 内存使用率高") && text.includes("最近诊断"),
     "Zabbix problems did not load into the unified overview");
-  await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-health-record]").click(); document.querySelector("dialog [data-run]").click()`});
+  await cdp.send("Runtime.evaluate", {expression: `(() => {
+    const input = document.querySelector('[data-recent-filter=recentText]');
+    window.recentOverviewTotal = document.querySelector(".metric-total strong").textContent;
+    input.value = "WIN-01";
+    input.dispatchEvent(new Event("input",{bubbles:true}));
+  })()`});
+  await assertDOM(cdp, `document.querySelectorAll(".unified-recent .record").length === 1 &&
+    document.querySelector(".metric-total strong").textContent === window.recentOverviewTotal &&
+    location.hash.includes("recentText=WIN-01")`, "Local record search changed overview counts or lost its state");
+  await cdp.send("Runtime.evaluate", {expression: `document.querySelector("[data-recent-record][data-recent-ai]").click();
+    document.querySelector("#workbench [data-workbench=run]").click()`});
   await assertText(cdp, text => text.includes("已核对测试证据") && text.includes("已应用技能 内存排查"), "Zabbix investigation did not render the scoped response");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("#workbench [data-workbench=snapshot]").click()'});
+  await assertDOM(cdp, 'document.querySelector("#workbench [data-health-snapshot]").open && document.activeElement.matches("[data-health-snapshot] summary")', "Evidence citation did not open and focus the source snapshot");
   const readable = await cdp.send("Runtime.evaluate", {returnByValue:true,expression:`(() => {
-    const dialog=document.querySelector("dialog");
-    dialog.querySelector("h3").textContent="kafka_consumer_group_".repeat(100);
+    const dialog=document.querySelector("#workbench");
+    dialog.querySelector("h2").textContent="kafka_consumer_group_".repeat(100);
     dialog.style.width="320px";
-    const content=dialog.querySelector("section");
+    const content=dialog.querySelector(".drawer-body");
     content.scrollTop=content.scrollHeight;
-    const close=dialog.querySelector("[data-close]");
+    const close=dialog.querySelector("[data-workbench=close]");
     const visible=close.getBoundingClientRect().top >= dialog.getBoundingClientRect().top && content.scrollWidth<=content.clientWidth+1;
     close.click();
     return visible && !dialog.open;
   })()`});
   if (!readable.result?.value) throw new Error("Long alert overflowed or close control was inaccessible");
-  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("[data-health-record]").click()'});
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("[data-recent-record]").click()'});
   await cdp.send("Input.dispatchKeyEvent", {type:"keyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
   await cdp.send("Input.dispatchKeyEvent", {type:"keyUp",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
   const closed=await cdp.send("Runtime.evaluate",{returnByValue:true,expression:'!document.querySelector("dialog[open]")'});
   if (!closed.result?.value) throw new Error("Escape did not dismiss alert details");
+  await assertDOM(cdp, 'document.querySelector("[data-recent-filter=recentText]").value === "WIN-01" && document.activeElement.matches("[data-recent-record]")',
+    "Closing the workbench lost the local filter or keyboard focus");
+  await cdp.send("Runtime.evaluate", {expression:'document.querySelector("[data-recent-clear]").click(); delete window.recentOverviewTotal'});
   for (const days of [7, 14, 30]) {
     const plot = await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => {
       document.querySelector('[data-overview-window="${days}"]').click();
