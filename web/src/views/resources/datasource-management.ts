@@ -20,7 +20,7 @@ const pickerDescriptions: Record<string, string> = { zabbix: "同步主机问题
 const familyNames: Record<Family, string> = { zabbix: "Zabbix", observability: "观测数据源", assets: "资产数据源" };
 type Data = { records: SourceRecord[]; legacy?: string[]; next?: string };
 type Filters = { query?: string; environment?: string; kind?: string; state?: string; grouped?: boolean };
-type Permissions = { write: boolean; test: boolean; createIncident: boolean; aiAdmin?: boolean };
+type Permissions = { write: boolean; remove: boolean; test: boolean; createIncident: boolean; aiAdmin?: boolean };
 
 async function readFamily(family: Family, cursor?: string): Promise<Data> {
   if (family === "zabbix") {
@@ -94,7 +94,7 @@ function renderFrame(actions: boolean): string {
 }
 
 function action(row: SourceRecord, name: string, label: string, disabled = false): string {
-  return `<button type="button" class="button secondary" data-source-action="${name}" data-source-key="${h(sourceKey(row))}"${disabled ? " disabled" : ""}>${label}</button>`;
+  return `<button type="button" class="button secondary${name === "delete" ? " catalog-danger" : ""}" data-source-action="${name}" data-source-key="${h(sourceKey(row))}"${disabled ? " disabled" : ""}>${label}</button>`;
 }
 
 function mainAction(row: SourceRecord, permissions: Permissions, working: boolean, failure: boolean): string {
@@ -110,10 +110,18 @@ function lifecycle(row: SourceRecord, permissions: Permissions, working: boolean
   return permissions.write ? action(row, "toggle", label, working) : "";
 }
 
-function editActions(row: SourceRecord, permissions: Permissions, working: boolean): string {
-  if (!permissions.write || (row.family !== "assets" && !permissions.test)) return "";
-  return row.family === "zabbix" ? action(row, "scope", "调整主机组", working) + action(row, "rotate", "更换凭据", working)
-    : action(row, "edit", "编辑配置", working);
+function editAction(row: SourceRecord, permissions: Permissions, working: boolean): string {
+  if (!permissions.write || (row.family === "observability" && !permissions.test)) return "";
+  return action(row, "edit", "编辑", working);
+}
+
+function zabbixActions(row: SourceRecord, permissions: Permissions, working: boolean): string {
+  if (row.family !== "zabbix" || !permissions.write || !permissions.test) return "";
+  return action(row, "scope", "调整主机组", working) + action(row, "rotate", "更换凭据", working);
+}
+
+function removeAction(row: SourceRecord, permissions: Permissions, working: boolean): string {
+  return permissions.remove ? action(row, "delete", "删除", working) : "";
 }
 
 function stateBadge(row: SourceRecord, failure: boolean): string {
@@ -126,13 +134,13 @@ function listRow(row: SourceRecord, permissions: Permissions, scopes: ZabbixScop
   const key = h(sourceKey(row));
   const name = h(sourceName(row));
   const recent = sourceActivity(row);
-  const menu = editActions(row, permissions, working) + lifecycle(row, permissions, working) + holmesBindingLink(row, permissions);
+  const menu = zabbixActions(row, permissions, working) + lifecycle(row, permissions, working) + holmesBindingLink(row, permissions);
   return `<tr data-source-row="${key}"><td><button type="button" class="resource-name" data-source-action="detail" data-source-key="${key}">${name}</button>
       <small>${h(typeNames[sourceKind(row)])}${row.family === "assets" && row.source.config.kind === "zabbix" ? " · 存量资产" : ""}</small></td>
     ${resourceCell("所属范围", h(sourceScope(row, scopes)))}
     ${resourceCell("状态", stateBadge(row, failure))}
     ${resourceCell("最近活动", `${recent.time}<small>${recent.label}</small>`)}
-    <td><div class="catalog-actions">${mainAction(row, permissions, working, failure)}
+    <td><div class="catalog-actions">${mainAction(row, permissions, working, failure)}${editAction(row, permissions, working)}${removeAction(row, permissions, working)}
       ${menu ? `<details class="resource-row-menu"><summary aria-label="${name}的更多操作">⋯</summary><div>${menu}</div></details>` : ""}</div></td></tr>`;
 }
 
@@ -406,7 +414,7 @@ export function bindDatasourcesWorkspace(root: HTMLElement, page: Awaited<Return
   function paintDetail(row: SourceRecord): void {
     const key = sourceKey(row);
     const working = isWorking(row);
-    const foot = `<div class="catalog-actions">${editActions(row, permissions, working)}${lifecycle(row, permissions, working)}
+    const foot = `<div class="catalog-actions">${editAction(row, permissions, working)}${removeAction(row, permissions, working)}${zabbixActions(row, permissions, working)}${lifecycle(row, permissions, working)}
       ${mainAction(row, permissions, working, failures.has(key))}</div>`;
     drawerNode.innerHTML = resourceDetail("source-detail-title", sourceName(row),
       `${typeNames[sourceKind(row)]} · ${sourceScope(row, scopes)}`, detailBody(row, failures.get(key)), foot);
@@ -419,8 +427,9 @@ export function bindDatasourcesWorkspace(root: HTMLElement, page: Awaited<Return
     }
   }
 
-  const openZabbix = bindZabbixEditor(zabbixEditor, (source: ZabbixSource) => {
+  const openZabbix = bindZabbixEditor(zabbixEditor, (source: ZabbixSource, mode) => {
     replace({ family: "zabbix", source });
+    if (mode === "edit") { notice(`${source.name} · 配置已保存。`); return; }
     notice(source.enabled ? "已保存配置，等待后台同步。" : "已保存配置。");
     schedule("zabbix");
   }, () => void reload("zabbix"));
@@ -477,18 +486,34 @@ export function bindDatasourcesWorkspace(root: HTMLElement, page: Awaited<Return
 
   async function operate(row: SourceRecord, command: string): Promise<void> {
     const key = sourceKey(row);
-    if (isWorking(row) || (command === "run" && !permissions.test) || (command === "toggle" && !permissions.write)) return;
+    if (isWorking(row) || (command === "run" && !permissions.test) || (command === "toggle" && !permissions.write) || (command === "delete" && !permissions.remove)) return;
     if (command === "toggle") {
       const verb = row.source.enabled ? row.family === "assets" ? "停用" : "暂停" : "恢复";
       const impact = row.source.enabled ? "对应的数据采集或查询将暂停。" : "数据源将恢复相应的采集或查询。";
       if (!window.confirm(`${verb}「${sourceName(row)}」？${impact}`)) return;
     }
+    if (command === "delete" && !window.confirm(`删除「${sourceName(row)}」？删除后将停止同步，并移除其配置和采集快照。`)) return;
     const operatedCursor = cursor;
     pending.add(key);
     paint();
     if (detailsKey === key && drawerNode.open) paintDetail(row);
     const version = `"${row.source.version}"`;
     try {
+      if (command === "delete") {
+        if (row.family === "zabbix") await apiClient.deleteZabbixSource({ sourceId: row.source.id, "If-Match": version });
+        else if (row.family === "observability") await apiClient.deleteObservabilitySource({ sourceId: row.source.id, "If-Match": version });
+        else await apiClient.deleteDiagnosticDatasource({ datasourceId: row.source.id, "If-Match": version });
+        if (!frame.isConnected) return;
+        if (detailsKey === key && drawerNode.open) drawerNode.close();
+        const current = data.get(row.family);
+        if (current) data.set(row.family, { ...current, records: current.records.filter(item => sourceKey(item) !== key) });
+        failures.delete(key);
+        waiting.delete(key);
+        await reload(row.family);
+        notice(`已删除「${sourceName(row)}」。`);
+        if (document.activeElement === document.body) search?.focus();
+        return;
+      }
       if (command === "run") {
         if (row.family === "assets") {
           const source = await apiClient.testDiagnosticDatasource({ datasourceId: row.source.id, "If-Match": version });
@@ -533,6 +558,7 @@ export function bindDatasourcesWorkspace(root: HTMLElement, page: Awaited<Return
       const message = row.family === "zabbix" ? zabbixError(error) :
         error instanceof ApiError && error.status === 412 ? "配置已更新，请核对最新配置后重试。" : sourceError(error);
       if (command === "run" && (!(error instanceof ApiError) || ![401, 403, 409, 412].includes(error.status))) failures.set(key, message);
+      if (command === "delete" && detailsKey === key && drawerNode.open) failures.set(key, message);
       notice(message);
       if (error instanceof ApiError && [401, 403, 412].includes(error.status)) await reload(row.family);
     } finally {
@@ -617,10 +643,10 @@ export function bindDatasourcesWorkspace(root: HTMLElement, page: Awaited<Return
         paintDetail(row);
         drawerNode.showModal();
         drawerNode.querySelector<HTMLElement>("h2")?.focus();
-      } else if (command === "run" || command === "toggle") void operate(row, command);
-      else if (permissions.write && (permissions.test || row.family === "assets")) {
+      } else if (command === "run" || command === "toggle" || command === "delete") void operate(row, command);
+      else if (permissions.write && (permissions.test || row.family !== "observability")) {
         if (!drawerNode.open) remember(button, sourceKey(row));
-        if (row.family === "zabbix" && (command === "rotate" || command === "scope")) openZabbix(command, row.source);
+        if (row.family === "zabbix" && (command === "edit" || permissions.test && (command === "rotate" || command === "scope"))) openZabbix(command, row.source);
         else if (row.family === "observability" && command === "edit") openObservability(row.source.kind, row.source);
         else if (row.family === "assets" && command === "edit") openAsset(row.source.config.kind === "tencent-cvm" ? "tencent-cvm" : "aliyun-ecs", row.source);
       }

@@ -132,6 +132,16 @@
           "status": "现有路由"
         },
         {
+          "action": "D",
+          "code": "diagnosis.connector.delete",
+          "label": "删除数据源",
+          "method": "DELETE",
+          "path": "/api/v1/diagnostics/datasources/{datasourceId}",
+          "risk": "高风险",
+          "rule": "",
+          "status": "现有路由"
+        },
+        {
           "action": "U",
           "code": "diagnosis.connector.test",
           "label": "验证连接并同步资产",

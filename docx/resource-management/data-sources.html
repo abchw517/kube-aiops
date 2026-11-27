@@ -308,9 +308,9 @@ function rowHTML(row) {
     '<td data-label="所属范围">'+esc(scopeLabel(row))+'</td><td data-label="状态"><span class="state '+tone(row)+'">'+stateText(row)+'</span>'+
     (row.state==="issue"&&row.time ? '<small class="cell-sub">保留上次快照</small>' : '')+'</td>'+
     '<td data-label="最近活动"><div class="time">'+timeLabel(row.time)+'</div><small class="cell-sub">'+activityLabel(row)+'</small></td>'+
-    '<td><div class="actions">'+runButton(row,true)+'<details class="menu"><summary aria-label="'+esc(row.name)+'的更多操作">⋯</summary><div class="menu-panel">'+
+    '<td><div class="actions">'+runButton(row,true)+detailButton(row,"edit","编辑")+detailButton(row,"delete","删除")+'<details class="menu"><summary aria-label="'+esc(row.name)+'的更多操作">⋯</summary><div class="menu-panel">'+
     '<button type="button" data-detail="'+row.id+'">查看详情</button>'+
-    (row.kind==="zabbix" ? more(row,"scope","调整主机组")+more(row,"rotate","更换凭据") : more(row,"edit","编辑配置"))+
+    (row.kind==="zabbix" ? more(row,"scope","调整主机组")+more(row,"rotate","更换凭据") : "")+
     more(row,"toggle",row.state==="paused" ? "恢复" : isAsset(row) ? "停用" : "暂停")+
     '</div></details></div></td></tr>';
 }
@@ -403,7 +403,7 @@ function paintDetail(row) {
     (row.selections?.length ? entry(row.kind==="zabbix"?"主机组":"仪表盘",row.selections.join("、")) : "")+'</dl></section>'+
     '<section class="form-card"><h3>管理操作</h3><div class="detail-actions">'+
     (row.kind==="zabbix" ? detailButton(row,"overview","查看诊断总览")+detailButton(row,"scope","调整主机组")+detailButton(row,"rotate","更换凭据") :
-      detailButton(row,"edit","编辑配置")+(isAsset(row)?detailButton(row,"inventory","查看可见资产"):""))+
+      (isAsset(row)?detailButton(row,"inventory","查看可见资产"):""))+detailButton(row,"edit","编辑")+detailButton(row,"delete","删除")+
     detailButton(row,"toggle",row.state==="paused" ? "恢复" : isAsset(row) ? "停用" : "暂停")+
     '</div><div id="detail-extra" hidden></div></section></div>'+
     '<footer class="dialog-foot"><p id="detail-status" role="status">'+(running.has(row.id)?"正在处理…":"")+'</p><div class="actions">'+runButton(row)+'</div></footer></div>';
@@ -441,6 +441,16 @@ function ask(title,text,label,callback) {
   confirmDialog.showModal();
 }
 function rowCommand(row,key,trigger) {
+  if(key==="delete"){
+    ask("删除「"+row.name+"」？","数据源将停止同步，配置和采集快照将被移除。","删除",()=>{
+      rows=rows.filter(item=>item.id!==row.id);
+      if(detail.open&&detailID===row.id)detail.close();
+      render();
+      notify("已删除「"+row.name+"」。","good");
+    });
+    return;
+  }
+  if(key==="edit"&&row.kind==="zabbix")key="rename";
   if(key==="toggle"){
     const wasPaused=row.state==="paused";
     const verb=wasPaused ? "恢复" : isAsset(row) ? "停用" : "暂停";
@@ -498,8 +508,8 @@ function paintPicker() {
 function formNav(title,sub,body,saveLabel){
   const asset=types[flow.kind].side==="asset";
   const back=flow.mode==="add"?'<button type="button" class="btn weak small" data-back-pick>返回类型</button>':"";
-  const testAction=asset||flow.mode==="scope"?"":'<button type="button" class="btn" id="probe">测试连接</button>';
-  const previewAction=asset||flow.mode==="rotate"?"":'<button type="button" class="btn" id="preview" hidden>预览范围</button>';
+  const testAction=asset||flow.mode==="scope"||flow.mode==="rename"?"":'<button type="button" class="btn" id="probe">测试连接</button>';
+  const previewAction=asset||flow.mode==="rotate"||flow.mode==="rename"?"":'<button type="button" class="btn" id="preview" hidden>预览范围</button>';
   return '<form class="dialog-ui" id="setup-form" novalidate><header class="dialog-head"><div><div class="dialog-title-row"><h2 tabindex="-1" id="setup-title">'+title+'</h2>'+back+'</div><p class="hint">'+sub+'</p></div>'+
     '<button type="button" class="icon-button" data-close-setup aria-label="关闭">×</button></header><div class="dialog-body" id="setup-body">'+body+
     '</div><footer class="dialog-foot"><p id="setup-status" role="status"></p><div class="actions">'+
@@ -511,6 +521,11 @@ function makeField(id,label,value,opts={}) {
 }
 function paintForm() {
   const {kind, row, mode}=flow;
+  if(mode==="rename"){
+    setup.innerHTML=formNav("编辑 Zabbix 数据源","修改显示名称，连接和采集范围保持原配置。",'<section class="form-card">'+
+      makeField("form-name","名称",row.name,{required:true})+'</section>',"保存");
+    return;
+  }
   const type=types[kind];
   const isZabbix=kind==="zabbix";
   const asset=type.side==="asset";
@@ -692,7 +707,7 @@ function checkRange(previewing) {
 }
 function refreshSetup() {
   const save=by("setup-save");
-  if(!save)return;
+  if(!save||flow.mode==="rename")return;
   const asset=types[flow.kind].side==="asset";
   save.disabled=saveDisabled||(!asset&&!flow.ready);
   if(by("preview")){
@@ -782,6 +797,15 @@ function saveFlow(event) {
   event.preventDefault();
   if(saveDisabled || by("setup-save").disabled)return;
   const {mode,kind,row}=flow;
+  if(mode==="rename"){
+    if(!check(["form-name"]))return;
+    row.name=value("form-name").trim();
+    if(!row.name){showError(by("form-name"),"请填写名称。");return;}
+    setup.close();
+    updateRowUI(row,"[data-detail]");
+    notify(row.name+" · 配置已保存。","good");
+    return;
+  }
   const asset=types[kind].side==="asset";
   if(asset&&!check(["form-name","form-asset-ids","form-ref","form-asset-cluster","form-namespace"]))return;
   const inputValues={

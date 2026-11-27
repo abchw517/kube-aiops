@@ -144,14 +144,36 @@ func (s *Store) saveZabbix(ctx context.Context, d zabbixSourceRecord, actor stri
 			return ZabbixSource{}, err
 		}
 	} else {
-		res, execErr := tx.ExecContext(ctx, `UPDATE diagnostic_zabbix_source SET groups_json=?,auth_method=?,upstream_version=?,credential=?,
+		res, execErr := tx.ExecContext(ctx, `UPDATE diagnostic_zabbix_source SET name=?,groups_json=?,auth_method=?,upstream_version=?,credential=?,
 			enabled=?,version=version+1,health=CASE WHEN ? THEN 'pending' WHEN health='restricted' AND ? THEN 'pending' ELSE health END,
 			snapshot=CASE WHEN ? THEN '' ELSE snapshot END, synced_at=CASE WHEN ? THEN NULL ELSE synced_at END,
 			lease_until=0,due_at=0 WHERE id=? AND version=?`,
-			string(groups), d.AuthMethod, d.UpstreamVersion, d.credential, d.Enabled, clear, d.Enabled, clear, clear, d.ID, d.Version)
+			d.Name, string(groups), d.AuthMethod, d.UpstreamVersion, d.credential, d.Enabled, clear, d.Enabled, clear, clear, d.ID, d.Version)
 		if err = affected(res, execErr, ErrVersion); err != nil {
 			return ZabbixSource{}, err
 		}
+	}
+	if s.audit != nil {
+		if err = s.audit(ctx, tx, actor, "zabbix_source_saved", d.ID); err != nil {
+			return ZabbixSource{}, err
+		}
+	}
+	out, err := zabbixByID(ctx, tx, d.ID)
+	if err != nil {
+		return ZabbixSource{}, err
+	}
+	return out.ZabbixSource, tx.Commit()
+}
+
+func (s *Store) renameZabbix(ctx context.Context, d zabbixSourceRecord, actor string) (ZabbixSource, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ZabbixSource{}, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "UPDATE diagnostic_zabbix_source SET name=?,version=version+1,lease_until=0 WHERE id=? AND version=?", d.Name, d.ID, d.Version)
+	if err = affected(result, err, ErrVersion); err != nil {
+		return ZabbixSource{}, err
 	}
 	if s.audit != nil {
 		if err = s.audit(ctx, tx, actor, "zabbix_source_saved", d.ID); err != nil {

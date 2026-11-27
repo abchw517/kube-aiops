@@ -2235,6 +2235,23 @@ async function assertRemainingDiagnosticPages(cdp) {
   await assertText(cdp, (text) => text.includes("订单服务自动复核") && text.includes("自动触发"), "Policy was not created");
   await cdp.send("Runtime.evaluate", { expression: 'document.querySelector("[data-policy-runs]").open = true' });
   await assertText(cdp, (text) => text.includes("succeeded"), "Policy did not show run history");
+  await assertPage(cdp, `${origin}/#/resources/datasources`, text => text.includes("生产运维 Zabbix"), "Zabbix source did not reload");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const row = document.querySelector('[data-source-row="zabbix:zabbix-fixture"]');
+    row.querySelector('[data-source-action="edit"]').click();
+    const form = document.querySelector('[data-zabbix-editor] form');
+    form.elements.sourceName.value = "已改名 Zabbix";
+    form.requestSubmit();
+  })()` });
+  await assertText(cdp, text => text.includes("已改名 Zabbix") && text.includes("配置已保存"), "Zabbix rename did not update the list");
+  await cdp.send("Runtime.evaluate", { expression: `(() => {
+    const original = window.confirm;
+    window.confirm = () => true;
+    try { document.querySelector('[data-source-row="zabbix:zabbix-fixture"] [data-source-action="delete"]').click(); }
+    finally { window.confirm = original; }
+  })()` });
+  await assertDOM(cdp, `!document.querySelector('[data-source-row="zabbix:zabbix-fixture"]') && document.querySelector('[data-source-notice]').textContent.includes("已删除")`,
+    "Confirmed Zabbix deletion did not remove its row");
 }
 
 async function assertDiagnosticCenter(cdp) {

@@ -1288,6 +1288,39 @@ paths:
             schema:
               $ref: '#/components/schemas/DatasourceInput'
   /api/v1/diagnostics/datasources/{datasourceId}:
+    delete:
+      tags: [Incidents]
+      operationId: deleteDiagnosticDatasource
+      security:
+        - PortalSession: []
+      parameters:
+        - name: datasourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 已删除数据源
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 数据源仍被引用
+        '412':
+          description: 数据源版本已更新
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     patch:
       tags:
         - Incidents
@@ -1695,6 +1728,39 @@ paths:
             schema:
               $ref: '#/components/schemas/ZabbixSelection'
   /api/v1/diagnostics/zabbix/sources/{sourceId}:
+    delete:
+      tags: [Incidents]
+      operationId: deleteZabbixSource
+      security:
+        - PortalSession: []
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 已删除数据源
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 数据源仍被引用
+        '412':
+          description: 数据源版本已更新
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     patch:
       tags:
         - Incidents
@@ -1934,6 +2000,39 @@ paths:
             schema:
               $ref: '#/components/schemas/ObservabilityInput'
   /api/v1/diagnostics/observability/sources/{sourceId}:
+    delete:
+      tags: [Incidents]
+      operationId: deleteObservabilitySource
+      security:
+        - PortalSession: []
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 已删除数据源
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 数据源仍被引用
+        '412':
+          description: 数据源版本已更新
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     put:
       tags:
         - Incidents
@@ -2828,6 +2927,10 @@ components:
       type: object
       required: []
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
         draft:
           type: string
         groupIds:

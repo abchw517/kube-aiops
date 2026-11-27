@@ -853,6 +853,71 @@ kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=
 
 既有 `HOLMES_BINDINGS_FILE` 部署绑定继续兼容，可用于按范围配置各自的只读取证工具、凭据和独立 Holmes 地址。每个 Holmes 实例使用独立命名空间，Chart 的 Service 通过 `app: holmes` 选择 Pod。Wiki 实例仅接收 Portal 已授权的发布章节，关闭外部查询、MCP 和执行工具。使用现有 PVC 保留 Portal SQLite，备份时一并保留数据库。
 
+#### 配置独立的 Wiki Holmes 服务
+
+出现「请先配置独立的 Wiki Holmes 服务」时，先部署独立实例，再把它的 Service 根地址写入 **kube-aiops-api** Deployment 的 `HOLMES_WIKI_ENDPOINT`。这个变量为空，或地址与诊断试点的 `HOLMES_PILOT_ENDPOINT` 一致时，Portal 会拒绝知识问答的模型发现。
+
+以下继续以 Holmes 0.48.0 和智谱 `glm-5.2` 为例。复用第 1 步的 `holmes-prerequisites.yaml`，在 Wiki 命名空间内创建专用 ServiceAccount 和仅允许 Portal API 访问的入站策略。
+
+```bash
+kubectl create namespace holmes-wiki --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n holmes-wiki apply -f holmes-prerequisites.yaml
+kubectl -n holmes-wiki create secret generic holmes-model
+kubectl -n holmes-wiki edit secret holmes-model
+```
+
+在 Secret 顶层加入 `stringData.api-key`，使用智谱 API Key。Secret 已存在时直接编辑。将下列配置保存为 `holmes-wiki-values.yaml`。
+
+```yaml
+createServiceAccount: false
+customServiceAccountName: holmes-model-only
+k8sRBAC: false
+enableTelemetry: false
+mcp_servers: {}
+toolsets:
+  kubernetes/core: {enabled: false}
+  kubernetes/logs: {enabled: false}
+  robusta: {enabled: false}
+  internet: {enabled: false}
+  prometheus/metrics: {enabled: false}
+  skills: {enabled: false}
+  connectivity_check: {enabled: false}
+  bash: {enabled: false}
+additionalEnvVars:
+  - name: ZHIPU_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: holmes-model
+        key: api-key
+modelList:
+  accurate-model:
+    model: openai/glm-5.2
+    api_base: https://open.bigmodel.cn/api/paas/v4
+    api_key: envRef:ZHIPU_API_KEY
+```
+
+```bash
+helm repo add robusta https://robusta-charts.storage.googleapis.com
+helm repo update robusta
+helm upgrade --install holmes-wiki robusta/holmes --version 0.48.0 \
+  -n holmes-wiki -f holmes-wiki-values.yaml --atomic --timeout 5m
+kubectl -n holmes-wiki rollout status deployment/holmes-wiki-holmes --timeout=180s
+kubectl -n holmes-wiki get svc,endpointslice
+kubectl -n holmes-wiki exec deployment/holmes-wiki-holmes -- \
+  curl -fsS --max-time 5 http://127.0.0.1:5050/api/model
+kubectl -n holmes-wiki exec deployment/holmes-wiki-holmes -- \
+  curl -fsS --max-time 45 http://127.0.0.1:5050/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"ask":"请只回复 OK","model":"accurate-model"}'
+kubectl -n kube-aiops-system set env deployment/kube-aiops-api \
+  HOLMES_WIKI_ENDPOINT=http://holmes-wiki-holmes.holmes-wiki.svc:80
+kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=180s
+```
+
+这套示例使用集群内 Service 和入站 NetworkPolicy。如果 Wiki Holmes 前置了 HTTP 鉴权，将代理所需的 `X-API-Key` 从 Secret 注入 API 的 `HOLMES_WIKI_API_KEY`。该密钥用于 Portal 访问 Wiki Holmes。智谱密钥由 Wiki Holmes Pod 的 `holmes-model` Secret 提供。
+
+若使用 GitOps，将上述 API 环境变量一并写入声明式部署配置。API 更新完成后，进入 **AI 服务 → AI 服务配置 → 新增范围绑定 → 知识问答 → 发现模型**，选择 `accurate-model` 并保存。Portal 使用固定范围 `wiki / published-excerpts`。随后使用有问答权限的账号，在运维知识库针对一篇可见的已发布文档发起问答并检查引用。
+
 ### 4. 在诊断页面验收
 
 给试点账号授予目标范围的数据源读取权限和 `diagnosis.health.investigate`。打开 **诊断总览 → 告警详情 → AI 深度调查**，确认返回分析结果。对比启用前后总览的相同筛选条件，统计和最近诊断仍来自原数据源。
@@ -888,6 +953,8 @@ kubectl -n kube-aiops-system logs deployment/kube-aiops-api --since=10m --tail=1
 ## 排查与清理
 
 Portal API 的应用日志使用 UTC+8，JSON 的 `time` 字段包含 `+08:00`，可直接与页面上的诊断时间对照。此设置只作用于日志记录时间，业务时间字段沿用各自的数据格式。
+
+Web 镜像为 NGINX 设置 `TZ=Asia/Shanghai` 并包含时区数据。更新 Web 镜像后，`kubectl logs` 输出的 NGINX 访问日志时间应带 `+0800`。
 
 | 现象 | 核对项 |
 | --- | --- |

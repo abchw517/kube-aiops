@@ -270,7 +270,7 @@ func auditGrantDiff(before, after []interfaceGrant) string {
 }
 
 func hostDatasourceCode(code string) bool {
-	return code == "diagnosis.health.investigate" || code == "diagnosis.connector.read" || code == "diagnosis.connector.write" || code == "diagnosis.connector.test"
+	return code == "diagnosis.health.investigate" || code == "diagnosis.connector.read" || code == "diagnosis.connector.write" || code == "diagnosis.connector.test" || code == "diagnosis.connector.delete"
 }
 
 // AuthorizeHostDatasource applies only environment/business grants without Kubernetes scope.

@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	ConnectorRead  = "diagnosis.connector.read"
-	ConnectorWrite = "diagnosis.connector.write"
-	ConnectorTest  = "diagnosis.connector.test"
+	ConnectorRead   = "diagnosis.connector.read"
+	ConnectorWrite  = "diagnosis.connector.write"
+	ConnectorDelete = "diagnosis.connector.delete"
+	ConnectorTest   = "diagnosis.connector.test"
 )
 
 type DatasourceInput struct {
@@ -105,6 +106,7 @@ func (s *Server) registerDatasource(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/diagnostics/datasources", s.protect(s.listDatasources))
 	mux.HandleFunc("POST /api/v1/diagnostics/datasources", s.protect(s.createDatasource))
 	mux.HandleFunc("PATCH /api/v1/diagnostics/datasources/{datasourceId}", s.protect(s.updateDatasource))
+	mux.HandleFunc("DELETE /api/v1/diagnostics/datasources/{datasourceId}", s.protect(s.deleteDatasource))
 	mux.HandleFunc("POST /api/v1/diagnostics/datasources/{datasourceId}/test", s.protect(s.testDatasource))
 	mux.HandleFunc("GET /api/v1/diagnostics/datasources/{datasourceId}/assets", s.protect(s.listAssets))
 	mux.HandleFunc("POST /api/v1/diagnostics/ingress/{connectorId}/signals", s.ingressSignal)
