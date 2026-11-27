@@ -691,13 +691,12 @@ kubectl -n kube-aiops-system rollout status deployment/kube-aiops-api --timeout=
 
 ## 部署 HolmesGPT
 
-建议先接一条 Zabbix 告警，跑通后再扩展到 Alertmanager、Finding、事件 RCA 和 Wiki。下面统一使用 `holmes-pilot` 命名空间、`holmes-pilot` Helm 发布名、`accurate-model` 模型别名。命令可以逐段复制。在一台已配置集群访问权限的管理机上，从 kube-aiops 仓库根目录执行。需要 Helm 3、kubectl、Python 3 和可用的 OpenAI API Key。
+建议先接一条 Zabbix 告警，跑通后再扩展到 Alertmanager、Finding、事件 RCA 和 Wiki。本例使用智谱 BigModel 的 `glm-5.2`，命名空间和 Helm 发布名均为 `holmes-pilot`，模型别名为 `accurate-model`。在一台已配置集群访问权限的管理机上，从 kube-aiops 仓库根目录执行。准备 Helm 3、kubectl 和有效的智谱 BigModel API Key。
 
 ```bash
 kubectl config current-context
 kubectl -n kube-aiops-system get deployment kube-aiops-api kube-aiops-web
 helm version --short
-python3 --version
 ```
 
 确认当前集群正确，且 API、Web 已部署为包含 Holmes 接入的版本。Finding 和事件 RCA 还需先启用[现有诊断模型](#启用诊断详情的-ai-分析)，保留回退路径。
@@ -706,7 +705,12 @@ python3 --version
 
 ```bash
 kubectl create namespace holmes-pilot --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n holmes-pilot apply -f - <<'YAML'
+nano holmes-prerequisites.yaml
+```
+
+将以下内容保存到 `holmes-prerequisites.yaml`。
+
+```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -734,14 +738,26 @@ spec:
       ports:
         - protocol: TCP
           port: 5050
-YAML
 ```
 
-下一条命令会提示输入 OpenAI API Key。粘贴后按 Enter，输入不回显。Secret 的名称是 `holmes-model`，键名是 `api-key`。命令需要在交互式终端中运行，确认提示并输入非空密钥。
+应用清单。如果 `holmes-model` 已存在，跳过 `create secret`，直接运行 `edit secret`。
 
 ```bash
-python3 -c 'import getpass, sys; key = getpass.getpass("OpenAI API Key: ").strip(); sys.stdout.write(key)' |
-  kubectl -n holmes-pilot create secret generic holmes-model --from-file=api-key=/dev/stdin
+kubectl -n holmes-pilot apply -f holmes-prerequisites.yaml
+kubectl -n holmes-pilot create secret generic holmes-model
+kubectl -n holmes-pilot edit secret holmes-model
+```
+
+在打开的编辑器中，将以下两行加到 YAML 顶层，与 `metadata` 同级。把占位文字替换成完整的智谱 API Key，然后保存退出。Kubernetes 会把该值写入 `data.api-key`。[Kubernetes Secret 文档](https://kubernetes.io/docs/concepts/configuration/secret/#constraints-on-secret-names-and-data)
+
+```yaml
+stringData:
+  api-key: "这里粘贴智谱 API Key"
+```
+
+确认 Secret 已存在且 `DATA` 至少为 `1`。
+
+```bash
 kubectl -n holmes-pilot get secret holmes-model
 ```
 
@@ -749,10 +765,13 @@ kubectl -n holmes-pilot get secret holmes-model
 
 ### 2. 安装 Holmes 并验证模型
 
-把这段整块复制到终端，会在当前目录创建 `holmes-values.yaml`。其中 `OPENAI_API_KEY` 由 Pod 从 Secret 自动读取，终端无需设置环境变量。
+打开 `holmes-values.yaml`，保存下面的配置。若文件已有自定义配置，更新其中的密钥引用和 `accurate-model`，其他配置继续沿用。`ZHIPU_API_KEY` 由 Pod 从 Secret 读取。
 
 ```bash
-cat > holmes-values.yaml <<'YAML'
+nano holmes-values.yaml
+```
+
+```yaml
 createServiceAccount: false
 customServiceAccountName: holmes-model-only
 enableTelemetry: false
@@ -767,17 +786,21 @@ toolsets:
   connectivity_check: {enabled: false}
   bash: {enabled: false}
 additionalEnvVars:
-  - name: OPENAI_API_KEY
+  - name: ZHIPU_API_KEY
     valueFrom:
       secretKeyRef:
         name: holmes-model
         key: api-key
 modelList:
   accurate-model:
-    model: openai/gpt-4.1
-    api_key: "{{ env.OPENAI_API_KEY }}"
-YAML
+    model: openai/glm-5.2
+    api_base: https://open.bigmodel.cn/api/paas/v4
+    api_key: "{{ env.ZHIPU_API_KEY }}"
+```
 
+`openai/` 表示使用 OpenAI 兼容接口，实际请求发往 `api_base` 指定的智谱地址。兼容客户端会追加 `/chat/completions`。使用 OpenAI 时，在第 1 步填写 OpenAI 的密钥，配置中把两处 `ZHIPU_API_KEY` 改成 `OPENAI_API_KEY`，模型改成 `openai/gpt-4.1` 并删除 `api_base` 行。[HolmesGPT OpenAI 兼容配置](https://holmesgpt.dev/0.24.3/ai-providers/openai-compatible/) · [智谱 GLM-5.2 接口](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2)
+
+```bash
 helm repo add robusta https://robusta-charts.storage.googleapis.com
 helm repo update robusta
 helm upgrade --install holmes-pilot robusta/holmes --version 0.24.3 \
@@ -786,29 +809,28 @@ kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=
 kubectl -n holmes-pilot get pods,svc
 ```
 
-正常时 Deployment 就绪，Service 为 `holmes-pilot-holmes`，端口为 `80`。下面从容器内通过本地端口检查 readiness 和模型调用，避免开放额外入口。
+Service 为 `holmes-pilot-holmes`，端口为 `80`。从容器内通过本地端口检查就绪状态和实际模型调用。
 
 ```bash
-kubectl -n holmes-pilot exec -i deployment/holmes-pilot-holmes -- python3 - <<'PY'
-import json
-from urllib.request import Request, urlopen
+kubectl -n holmes-pilot exec deployment/holmes-pilot-holmes -- \
+  curl -fsS --max-time 5 -w '\nHTTP %{http_code}\n' http://127.0.0.1:5050/readyz
 
-with urlopen("http://127.0.0.1:5050/readyz", timeout=5) as response:
-    print("Ready:", response.status)
-
-request = Request(
-    "http://127.0.0.1:5050/api/chat",
-    data=json.dumps({"ask": "Reply with the word OK.", "model": "accurate-model"}).encode(),
-    headers={"Content-Type": "application/json"},
-)
-with urlopen(request, timeout=45) as response:
-    result = json.load(response)
-    assert result.get("analysis"), "Holmes returned an empty analysis"
-    print("Model:", response.status, result["analysis"])
-PY
+kubectl -n holmes-pilot exec deployment/holmes-pilot-holmes -- \
+  curl -fsS --max-time 45 -w '\nHTTP %{http_code}\n' http://127.0.0.1:5050/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"ask":"请只回复 OK","model":"accurate-model"}'
 ```
 
-看到 `Ready: 200` 和 `Model: 200` 后继续。需要替换成内网 vLLM 时，按实际模型和 OpenAI 兼容 API 地址修改 Chart 配置，并复跑本节检查。用于 Finding 初步复核和事件 RCA 时，还要用实际模型验证 `response_format`。如需让 Holmes 查实时指标或日志，按试点范围单独配置只读数据源和凭据。本例使用 Portal 已有证据，工具均关闭。[Chart 配置](https://holmesgpt.dev/0.24.3/reference/helm-configuration/) · [HTTP API](https://holmesgpt.dev/0.24.3/reference/http-api/)
+两条请求均返回 `HTTP 200`，且第二条返回的 JSON 中 `analysis` 有内容后，再配置 Portal。`bindings.json` 和 Portal 的模型档位填写 Holmes 别名 `accurate-model`。试点只配置了这一个别名时，页面的两个档位都可以选它。用于 Finding 初步复核和事件 RCA 时，还要用实际模型验证 `response_format`。如需让 Holmes 查询实时指标或日志，按试点范围单独配置只读数据源和凭据。[Chart 配置](https://holmesgpt.dev/0.24.3/reference/helm-configuration/) · [HTTP API](https://holmesgpt.dev/0.24.3/reference/http-api/)
+
+仅轮换 Secret 中的密钥时，保存后重启 Deployment，再复跑模型验证。
+
+```bash
+kubectl -n holmes-pilot rollout restart deployment/holmes-pilot-holmes
+kubectl -n holmes-pilot rollout status deployment/holmes-pilot-holmes --timeout=180s
+```
+
+使用内网 vLLM 时，按实际模型和 OpenAI 兼容 API 地址修改 Chart 配置，再复跑本节检查。
 
 ### 3. 从 Portal 找到一条告警的真实 ID
 
@@ -818,10 +840,9 @@ PY
 
 ### 4. 写入绑定并启用 Portal
 
-先复制以下命令创建文件。将 `zbx-prod`、`prod`、`orders` 换成上一步找到的三个 ID。服务名、命名空间和模型名沿用前面示例时，`endpoint` 和 `model` 可以原样使用。Portal API 会自动给 `endpoint` 追加 `/api/chat`。
+执行 `nano bindings.json`。首次部署时，粘贴下面的 JSON。已有绑定时，打开发布时使用的 `bindings.json`，在原数组中追加本条记录。将 `zbx-prod`、`prod`、`orders` 换成上一步找到的三个 ID。服务名、命名空间和模型名沿用前面示例时，`endpoint` 和 `model` 可以原样使用。Portal API 会自动给 `endpoint` 追加 `/api/chat`。
 
-```bash
-cat > bindings.json <<'JSON'
+```json
 [
   {
     "source": "zabbix",
@@ -832,14 +853,11 @@ cat > bindings.json <<'JSON'
     "model": "accurate-model"
   }
 ]
-JSON
-nano bindings.json
-python3 -m json.tool bindings.json >/dev/null
 ```
 
-在 nano 中按 Ctrl+O 保存、Enter 确认文件名、Ctrl+X 退出。JSON 校验命令无输出即表示格式正确。一次只写一条告警范围，先完成页面验收。
+在 nano 中按 Ctrl+O 保存、Enter 确认文件名、Ctrl+X 退出。装有 `jq` 时，可用 `jq -e 'type == "array"' bindings.json` 检查文件，预期输出 `true`。试点先添加一条告警范围，完成页面验收。
 
-首次部署可以直接创建绑定 Secret。如果集群已经配置过 Holmes，先找回发布时使用的原始 `bindings.json`，将本条追加到现有数组，保留其他范围。短链路试点使用上面的内部 ClusterIP 地址。生产使用内部 HTTPS 时，填实际网关根地址，确保 API 信任证书。若网关要求 `X-API-Key`，对应条目追加 `apiKey`，并通过 Secret 管理该文件。
+试点使用上面的内部 ClusterIP 地址。生产使用内部 HTTPS 时，填实际网关根地址，确保 API 信任证书。若网关要求 `X-API-Key`，对应条目追加 `apiKey`，并通过 Secret 管理该文件。
 
 ```bash
 kubectl -n kube-aiops-system create secret generic kube-aiops-holmes-bindings \
